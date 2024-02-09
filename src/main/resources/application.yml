@@ -1,1 +1,12 @@
-{ }
+quarkus:
+  datasource:
+    db-kind: postgresql
+    username: local
+    password: local
+
+  hibernate-orm:
+    database:
+      generation: drop-and-create
+
+    jdbc:
+      url: jdbc:postgresql://localhost:5432/squirrel
