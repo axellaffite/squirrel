@@ -21,6 +21,7 @@ class UserManagementService(private val userRepository: UserRepository) {
             email = userCreation.email
             username = userCreation.username
             password = hash(userCreation.password)
+            roles = ""
         }
 
         userRepository.persist(user)

@@ -3,10 +3,23 @@ quarkus:
     db-kind: postgresql
     username: local
     password: local
+    jdbc:
+      url: jdbc:postgresql://localhost:5432/squirrel
 
   hibernate-orm:
     database:
       generation: drop-and-create
 
-    jdbc:
-      url: jdbc:postgresql://localhost:5432/squirrel
+  http:
+    auth:
+      form:
+        enabled: true
+        cookie-name: squirrel-credentials
+        http-only-cookie: false
+        post-location: auth/form
+        # Disable default configuration as we are using an SPA
+        landing-page: ""
+        login-page: ""
+        error-page: ""
+      session:
+        encryption-key: change-this-in-production
