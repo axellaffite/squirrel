@@ -3,6 +3,8 @@ import type { paths } from '#lib/api/schema.d.ts';
 
 const SAFE_METHODS = new Set(['GET', 'HEAD', 'OPTIONS']);
 const DEFAULT_ERROR = 'Something went wrong. Please try again.';
+/** Error code the server returns when the `X-CSRF-Token` header does not match the session. */
+const CSRF_INVALID = 'csrf_invalid';
 
 /** Endpoints whose 401 is an expected answer, not a sign the session ended. */
 const UNAUTHORIZED_EXEMPT_PATHS = new Set(['/api/auth/login', '/api/auth/me']);
@@ -25,7 +27,7 @@ export function onUnauthorized(handler: Handler | null): void {
 }
 
 /**
- * Called when a state-changing request answers 403 `forbidden`: the CSRF token may be
+ * Called when a state-changing request answers 403 `csrf_invalid`: the CSRF token is
  * stale (e.g. session replaced in another tab), so the session should be reloaded.
  */
 export function onStaleCsrf(handler: Handler | null): void {
@@ -78,7 +80,7 @@ export const sessionMiddleware: Middleware = {
 		} else if (
 			response.status === 403 &&
 			!SAFE_METHODS.has(request.method) &&
-			(await errorCode(response)) === 'forbidden'
+			(await errorCode(response)) === CSRF_INVALID
 		) {
 			recoverFromStaleCsrf();
 		}

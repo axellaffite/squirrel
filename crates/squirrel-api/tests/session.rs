@@ -49,10 +49,21 @@ async fn state_changing_requests_need_the_csrf_header(pool: PgPool) {
     let server = common::server(pool);
     let me = common::setup_admin(&server, "alice").await;
 
-    server
+    let missing = server.post("/api/auth/logout").await;
+    missing.assert_status(StatusCode::FORBIDDEN);
+    assert_eq!(
+        missing.json::<serde_json::Value>()["error"]["code"],
+        "csrf_invalid"
+    );
+    let wrong = server
         .post("/api/auth/logout")
-        .await
-        .assert_status(StatusCode::FORBIDDEN);
+        .add_header(common::CSRF, "not-the-token")
+        .await;
+    wrong.assert_status(StatusCode::FORBIDDEN);
+    assert_eq!(
+        wrong.json::<serde_json::Value>()["error"]["code"],
+        "csrf_invalid"
+    );
     server
         .post("/api/auth/logout")
         .add_header(common::CSRF, common::csrf(&me))
