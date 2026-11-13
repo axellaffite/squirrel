@@ -45,7 +45,6 @@ pub fn decode_folder(raw: &str) -> Result<ListCursor, ApiError> {
     Ok(ListCursor { kind, name })
 }
 
-#[allow(dead_code, reason = "used by the trash routes (Task 17)")]
 pub fn encode_trash(cursor: &TrashCursor) -> String {
     encode(
         &cursor.deleted_at.unix_timestamp_nanos().to_string(),
@@ -53,7 +52,6 @@ pub fn encode_trash(cursor: &TrashCursor) -> String {
     )
 }
 
-#[allow(dead_code, reason = "used by the trash routes (Task 17)")]
 pub fn decode_trash(raw: &str) -> Result<TrashCursor, ApiError> {
     let (nanos, id) = decode(raw)?;
     let nanos: i128 = nanos.parse().map_err(|_| invalid())?;

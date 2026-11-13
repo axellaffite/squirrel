@@ -5,4 +5,5 @@ pub mod invitations;
 pub mod join;
 pub mod nodes;
 pub mod setup;
+pub mod trash;
 pub mod uploads;

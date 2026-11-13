@@ -140,3 +140,29 @@ pub struct UpdateNodeRequest {
     #[serde(default)]
     pub parent_id: Option<Uuid>,
 }
+
+#[derive(Debug, Deserialize, IntoParams)]
+#[into_params(parameter_in = Query)]
+pub struct TrashQuery {
+    /// `next_cursor` of the previous page.
+    pub cursor: Option<String>,
+    /// Page size, default 100, at most 500.
+    pub limit: Option<u32>,
+}
+
+#[derive(Debug, Serialize, ToSchema)]
+pub struct TrashEntryDto {
+    /// `parent_id` is where it was deleted from.
+    pub node: NodeDto,
+    #[serde(with = "time::serde::rfc3339")]
+    #[schema(value_type = String, format = DateTime)]
+    pub deleted_at: OffsetDateTime,
+}
+
+#[derive(Debug, Serialize, ToSchema)]
+pub struct TrashListing {
+    /// Newest first. Folders appear once; their contents come back with them.
+    pub items: Vec<TrashEntryDto>,
+    /// Pass back as `cursor` for the next page; `null` on the last page.
+    pub next_cursor: Option<String>,
+}

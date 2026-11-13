@@ -635,6 +635,49 @@
           }
         }
       },
+      "delete": {
+        "tags": [
+          "files"
+        ],
+        "operationId": "trash_node",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "Node id",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Moved to the trash with everything inside it"
+          },
+          "404": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        }
+      },
       "patch": {
         "tags": [
           "files"
@@ -779,6 +822,156 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/SetupStatus"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/trash": {
+      "get": {
+        "tags": [
+          "trash"
+        ],
+        "operationId": "list_trash",
+        "parameters": [
+          {
+            "name": "cursor",
+            "in": "query",
+            "description": "`next_cursor` of the previous page.",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "description": "Page size, default 100, at most 500.",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "format": "int32",
+              "minimum": 0
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TrashListing"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "trash"
+        ],
+        "operationId": "empty_trash",
+        "responses": {
+          "204": {
+            "description": "Trash emptied"
+          }
+        }
+      }
+    },
+    "/api/trash/{id}": {
+      "delete": {
+        "tags": [
+          "trash"
+        ],
+        "operationId": "delete_forever",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "Trash entry (node) id",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Deleted for good"
+          },
+          "404": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/trash/{id}/restore": {
+      "post": {
+        "tags": [
+          "trash"
+        ],
+        "operationId": "restore",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "Trash entry (node) id",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Restored into its folder, or into Files/ if that folder is gone; renamed \"name (n)\" on a clash",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NodeDto"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "507": {
+            "description": "quota_exceeded",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
                 }
               }
             }
@@ -1548,6 +1741,45 @@
         "properties": {
           "needs_setup": {
             "type": "boolean"
+          }
+        }
+      },
+      "TrashEntryDto": {
+        "type": "object",
+        "required": [
+          "node",
+          "deleted_at"
+        ],
+        "properties": {
+          "deleted_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "node": {
+            "$ref": "#/components/schemas/NodeDto",
+            "description": "`parent_id` is where it was deleted from."
+          }
+        }
+      },
+      "TrashListing": {
+        "type": "object",
+        "required": [
+          "items"
+        ],
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/TrashEntryDto"
+            },
+            "description": "Newest first. Folders appear once; their contents come back with them."
+          },
+          "next_cursor": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Pass back as `cursor` for the next page; `null` on the last page."
           }
         }
       },
