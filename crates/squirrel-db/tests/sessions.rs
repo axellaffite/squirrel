@@ -14,12 +14,23 @@ async fn alice(pool: &PgPool) -> users::UserRecord {
 }
 
 fn session<'a>(user_id: uuid::Uuid, hash: &'a [u8], ttl: Duration) -> NewSession<'a> {
+    with_absolute(user_id, hash, ttl, Duration::days(90))
+}
+
+fn with_absolute<'a>(
+    user_id: uuid::Uuid,
+    hash: &'a [u8],
+    ttl: Duration,
+    absolute: Duration,
+) -> NewSession<'a> {
+    let now = OffsetDateTime::now_utc();
     NewSession {
         user_id,
         token_hash: hash,
         csrf_token: "csrf",
         user_agent: Some("test"),
-        expires_at: OffsetDateTime::now_utc() + ttl,
+        expires_at: now + ttl,
+        absolute_expires_at: now + absolute,
     }
 }
 
@@ -123,4 +134,54 @@ async fn delete_expired_removes_only_expired_sessions(pool: PgPool) {
             .unwrap()
             .is_some()
     );
+}
+
+#[sqlx::test(migrator = "squirrel_db::MIGRATOR")]
+async fn session_past_its_absolute_lifetime_is_not_active(pool: PgPool) {
+    let user = alice(&pool).await;
+    sessions::create(
+        &pool,
+        &with_absolute(user.id, b"old", Duration::days(1), Duration::seconds(-1)),
+    )
+    .await
+    .unwrap();
+    assert!(
+        sessions::find_active(&pool, b"old")
+            .await
+            .unwrap()
+            .is_none()
+    );
+    assert_eq!(sessions::delete_expired(&pool).await.unwrap(), 1);
+}
+
+#[sqlx::test(migrator = "squirrel_db::MIGRATOR")]
+async fn touch_never_extends_beyond_the_absolute_lifetime(pool: PgPool) {
+    let user = alice(&pool).await;
+    let created = sessions::create(
+        &pool,
+        &with_absolute(user.id, b"a", Duration::minutes(5), Duration::hours(1)),
+    )
+    .await
+    .unwrap();
+    let wanted = OffsetDateTime::now_utc() + Duration::days(30);
+    assert!(sessions::touch(&pool, created.id, wanted).await.unwrap());
+
+    let found = sessions::find_active(&pool, b"a").await.unwrap().unwrap();
+    assert_eq!(found.expires_at, found.absolute_expires_at);
+    assert_eq!(found.absolute_expires_at, created.absolute_expires_at);
+}
+
+#[sqlx::test(migrator = "squirrel_db::MIGRATOR")]
+async fn delete_by_token_hash_removes_only_that_session(pool: PgPool) {
+    let user = alice(&pool).await;
+    sessions::create(&pool, &session(user.id, b"a", Duration::days(1)))
+        .await
+        .unwrap();
+    sessions::create(&pool, &session(user.id, b"b", Duration::days(1)))
+        .await
+        .unwrap();
+
+    sessions::delete_by_token_hash(&pool, b"a").await.unwrap();
+    assert!(sessions::find_active(&pool, b"a").await.unwrap().is_none());
+    assert!(sessions::find_active(&pool, b"b").await.unwrap().is_some());
 }

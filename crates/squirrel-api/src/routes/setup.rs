@@ -50,7 +50,7 @@ pub async fn create_first_admin(
     }
     let new_user = prepare_new_user(request.into_account()).await?;
     let user = users::create_first_admin(&state.pool, &new_user).await?;
-    let (cookie, me) = session::start(&state, &user, &headers).await?;
+    let (cookie, me) = session::start(&state, &user, &headers, &jar).await?;
     Ok((StatusCode::CREATED, jar.add(cookie), Json(me)))
 }
 
