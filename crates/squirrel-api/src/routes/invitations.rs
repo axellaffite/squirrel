@@ -7,6 +7,7 @@ use squirrel_db::settings;
 use time::OffsetDateTime;
 use uuid::Uuid;
 
+use crate::client_ip::ClientIp;
 use crate::dto::{CreateInvitationRequest, CreatedInvitation, InvitationDto};
 use crate::error::{ApiError, ErrorBody};
 use crate::extract::CurrentUser;
@@ -22,6 +23,7 @@ const EMAIL_HINT_MAX_LEN: usize = 254;
 pub async fn create_invitation(
     State(state): State<AppState>,
     current: CurrentUser,
+    client_ip: ClientIp,
     ApiJson(request): ApiJson<CreateInvitationRequest>,
 ) -> Result<(StatusCode, Json<CreatedInvitation>), ApiError> {
     let instance = settings::get(&state.pool).await?;
@@ -54,6 +56,8 @@ pub async fn create_invitation(
         },
     )
     .await?;
+    tracing::info!(user_id = %current.user.id, username = %current.user.username,
+        invitation_id = %record.id, %client_ip, "invitation created");
     let created = CreatedInvitation {
         invitation: InvitationDto::new(&record, now),
         token,
@@ -83,9 +87,12 @@ pub async fn list_invitations(
 pub async fn revoke_invitation(
     State(state): State<AppState>,
     current: CurrentUser,
+    client_ip: ClientIp,
     ApiPath(id): ApiPath<Uuid>,
 ) -> Result<StatusCode, ApiError> {
     if invitations::revoke(&state.pool, id, current.user.id).await? {
+        tracing::info!(user_id = %current.user.id, username = %current.user.username,
+            invitation_id = %id, %client_ip, "invitation revoked");
         Ok(StatusCode::NO_CONTENT)
     } else {
         Err(ApiError::NotFound)

@@ -83,7 +83,10 @@ async fn locks_after_five_failures_and_resets_on_success(pool: PgPool) {
             .is_locked(now)
     );
 
-    users::record_login_failure(&pool, alice.id).await.unwrap();
+    assert_eq!(
+        users::record_login_failure(&pool, alice.id).await.unwrap(),
+        users::LOCKOUT_THRESHOLD
+    );
     assert!(
         users::find_by_id(&pool, alice.id)
             .await
