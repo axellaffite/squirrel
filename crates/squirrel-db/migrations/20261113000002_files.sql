@@ -5,7 +5,7 @@ CREATE TABLE blobs (
     sha256      TEXT PRIMARY KEY CHECK (sha256 ~ '^[0-9a-f]{64}$'),
     size        BIGINT NOT NULL CHECK (size >= 0),
     mime        TEXT NOT NULL CHECK (char_length(mime) BETWEEN 1 AND 255),
-    -- Maintained by the nodes_blob_refcount trigger; never update by hand.
+    -- Maintained by the nodes_blob_ref* triggers; never update by hand.
     ref_count   BIGINT NOT NULL DEFAULT 0 CHECK (ref_count >= 0),
     -- When ref_count last reached 0 (NULL while referenced). GC waits for a grace period.
     zero_since  TIMESTAMPTZ DEFAULT now(),
@@ -45,24 +45,62 @@ CREATE INDEX nodes_owner_blob_idx ON nodes (owner_id, blob_sha256) WHERE blob_sh
 CREATE INDEX nodes_blob_idx ON nodes (blob_sha256) WHERE blob_sha256 IS NOT NULL;
 CREATE INDEX nodes_trash_idx ON nodes (owner_id, deleted_at DESC, id) WHERE trash_root = id;
 
-CREATE FUNCTION nodes_blob_refcount() RETURNS trigger LANGUAGE plpgsql AS $$
+-- Blob reference counting. Inserts and deletes use statement-level triggers:
+-- one UPDATE per statement, aggregated per blob, locking blobs in sha256 order
+-- so concurrent bulk deletes sharing blobs do not deadlock on each other.
+-- `zero_since` follows the CHECK above: set when ref_count reaches 0, else NULL.
+CREATE FUNCTION nodes_blob_refs_added() RETURNS trigger LANGUAGE plpgsql AS $$
 BEGIN
-    IF TG_OP IN ('UPDATE', 'DELETE') AND OLD.blob_sha256 IS NOT NULL THEN
+    PERFORM 1 FROM blobs
+     WHERE sha256 IN (SELECT blob_sha256 FROM new_rows WHERE blob_sha256 IS NOT NULL)
+     ORDER BY sha256 FOR NO KEY UPDATE;
+    UPDATE blobs b SET ref_count = b.ref_count + d.n, zero_since = NULL
+      FROM (SELECT blob_sha256, count(*) AS n FROM new_rows
+             WHERE blob_sha256 IS NOT NULL GROUP BY blob_sha256) d
+     WHERE b.sha256 = d.blob_sha256;
+    RETURN NULL;
+END;
+$$;
+CREATE FUNCTION nodes_blob_refs_removed() RETURNS trigger LANGUAGE plpgsql AS $$
+BEGIN
+    PERFORM 1 FROM blobs
+     WHERE sha256 IN (SELECT blob_sha256 FROM old_rows WHERE blob_sha256 IS NOT NULL)
+     ORDER BY sha256 FOR NO KEY UPDATE;
+    UPDATE blobs b
+       SET ref_count = b.ref_count - d.n,
+           zero_since = CASE WHEN b.ref_count = d.n THEN now() ELSE NULL END
+      FROM (SELECT blob_sha256, count(*) AS n FROM old_rows
+             WHERE blob_sha256 IS NOT NULL GROUP BY blob_sha256) d
+     WHERE b.sha256 = d.blob_sha256;
+    RETURN NULL;
+END;
+$$;
+-- Row level for the rare in-place change of a node's blob.
+CREATE FUNCTION nodes_blob_ref_changed() RETURNS trigger LANGUAGE plpgsql AS $$
+BEGIN
+    IF OLD.blob_sha256 IS NOT NULL THEN
         UPDATE blobs
            SET ref_count = ref_count - 1,
                zero_since = CASE WHEN ref_count = 1 THEN now() ELSE NULL END
          WHERE sha256 = OLD.blob_sha256;
     END IF;
-    IF TG_OP IN ('INSERT', 'UPDATE') AND NEW.blob_sha256 IS NOT NULL THEN
+    IF NEW.blob_sha256 IS NOT NULL THEN
         UPDATE blobs SET ref_count = ref_count + 1, zero_since = NULL
          WHERE sha256 = NEW.blob_sha256;
     END IF;
     RETURN NULL;
 END;
 $$;
-CREATE TRIGGER nodes_blob_refcount
-    AFTER INSERT OR DELETE OR UPDATE OF blob_sha256 ON nodes
-    FOR EACH ROW EXECUTE FUNCTION nodes_blob_refcount();
+CREATE TRIGGER nodes_blob_refs_added
+    AFTER INSERT ON nodes REFERENCING NEW TABLE AS new_rows
+    FOR EACH STATEMENT EXECUTE FUNCTION nodes_blob_refs_added();
+CREATE TRIGGER nodes_blob_refs_removed
+    AFTER DELETE ON nodes REFERENCING OLD TABLE AS old_rows
+    FOR EACH STATEMENT EXECUTE FUNCTION nodes_blob_refs_removed();
+CREATE TRIGGER nodes_blob_ref_changed
+    AFTER UPDATE OF blob_sha256 ON nodes
+    FOR EACH ROW WHEN (OLD.blob_sha256 IS DISTINCT FROM NEW.blob_sha256)
+    EXECUTE FUNCTION nodes_blob_ref_changed();
 
 CREATE TABLE upload_sessions (
     id           UUID PRIMARY KEY,
