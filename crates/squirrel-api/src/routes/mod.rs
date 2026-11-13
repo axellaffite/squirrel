@@ -6,5 +6,6 @@ pub mod invitations;
 pub mod join;
 pub mod nodes;
 pub mod setup;
+pub mod storage;
 pub mod trash;
 pub mod uploads;

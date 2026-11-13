@@ -375,6 +375,7 @@
         "tags": [
           "system"
         ],
+        "summary": "Healthy when the database answers and the data directory is reachable.",
         "operationId": "healthz",
         "responses": {
           "200": {
@@ -916,6 +917,36 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/SetupStatus"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/storage": {
+      "get": {
+        "tags": [
+          "storage"
+        ],
+        "operationId": "storage_usage",
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StorageUsageDto"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
                 }
               }
             }
@@ -1835,6 +1866,33 @@
         "properties": {
           "needs_setup": {
             "type": "boolean"
+          }
+        }
+      },
+      "StorageUsageDto": {
+        "type": "object",
+        "required": [
+          "used_bytes",
+          "trash_bytes"
+        ],
+        "properties": {
+          "quota_bytes": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "description": "`null`: unlimited."
+          },
+          "trash_bytes": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Bytes in the trash (purged after 30 days, not counted against the quota)."
+          },
+          "used_bytes": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Logical bytes of live files: what the quota limits."
           }
         }
       },

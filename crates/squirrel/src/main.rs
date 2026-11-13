@@ -1,3 +1,4 @@
+mod admin;
 mod tasks;
 
 use std::net::SocketAddr;
@@ -34,6 +35,16 @@ enum Command {
     Migrate(DatabaseArgs),
     /// Print the OpenAPI document to stdout.
     Openapi,
+    /// Administrative commands (run on the server; applies pending migrations first).
+    Admin(AdminArgs),
+}
+
+#[derive(Args)]
+struct AdminArgs {
+    #[command(flatten)]
+    database: DatabaseArgs,
+    #[command(subcommand)]
+    command: admin::AdminCommand,
 }
 
 #[derive(Args)]
@@ -78,6 +89,11 @@ async fn main() -> anyhow::Result<()> {
         Command::Serve(args) => {
             init_tracing(args.log_json);
             serve(args).await
+        }
+        Command::Admin(args) => {
+            init_tracing(false);
+            let pool = connect_and_migrate(&args.database).await?;
+            admin::run(&pool, args.command).await
         }
     }
 }
