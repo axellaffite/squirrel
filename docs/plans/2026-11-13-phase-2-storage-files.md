@@ -8240,6 +8240,20 @@ If the PDF does **not** render in a browser:
 3. If the iframe is refused but a new tab works, keep the iframe and rely on "Open in new tab" (document it in the README).
 Record the outcome (browsers and versions tested) in the commit message body.
 
+**As built (2026-11-14) — checked automatically, headless Chromium via Playwright, against a local server:**
+- Image preview renders; text preview is fetched with `Range` and shown escaped (an embedded `<script>` stays text); an `.html` file is served as `application/octet-stream` + attachment with the sandbox CSP.
+- First PDF preview: `Content-Type: application/pdf`, `Content-Security-Policy: default-src 'none'; object-src 'self'; frame-ancestors 'self'`, `X-Frame-Options: SAMEORIGIN`, no CSP violation. Headless Chromium has no PDF viewer, so rendering itself was **not** verified.
+- **Bug found (server, not fixed here):** a `304 Not Modified` from `GET /api/files/{id}/content` carries none of the content headers, so the global layer adds the SPA's `frame-ancestors 'none'` CSP and `X-Frame-Options: DENY`. Browsers merge a 304's headers into the cached response, so **re-opening** a PDF preview is blocked (`Framing ... violates "frame-ancestors 'none'"`, seen in Chromium) and cached images/text lose their sandbox CSP. Fix in `routes/content.rs`: send the policy's `Content-Security-Policy`, `X-Frame-Options`, `X-Content-Type-Options`, `Cross-Origin-Resource-Policy` (and `Cache-Control`/`ETag`) on the 304 too, with a test.
+
+**Manual checklist (still to do, in a real browser):**
+- [ ] Chrome/Chromium (version: ___): PDF renders in the preview iframe, pages scroll; renders again after closing and re-opening the preview (needs the 304 fix above).
+- [ ] Chrome: "Open in new tab" shows the PDF in the built-in viewer.
+- [ ] Firefox (version: ___): same two checks (pdf.js).
+- [ ] Safari (version: ___, if available): same two checks.
+- [ ] DevTools console on the app page: no CSP violation while previewing.
+- [ ] `.html` file → "Open in new tab" downloads, never renders; image → "Open in new tab" shows it.
+- If a browser refuses the iframe but the new tab works, keep the iframe and document "Open in new tab" in the README; if neither works, apply the `PDF_CSP` fallback above.
+
 **Step 3: Run** — `pnpm check && pnpm build`; `cargo test --workspace` if `policy.rs` changed.
 
 **Step 4: Commit**
