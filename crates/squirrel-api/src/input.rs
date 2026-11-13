@@ -81,7 +81,6 @@ where
 }
 
 /// Raw request body (upload chunks). Over the route's body limit → 413 envelope.
-#[allow(dead_code, reason = "used by the chunk route (Task 13)")]
 pub struct ApiBytes(pub Bytes);
 
 impl<S: Send + Sync> FromRequest<S> for ApiBytes {

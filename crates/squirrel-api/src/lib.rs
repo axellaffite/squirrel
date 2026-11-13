@@ -146,7 +146,7 @@ fn transfer_routes(config: &ApiConfig) -> OpenApiRouter<AppState> {
         .unwrap_or(usize::MAX)
         .saturating_add(CHUNK_BODY_MARGIN);
     let chunks = OpenApiRouter::new()
-        // Task 13: put_chunk
+        .routes(routes!(routes::uploads::chunks::put_chunk))
         .layer(DefaultBodyLimit::max(chunk_limit))
         .layer(TimeoutLayer::with_status_code(
             StatusCode::REQUEST_TIMEOUT,
