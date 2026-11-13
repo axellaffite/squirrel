@@ -48,9 +48,12 @@ impl ContentHash {
     }
 
     /// A stable 64-bit key (the first 8 bytes) for Postgres advisory locks.
+    /// The bits are reinterpreted as signed (`bigint`), so high prefixes are
+    /// negative; only stability and spread matter.
     pub fn lock_key(&self) -> i64 {
-        let prefix = u64::from_str_radix(&self.0[..16], 16).expect("validated hex");
-        i64::from_ne_bytes(prefix.to_ne_bytes())
+        u64::from_str_radix(&self.0[..16], 16)
+            .expect("validated hex")
+            .cast_signed()
     }
 }
 
@@ -101,5 +104,8 @@ mod tests {
         let b = ContentHash::parse(&"0".repeat(64)).unwrap();
         assert_eq!(a.lock_key(), a.clone().lock_key());
         assert_ne!(a.lock_key(), b.lock_key());
+        let high = ContentHash::parse(&"f".repeat(64)).unwrap();
+        assert_eq!(high.lock_key(), -1);
+        assert_eq!(a.lock_key(), 0xe3b0_c442_98fc_1c14_u64.cast_signed());
     }
 }

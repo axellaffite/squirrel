@@ -7,10 +7,9 @@ pub struct UploadPlan {
 }
 
 impl UploadPlan {
-    /// `chunk_size` must be > 0.
-    pub fn new(size: u64, chunk_size: u64) -> Self {
-        assert!(chunk_size > 0, "chunk size must be positive");
-        Self { size, chunk_size }
+    /// `None` when `chunk_size` is 0.
+    pub fn new(size: u64, chunk_size: u64) -> Option<Self> {
+        (chunk_size > 0).then_some(Self { size, chunk_size })
     }
 
     pub fn size(&self) -> u64 {
@@ -43,7 +42,7 @@ mod tests {
 
     #[test]
     fn splits_into_full_chunks_and_a_short_tail() {
-        let plan = UploadPlan::new(10, 4);
+        let plan = UploadPlan::new(10, 4).unwrap();
         assert_eq!(plan.chunk_count(), 3);
         assert_eq!(plan.offset(2), Some(8));
         assert_eq!(plan.chunk_len(0), Some(4));
@@ -53,21 +52,27 @@ mod tests {
 
     #[test]
     fn exact_multiple_has_no_short_tail() {
-        let plan = UploadPlan::new(8, 4);
+        let plan = UploadPlan::new(8, 4).unwrap();
         assert_eq!(plan.chunk_count(), 2);
         assert_eq!(plan.chunk_len(1), Some(4));
     }
 
     #[test]
     fn empty_file_has_no_chunks() {
-        let plan = UploadPlan::new(0, 4);
+        let plan = UploadPlan::new(0, 4).unwrap();
         assert_eq!(plan.chunk_count(), 0);
         assert_eq!(plan.offset(0), None);
     }
 
     #[test]
+    fn a_zero_chunk_size_is_rejected() {
+        assert_eq!(UploadPlan::new(10, 0), None);
+        assert_eq!(UploadPlan::new(0, 0), None);
+    }
+
+    #[test]
     fn huge_files_do_not_overflow() {
-        let plan = UploadPlan::new(u64::MAX, 8 << 20);
+        let plan = UploadPlan::new(u64::MAX, 8 << 20).unwrap();
         let last = plan.chunk_count() - 1;
         assert_eq!(
             plan.offset(last).unwrap() + plan.chunk_len(last).unwrap(),

@@ -4200,7 +4200,8 @@ pub async fn open_session(state: &AppState, owner_id: Uuid, input: &UploadInput)
         return Ok(existing);
     }
     ensure_disk_space(state, input.size).await?;
-    let plan = UploadPlan::new(input.size, state.config.upload_chunk_size);
+    let plan = UploadPlan::new(input.size, state.config.upload_chunk_size)
+        .ok_or_else(|| ApiError::Internal(anyhow::anyhow!("upload_chunk_size must be positive")))?;
     let chunk_count = i32::try_from(plan.chunk_count())
         .map_err(|_| ApiError::Validation("the file is too large".into()))?;
     let record = uploads::create(
@@ -4461,8 +4462,9 @@ pub async fn put_chunk(
     }
     let plan = UploadPlan::new(
         u64::try_from(session.size).unwrap_or_default(),
-        u64::try_from(session.chunk_size).unwrap_or(1),
-    );
+        u64::try_from(session.chunk_size).unwrap_or_default(),
+    )
+    .ok_or_else(|| ApiError::Internal(anyhow::anyhow!("upload {id} has an invalid chunk size")))?;
     let chunk = u64::from(index);
     let (Some(offset), Some(expected)) = (plan.offset(chunk), plan.chunk_len(chunk)) else {
         return Err(ApiError::Validation(format!(
@@ -4863,6 +4865,8 @@ async fn discard_session(state: &AppState, id: Uuid) {
 }
 ```
 Notes:
+- `hash_upload` returns `StorageError::NotFound` when the upload file is gone (e.g. removed by the expiry sweep or by hand). That cannot be fixed by retrying, so `finish` must map it to `Failure::Discard` (session dropped, 404/409 to the client) rather than `Failure::Retry`, e.g. `.map_err(|err| match err { ApiError::NotFound => discard(err), other => Failure::Retry(other) })` (`StorageError::NotFound` maps to `ApiError::NotFound`).
+- `adopt_upload` (like `adopt` and `remove_blob`) must be called with the per-blob lock held; `store_and_link` takes it via `blobs::lock` first.
 - If `adopt_upload` itself fails (e.g. `ENOSPC` while creating the shard directory) the file is still in the upload area, so the session is released and the client may retry (507 `storage_full`).
 - If the commit fails after the rename, the blob file exists without a row. That is harmless: the next upload of the same content renames over it or finds it (`adopt` is idempotent) and inserts the row. Such orphans are reclaimed by the Phase 7 scrub.
 - Register it in the long-running group of `transfer_routes`:

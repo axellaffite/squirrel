@@ -1,18 +1,17 @@
 use std::fs::{self, File, OpenOptions};
-use std::io::Read;
-use std::os::unix::fs::FileExt;
+use std::io;
+use std::os::unix::fs::{FileExt, OpenOptionsExt};
 use std::path::PathBuf;
 
-use sha2::{Digest, Sha256};
 use squirrel_core::ContentHash;
 use uuid::Uuid;
 
 use crate::error::{Result, StorageError};
-use crate::fsutil::remove_if_exists;
+use crate::fsutil::{hash_stream, remove_if_exists, sync_dir};
 use crate::mime::SNIFF_LEN;
 use crate::store::{Adopted, BlobStore};
 
-const HASH_BUFFER: usize = 1024 * 1024;
+const UPLOAD_FILE_MODE: u32 = 0o600;
 
 /// What [`BlobStore::hash_upload`] learned about a fully received upload.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -28,57 +27,77 @@ impl BlobStore {
         self.uploads_dir().join(id.to_string())
     }
 
+    /// Opens an existing upload file; a missing one (aborted or discarded
+    /// session) is [`StorageError::NotFound`].
+    fn open_upload(&self, id: Uuid, write: bool) -> Result<File> {
+        OpenOptions::new()
+            .read(!write)
+            .write(write)
+            .open(self.upload_path(id))
+            .map_err(|err| match err.kind() {
+                io::ErrorKind::NotFound => StorageError::NotFound,
+                _ => err.into(),
+            })
+    }
+
     /// Creates the (sparse) file that chunks of upload `id` are written into.
     /// Calling it again for the same id keeps what was already received.
     pub fn create_upload(&self, id: Uuid, size: u64) -> Result<()> {
-        let file = OpenOptions::new()
+        let created = OpenOptions::new()
             .write(true)
-            .create(true)
-            .truncate(false)
-            .open(self.upload_path(id))?;
+            .create_new(true)
+            .mode(UPLOAD_FILE_MODE)
+            .open(self.upload_path(id));
+        let file = match created {
+            Ok(file) => {
+                file.set_len(size)?;
+                file.sync_all()?;
+                sync_dir(self.uploads_dir())?;
+                return Ok(());
+            }
+            Err(err) if err.kind() == io::ErrorKind::AlreadyExists => self.open_upload(id, true)?,
+            Err(err) => return Err(err.into()),
+        };
         file.set_len(size)?;
         Ok(())
     }
 
     /// Writes one chunk at `offset` and makes it durable before returning, so a
-    /// chunk recorded as received in the database is really on disk.
+    /// chunk recorded as received in the database is really on disk. A chunk
+    /// reaching past the size given to [`BlobStore::create_upload`] is refused.
     pub fn write_chunk(&self, id: Uuid, offset: u64, data: &[u8]) -> Result<()> {
-        let file = OpenOptions::new()
-            .write(true)
-            .open(self.upload_path(id))
-            .map_err(|err| match err.kind() {
-                std::io::ErrorKind::NotFound => StorageError::NotFound,
-                _ => err.into(),
-            })?;
+        let file = self.open_upload(id, true)?;
+        let planned = file.metadata()?.len();
+        let end = u64::try_from(data.len())
+            .ok()
+            .and_then(|len| offset.checked_add(len));
+        if end.is_none_or(|end| end > planned) {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidInput,
+                format!("chunk at offset {offset} overruns the {planned}-byte upload"),
+            )
+            .into());
+        }
         file.write_all_at(data, offset)?;
         file.sync_data()?;
         Ok(())
     }
 
-    /// Streams the whole upload file through SHA-256.
+    /// Streams the whole upload file through SHA-256. A missing upload file is
+    /// [`StorageError::NotFound`]: the session is gone and cannot be retried.
     pub fn hash_upload(&self, id: Uuid) -> Result<HashedUpload> {
-        let mut file = File::open(self.upload_path(id))?;
-        let mut hasher = Sha256::new();
-        let mut buffer = vec![0; HASH_BUFFER];
+        let file = self.open_upload(id, false)?;
         let mut head = Vec::with_capacity(SNIFF_LEN);
-        let mut size = 0u64;
-        loop {
-            let read = file.read(&mut buffer)?;
-            if read == 0 {
-                break;
-            }
-            if head.len() < SNIFF_LEN {
-                let take = (SNIFF_LEN - head.len()).min(read);
-                head.extend_from_slice(&buffer[..take]);
-            }
-            hasher.update(&buffer[..read]);
-            size += read as u64;
-        }
-        let hash = ContentHash::from_digest(hasher.finalize().into());
+        let (hash, size) = hash_stream(file, |block| {
+            let take = (SNIFF_LEN - head.len()).min(block.len());
+            head.extend_from_slice(&block[..take]);
+            Ok(())
+        })?;
         Ok(HashedUpload { hash, size, head })
     }
 
-    /// Moves a verified upload into the blob store (idempotent, see [`BlobStore::adopt`]).
+    /// Moves a verified upload into the blob store (idempotent, see
+    /// [`BlobStore::adopt`]). The caller must hold the per-blob lock.
     pub fn adopt_upload(&self, id: Uuid, hash: &ContentHash) -> Result<Adopted> {
         self.adopt(&self.upload_path(id), hash)
     }
@@ -182,6 +201,46 @@ mod tests {
         assert_eq!(store.list_uploads().unwrap(), vec![id]);
         store.discard_upload(id).unwrap();
         store.discard_upload(id).unwrap();
+        assert!(store.list_uploads().unwrap().is_empty());
+    }
+
+    #[test]
+    fn hashing_a_missing_upload_is_not_found() {
+        let (_dir, store) = store();
+        assert!(matches!(
+            store.hash_upload(Uuid::now_v7()),
+            Err(StorageError::NotFound)
+        ));
+    }
+
+    #[test]
+    fn chunks_past_the_planned_size_are_refused() {
+        let (_dir, store) = store();
+        let id = Uuid::now_v7();
+        store.create_upload(id, 5).unwrap();
+        assert!(store.write_chunk(id, 4, b"oo").is_err());
+        assert!(store.write_chunk(id, u64::MAX, b"x").is_err());
+        assert!(store.write_chunk(id, 5, b"x").is_err());
+        store.write_chunk(id, 5, b"").unwrap();
+        assert_eq!(store.hash_upload(id).unwrap().size, 5);
+    }
+
+    #[test]
+    fn empty_uploads_hash_and_adopt() {
+        const EMPTY: &str = "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855";
+        let (_dir, store) = store();
+        let id = Uuid::now_v7();
+        store.create_upload(id, 0).unwrap();
+        let hashed = store.hash_upload(id).unwrap();
+        assert_eq!(
+            (hashed.hash.as_str(), hashed.size, hashed.head.len()),
+            (EMPTY, 0, 0)
+        );
+        assert_eq!(
+            store.adopt_upload(id, &hashed.hash).unwrap(),
+            Adopted::Stored
+        );
+        assert!(store.contains(&hashed.hash));
         assert!(store.list_uploads().unwrap().is_empty());
     }
 
