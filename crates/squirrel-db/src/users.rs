@@ -201,3 +201,17 @@ pub async fn record_login_success(pool: &PgPool, id: Uuid) -> Result<(), DbError
         .await?;
     Ok(())
 }
+
+/// Sets (or clears, with `None`) a user's quota. Returns whether the user exists.
+pub async fn set_quota(
+    pool: &PgPool,
+    username: &Username,
+    quota_bytes: Option<i64>,
+) -> Result<bool, DbError> {
+    let result = sqlx::query("UPDATE users SET quota_bytes = $2 WHERE username = $1")
+        .bind(username.as_str())
+        .bind(quota_bytes)
+        .execute(pool)
+        .await?;
+    Ok(result.rows_affected() == 1)
+}

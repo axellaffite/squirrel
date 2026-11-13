@@ -2,8 +2,10 @@
 //! user's node behaves exactly like a missing one.
 
 mod read;
+mod tree;
 
 pub use read::{ListCursor, PathSegment, find_live, find_live_folder, list_children, path_to};
+pub use tree::{NodeChange, create_folder, update};
 
 use sqlx::{FromRow, PgConnection};
 use squirrel_core::NodeKind;
@@ -16,6 +18,7 @@ use crate::DbError;
 pub const DEFAULT_ROOTS: [&str; 3] = ["Photos", "Documents", "Files"];
 /// Where restored items go when their original folder is no longer live.
 pub const RESTORE_FALLBACK_ROOT: &str = "Files";
+pub(crate) const LIVE_NAME_CONSTRAINT: &str = "nodes_live_name_key";
 pub(crate) const NODE_COLUMNS: &str = "id, owner_id, parent_id, name, kind, blob_sha256, size, \
      mime, created_at, modified_at, deleted_at";
 
