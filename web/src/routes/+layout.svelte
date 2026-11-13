@@ -75,6 +75,7 @@
 		<header class="topbar">
 			<a href="/" class="brand">Squirrel</a>
 			<nav>
+				<a href="/files">Files</a>
 				{#if session.me.can_invite}<a href="/settings/invitations">Invitations</a>{/if}
 				<button class="link" onclick={handleLogout}>Log out</button>
 			</nav>
