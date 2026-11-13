@@ -15,11 +15,17 @@ const transport = createTransport();
 const controllers = new Map<number, AbortController>();
 let nextId = 1;
 let running = false;
-let finishedHandler: ((parentId: string) => void) | null = null;
+const finishedListeners = new Set<(parentId: string) => void>();
 
-/** Called after each successful upload, e.g. to refresh the folder being shown. */
-export function onUploadFinished(handler: ((parentId: string) => void) | null): void {
-	finishedHandler = handler;
+/**
+ * Calls `listener` after each successful upload, e.g. to refresh the folder being shown.
+ * Returns a function that removes it.
+ */
+export function onUploadFinished(listener: (parentId: string) => void): () => void {
+	finishedListeners.add(listener);
+	return () => {
+		finishedListeners.delete(listener);
+	};
 }
 
 export function enqueue(files: Iterable<File>, parentId: string): void {
@@ -74,7 +80,7 @@ async function run(item: UploadItem): Promise<void> {
 		item.status = 'done';
 		item.deduplicated = result.deduplicated;
 		item.finalName = result.node.name;
-		finishedHandler?.(item.parentId);
+		for (const listener of finishedListeners) listener(item.parentId);
 	} catch (error) {
 		if (controller.signal.aborted) {
 			item.status = 'cancelled';
