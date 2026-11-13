@@ -57,3 +57,4 @@ dialog { border: 1px solid var(--border); border-radius: var(--radius); backgrou
 dialog::backdrop { background: rgb(0 0 0 / 0.5); }
 .dialog-actions { display: flex; justify-content: flex-end; gap: 1rem; margin-top: 1rem; }
 .folder-picker { list-style: none; padding: 0; max-height: 50vh; overflow: auto; }
+.danger-button { background: var(--danger); color: var(--accent-text); }
