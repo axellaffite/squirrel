@@ -62,7 +62,6 @@ where
 }
 
 /// Query string; a malformed value is a 400 envelope.
-#[allow(dead_code, reason = "used by the listing routes (Task 16)")]
 pub struct ApiQuery<T>(pub T);
 
 impl<S, T> FromRequestParts<S> for ApiQuery<T>

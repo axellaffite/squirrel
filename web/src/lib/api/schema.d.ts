@@ -84,6 +84,22 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/folders": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["create_folder"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/healthz": {
         parameters: {
             query?: never;
@@ -146,6 +162,38 @@ export interface paths {
         options?: never;
         head?: never;
         patch?: never;
+        trace?: never;
+    };
+    "/api/nodes": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["list_nodes"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/nodes/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["get_node"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch: operations["update_node"];
         trace?: never;
     };
     "/api/setup/admin": {
@@ -257,6 +305,11 @@ export interface components {
             password: string;
             username: string;
         };
+        CreateFolderRequest: {
+            name: string;
+            /** Format: uuid */
+            parent_id: string;
+        };
         CreateInvitationRequest: {
             /** @description Optional reminder of who the invitation is for. Not used to send email. */
             email_hint?: string | null;
@@ -339,6 +392,11 @@ export interface components {
             role: components["schemas"]["Role"];
             username: string;
         };
+        NodeDetails: {
+            node: components["schemas"]["NodeDto"];
+            /** @description Ancestors from the top-level folder down, excluding the node itself. */
+            path: components["schemas"]["PathSegmentDto"][];
+        };
         NodeDto: {
             /** Format: date-time */
             created_at: string;
@@ -365,6 +423,17 @@ export interface components {
         };
         /** @enum {string} */
         NodeKind: "folder" | "file";
+        NodeListing: {
+            /** @description Folders first, then files; names in byte order. */
+            items: components["schemas"]["NodeDto"][];
+            /** @description Pass back as `cursor` for the next page; `null` on the last page. */
+            next_cursor?: string | null;
+        };
+        PathSegmentDto: {
+            /** Format: uuid */
+            id: string;
+            name: string;
+        };
         /** @enum {string} */
         Role: "admin" | "user";
         /**
@@ -380,6 +449,15 @@ export interface components {
         };
         SetupStatus: {
             needs_setup: boolean;
+        };
+        /** @description Rename and/or move. At least one field is required. */
+        UpdateNodeRequest: {
+            name?: string | null;
+            /**
+             * Format: uuid
+             * @description New parent folder.
+             */
+            parent_id?: string | null;
         };
         /** @description An upload session: send the missing chunks, then complete it. */
         UploadSessionDto: {
@@ -591,6 +669,53 @@ export interface operations {
             };
         };
     };
+    create_folder: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateFolderRequest"];
+            };
+        };
+        responses: {
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["NodeDto"];
+                };
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
     healthz: {
         parameters: {
             query?: never;
@@ -767,6 +892,128 @@ export interface operations {
                 };
             };
             410: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    list_nodes: {
+        parameters: {
+            query?: {
+                /** @description Folder to list; omit it for the top-level folders. */
+                parent_id?: string;
+                /** @description `next_cursor` of the previous page. */
+                cursor?: string;
+                /** @description Page size, default 100, at most 500. */
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["NodeListing"];
+                };
+            };
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    get_node: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Node id */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["NodeDetails"];
+                };
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    update_node: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Node id */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpdateNodeRequest"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["NodeDto"];
+                };
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            409: {
                 headers: {
                     [name: string]: unknown;
                 };
