@@ -18,6 +18,7 @@ pub fn test_config() -> ApiConfig {
     ApiConfig {
         cookie_secure: false,
         login_rate_limit: None,
+        join_check_rate_limit: None,
         setup_token: Some(SetupToken::new(SETUP_TOKEN)),
         ..ApiConfig::default()
     }

@@ -15,6 +15,7 @@ axum-extra = { version = "0.10", features = ["cookie"] }
 axum-test = "17"
 base64 = "0.22"
 clap = { version = "4", features = ["derive", "env"] }
+ipnet = "2"
 rand = "0.8"
 rust-embed = { version = "8", features = ["mime-guess"] }
 serde = { version = "1", features = ["derive"] }
