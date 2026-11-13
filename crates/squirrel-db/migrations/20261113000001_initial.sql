@@ -36,7 +36,10 @@ CREATE TABLE sessions (
     user_agent    TEXT,
     created_at    TIMESTAMPTZ NOT NULL DEFAULT now(),
     last_seen_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
-    expires_at    TIMESTAMPTZ NOT NULL
+    -- Sliding expiry, extended on use but never beyond absolute_expires_at.
+    expires_at           TIMESTAMPTZ NOT NULL,
+    absolute_expires_at  TIMESTAMPTZ NOT NULL,
+    CHECK (expires_at <= absolute_expires_at)
 );
 CREATE INDEX sessions_user_idx ON sessions (user_id);
 CREATE INDEX sessions_expires_at_idx ON sessions (expires_at);

@@ -77,6 +77,6 @@ pub async fn login(
         return Err(ApiError::InvalidCredentials);
     }
     users::record_login_success(&state.pool, user.id).await?;
-    let (cookie, me) = session::start(&state, &user, &headers).await?;
+    let (cookie, me) = session::start(&state, &user, &headers, &jar).await?;
     Ok((jar.add(cookie), Json(me)))
 }

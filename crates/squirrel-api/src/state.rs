@@ -16,7 +16,10 @@ pub struct RateLimit {
 #[derive(Debug, Clone)]
 pub struct ApiConfig {
     pub cookie_secure: bool,
+    /// Idle lifetime: a session unused for this long expires.
     pub session_ttl: Duration,
+    /// Hard lifetime from login, whatever the activity. Also the cookie Max-Age.
+    pub session_absolute_ttl: Duration,
     pub session_touch_interval: Duration,
     pub invitation_ttl: Duration,
     /// Per-IP limit on credential endpoints (login, setup, join). `None` disables it.
@@ -30,6 +33,7 @@ impl Default for ApiConfig {
         Self {
             cookie_secure: true,
             session_ttl: Duration::days(30),
+            session_absolute_ttl: Duration::days(90),
             session_touch_interval: Duration::hours(1),
             invitation_ttl: Duration::days(7),
             login_rate_limit: Some(RateLimit {

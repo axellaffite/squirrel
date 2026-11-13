@@ -42,6 +42,6 @@ pub async fn accept_invitation(
     }
     let new_user = prepare_new_user(request).await?;
     let user = users::create_with_invitation(&state.pool, &new_user, &token_hash).await?;
-    let (cookie, me) = session::start(&state, &user, &headers).await?;
+    let (cookie, me) = session::start(&state, &user, &headers, &jar).await?;
     Ok((StatusCode::CREATED, jar.add(cookie), Json(me)))
 }
