@@ -1,10 +1,18 @@
 use sqlx::{FromRow, PgPool};
+use squirrel_core::Role;
 
 use crate::DbError;
 
 #[derive(Debug, Clone, Copy, FromRow)]
 pub struct InstanceSettings {
     pub invites_admin_only: bool,
+}
+
+impl InstanceSettings {
+    /// Whether a user with `role` may create invitations on this instance.
+    pub fn allows_invites_from(&self, role: Role) -> bool {
+        !self.invites_admin_only || role.is_admin()
+    }
 }
 
 pub async fn get(pool: &PgPool) -> Result<InstanceSettings, DbError> {

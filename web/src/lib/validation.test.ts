@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { validateAccount } from './validation';
+import { validateAccount } from '#lib/validation.ts';
 
 const valid = {
 	username: 'alice',

@@ -4,7 +4,7 @@ use axum::http::{HeaderMap, StatusCode};
 use axum_extra::extract::CookieJar;
 use squirrel_auth::{burn_verification_time, verify_password};
 use squirrel_core::{Password, Username};
-use squirrel_db::{sessions, users};
+use squirrel_db::{sessions, settings, users};
 use time::OffsetDateTime;
 
 use crate::blocking::run_hashing;
@@ -18,11 +18,16 @@ use crate::state::AppState;
 
 #[utoipa::path(get, path = "/api/auth/me", tag = "auth",
     responses((status = 200, body = MeResponse), (status = 401, body = ErrorBody)))]
-pub async fn me(current: CurrentUser) -> Json<MeResponse> {
-    Json(MeResponse::new(
+pub async fn me(
+    State(state): State<AppState>,
+    current: CurrentUser,
+) -> Result<Json<MeResponse>, ApiError> {
+    let instance = settings::get(&state.pool).await?;
+    Ok(Json(MeResponse::new(
         &current.user,
         current.session.csrf_token.clone(),
-    ))
+        &instance,
+    )))
 }
 
 #[utoipa::path(post, path = "/api/auth/logout", tag = "auth",

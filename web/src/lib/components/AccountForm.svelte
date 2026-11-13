@@ -38,6 +38,10 @@
 		} catch {
 			error = 'Something went wrong. Please try again.';
 		} finally {
+			if (error) {
+				fields.password = '';
+				fields.confirmPassword = '';
+			}
 			busy = false;
 		}
 	}
@@ -45,7 +49,7 @@
 
 <form onsubmit={handleSubmit} novalidate>
 	{@render before?.()}
-	<label>Username <input name="username" autocomplete="username" bind:value={fields.username} required /></label>
+	<label>Username <input name="username" autocomplete="username" autocapitalize="none" spellcheck="false" bind:value={fields.username} required /></label>
 	<label>Display name <input name="display_name" autocomplete="name" bind:value={fields.displayName} required /></label>
 	<label>Password <input name="password" type="password" autocomplete="new-password" bind:value={fields.password} required /></label>
 	<label>Confirm password <input name="confirm_password" type="password" autocomplete="new-password" bind:value={fields.confirmPassword} required /></label>

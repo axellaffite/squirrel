@@ -1,5 +1,4 @@
 <script lang="ts">
-	import { goto } from '$app/navigation';
 	import { api, errorMessage } from '#lib/api/client.ts';
 	import type { components } from '#lib/api/schema.d.ts';
 	import AccountForm from '#lib/components/AccountForm.svelte';
@@ -15,12 +14,14 @@
 		});
 		if (response.status === 403) return 'This setup code is incorrect. Check the server log.';
 		if (!data) return errorMessage(error, response);
+		// The layout guard sends a logged-in user from /setup to the home page.
 		session.needsSetup = false;
 		setMe(data);
-		await goto('/');
 		return null;
 	}
 </script>
+
+<svelte:head><title>Set up · Squirrel</title></svelte:head>
 
 <main class="card">
 	<h1>Welcome to Squirrel</h1>

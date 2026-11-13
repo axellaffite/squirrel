@@ -237,6 +237,8 @@ export interface components {
             username: string;
         };
         MeResponse: {
+            /** @description Whether this user may create invitations (instance setting and role). */
+            can_invite: boolean;
             /** @description Send back as `X-CSRF-Token` on every non-GET request. */
             csrf_token: string;
             display_name: string;

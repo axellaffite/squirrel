@@ -29,7 +29,7 @@ body { margin: 0; background: var(--bg); color: var(--text); }
 a { color: var(--accent); }
 .card { max-width: 420px; margin: 10vh auto; padding: 2rem; background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); }
 .page { max-width: 880px; margin: 2rem auto; padding: 0 1rem; }
-.center { display: grid; place-items: center; min-height: 60vh; }
+.center { display: grid; place-items: center; place-content: center; gap: 1rem; min-height: 60vh; }
 .muted { color: var(--muted); }
 .error { color: var(--danger); }
 form { display: grid; gap: 1rem; }
@@ -38,8 +38,9 @@ input { padding: 0.6rem 0.75rem; border-radius: 8px; border: 1px solid var(--bor
 button { padding: 0.6rem 1rem; border: 0; border-radius: 8px; background: var(--accent); color: var(--accent-text); font: inherit; font-weight: 600; cursor: pointer; }
 button:disabled { opacity: 0.6; cursor: progress; }
 button.link { background: none; color: var(--accent); padding: 0; font-weight: 400; }
-.topbar { display: flex; justify-content: space-between; align-items: center; padding: 0.75rem 1.5rem; border-bottom: 1px solid var(--border); background: var(--surface); }
+.topbar { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; padding: 0.75rem 1.5rem; border-bottom: 1px solid var(--border); background: var(--surface); }
 .topbar nav { display: flex; gap: 1.25rem; align-items: center; }
+.topbar .error { flex-basis: 100%; margin: 0.5rem 0 0; text-align: right; }
 .brand { font-weight: 700; text-decoration: none; color: var(--text); }
 table { width: 100%; border-collapse: collapse; }
 th, td { text-align: left; padding: 0.5rem; border-bottom: 1px solid var(--border); }

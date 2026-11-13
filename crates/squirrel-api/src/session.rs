@@ -4,6 +4,7 @@ use axum_extra::extract::CookieJar;
 use axum_extra::extract::cookie::{Cookie, SameSite};
 use squirrel_auth::{generate_token, hash_token};
 use squirrel_db::sessions::{self, NewSession};
+use squirrel_db::settings;
 use squirrel_db::users::UserRecord;
 use time::OffsetDateTime;
 
@@ -55,7 +56,8 @@ pub async fn start(
         // The server-side expiry is authoritative; the cookie just outlives it.
         .max_age(state.config.session_absolute_ttl)
         .build();
-    Ok((cookie, MeResponse::new(user, csrf_token)))
+    let instance = settings::get(&state.pool).await?;
+    Ok((cookie, MeResponse::new(user, csrf_token, &instance)))
 }
 
 pub fn removal() -> Cookie<'static> {
