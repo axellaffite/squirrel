@@ -7,6 +7,7 @@ mod error;
 mod extract;
 mod files_dto;
 mod input;
+pub mod maintenance;
 mod rate_limit;
 mod routes;
 mod security_headers;
