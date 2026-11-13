@@ -5,7 +5,7 @@ use squirrel_core::NodeKind;
 use squirrel_db::nodes::NodeRecord;
 use squirrel_db::uploads::UploadRecord;
 use time::OffsetDateTime;
-use utoipa::ToSchema;
+use utoipa::{IntoParams, ToSchema};
 use uuid::Uuid;
 
 #[derive(Debug, Serialize, ToSchema)]
@@ -91,4 +91,52 @@ pub struct DeduplicatedUpload {
     /// Always `true`.
     pub deduplicated: bool,
     pub node: NodeDto,
+}
+
+#[derive(Debug, Deserialize, IntoParams)]
+#[into_params(parameter_in = Query)]
+pub struct ListNodesQuery {
+    /// Folder to list; omit it for the top-level folders.
+    pub parent_id: Option<Uuid>,
+    /// `next_cursor` of the previous page.
+    pub cursor: Option<String>,
+    /// Page size, default 100, at most 500.
+    pub limit: Option<u32>,
+}
+
+#[derive(Debug, Serialize, ToSchema)]
+pub struct NodeListing {
+    /// Folders first, then files; names in byte order.
+    pub items: Vec<NodeDto>,
+    /// Pass back as `cursor` for the next page; `null` on the last page.
+    pub next_cursor: Option<String>,
+}
+
+#[derive(Debug, Serialize, ToSchema)]
+pub struct PathSegmentDto {
+    pub id: Uuid,
+    pub name: String,
+}
+
+#[derive(Debug, Serialize, ToSchema)]
+pub struct NodeDetails {
+    pub node: NodeDto,
+    /// Ancestors from the top-level folder down, excluding the node itself.
+    pub path: Vec<PathSegmentDto>,
+}
+
+#[derive(Debug, Deserialize, ToSchema)]
+pub struct CreateFolderRequest {
+    pub parent_id: Uuid,
+    pub name: String,
+}
+
+/// Rename and/or move. At least one field is required.
+#[derive(Debug, Deserialize, ToSchema)]
+pub struct UpdateNodeRequest {
+    #[serde(default)]
+    pub name: Option<String>,
+    /// New parent folder.
+    #[serde(default)]
+    pub parent_id: Option<Uuid>,
 }

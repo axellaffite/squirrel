@@ -2,6 +2,7 @@
 
 mod blocking;
 mod client_ip;
+mod cursor;
 mod dto;
 mod error;
 mod extract;
@@ -111,6 +112,9 @@ fn json_routes() -> OpenApiRouter<AppState> {
             routes::admin::get_settings,
             routes::admin::update_settings
         ))
+        .routes(routes!(routes::nodes::list_nodes))
+        .routes(routes!(routes::nodes::get_node, routes::nodes::update_node))
+        .routes(routes!(routes::nodes::create_folder))
         .routes(routes!(routes::uploads::create_upload))
         .routes(routes!(
             routes::uploads::upload_status,
