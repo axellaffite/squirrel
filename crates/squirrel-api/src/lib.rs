@@ -3,6 +3,7 @@
 mod blocking;
 mod dto;
 mod error;
+mod extract;
 mod routes;
 mod session;
 mod spa;
@@ -38,4 +39,7 @@ fn api_router(_config: &ApiConfig) -> OpenApiRouter<AppState> {
         .routes(routes!(routes::health::healthz))
         .routes(routes!(routes::setup::setup_status))
         .routes(routes!(routes::setup::create_first_admin))
+        .routes(routes!(routes::auth::me))
+        .routes(routes!(routes::auth::logout))
+        .routes(routes!(routes::auth::logout_all))
 }

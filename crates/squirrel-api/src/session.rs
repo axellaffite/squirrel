@@ -11,6 +11,7 @@ use crate::error::ApiError;
 use crate::state::AppState;
 
 pub const SESSION_COOKIE: &str = "squirrel_session";
+pub const CSRF_HEADER: &str = "x-csrf-token";
 /// Browser-side lifetime; the server-side `expires_at` is authoritative.
 const COOKIE_MAX_AGE: Duration = Duration::days(365);
 const USER_AGENT_MAX_LEN: usize = 256;
@@ -47,4 +48,8 @@ pub async fn start(
         .max_age(COOKIE_MAX_AGE)
         .build();
     Ok((cookie, MeResponse::new(user, csrf_token)))
+}
+
+pub fn removal() -> Cookie<'static> {
+    Cookie::build((SESSION_COOKIE, "")).path("/").build()
 }
