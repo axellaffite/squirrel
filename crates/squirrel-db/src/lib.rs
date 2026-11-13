@@ -1,6 +1,7 @@
 //! Postgres repositories and migrations.
 
 mod error;
+pub mod users;
 
 pub use error::DbError;
 
