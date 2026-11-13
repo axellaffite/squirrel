@@ -1,3 +1,5 @@
+use std::fmt;
+
 use sqlx::{FromRow, PgConnection, PgPool};
 use squirrel_core::{DisplayName, Role, Username};
 use time::OffsetDateTime;
@@ -5,16 +7,19 @@ use uuid::Uuid;
 
 use crate::DbError;
 use crate::error::is_unique_violation;
+use crate::invitations::REDEEMABLE_PREDICATE;
 
 /// Arbitrary constant identifying the "first user" advisory lock.
 const BOOTSTRAP_LOCK_KEY: i64 = 0x5351_5552_0001;
 /// Failed logins before the account is temporarily locked.
 pub const LOCKOUT_THRESHOLD: i32 = 5;
+/// Name of the UNIQUE constraint on `users.username` (see the initial migration).
+const USERNAME_UNIQUE_CONSTRAINT: &str = "users_username_key";
 
 const USER_COLUMNS: &str = "id, username, display_name, password_hash, role, quota_bytes, \
      invited_by, failed_logins, locked_until, created_at, disabled_at";
 
-#[derive(Debug, Clone, FromRow)]
+#[derive(Clone, FromRow)]
 pub struct UserRecord {
     pub id: Uuid,
     pub username: String,
@@ -29,10 +34,31 @@ pub struct UserRecord {
     pub disabled_at: Option<OffsetDateTime>,
 }
 
+impl fmt::Debug for UserRecord {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("UserRecord")
+            .field("id", &self.id)
+            .field("username", &self.username)
+            .field("display_name", &self.display_name)
+            .field("password_hash", &"<redacted>")
+            .field("role", &self.role)
+            .field("quota_bytes", &self.quota_bytes)
+            .field("invited_by", &self.invited_by)
+            .field("failed_logins", &self.failed_logins)
+            .field("locked_until", &self.locked_until)
+            .field("created_at", &self.created_at)
+            .field("disabled_at", &self.disabled_at)
+            .finish()
+    }
+}
+
 impl UserRecord {
     /// The DB CHECK constraint guarantees a known value; fall back to least privilege anyway.
     pub fn role(&self) -> Role {
-        self.role.parse().unwrap_or(Role::User)
+        self.role.parse().unwrap_or_else(|_| {
+            tracing::warn!(user_id = %self.id, role = %self.role, "unknown role in database, treating as user");
+            Role::User
+        })
     }
 
     pub fn is_locked(&self, now: OffsetDateTime) -> bool {
@@ -84,14 +110,15 @@ pub async fn create_with_invitation(
     token_hash: &[u8],
 ) -> Result<UserRecord, DbError> {
     let mut tx = pool.begin().await?;
-    let inviter: Option<Uuid> = sqlx::query_scalar(
-        "UPDATE invitations SET used_count = used_count + 1 \
-         WHERE token_hash = $1 AND revoked_at IS NULL AND expires_at > now() AND used_count < max_uses \
-         RETURNING created_by",
-    )
-    .bind(token_hash)
-    .fetch_optional(&mut *tx)
-    .await?;
+    let claim = format!(
+        "UPDATE invitations i SET used_count = i.used_count + 1 \
+         FROM users u, instance_settings s WHERE {REDEEMABLE_PREDICATE} \
+         RETURNING i.created_by"
+    );
+    let inviter: Option<Uuid> = sqlx::query_scalar(&claim)
+        .bind(token_hash)
+        .fetch_optional(&mut *tx)
+        .await?;
     let inviter = inviter.ok_or(DbError::InvitationInvalid)?;
     let user = insert(&mut tx, new_user, Role::User, Some(inviter)).await?;
     tx.commit().await?;
@@ -118,7 +145,7 @@ async fn insert(
         .fetch_one(conn)
         .await
         .map_err(|err| {
-            if is_unique_violation(&err, "users_username_key") {
+            if is_unique_violation(&err, USERNAME_UNIQUE_CONSTRAINT) {
                 DbError::UsernameTaken
             } else {
                 err.into()
@@ -145,14 +172,15 @@ pub async fn find_by_id(pool: &PgPool, id: Uuid) -> Result<Option<UserRecord>, D
         .await?)
 }
 
-/// Increments the failure counter; from the threshold on, locks the account for
-/// 1, 2, 4… minutes, capped at one hour.
+/// Increments the failure counter (saturating at 1000); from the threshold on, locks
+/// the account for 1, 2, 4… minutes, capped at one hour. The exponent is clamped so
+/// the interval arithmetic cannot overflow however many failures accumulate.
 pub async fn record_login_failure(pool: &PgPool, id: Uuid) -> Result<(), DbError> {
     sqlx::query(
         "UPDATE users SET \
-           failed_logins = failed_logins + 1, \
+           failed_logins = LEAST(failed_logins + 1, 1000), \
            locked_until = CASE WHEN failed_logins + 1 >= $2 \
-             THEN now() + LEAST(interval '1 minute' * power(2, failed_logins + 1 - $2), interval '1 hour') \
+             THEN now() + LEAST(interval '1 minute' * power(2, LEAST(failed_logins + 1 - $2, 6)), interval '1 hour') \
              ELSE locked_until END \
          WHERE id = $1",
     )

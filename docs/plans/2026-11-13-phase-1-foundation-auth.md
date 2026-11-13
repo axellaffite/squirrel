@@ -2232,7 +2232,10 @@ impl FromRequestParts<AppState> for CurrentUser {
 
         let now = OffsetDateTime::now_utc();
         if now - session.last_seen_at > state.config.session_touch_interval {
-            sessions::touch(&state.pool, session.id, now + state.config.session_ttl).await?;
+            // `touch` returns false if the session expired or was deleted meanwhile.
+            if !sessions::touch(&state.pool, session.id, now + state.config.session_ttl).await? {
+                return Err(ApiError::Unauthorized);
+            }
         }
         Ok(Self { user, session })
     }

@@ -53,13 +53,18 @@ pub async fn find_active(
         .await?)
 }
 
-pub async fn touch(pool: &PgPool, id: Uuid, expires_at: OffsetDateTime) -> Result<(), DbError> {
-    sqlx::query("UPDATE sessions SET last_seen_at = now(), expires_at = $2 WHERE id = $1")
-        .bind(id)
-        .bind(expires_at)
-        .execute(pool)
-        .await?;
-    Ok(())
+/// Extends a still-active session. Returns `false` when the session no longer
+/// exists or has already expired, so callers must treat it as unauthenticated.
+pub async fn touch(pool: &PgPool, id: Uuid, expires_at: OffsetDateTime) -> Result<bool, DbError> {
+    let result = sqlx::query(
+        "UPDATE sessions SET last_seen_at = now(), expires_at = $2 \
+         WHERE id = $1 AND expires_at > now()",
+    )
+    .bind(id)
+    .bind(expires_at)
+    .execute(pool)
+    .await?;
+    Ok(result.rows_affected() == 1)
 }
 
 pub async fn delete_by_id(pool: &PgPool, id: Uuid) -> Result<(), DbError> {
@@ -73,6 +78,13 @@ pub async fn delete_by_id(pool: &PgPool, id: Uuid) -> Result<(), DbError> {
 pub async fn delete_all_for_user(pool: &PgPool, user_id: Uuid) -> Result<u64, DbError> {
     let result = sqlx::query("DELETE FROM sessions WHERE user_id = $1")
         .bind(user_id)
+        .execute(pool)
+        .await?;
+    Ok(result.rows_affected())
+}
+
+pub async fn delete_expired(pool: &PgPool) -> Result<u64, DbError> {
+    let result = sqlx::query("DELETE FROM sessions WHERE expires_at <= now()")
         .execute(pool)
         .await?;
     Ok(result.rows_affected())

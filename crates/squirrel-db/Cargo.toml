@@ -9,8 +9,8 @@ squirrel-core.workspace = true
 sqlx.workspace = true
 thiserror.workspace = true
 time.workspace = true
+tracing.workspace = true
 uuid.workspace = true
 
 [dev-dependencies]
-time.workspace = true
 tokio.workspace = true

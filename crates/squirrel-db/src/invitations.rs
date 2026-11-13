@@ -91,12 +91,20 @@ pub async fn revoke(pool: &PgPool, id: Uuid, created_by: Uuid) -> Result<bool, D
     Ok(result.rows_affected() == 1)
 }
 
+/// SQL predicate (over `invitations i`, `users u`, `instance_settings s`) shared by
+/// `is_redeemable` and the claim in `users::create_with_invitation`: the invitation is
+/// live, its creator is enabled, and admin-only mode is respected.
+pub(crate) const REDEEMABLE_PREDICATE: &str = "i.token_hash = $1 AND u.id = i.created_by \
+     AND i.revoked_at IS NULL AND i.expires_at > now() AND i.used_count < i.max_uses \
+     AND u.disabled_at IS NULL AND (NOT s.invites_admin_only OR u.role = 'admin')";
+
 pub async fn is_redeemable(pool: &PgPool, token_hash: &[u8]) -> Result<bool, DbError> {
-    Ok(sqlx::query_scalar(
-        "SELECT EXISTS (SELECT 1 FROM invitations WHERE token_hash = $1 \
-         AND revoked_at IS NULL AND expires_at > now() AND used_count < max_uses)",
-    )
-    .bind(token_hash)
-    .fetch_one(pool)
-    .await?)
+    let sql = format!(
+        "SELECT EXISTS (SELECT 1 FROM invitations i, users u, instance_settings s \
+         WHERE {REDEEMABLE_PREDICATE})"
+    );
+    Ok(sqlx::query_scalar(&sql)
+        .bind(token_hash)
+        .fetch_one(pool)
+        .await?)
 }
