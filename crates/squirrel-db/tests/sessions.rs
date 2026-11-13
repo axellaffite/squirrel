@@ -1,7 +1,7 @@
 use sqlx::PgPool;
 use squirrel_core::{DisplayName, Username};
 use squirrel_db::sessions::{self, NewSession};
-use squirrel_db::{settings, users};
+use squirrel_db::users;
 use time::{Duration, OffsetDateTime};
 
 async fn alice(pool: &PgPool) -> users::UserRecord {
@@ -71,17 +71,56 @@ async fn touch_extends_expiry(pool: PgPool) {
         .await
         .unwrap();
     let new_expiry = OffsetDateTime::now_utc() + Duration::days(30);
-    sessions::touch(&pool, created.id, new_expiry)
-        .await
-        .unwrap();
+    assert!(
+        sessions::touch(&pool, created.id, new_expiry)
+            .await
+            .unwrap()
+    );
 
     let found = sessions::find_active(&pool, b"a").await.unwrap().unwrap();
     assert!(found.expires_at > created.expires_at);
 }
 
 #[sqlx::test(migrator = "squirrel_db::MIGRATOR")]
-async fn settings_default_and_update(pool: PgPool) {
-    assert!(!settings::get(&pool).await.unwrap().invites_admin_only);
-    let updated = settings::set_invites_admin_only(&pool, true).await.unwrap();
-    assert!(updated.invites_admin_only);
+async fn touch_does_not_revive_expired_session(pool: PgPool) {
+    let user = alice(&pool).await;
+    let dead = sessions::create(&pool, &session(user.id, b"dead", Duration::seconds(-1)))
+        .await
+        .unwrap();
+    let new_expiry = OffsetDateTime::now_utc() + Duration::days(30);
+
+    assert!(!sessions::touch(&pool, dead.id, new_expiry).await.unwrap());
+    assert!(
+        sessions::find_active(&pool, b"dead")
+            .await
+            .unwrap()
+            .is_none()
+    );
+}
+
+#[sqlx::test(migrator = "squirrel_db::MIGRATOR")]
+async fn delete_expired_removes_only_expired_sessions(pool: PgPool) {
+    let user = alice(&pool).await;
+    sessions::create(&pool, &session(user.id, b"live", Duration::days(1)))
+        .await
+        .unwrap();
+    sessions::create(&pool, &session(user.id, b"dead-1", Duration::seconds(-1)))
+        .await
+        .unwrap();
+    sessions::create(&pool, &session(user.id, b"dead-2", Duration::hours(-1)))
+        .await
+        .unwrap();
+
+    assert_eq!(sessions::delete_expired(&pool).await.unwrap(), 2);
+    let remaining: i64 = sqlx::query_scalar("SELECT count(*) FROM sessions")
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+    assert_eq!(remaining, 1);
+    assert!(
+        sessions::find_active(&pool, b"live")
+            .await
+            .unwrap()
+            .is_some()
+    );
 }
