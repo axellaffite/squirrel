@@ -38,10 +38,12 @@ pub async fn usage(pool: &PgPool, owner_id: Uuid) -> Result<Usage, DbError> {
 }
 
 /// Locks the owner's row until the transaction ends and returns their quota.
-/// Every tree change and quota check takes this lock first.
+/// Every tree change and quota check takes this lock first. `FOR NO KEY UPDATE`
+/// still serializes these callers but, unlike `FOR UPDATE`, does not block
+/// inserts of rows referencing the user (sessions, invitations…).
 pub async fn lock_owner(conn: &mut PgConnection, owner_id: Uuid) -> Result<Option<i64>, DbError> {
     let row: Option<(Option<i64>,)> =
-        sqlx::query_as("SELECT quota_bytes FROM users WHERE id = $1 FOR UPDATE")
+        sqlx::query_as("SELECT quota_bytes FROM users WHERE id = $1 FOR NO KEY UPDATE")
             .bind(owner_id)
             .fetch_optional(&mut *conn)
             .await?;

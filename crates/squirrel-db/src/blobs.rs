@@ -51,6 +51,11 @@ pub async fn unlock_session(conn: &mut PgConnection, hash: &ContentHash) -> Resu
     Ok(())
 }
 
+/// Internal: a catalogue lookup with no owner check, for GC, tests and
+/// post-store bookkeeping. Never answer a user request with it (it would reveal
+/// other users' content); use [`find_owned`]. Public only because integration
+/// tests in other crates read reference counts through it.
+#[doc(hidden)]
 pub async fn find(pool: &PgPool, hash: &ContentHash) -> Result<Option<BlobRecord>, DbError> {
     let sql = format!("SELECT {BLOB_COLUMNS} FROM blobs WHERE sha256 = $1");
     Ok(sqlx::query_as::<_, BlobRecord>(&sql)

@@ -199,3 +199,83 @@ async fn ref_count_follows_file_nodes_including_cascades(pool: PgPool) {
         .unwrap();
     assert_eq!(ref_count(&pool, &sha).await, (0, true));
 }
+
+async fn insert_session(
+    pool: &PgPool,
+    owner: Uuid,
+    parent: Uuid,
+    size: i64,
+    chunk_size: i64,
+    chunk_count: i32,
+) -> Result<(), sqlx::Error> {
+    sqlx::query(
+        "INSERT INTO upload_sessions \
+           (id, owner_id, parent_id, name, sha256, size, chunk_size, chunk_count, expires_at) \
+         VALUES (gen_random_uuid(), $1, $2, 'f', repeat('a', 64), $3, $4, $5, now() + interval '1 hour')",
+    )
+    .bind(owner)
+    .bind(parent)
+    .bind(size)
+    .bind(chunk_size)
+    .bind(chunk_count)
+    .execute(pool)
+    .await
+    .map(|_| ())
+}
+
+#[sqlx::test(migrator = "squirrel_db::MIGRATOR")]
+async fn parents_belong_to_the_same_owner(pool: PgPool) {
+    let alice = insert_user(&pool, "alice").await;
+    let bob = insert_user(&pool, "bob").await;
+    let alices_root = insert_node(&pool, alice, None, "Files", None)
+        .await
+        .unwrap();
+    insert_node(&pool, bob, None, "Files", None).await.unwrap();
+
+    let err = insert_node(&pool, bob, Some(alices_root), "intruder", None)
+        .await
+        .unwrap_err();
+    assert_eq!(constraint_of(&err).as_deref(), Some("nodes_parent_fkey"));
+    insert_node(&pool, alice, Some(alices_root), "mine", None)
+        .await
+        .unwrap();
+
+    let err = insert_session(&pool, bob, alices_root, 1, 1, 1)
+        .await
+        .unwrap_err();
+    assert_eq!(
+        constraint_of(&err).as_deref(),
+        Some("upload_sessions_parent_fkey")
+    );
+    insert_session(&pool, alice, alices_root, 1, 1, 1)
+        .await
+        .unwrap();
+}
+
+#[sqlx::test(migrator = "squirrel_db::MIGRATOR")]
+async fn upload_sessions_have_a_consistent_chunk_count(pool: PgPool) {
+    let alice = insert_user(&pool, "alice").await;
+    let root = insert_node(&pool, alice, None, "Files", None)
+        .await
+        .unwrap();
+    for (size, chunk_size, count) in [
+        (0, 4, 0),
+        (8, 4, 2),
+        (9, 4, 3),
+        (10_000_000_000, 1 << 23, 1193),
+    ] {
+        insert_session(&pool, alice, root, size, chunk_size, count)
+            .await
+            .unwrap_or_else(|e| panic!("{size}/{chunk_size}: {e}"));
+    }
+    for (size, chunk_size, count) in [(0, 4, 1), (8, 4, 3), (9, 4, 2), (1, 4, 0)] {
+        let err = insert_session(&pool, alice, root, size, chunk_size, count)
+            .await
+            .unwrap_err();
+        assert_eq!(
+            constraint_of(&err).as_deref(),
+            Some("upload_sessions_chunk_geometry"),
+            "{size}/{chunk_size}/{count}"
+        );
+    }
+}
