@@ -76,6 +76,28 @@ pub async fn create_first_admin(pool: &PgPool, new_user: &NewUser) -> Result<Use
     Ok(user)
 }
 
+/// Atomically consumes one use of the invitation and creates a regular user.
+/// Any failure (taken username, invalid token) rolls the invitation use back.
+pub async fn create_with_invitation(
+    pool: &PgPool,
+    new_user: &NewUser,
+    token_hash: &[u8],
+) -> Result<UserRecord, DbError> {
+    let mut tx = pool.begin().await?;
+    let inviter: Option<Uuid> = sqlx::query_scalar(
+        "UPDATE invitations SET used_count = used_count + 1 \
+         WHERE token_hash = $1 AND revoked_at IS NULL AND expires_at > now() AND used_count < max_uses \
+         RETURNING created_by",
+    )
+    .bind(token_hash)
+    .fetch_optional(&mut *tx)
+    .await?;
+    let inviter = inviter.ok_or(DbError::InvitationInvalid)?;
+    let user = insert(&mut tx, new_user, Role::User, Some(inviter)).await?;
+    tx.commit().await?;
+    Ok(user)
+}
+
 async fn insert(
     conn: &mut PgConnection,
     new_user: &NewUser,
