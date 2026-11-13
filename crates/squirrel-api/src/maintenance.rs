@@ -6,6 +6,7 @@ use std::collections::HashSet;
 use sqlx::PgConnection;
 use squirrel_core::ContentHash;
 use squirrel_db::{DbError, blobs, trash, uploads};
+use squirrel_storage::BlobStore;
 use time::OffsetDateTime;
 use uuid::Uuid;
 
@@ -23,6 +24,8 @@ pub struct UploadCleanup {
     pub expired_sessions: usize,
     /// Upload files without a session (expired, aborted mid-write, crashed).
     pub files_removed: usize,
+    /// Orphan files that could not be removed (logged; retried next run).
+    pub files_failed: usize,
 }
 
 impl UploadCleanup {
@@ -46,13 +49,36 @@ pub async fn purge_expired_uploads(state: &AppState) -> Result<UploadCleanup, Ap
         .into_iter()
         .filter(|id| !live.contains(id))
         .collect();
-    let files_removed = orphans.len();
     let store = state.storage.clone();
-    run_storage(move || orphans.iter().try_for_each(|id| store.discard_upload(*id))).await?;
+    let discarded = run_storage(move || Ok(discard_each(&store, &orphans))).await?;
     Ok(UploadCleanup {
         expired_sessions: expired.len(),
-        files_removed,
+        files_removed: discarded.removed,
+        files_failed: discarded.failed,
     })
+}
+
+struct Discarded {
+    removed: usize,
+    failed: usize,
+}
+
+/// Removes every orphan, logging (not stopping at) the ones that fail.
+fn discard_each(store: &BlobStore, orphans: &[Uuid]) -> Discarded {
+    let failed = orphans
+        .iter()
+        .filter(|id| match store.discard_upload(**id) {
+            Ok(()) => false,
+            Err(err) => {
+                tracing::warn!(upload_id = %id, error = %err, "could not remove an orphan upload file");
+                true
+            }
+        })
+        .count();
+    Discarded {
+        removed: orphans.len() - failed,
+        failed,
+    }
 }
 
 /// Deletes trash entries older than the retention period (30 days).
