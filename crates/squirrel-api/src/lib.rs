@@ -175,7 +175,7 @@ fn transfer_routes(config: &ApiConfig) -> OpenApiRouter<AppState> {
         ));
     let long_running = OpenApiRouter::new()
         .routes(routes!(routes::uploads::complete::complete_upload))
-        // Task 19: file_content
+        .routes(routes!(routes::content::file_content))
         .layer(DefaultBodyLimit::max(API_BODY_LIMIT));
     chunks.merge(long_running)
 }
