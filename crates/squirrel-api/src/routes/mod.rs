@@ -4,3 +4,4 @@ pub mod health;
 pub mod invitations;
 pub mod join;
 pub mod setup;
+pub mod uploads;

@@ -1,5 +1,7 @@
 #![allow(dead_code)]
 
+pub mod files;
+
 use std::net::SocketAddr;
 use std::path::Path;
 use std::sync::Arc;

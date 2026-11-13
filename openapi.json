@@ -541,6 +541,161 @@
           }
         }
       }
+    },
+    "/api/uploads": {
+      "post": {
+        "tags": [
+          "uploads"
+        ],
+        "operationId": "create_upload",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateUploadRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Content already in your library: linked, nothing to upload",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DeduplicatedUpload"
+                }
+              }
+            }
+          },
+          "201": {
+            "description": "Session opened or resumed: send the missing chunks",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UploadSessionDto"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Destination folder not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "507": {
+            "description": "quota_exceeded or storage_full",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/uploads/{id}": {
+      "get": {
+        "tags": [
+          "uploads"
+        ],
+        "operationId": "upload_status",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "Upload id",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UploadSessionDto"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "uploads"
+        ],
+        "operationId": "abort_upload",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "Upload id",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Upload aborted and its bytes deleted"
+          },
+          "404": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The upload is being completed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        }
+      }
     }
   },
   "components": {
@@ -576,6 +731,35 @@
           }
         }
       },
+      "CreateUploadRequest": {
+        "type": "object",
+        "required": [
+          "parent_id",
+          "name",
+          "size",
+          "sha256"
+        ],
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "parent_id": {
+            "type": "string",
+            "format": "uuid",
+            "description": "Destination folder."
+          },
+          "sha256": {
+            "type": "string",
+            "description": "SHA-256 of the whole file, 64 lowercase hex characters."
+          },
+          "size": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Total size in bytes.",
+            "minimum": 0
+          }
+        }
+      },
       "CreatedInvitation": {
         "type": "object",
         "required": [
@@ -589,6 +773,23 @@
           "token": {
             "type": "string",
             "description": "Shown once. Build the link as `<origin>/join/<token>`."
+          }
+        }
+      },
+      "DeduplicatedUpload": {
+        "type": "object",
+        "description": "The content was already in the caller's library: a node was created without\nuploading anything.",
+        "required": [
+          "deduplicated",
+          "node"
+        ],
+        "properties": {
+          "deduplicated": {
+            "type": "boolean",
+            "description": "Always `true`."
+          },
+          "node": {
+            "$ref": "#/components/schemas/NodeDto"
           }
         }
       },
@@ -753,6 +954,69 @@
           }
         }
       },
+      "NodeDto": {
+        "type": "object",
+        "required": [
+          "id",
+          "name",
+          "kind",
+          "size",
+          "is_root",
+          "created_at",
+          "modified_at"
+        ],
+        "properties": {
+          "created_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "is_root": {
+            "type": "boolean",
+            "description": "Top-level folders cannot be renamed, moved or deleted."
+          },
+          "kind": {
+            "$ref": "#/components/schemas/NodeKind"
+          },
+          "mime": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Detected from the content at upload; `null` for folders."
+          },
+          "modified_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "name": {
+            "type": "string"
+          },
+          "parent_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid",
+            "description": "`null` for the top-level folders."
+          },
+          "size": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Bytes; 0 for folders."
+          }
+        }
+      },
+      "NodeKind": {
+        "type": "string",
+        "enum": [
+          "folder",
+          "file"
+        ]
+      },
       "Role": {
         "type": "string",
         "enum": [
@@ -793,6 +1057,46 @@
         "properties": {
           "needs_setup": {
             "type": "boolean"
+          }
+        }
+      },
+      "UploadSessionDto": {
+        "type": "object",
+        "description": "An upload session: send the missing chunks, then complete it.",
+        "required": [
+          "upload_id",
+          "chunk_size",
+          "chunk_count",
+          "received_chunks",
+          "expires_at"
+        ],
+        "properties": {
+          "chunk_count": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          },
+          "chunk_size": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          },
+          "expires_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "received_chunks": {
+            "type": "array",
+            "items": {
+              "type": "integer",
+              "format": "int32",
+              "minimum": 0
+            },
+            "description": "Chunk indexes already stored, ascending."
+          },
+          "upload_id": {
+            "type": "string",
+            "format": "uuid"
           }
         }
       }

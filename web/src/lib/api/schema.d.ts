@@ -180,6 +180,38 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/uploads": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["create_upload"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/uploads/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["upload_status"];
+        put?: never;
+        post?: never;
+        delete: operations["abort_upload"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -193,10 +225,34 @@ export interface components {
             /** @description Optional reminder of who the invitation is for. Not used to send email. */
             email_hint?: string | null;
         };
+        CreateUploadRequest: {
+            name: string;
+            /**
+             * Format: uuid
+             * @description Destination folder.
+             */
+            parent_id: string;
+            /** @description SHA-256 of the whole file, 64 lowercase hex characters. */
+            sha256: string;
+            /**
+             * Format: int64
+             * @description Total size in bytes.
+             */
+            size: number;
+        };
         CreatedInvitation: {
             invitation: components["schemas"]["InvitationDto"];
             /** @description Shown once. Build the link as `<origin>/join/<token>`. */
             token: string;
+        };
+        /**
+         * @description The content was already in the caller's library: a node was created without
+         *     uploading anything.
+         */
+        DeduplicatedUpload: {
+            /** @description Always `true`. */
+            deduplicated: boolean;
+            node: components["schemas"]["NodeDto"];
         };
         ErrorBody: {
             error: components["schemas"]["ErrorDetail"];
@@ -247,6 +303,32 @@ export interface components {
             role: components["schemas"]["Role"];
             username: string;
         };
+        NodeDto: {
+            /** Format: date-time */
+            created_at: string;
+            /** Format: uuid */
+            id: string;
+            /** @description Top-level folders cannot be renamed, moved or deleted. */
+            is_root: boolean;
+            kind: components["schemas"]["NodeKind"];
+            /** @description Detected from the content at upload; `null` for folders. */
+            mime?: string | null;
+            /** Format: date-time */
+            modified_at: string;
+            name: string;
+            /**
+             * Format: uuid
+             * @description `null` for the top-level folders.
+             */
+            parent_id?: string | null;
+            /**
+             * Format: int64
+             * @description Bytes; 0 for folders.
+             */
+            size: number;
+        };
+        /** @enum {string} */
+        NodeKind: "folder" | "file";
         /** @enum {string} */
         Role: "admin" | "user";
         /**
@@ -262,6 +344,19 @@ export interface components {
         };
         SetupStatus: {
             needs_setup: boolean;
+        };
+        /** @description An upload session: send the missing chunks, then complete it. */
+        UploadSessionDto: {
+            /** Format: int32 */
+            chunk_count: number;
+            /** Format: int64 */
+            chunk_size: number;
+            /** Format: date-time */
+            expires_at: string;
+            /** @description Chunk indexes already stored, ascending. */
+            received_chunks: number[];
+            /** Format: uuid */
+            upload_id: string;
         };
     };
     responses: never;
@@ -718,6 +813,133 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["SetupStatus"];
+                };
+            };
+        };
+    };
+    create_upload: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateUploadRequest"];
+            };
+        };
+        responses: {
+            /** @description Content already in your library: linked, nothing to upload */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DeduplicatedUpload"];
+                };
+            };
+            /** @description Session opened or resumed: send the missing chunks */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["UploadSessionDto"];
+                };
+            };
+            /** @description Destination folder not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description quota_exceeded or storage_full */
+            507: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    upload_status: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Upload id */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["UploadSessionDto"];
+                };
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    abort_upload: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Upload id */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Upload aborted and its bytes deleted */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description The upload is being completed */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
                 };
             };
         };
