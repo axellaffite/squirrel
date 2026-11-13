@@ -17,7 +17,7 @@ CREATE INDEX blobs_unreferenced_idx ON blobs (zero_since) WHERE ref_count = 0;
 CREATE TABLE nodes (
     id           UUID PRIMARY KEY,
     owner_id     UUID NOT NULL REFERENCES users (id) ON DELETE CASCADE,
-    parent_id    UUID REFERENCES nodes (id) ON DELETE CASCADE,
+    parent_id    UUID,
     name         TEXT NOT NULL CHECK (octet_length(name) BETWEEN 1 AND 255),
     kind         TEXT NOT NULL CHECK (kind IN ('folder', 'file')),
     blob_sha256  TEXT REFERENCES blobs (sha256),
@@ -32,7 +32,11 @@ CREATE TABLE nodes (
     CONSTRAINT nodes_folder_shape CHECK (kind = 'file' OR (size = 0 AND mime IS NULL)),
     CONSTRAINT nodes_roots_are_folders CHECK (parent_id IS NOT NULL OR kind = 'folder'),
     CONSTRAINT nodes_trash_consistent CHECK ((deleted_at IS NULL) = (trash_root IS NULL)),
-    CONSTRAINT nodes_not_own_parent CHECK (parent_id <> id)
+    CONSTRAINT nodes_not_own_parent CHECK (parent_id <> id),
+    CONSTRAINT nodes_id_owner_key UNIQUE (id, owner_id),
+    -- A parent belongs to the same owner. MATCH SIMPLE: roots (NULL parent) skip the check.
+    CONSTRAINT nodes_parent_fkey FOREIGN KEY (parent_id, owner_id)
+        REFERENCES nodes (id, owner_id) ON DELETE CASCADE
 );
 -- One live name per folder; NULLS NOT DISTINCT makes top-level (NULL parent) names unique too.
 CREATE UNIQUE INDEX nodes_live_name_key ON nodes (owner_id, parent_id, name)
@@ -105,7 +109,7 @@ CREATE TRIGGER nodes_blob_ref_changed
 CREATE TABLE upload_sessions (
     id           UUID PRIMARY KEY,
     owner_id     UUID NOT NULL REFERENCES users (id) ON DELETE CASCADE,
-    parent_id    UUID NOT NULL REFERENCES nodes (id) ON DELETE CASCADE,
+    parent_id    UUID NOT NULL,
     name         TEXT NOT NULL CHECK (octet_length(name) BETWEEN 1 AND 255),
     sha256       TEXT NOT NULL CHECK (sha256 ~ '^[0-9a-f]{64}$'),
     size         BIGINT NOT NULL CHECK (size >= 0),
@@ -115,7 +119,12 @@ CREATE TABLE upload_sessions (
     status       TEXT NOT NULL DEFAULT 'open' CHECK (status IN ('open', 'completing')),
     created_at   TIMESTAMPTZ NOT NULL DEFAULT now(),
     -- Pushed back on every chunk: sessions expire after 24 h without activity.
-    expires_at   TIMESTAMPTZ NOT NULL
+    expires_at   TIMESTAMPTZ NOT NULL,
+    CONSTRAINT upload_sessions_parent_fkey FOREIGN KEY (parent_id, owner_id)
+        REFERENCES nodes (id, owner_id) ON DELETE CASCADE,
+    -- chunk_count = ceil(size / chunk_size), written without overflow (0 for an empty file).
+    CONSTRAINT upload_sessions_chunk_geometry CHECK (
+        chunk_count = size / chunk_size + CASE WHEN size % chunk_size > 0 THEN 1 ELSE 0 END)
 );
 CREATE INDEX upload_sessions_owner_idx ON upload_sessions (owner_id, parent_id, sha256);
 CREATE INDEX upload_sessions_expires_idx ON upload_sessions (expires_at);

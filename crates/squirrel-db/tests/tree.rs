@@ -213,3 +213,32 @@ async fn set_quota_reports_unknown_users(pool: PgPool) {
             .unwrap()
     );
 }
+
+#[sqlx::test(migrator = "squirrel_db::MIGRATOR")]
+async fn updates_bump_modified_at(pool: PgPool) {
+    let alice = common::admin(&pool).await;
+    let files = common::root(&pool, alice.id, "Files").await;
+    let file = common::raw_file(&pool, alice.id, files.id, "a.txt", 'a', 1).await;
+    sqlx::query("UPDATE nodes SET modified_at = now() - interval '1 day' WHERE id = $1")
+        .bind(file)
+        .execute(&pool)
+        .await
+        .unwrap();
+    let before = nodes::find_live(&pool, alice.id, file)
+        .await
+        .unwrap()
+        .unwrap()
+        .modified_at;
+    let renamed = nodes::update(
+        &pool,
+        alice.id,
+        file,
+        &NodeChange {
+            name: Some(name("b.txt")),
+            parent_id: None,
+        },
+    )
+    .await
+    .unwrap();
+    assert!(renamed.modified_at > before);
+}

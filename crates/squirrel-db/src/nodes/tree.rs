@@ -74,7 +74,7 @@ pub async fn update(
         .as_ref()
         .map_or(node.name.as_str(), NodeName::as_str);
     let sql = format!(
-        "UPDATE nodes SET name = $3, parent_id = $4 WHERE id = $1 AND owner_id = $2 \
+        "UPDATE nodes SET name = $3, parent_id = $4, modified_at = now() WHERE id = $1 AND owner_id = $2 \
          RETURNING {NODE_COLUMNS}"
     );
     let updated = sqlx::query_as::<_, NodeRecord>(&sql)

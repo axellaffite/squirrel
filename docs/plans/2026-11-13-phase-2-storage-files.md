@@ -4786,7 +4786,7 @@ pub async fn complete_upload(
             Ok((StatusCode::CREATED, Json((&node).into())))
         }
         Err(Failure::Retry(err)) => {
-            uploads::release(&state.pool, id).await?;
+            uploads::release(&state.pool, current.user.id, id, expires_at).await?;
             Err(err)
         }
         Err(Failure::Discard(err)) => {
