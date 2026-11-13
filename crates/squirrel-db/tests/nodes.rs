@@ -125,3 +125,76 @@ async fn path_lists_ancestors_from_the_root(pool: PgPool) {
             .is_empty()
     );
 }
+
+#[sqlx::test(migrator = "squirrel_db::MIGRATOR")]
+async fn folders_come_before_files_across_a_page_boundary(pool: PgPool) {
+    let alice = common::admin(&pool).await;
+    let files = common::root(&pool, alice.id, "Files").await;
+    common::raw_file(&pool, alice.id, files.id, "a.txt", 'a', 1).await;
+    common::raw_file(&pool, alice.id, files.id, "zz.txt", 'b', 1).await;
+    common::raw_folder(&pool, alice.id, files.id, "m").await;
+    common::raw_folder(&pool, alice.id, files.id, "z").await;
+
+    let first = nodes::list_children(&pool, alice.id, Some(files.id), None, 2)
+        .await
+        .unwrap();
+    let names: Vec<_> = first.items.iter().map(|n| n.name.as_str()).collect();
+    assert_eq!(names, ["m", "z"]);
+    assert!(first.has_more);
+    let last = first.items.last().unwrap();
+    let cursor = ListCursor {
+        kind: last.kind(),
+        name: last.name.clone(),
+    };
+    let second = nodes::list_children(&pool, alice.id, Some(files.id), Some(&cursor), 2)
+        .await
+        .unwrap();
+    let names: Vec<_> = second.items.iter().map(|n| n.name.as_str()).collect();
+    assert_eq!(names, ["a.txt", "zz.txt"]);
+    assert!(!second.has_more);
+
+    let after_file = ListCursor {
+        kind: NodeKind::File,
+        name: "a.txt".into(),
+    };
+    let rest = nodes::list_children(&pool, alice.id, Some(files.id), Some(&after_file), 5)
+        .await
+        .unwrap();
+    let names: Vec<_> = rest.items.iter().map(|n| n.name.as_str()).collect();
+    assert_eq!(names, ["zz.txt"]);
+}
+
+#[sqlx::test(migrator = "squirrel_db::MIGRATOR")]
+async fn free_name_picks_the_first_unused_variant(pool: PgPool) {
+    let alice = common::admin(&pool).await;
+    let files = common::root(&pool, alice.id, "Files").await;
+    for (i, taken) in [
+        "report.pdf",
+        "report (1).pdf",
+        "report (2).pdf",
+        "report (4).pdf",
+    ]
+    .into_iter()
+    .enumerate()
+    {
+        let fill = char::from_digit(u32::try_from(i).unwrap(), 16).unwrap();
+        common::raw_file(&pool, alice.id, files.id, taken, fill, 1).await;
+    }
+    let long = format!("{}.txt", "x".repeat(251));
+    common::raw_file(&pool, alice.id, files.id, &long, 'e', 1).await;
+
+    let mut tx = pool.begin().await.unwrap();
+    let pick = |raw: &str| squirrel_core::NodeName::parse(raw).unwrap();
+    let free = nodes::free_name(&mut tx, alice.id, files.id, &pick("report.pdf"))
+        .await
+        .unwrap();
+    assert_eq!(free.as_str(), "report (3).pdf");
+    let free = nodes::free_name(&mut tx, alice.id, files.id, &pick("other.pdf"))
+        .await
+        .unwrap();
+    assert_eq!(free.as_str(), "other.pdf");
+    let free = nodes::free_name(&mut tx, alice.id, files.id, &pick(&long))
+        .await
+        .unwrap();
+    assert_eq!(free, pick(&long).variant(1));
+}

@@ -41,13 +41,22 @@ CREATE TABLE nodes (
 -- One live name per folder; NULLS NOT DISTINCT makes top-level (NULL parent) names unique too.
 CREATE UNIQUE INDEX nodes_live_name_key ON nodes (owner_id, parent_id, name)
     NULLS NOT DISTINCT WHERE deleted_at IS NULL;
--- Folder listings: folders first, then names in byte order (keyset pagination).
-CREATE INDEX nodes_children_idx ON nodes (owner_id, parent_id, kind DESC, name COLLATE "C")
+-- Folder listings: folders first, then names in byte order. Keyset pagination
+-- compares ((kind = 'file'), name COLLATE "C") as a row, an Index Cond here.
+CREATE INDEX nodes_children_idx ON nodes (owner_id, parent_id, (kind = 'file'), name COLLATE "C")
     WHERE deleted_at IS NULL;
 CREATE INDEX nodes_parent_idx ON nodes (parent_id);
 CREATE INDEX nodes_owner_blob_idx ON nodes (owner_id, blob_sha256) WHERE blob_sha256 IS NOT NULL;
 CREATE INDEX nodes_blob_idx ON nodes (blob_sha256) WHERE blob_sha256 IS NOT NULL;
-CREATE INDEX nodes_trash_idx ON nodes (owner_id, deleted_at DESC, id) WHERE trash_root = id;
+-- Quota: index-only SUM(size) over an owner's live files.
+CREATE INDEX nodes_live_size_idx ON nodes (owner_id) INCLUDE (size)
+    WHERE kind = 'file' AND deleted_at IS NULL;
+-- Trash listing (matches ORDER BY deleted_at DESC, id DESC).
+CREATE INDEX nodes_trash_idx ON nodes (owner_id, deleted_at DESC, id DESC) WHERE trash_root = id;
+-- Whole trash batches (restore, size, permanent deletion).
+CREATE INDEX nodes_trash_batch_idx ON nodes (owner_id, trash_root) WHERE trash_root IS NOT NULL;
+-- Global purge of old entries, oldest first; covering so it stays index-only.
+CREATE INDEX nodes_trash_purge_idx ON nodes (deleted_at, id) INCLUDE (owner_id) WHERE trash_root = id;
 
 -- Blob reference counting. Inserts and deletes use statement-level triggers:
 -- one UPDATE per statement, aggregated per blob, locking blobs in sha256 order

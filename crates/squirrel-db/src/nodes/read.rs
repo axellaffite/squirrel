@@ -7,7 +7,8 @@ use super::{NODE_COLUMNS, NodeRecord};
 use crate::{DbError, Page};
 
 /// Where a folder listing resumes: after this (kind, name) in listing order
-/// (folders first, then names in byte order).
+/// (folders first, then names in byte order). Callers treat it as opaque and
+/// encode it as they like; the query compares `kind == File` as a boolean.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ListCursor {
     pub kind: NodeKind,
@@ -48,7 +49,12 @@ pub async fn find_live_folder<'e>(
         .filter(NodeRecord::is_folder))
 }
 
-/// Live children of `parent_id` (the roots when `None`), after `after`.
+/// Live children of `parent_id` (the roots when `None`), after `after`, in
+/// listing order: folders first, then names in byte order.
+///
+/// Only rows owned by `owner_id` are returned, so a foreign, missing or trashed
+/// parent simply yields an empty page: the API must check the parent itself
+/// (with [`find_live_folder`]) to answer 404.
 pub async fn list_children(
     pool: &PgPool,
     owner_id: Uuid,
@@ -61,19 +67,25 @@ pub async fn list_children(
     } else {
         "parent_id IS NULL AND $2::uuid IS NULL"
     };
+    // A separate statement per case keeps the row comparison an Index Cond on
+    // nodes_children_idx (an `$3 IS NULL OR …` would turn it into a Filter).
+    let keyset = if after.is_some() {
+        "AND ((kind = 'file'), name COLLATE \"C\") > ($4::bool, $5::text COLLATE \"C\")"
+    } else {
+        "AND $4::bool IS NULL AND $5::text IS NULL"
+    };
     let sql = format!(
         "SELECT {NODE_COLUMNS} FROM nodes \
-         WHERE owner_id = $1 AND {parent_filter} AND deleted_at IS NULL \
-           AND ($3::text IS NULL OR kind < $3 OR (kind = $3 AND name COLLATE \"C\" > $4)) \
-         ORDER BY kind DESC, name COLLATE \"C\" \
-         LIMIT $5"
+         WHERE owner_id = $1 AND {parent_filter} AND deleted_at IS NULL {keyset} \
+         ORDER BY (kind = 'file'), name COLLATE \"C\" \
+         LIMIT $3"
     );
     let rows = sqlx::query_as::<_, NodeRecord>(&sql)
         .bind(owner_id)
         .bind(parent_id)
-        .bind(after.map(|c| c.kind.as_str()))
-        .bind(after.map(|c| c.name.as_str()))
         .bind(i64::from(limit) + 1)
+        .bind(after.map(|c| c.kind == NodeKind::File))
+        .bind(after.map(|c| c.name.as_str()))
         .fetch_all(pool)
         .await?;
     Ok(Page::from_overfetch(rows, limit))
