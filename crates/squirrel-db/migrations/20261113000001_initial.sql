@@ -1,3 +1,6 @@
+-- FROZEN: this migration has shipped. Never edit it (sqlx checksums applied
+-- migrations); put new schema changes in a new migration file.
+
 CREATE TABLE users (
     id             UUID PRIMARY KEY,
     username       TEXT NOT NULL,
