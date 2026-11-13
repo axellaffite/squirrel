@@ -60,31 +60,29 @@ pub fn openapi() -> utoipa::openapi::OpenApi {
     api_router(&ApiConfig::default()).split_for_parts().1
 }
 
+/// Builds every `/api` route. Routes are grouped by the limits they need; put a
+/// new route in the group whose limits fit it:
+///
+/// - [`json_routes`]: ordinary JSON endpoints (64 KiB body, 30 s timeout). The default.
+/// - [`credential_routes`]: endpoints that receive passwords or one-time secrets
+///   (16 KiB body, 30 s timeout, per-route rate limits).
+/// - `transfer_routes` (none yet): uploads, downloads and streaming. They will get
+///   their own large body limit and no request timeout, so they must not be added
+///   to the groups above, whose limits would cut transfers short. Merge them here
+///   without the timeout layer.
 fn api_router(config: &ApiConfig) -> OpenApiRouter<AppState> {
-    let trusted = &config.trusted_proxies;
-    let join_routes = OpenApiRouter::new().routes(routes!(
-        routes::join::check_invitation,
-        routes::join::accept_invitation
-    ));
-    let join_routes = rate_limit::apply(
-        join_routes,
-        config.join_check_rate_limit,
-        Method::GET,
-        trusted,
-    );
-    let credential_routes = OpenApiRouter::new()
-        .routes(routes!(routes::setup::create_first_admin))
-        .routes(routes!(routes::auth::login))
-        .merge(join_routes);
-    let credential_routes = rate_limit::apply(
-        credential_routes,
-        config.login_rate_limit,
-        Method::POST,
-        trusted,
-    )
-    .layer(DefaultBodyLimit::max(CREDENTIAL_BODY_LIMIT));
-
     OpenApiRouter::with_openapi(ApiDoc::openapi())
+        .merge(json_routes())
+        .merge(credential_routes(config))
+        .layer(TimeoutLayer::with_status_code(
+            StatusCode::REQUEST_TIMEOUT,
+            API_TIMEOUT,
+        ))
+}
+
+/// Ordinary JSON endpoints: small bodies. The request timeout is applied by [`api_router`].
+fn json_routes() -> OpenApiRouter<AppState> {
+    OpenApiRouter::new()
         .routes(routes!(routes::health::healthz))
         .routes(routes!(routes::setup::setup_status))
         .routes(routes!(routes::auth::me))
@@ -100,9 +98,26 @@ fn api_router(config: &ApiConfig) -> OpenApiRouter<AppState> {
             routes::admin::update_settings
         ))
         .layer(DefaultBodyLimit::max(API_BODY_LIMIT))
-        .merge(credential_routes)
-        .layer(TimeoutLayer::with_status_code(
-            StatusCode::REQUEST_TIMEOUT,
-            API_TIMEOUT,
-        ))
+}
+
+/// Endpoints that take credentials or one-time secrets: tiny bodies and rate
+/// limits (login/setup/join POSTs share one bucket, invitation checks another).
+fn credential_routes(config: &ApiConfig) -> OpenApiRouter<AppState> {
+    let trusted = &config.trusted_proxies;
+    let join_routes = OpenApiRouter::new().routes(routes!(
+        routes::join::check_invitation,
+        routes::join::accept_invitation
+    ));
+    let join_routes = rate_limit::apply(
+        join_routes,
+        config.join_check_rate_limit,
+        Method::GET,
+        trusted,
+    );
+    let routes = OpenApiRouter::new()
+        .routes(routes!(routes::setup::create_first_admin))
+        .routes(routes!(routes::auth::login))
+        .merge(join_routes);
+    rate_limit::apply(routes, config.login_rate_limit, Method::POST, trusted)
+        .layer(DefaultBodyLimit::max(CREDENTIAL_BODY_LIMIT))
 }
