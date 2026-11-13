@@ -9,3 +9,7 @@ pub enum DbError {
     #[error(transparent)]
     Sqlx(#[from] sqlx::Error),
 }
+
+pub(crate) fn is_unique_violation(err: &sqlx::Error, constraint: &str) -> bool {
+    matches!(err, sqlx::Error::Database(db) if db.is_unique_violation() && db.constraint() == Some(constraint))
+}
