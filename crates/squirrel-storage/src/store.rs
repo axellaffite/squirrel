@@ -2,14 +2,13 @@ use std::fs::{self, File};
 use std::io::{self, Read, Write};
 use std::path::{Path, PathBuf};
 
-use sha2::{Digest, Sha256};
 use squirrel_core::ContentHash;
 use uuid::Uuid;
 
 use crate::error::{Result, StorageError};
-use crate::fsutil::{device_of, make_read_only, remove_if_exists, sync_dir};
-
-const COPY_BUFFER: usize = 1024 * 1024;
+use crate::fsutil::{
+    create_dir_all_durable, device_of, hash_stream, make_read_only, remove_if_exists, sync_dir,
+};
 
 /// Content-addressed blob store rooted at the data directory:
 ///
@@ -18,6 +17,8 @@ const COPY_BUFFER: usize = 1024 * 1024;
 /// <data_dir>/tmp/                   in-progress writes (same filesystem, so renames are atomic)
 /// <data_dir>/tmp/uploads/<id>       chunked upload sessions
 /// ```
+///
+/// Directories are created with mode 0700 and blobs are 0400.
 ///
 /// All methods block: call them from `spawn_blocking`.
 #[derive(Debug, Clone)]
@@ -35,8 +36,8 @@ pub enum Adopted {
 }
 
 impl BlobStore {
-    /// Creates the directory layout if needed and checks that `tmp/` and `blobs/`
-    /// share a filesystem (otherwise `rename` would not be atomic).
+    /// Creates the directory layout if needed (durably) and checks that `tmp/`
+    /// and `blobs/` share a filesystem (otherwise `rename` would not be atomic).
     pub fn open(data_dir: &Path) -> Result<Self> {
         let store = Self {
             blobs: data_dir.join("blobs"),
@@ -44,7 +45,7 @@ impl BlobStore {
             uploads: data_dir.join("tmp").join("uploads"),
         };
         for dir in [&store.blobs, &store.tmp, &store.uploads] {
-            fs::create_dir_all(dir)?;
+            create_dir_all_durable(dir)?;
         }
         if device_of(&store.tmp)? != device_of(&store.blobs)? {
             return Err(StorageError::CrossDevice(store.tmp.display().to_string()));
@@ -63,42 +64,46 @@ impl BlobStore {
 
     /// Moves a fully written, verified temporary file into place under `hash`.
     /// Idempotent: if the blob already exists the temporary file is removed.
+    ///
+    /// The caller must hold the per-blob lock (`squirrel_db::blobs::lock`) so a
+    /// concurrent [`BlobStore::remove_blob`] cannot delete the blob between the
+    /// existence check and the database row being recorded.
     pub fn adopt(&self, tmp: &Path, hash: &ContentHash) -> Result<Adopted> {
+        self.adopt_with(tmp, hash, || File::open(tmp)?.sync_all())
+    }
+
+    /// [`BlobStore::adopt`], with `sync` making the temporary file's content
+    /// durable before it is renamed into place.
+    fn adopt_with(
+        &self,
+        tmp: &Path,
+        hash: &ContentHash,
+        sync: impl FnOnce() -> io::Result<()>,
+    ) -> Result<Adopted> {
         let dest = self.blob_path(hash);
         if dest.is_file() {
             remove_if_exists(tmp)?;
             return Ok(Adopted::AlreadyPresent);
         }
-        File::open(tmp)?.sync_all()?;
+        sync()?;
         make_read_only(tmp)?;
         let dir = dest.parent().expect("blob paths have a parent");
-        fs::create_dir_all(dir)?;
+        create_dir_all_durable(dir)?;
         fs::rename(tmp, &dest)?;
         sync_dir(dir)?;
         Ok(Adopted::Stored)
     }
 
-    /// Streams `reader` into a temporary file while hashing it, then adopts it.
-    pub fn put_reader(&self, mut reader: impl Read) -> Result<(ContentHash, u64)> {
+    /// Streams `reader` into a temporary file while hashing it, syncs it through
+    /// its own handle, then adopts it. The hash is only known at the end, so the
+    /// per-blob lock cannot be held here: callers lock afterwards and re-check
+    /// [`BlobStore::contains`] before recording the blob.
+    pub fn put_reader(&self, reader: impl Read) -> Result<(ContentHash, u64)> {
         let tmp = self.tmp.join(format!("put-{}", Uuid::now_v7()));
         let result = (|| {
             let mut file = File::create_new(&tmp)?;
-            let mut hasher = Sha256::new();
-            let mut buffer = vec![0; COPY_BUFFER];
-            let mut size = 0u64;
-            loop {
-                let read = match reader.read(&mut buffer) {
-                    Ok(0) => break,
-                    Ok(read) => read,
-                    Err(err) if err.kind() == io::ErrorKind::Interrupted => continue,
-                    Err(err) => return Err(err.into()),
-                };
-                hasher.update(&buffer[..read]);
-                file.write_all(&buffer[..read])?;
-                size += read as u64;
-            }
-            let hash = ContentHash::from_digest(hasher.finalize().into());
-            self.adopt(&tmp, &hash)?;
+            let (hash, size) = hash_stream(reader, |block| file.write_all(block))?;
+            self.adopt_with(&tmp, &hash, || file.sync_all())?;
             Ok((hash, size))
         })();
         if result.is_err() {
@@ -117,7 +122,8 @@ impl BlobStore {
         Ok((file, size))
     }
 
-    /// Deletes a blob; a missing blob is not an error.
+    /// Deletes a blob; a missing blob is not an error. The caller must hold the
+    /// per-blob lock and have checked that nothing references the blob.
     pub fn remove_blob(&self, hash: &ContentHash) -> Result<()> {
         Ok(remove_if_exists(&self.blob_path(hash))?)
     }
@@ -213,5 +219,104 @@ mod tests {
     fn no_space_errors_are_recognised() {
         let err: StorageError = io::Error::from(io::ErrorKind::StorageFull).into();
         assert!(matches!(err, StorageError::NoSpace));
+    }
+
+    #[test]
+    fn quota_exceeded_errors_are_recognised() {
+        let err: StorageError = io::Error::from(io::ErrorKind::QuotaExceeded).into();
+        assert!(matches!(err, StorageError::NoSpace));
+        let edquot = io::Error::from_raw_os_error(rustix::io::Errno::DQUOT.raw_os_error());
+        assert!(matches!(StorageError::from(edquot), StorageError::NoSpace));
+    }
+
+    fn temp_leftovers(dir: &Path) -> Vec<fs::DirEntry> {
+        fs::read_dir(dir.join("tmp"))
+            .unwrap()
+            .filter_map(|e| e.ok())
+            .filter(|e| e.file_name() != "uploads")
+            .collect()
+    }
+
+    #[test]
+    fn concurrent_puts_of_the_same_content_both_succeed() {
+        let (dir, store) = store();
+        let barrier = std::sync::Barrier::new(2);
+        let results: Vec<_> = std::thread::scope(|scope| {
+            let handles: Vec<_> = (0..2)
+                .map(|_| {
+                    scope.spawn(|| {
+                        barrier.wait();
+                        store.put_reader(&b"hello"[..])
+                    })
+                })
+                .collect();
+            handles.into_iter().map(|h| h.join().unwrap()).collect()
+        });
+        for result in results {
+            let (hash, size) = result.unwrap();
+            assert_eq!((hash.as_str(), size), (HELLO, 5));
+        }
+        let hash = ContentHash::parse(HELLO).unwrap();
+        assert_eq!(fs::read(store.blob_path(&hash)).unwrap(), b"hello");
+        assert!(temp_leftovers(dir.path()).is_empty());
+    }
+
+    /// Yields some bytes, then fails.
+    struct FailingReader(bool);
+
+    impl Read for FailingReader {
+        fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
+            if std::mem::replace(&mut self.0, true) {
+                return Err(io::Error::other("connection reset"));
+            }
+            buf[..3].copy_from_slice(b"abc");
+            Ok(3)
+        }
+    }
+
+    #[test]
+    fn a_reader_failing_midway_leaves_no_temporary_file() {
+        let (dir, store) = store();
+        assert!(matches!(
+            store.put_reader(FailingReader(false)),
+            Err(StorageError::Io(_))
+        ));
+        assert!(temp_leftovers(dir.path()).is_empty());
+    }
+
+    /// Yields "hello" with an `Interrupted` error in between.
+    struct InterruptedReader(u8);
+
+    impl Read for InterruptedReader {
+        fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
+            self.0 += 1;
+            match self.0 {
+                1 => Err(io::ErrorKind::Interrupted.into()),
+                2 => {
+                    buf[..5].copy_from_slice(b"hello");
+                    Ok(5)
+                }
+                _ => Ok(0),
+            }
+        }
+    }
+
+    #[test]
+    fn interrupted_reads_are_retried() {
+        let (_dir, store) = store();
+        let (hash, _) = store.put_reader(InterruptedReader(0)).unwrap();
+        assert_eq!(hash.as_str(), HELLO);
+    }
+
+    #[test]
+    fn directories_are_private_and_blobs_owner_read_only() {
+        use std::os::unix::fs::PermissionsExt;
+        let (dir, store) = store();
+        let (hash, _) = store.put_reader(&b"hello"[..]).unwrap();
+        let mode = |p: &Path| fs::metadata(p).unwrap().permissions().mode() & 0o777;
+        for sub in ["blobs", "tmp", "tmp/uploads", "blobs/2c", "blobs/2c/f2"] {
+            assert_eq!(mode(&dir.path().join(sub)), 0o700, "{sub}");
+        }
+        assert_eq!(mode(&store.blob_path(&hash)), 0o400);
     }
 }
