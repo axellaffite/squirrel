@@ -6,6 +6,6 @@ mod role;
 mod username;
 
 pub use display_name::{DisplayName, DisplayNameError};
-pub use password::{Password, PasswordError};
+pub use password::{Password, PasswordError, normalize_password};
 pub use role::{Role, UnknownRole};
 pub use username::{Username, UsernameError};

@@ -17,7 +17,7 @@ impl Username {
     pub const MAX_LEN: usize = 32;
 
     pub fn parse(raw: &str) -> Result<Self, UsernameError> {
-        let normalized = raw.trim().to_lowercase();
+        let normalized = raw.trim().to_ascii_lowercase();
         let len = normalized.chars().count();
         if !(Self::MIN_LEN..=Self::MAX_LEN).contains(&len) {
             return Err(UsernameError::Length);
@@ -67,5 +67,27 @@ mod tests {
     #[test]
     fn must_start_with_letter_or_digit() {
         assert_eq!(Username::parse(".alice"), Err(UsernameError::Start));
+    }
+
+    #[test]
+    fn rejects_non_ascii_that_lowercases_to_ascii() {
+        assert_eq!(
+            Username::parse("\u{212A}elvin"),
+            Err(UsernameError::Charset)
+        );
+    }
+
+    #[test]
+    fn length_boundaries() {
+        assert!(Username::parse("abc").is_ok());
+        assert!(Username::parse(&"a".repeat(32)).is_ok());
+        assert_eq!(Username::parse("  ab  "), Err(UsernameError::Length));
+    }
+
+    #[test]
+    fn start_rules() {
+        assert!(Username::parse("1abc").is_ok());
+        assert_eq!(Username::parse("_abc"), Err(UsernameError::Start));
+        assert_eq!(Username::parse("-abc"), Err(UsernameError::Start));
     }
 }
