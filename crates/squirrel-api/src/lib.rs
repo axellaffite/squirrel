@@ -131,6 +131,7 @@ fn json_routes() -> OpenApiRouter<AppState> {
         ))
         .routes(routes!(routes::trash::restore))
         .routes(routes!(routes::trash::delete_forever))
+        .routes(routes!(routes::storage::storage_usage))
         .routes(routes!(routes::uploads::create_upload))
         .routes(routes!(
             routes::uploads::upload_status,

@@ -4,6 +4,8 @@ use common::files;
 use serde_json::Value;
 use sqlx::PgPool;
 use squirrel_api::maintenance;
+use squirrel_core::ContentHash;
+use time::Duration;
 use uuid::Uuid;
 
 #[sqlx::test(migrator = "squirrel_db::MIGRATOR")]
@@ -45,4 +47,64 @@ async fn expired_sessions_and_orphan_files_are_removed(pool: PgPool) {
         .map(|e| e.unwrap().file_name().into_string().unwrap())
         .collect();
     assert_eq!(left, [live["upload_id"].as_str().unwrap()]);
+}
+
+#[sqlx::test(migrator = "squirrel_db::MIGRATOR")]
+async fn old_trash_is_purged_and_unreferenced_blobs_collected(pool: PgPool) {
+    let config = squirrel_api::ApiConfig {
+        trash_retention: Duration::ZERO,
+        blob_gc_grace: Duration::ZERO,
+        ..common::test_config()
+    };
+    let instance = common::Instance::with_config(pool, config);
+    let browser = instance.browser();
+    let me = common::setup_admin(&browser, "alice").await;
+    let parent = files::root_id(&instance, &me, "Files").await;
+    let gone = files::upload(&browser, &me, parent, "gone.txt", b"gone").await;
+    files::upload(&browser, &me, parent, "kept.txt", b"kept").await;
+    browser
+        .delete(&format!("/api/nodes/{}", gone["id"].as_str().unwrap()))
+        .add_header(common::CSRF, common::csrf(&me))
+        .await
+        .assert_status(axum::http::StatusCode::NO_CONTENT);
+
+    assert_eq!(
+        maintenance::purge_old_trash(&instance.state).await.unwrap(),
+        1
+    );
+    assert_eq!(
+        maintenance::collect_garbage(&instance.state).await.unwrap(),
+        1
+    );
+
+    let store = &instance.state.storage;
+    assert!(!store.contains(&ContentHash::parse(&files::sha256_hex(b"gone")).unwrap()));
+    assert!(store.contains(&ContentHash::parse(&files::sha256_hex(b"kept")).unwrap()));
+}
+
+#[sqlx::test(migrator = "squirrel_db::MIGRATOR")]
+async fn gc_waits_for_the_grace_period(pool: PgPool) {
+    let instance = common::Instance::new(pool);
+    let browser = instance.browser();
+    let me = common::setup_admin(&browser, "alice").await;
+    let parent = files::root_id(&instance, &me, "Files").await;
+    let node = files::upload(&browser, &me, parent, "a.txt", b"recent").await;
+    let id = node["id"].as_str().unwrap();
+    for path in [format!("/api/nodes/{id}"), format!("/api/trash/{id}")] {
+        browser
+            .delete(&path)
+            .add_header(common::CSRF, common::csrf(&me))
+            .await
+            .assert_status(axum::http::StatusCode::NO_CONTENT);
+    }
+    assert_eq!(
+        maintenance::collect_garbage(&instance.state).await.unwrap(),
+        0
+    );
+    assert!(
+        instance
+            .state
+            .storage
+            .contains(&ContentHash::parse(&files::sha256_hex(b"recent")).unwrap())
+    );
 }

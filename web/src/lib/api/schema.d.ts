@@ -123,6 +123,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
+        /** Healthy when the database answers and the data directory is reachable. */
         get: operations["healthz"];
         put?: never;
         post?: never;
@@ -236,6 +237,22 @@ export interface paths {
             cookie?: never;
         };
         get: operations["setup_status"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/storage": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["storage_usage"];
         put?: never;
         post?: never;
         delete?: never;
@@ -513,6 +530,23 @@ export interface components {
         };
         SetupStatus: {
             needs_setup: boolean;
+        };
+        StorageUsageDto: {
+            /**
+             * Format: int64
+             * @description `null`: unlimited.
+             */
+            quota_bytes?: number | null;
+            /**
+             * Format: int64
+             * @description Bytes in the trash (purged after 30 days, not counted against the quota).
+             */
+            trash_bytes: number;
+            /**
+             * Format: int64
+             * @description Logical bytes of live files: what the quota limits.
+             */
+            used_bytes: number;
         };
         TrashEntryDto: {
             /** Format: date-time */
@@ -1275,6 +1309,33 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["SetupStatus"];
+                };
+            };
+        };
+    };
+    storage_usage: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StorageUsageDto"];
+                };
+            };
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
                 };
             };
         };

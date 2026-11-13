@@ -2143,6 +2143,7 @@ dependencies = [
  "sqlx",
  "squirrel-api",
  "squirrel-auth",
+ "squirrel-core",
  "squirrel-db",
  "squirrel-storage",
  "tokio",

@@ -11,6 +11,7 @@ clap.workspace = true
 sqlx.workspace = true
 squirrel-api.workspace = true
 squirrel-auth.workspace = true
+squirrel-core.workspace = true
 squirrel-db.workspace = true
 squirrel-storage.workspace = true
 tokio.workspace = true
