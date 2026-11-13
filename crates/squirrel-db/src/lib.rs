@@ -2,11 +2,14 @@
 
 mod error;
 pub mod invitations;
+pub mod nodes;
+mod page;
 pub mod sessions;
 pub mod settings;
 pub mod users;
 
 pub use error::DbError;
+pub use page::Page;
 
 use sqlx::PgPool;
 use sqlx::migrate::{MigrateError, Migrator};

@@ -135,14 +135,14 @@ async fn insert(
         "INSERT INTO users (id, username, display_name, password_hash, role, invited_by) \
          VALUES ($1, $2, $3, $4, $5, $6) RETURNING {USER_COLUMNS}"
     );
-    sqlx::query_as::<_, UserRecord>(&sql)
+    let user = sqlx::query_as::<_, UserRecord>(&sql)
         .bind(Uuid::now_v7())
         .bind(new_user.username.as_str())
         .bind(new_user.display_name.as_str())
         .bind(&new_user.password_hash)
         .bind(role.as_str())
         .bind(invited_by)
-        .fetch_one(conn)
+        .fetch_one(&mut *conn)
         .await
         .map_err(|err| {
             if is_unique_violation(&err, USERNAME_UNIQUE_CONSTRAINT) {
@@ -150,7 +150,9 @@ async fn insert(
             } else {
                 err.into()
             }
-        })
+        })?;
+    crate::nodes::create_default_roots(conn, user.id).await?;
+    Ok(user)
 }
 
 pub async fn find_by_username(
