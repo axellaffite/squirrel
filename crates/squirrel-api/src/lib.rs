@@ -4,6 +4,7 @@ mod blocking;
 mod dto;
 mod error;
 mod extract;
+mod input;
 mod rate_limit;
 mod routes;
 mod session;
@@ -29,7 +30,14 @@ struct ApiDoc;
 
 pub fn router(state: AppState) -> Router {
     let (router, _) = api_router(&state.config).split_for_parts();
-    router.fallback(spa::serve).with_state(state)
+    router
+        .method_not_allowed_fallback(method_not_allowed)
+        .fallback(spa::serve)
+        .with_state(state)
+}
+
+async fn method_not_allowed() -> ApiError {
+    ApiError::MethodNotAllowed
 }
 
 /// The OpenAPI document, used to generate the committed `openapi.json`.

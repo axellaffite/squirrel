@@ -10,6 +10,8 @@ use utoipa::ToSchema;
 #[derive(Debug, thiserror::Error)]
 pub enum ApiError {
     #[error("{0}")]
+    BadRequest(String),
+    #[error("{0}")]
     Validation(String),
     #[error("invalid username or password")]
     InvalidCredentials,
@@ -19,6 +21,16 @@ pub enum ApiError {
     Forbidden,
     #[error("not found")]
     NotFound,
+    #[error("this method is not allowed here")]
+    MethodNotAllowed,
+    #[error("the request body is too large")]
+    PayloadTooLarge,
+    #[error("the request body must be JSON (Content-Type: application/json)")]
+    UnsupportedMediaType,
+    #[error("too many requests, wait a moment and try again")]
+    RateLimited,
+    #[error("the server is busy, try again in a moment")]
+    Busy,
     #[error("{0}")]
     Conflict(String),
     #[error("this invitation is invalid, expired or already used")]
@@ -43,11 +55,19 @@ pub struct ErrorDetail {
 impl ApiError {
     fn status_and_code(&self) -> (StatusCode, &'static str) {
         match self {
+            ApiError::BadRequest(_) => (StatusCode::BAD_REQUEST, "bad_request"),
             ApiError::Validation(_) => (StatusCode::UNPROCESSABLE_ENTITY, "validation_error"),
             ApiError::InvalidCredentials => (StatusCode::UNAUTHORIZED, "invalid_credentials"),
             ApiError::Unauthorized => (StatusCode::UNAUTHORIZED, "unauthorized"),
             ApiError::Forbidden => (StatusCode::FORBIDDEN, "forbidden"),
             ApiError::NotFound => (StatusCode::NOT_FOUND, "not_found"),
+            ApiError::MethodNotAllowed => (StatusCode::METHOD_NOT_ALLOWED, "method_not_allowed"),
+            ApiError::PayloadTooLarge => (StatusCode::PAYLOAD_TOO_LARGE, "payload_too_large"),
+            ApiError::UnsupportedMediaType => {
+                (StatusCode::UNSUPPORTED_MEDIA_TYPE, "unsupported_media_type")
+            }
+            ApiError::RateLimited => (StatusCode::TOO_MANY_REQUESTS, "rate_limited"),
+            ApiError::Busy => (StatusCode::SERVICE_UNAVAILABLE, "busy"),
             ApiError::Conflict(_) => (StatusCode::CONFLICT, "conflict"),
             ApiError::InvitationInvalid => (StatusCode::GONE, "invitation_invalid"),
             ApiError::Internal(_) => (StatusCode::INTERNAL_SERVER_ERROR, "internal_error"),
