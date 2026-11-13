@@ -142,3 +142,62 @@ async fn join_rejects_taken_username_without_consuming_invite(pool: PgPool) {
         .assert_status(StatusCode::CONFLICT);
     join(&pool, &token, "bob").await;
 }
+
+#[sqlx::test(migrator = "squirrel_db::MIGRATOR")]
+async fn admin_settings_are_forbidden_to_regular_users(pool: PgPool) {
+    let alice = common::server(pool.clone());
+    let alice_me = common::setup_admin(&alice, "alice").await;
+    let token = create_invitation(&alice, &alice_me).await["token"]
+        .as_str()
+        .unwrap()
+        .to_owned();
+    let (bob, bob_me) = join(&pool, &token, "bob").await;
+
+    bob.get("/api/admin/settings")
+        .await
+        .assert_status(StatusCode::FORBIDDEN);
+    bob.patch("/api/admin/settings")
+        .add_header(common::CSRF, common::csrf(&bob_me))
+        .json(&json!({ "invites_admin_only": true }))
+        .await
+        .assert_status(StatusCode::FORBIDDEN);
+    alice
+        .get("/api/admin/settings")
+        .await
+        .assert_json(&json!({ "invites_admin_only": false }));
+}
+
+#[sqlx::test(migrator = "squirrel_db::MIGRATOR")]
+async fn users_only_see_their_own_invitations(pool: PgPool) {
+    let alice = common::server(pool.clone());
+    let alice_me = common::setup_admin(&alice, "alice").await;
+    let token = create_invitation(&alice, &alice_me).await["token"]
+        .as_str()
+        .unwrap()
+        .to_owned();
+    let (bob, bob_me) = join(&pool, &token, "bob").await;
+    let bobs = create_invitation(&bob, &bob_me).await;
+    let alices_second = create_invitation(&alice, &alice_me).await;
+
+    let ids = |list: Value| -> Vec<String> {
+        list.as_array()
+            .unwrap()
+            .iter()
+            .map(|inv| inv["id"].as_str().unwrap().to_owned())
+            .collect()
+    };
+    let bob_list = ids(bob.get("/api/invitations").await.json());
+    assert_eq!(bob_list, vec![bobs["invitation"]["id"].as_str().unwrap()]);
+
+    let alice_list = ids(alice.get("/api/invitations").await.json());
+    assert_eq!(alice_list.len(), 2);
+    assert!(
+        alice_list.contains(
+            &alices_second["invitation"]["id"]
+                .as_str()
+                .unwrap()
+                .to_owned()
+        )
+    );
+    assert!(!alice_list.contains(&bobs["invitation"]["id"].as_str().unwrap().to_owned()));
+}
