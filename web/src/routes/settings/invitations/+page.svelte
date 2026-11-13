@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
 	import { api, errorMessage } from '#lib/api/client.ts';
+	import { expiryNotice, newestInvitation, validityDays } from '#lib/invitations.ts';
 	import type { components } from '#lib/api/schema.d.ts';
 	import { session } from '#lib/session.svelte.ts';
 
@@ -13,8 +14,11 @@
 	let error: string | null = $state(null);
 	let copyError: string | null = $state(null);
 	let busy = $state(false);
+	let created: Invitation | null = $state(null);
 
 	const canInvite = $derived(session.me?.can_invite ?? false);
+	// Derived from what the server returned, so it follows the server's configured validity.
+	const expiry = $derived(expiryNotice(validityDays(created ?? newestInvitation(invitations))));
 	const dateFormat = new Intl.DateTimeFormat(undefined, { dateStyle: 'medium', timeStyle: 'short' });
 
 	/** Reloads the list. Returns an error message, or null (and clears the error) on success. */
@@ -46,6 +50,7 @@
 			}
 			// Set before refreshing: the link is shown once and must survive a failed refresh.
 			newLink = `${window.location.origin}/join/${data.token}`;
+			created = data.invitation;
 			emailHint = '';
 		} catch {
 			error = errorMessage(null);
@@ -91,7 +96,7 @@
 <main class="page">
 	<h1>Invitations</h1>
 	{#if canInvite}
-		<p class="muted">Each link lets one person create an account. Links expire after 7 days.</p>
+		<p class="muted">Each link lets one person create an account. {expiry}</p>
 
 		<form onsubmit={create}>
 			<label>Who is it for? (optional) <input bind:value={emailHint} placeholder="bob@example.com" /></label>
