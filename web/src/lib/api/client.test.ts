@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
 	createApiClient,
+	errorMessage,
 	isUnauthorizedExempt,
 	onStaleCsrf,
 	onUnauthorized,
@@ -121,5 +122,34 @@ describe('session middleware', () => {
 		const [post, get] = fetchMock.mock.calls.map(([request]) => request);
 		expect(post.headers.get('X-CSRF-Token')).toBe('token-123');
 		expect(get.headers.get('X-CSRF-Token')).toBeNull();
+	});
+});
+
+describe('errorMessage', () => {
+	const body = (code: string, message = 'server text') => ({ error: { code, message } });
+	const status = (code: number) => new Response(null, { status: code });
+
+	it('shows the server message for ordinary errors', () => {
+		expect(errorMessage(body('name_conflict', 'A file with this name exists.'), status(409))).toBe(
+			'A file with this name exists.'
+		);
+	});
+
+	it.each([
+		['busy', 503, /busy/],
+		['storage_full', 507, /out of disk space/],
+		['too_many_uploads', 429, /Too many uploads/],
+		['quota_exceeded', 507, /storage quota/],
+		['hash_mismatch', 422, /changed or was damaged/],
+		['upload_incomplete', 409, /did not reach the server/]
+	])('words %s for people', (code, httpStatus, expected) => {
+		expect(errorMessage(body(code), status(httpStatus))).toMatch(expected);
+	});
+
+	it('falls back on the status when there is no envelope', () => {
+		expect(errorMessage(null, status(429))).toBe('Too many attempts. Wait a moment and try again.');
+		expect(errorMessage(null, status(503))).toMatch(/busy/);
+		expect(errorMessage(null, status(500))).toBe('Something went wrong. Please try again.');
+		expect(errorMessage(null)).toBe('Something went wrong. Please try again.');
 	});
 });
