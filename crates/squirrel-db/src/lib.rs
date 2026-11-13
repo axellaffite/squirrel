@@ -1,5 +1,6 @@
 //! Postgres repositories and migrations.
 
+pub mod blobs;
 mod error;
 pub mod invitations;
 pub mod nodes;
