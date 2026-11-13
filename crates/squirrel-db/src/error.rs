@@ -25,3 +25,12 @@ pub enum DbError {
 pub(crate) fn is_unique_violation(err: &sqlx::Error, constraint: &str) -> bool {
     matches!(err, sqlx::Error::Database(db) if db.is_unique_violation() && db.constraint() == Some(constraint))
 }
+
+/// Maps a violation of the live-name unique index to `NameConflict`.
+pub(crate) fn name_conflict_or(err: sqlx::Error) -> DbError {
+    if is_unique_violation(&err, crate::nodes::LIVE_NAME_CONSTRAINT) {
+        DbError::NameConflict
+    } else {
+        err.into()
+    }
+}

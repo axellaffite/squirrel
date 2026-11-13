@@ -4,6 +4,7 @@ mod error;
 pub mod invitations;
 pub mod nodes;
 mod page;
+pub mod quota;
 pub mod sessions;
 pub mod settings;
 pub mod users;
