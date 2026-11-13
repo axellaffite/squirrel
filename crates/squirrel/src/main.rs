@@ -1,3 +1,5 @@
+mod tasks;
+
 use std::net::SocketAddr;
 use std::path::PathBuf;
 use std::time::Duration;
@@ -9,12 +11,9 @@ use squirrel_api::{ApiConfig, AppState, SetupToken, TrustedProxies};
 use squirrel_storage::BlobStore;
 use tokio::net::TcpListener;
 use tokio::sync::watch;
-use tokio::time::MissedTickBehavior;
 use tower_http::trace::TraceLayer;
 use tracing_subscriber::EnvFilter;
 
-/// How often expired sessions are purged from the database.
-const SESSION_CLEANUP_INTERVAL: Duration = Duration::from_secs(60 * 60);
 /// In-flight requests get this long to finish after a shutdown signal.
 const SHUTDOWN_DEADLINE: Duration = Duration::from_secs(10);
 /// A configured setup token shorter than this is guessable; warn about it.
@@ -116,13 +115,13 @@ async fn serve(args: ServeArgs) -> anyhow::Result<()> {
         ..ApiConfig::default()
     };
     let state = AppState::new(pool.clone(), storage, config);
-    let app = squirrel_api::router(state).layer(TraceLayer::new_for_http());
+    let app = squirrel_api::router(state.clone()).layer(TraceLayer::new_for_http());
 
     // Precompute the timing-equalizer hash so the first unknown-user login isn't slower.
     tokio::task::spawn_blocking(squirrel_auth::warm_up)
         .await
         .context("warming up auth")?;
-    spawn_session_cleanup(pool);
+    tasks::spawn_all(&state);
 
     let listener = TcpListener::bind(args.bind)
         .await
@@ -186,22 +185,6 @@ async fn resolve_setup_token(
 
 fn is_weak_setup_token(token: &str) -> bool {
     token.chars().count() < MIN_SETUP_TOKEN_LEN
-}
-
-/// Periodically deletes expired sessions. Failures are logged and retried next tick.
-fn spawn_session_cleanup(pool: PgPool) {
-    tokio::spawn(async move {
-        let mut ticker = tokio::time::interval(SESSION_CLEANUP_INTERVAL);
-        ticker.set_missed_tick_behavior(MissedTickBehavior::Delay);
-        loop {
-            ticker.tick().await;
-            match squirrel_db::sessions::delete_expired(&pool).await {
-                Ok(0) => {}
-                Ok(deleted) => tracing::info!(deleted, "removed expired sessions"),
-                Err(err) => tracing::error!(error = %err, "failed to remove expired sessions"),
-            }
-        }
-    });
 }
 
 async fn shutdown_signal() {
