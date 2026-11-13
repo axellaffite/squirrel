@@ -7,7 +7,7 @@ use squirrel_core::{DisplayName, Password, Username};
 use squirrel_db::users::{self, NewUser};
 
 use crate::blocking::run_blocking;
-use crate::dto::{AccountRequest, MeResponse, SetupStatus};
+use crate::dto::{AccountRequest, MeResponse, SetupRequest, SetupStatus};
 use crate::error::{ApiError, ErrorBody};
 use crate::session;
 use crate::state::AppState;
@@ -20,9 +20,10 @@ pub async fn setup_status(State(state): State<AppState>) -> Result<Json<SetupSta
 
 #[utoipa::path(
     post, path = "/api/setup/admin", tag = "setup",
-    request_body = AccountRequest,
+    request_body = SetupRequest,
     responses(
         (status = 201, body = MeResponse, description = "Admin created and logged in"),
+        (status = 403, body = ErrorBody, description = "Missing or wrong setup code"),
         (status = 409, body = ErrorBody, description = "Setup already complete"),
         (status = 422, body = ErrorBody),
     )
@@ -31,12 +32,23 @@ pub async fn create_first_admin(
     State(state): State<AppState>,
     jar: CookieJar,
     headers: HeaderMap,
-    Json(request): Json<AccountRequest>,
+    Json(request): Json<SetupRequest>,
 ) -> Result<(StatusCode, CookieJar, Json<MeResponse>), ApiError> {
+    // Completed setup answers 409 whatever the token: once an account exists the
+    // token is useless, so this leaks nothing an attacker could not see in /status.
     if users::any_exists(&state.pool).await? {
         return Err(ApiError::Conflict("setup is already complete".into()));
     }
-    let new_user = prepare_new_user(request).await?;
+    // Checked before any validation or hashing, so guessing costs no CPU.
+    let token_ok = state
+        .config
+        .setup_token
+        .as_ref()
+        .is_some_and(|expected| expected.matches(&request.setup_token));
+    if !token_ok {
+        return Err(ApiError::Forbidden);
+    }
+    let new_user = prepare_new_user(request.into_account()).await?;
     let user = users::create_first_admin(&state.pool, &new_user).await?;
     let (cookie, me) = session::start(&state, &user, &headers).await?;
     Ok((StatusCode::CREATED, jar.add(cookie), Json(me)))

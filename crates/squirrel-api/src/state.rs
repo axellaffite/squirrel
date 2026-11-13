@@ -3,6 +3,8 @@ use std::sync::Arc;
 use sqlx::PgPool;
 use time::Duration;
 
+use crate::setup_token::SetupToken;
+
 #[derive(Debug, Clone, Copy)]
 pub struct RateLimit {
     /// One request token is replenished every `replenish_every_secs` seconds. Must be > 0.
@@ -19,6 +21,8 @@ pub struct ApiConfig {
     pub invitation_ttl: Duration,
     /// Per-IP limit on credential endpoints (login, setup, join). `None` disables it.
     pub login_rate_limit: Option<RateLimit>,
+    /// Required to create the first administrator. `None` refuses setup entirely.
+    pub setup_token: Option<SetupToken>,
 }
 
 impl Default for ApiConfig {
@@ -32,6 +36,7 @@ impl Default for ApiConfig {
                 replenish_every_secs: 2,
                 burst: 10,
             }),
+            setup_token: None,
         }
     }
 }

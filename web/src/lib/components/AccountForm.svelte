@@ -1,4 +1,5 @@
 <script lang="ts">
+	import type { Snippet } from 'svelte';
 	import type { components } from '#lib/api/schema.d.ts';
 	import { validateAccount, type AccountFields } from '#lib/validation.ts';
 
@@ -8,9 +9,11 @@
 		submitLabel: string;
 		/** Returns an error message to display, or null on success. */
 		onsubmit: (account: AccountRequest) => Promise<string | null>;
+		/** Extra fields rendered above the account fields (e.g. the setup code). */
+		before?: Snippet;
 	}
 
-	let { submitLabel, onsubmit }: Props = $props();
+	let { submitLabel, onsubmit, before }: Props = $props();
 
 	let fields: AccountFields = $state({
 		username: '',
@@ -41,6 +44,7 @@
 </script>
 
 <form onsubmit={handleSubmit} novalidate>
+	{@render before?.()}
 	<label>Username <input name="username" autocomplete="username" bind:value={fields.username} required /></label>
 	<label>Display name <input name="display_name" autocomplete="name" bind:value={fields.displayName} required /></label>
 	<label>Password <input name="password" type="password" autocomplete="new-password" bind:value={fields.password} required /></label>
