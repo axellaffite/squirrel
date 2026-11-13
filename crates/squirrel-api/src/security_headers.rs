@@ -40,7 +40,8 @@ fn header_layer(name: HeaderName, value: &'static str) -> SetResponseHeaderLayer
     SetResponseHeaderLayer::if_not_present(name, HeaderValue::from_static(value))
 }
 
-/// API responses carry session-specific data: never cache them.
+/// API responses carry session-specific data: they are never cached unless the
+/// handler set its own policy (file content revalidates with ETags).
 async fn no_store_for_api(request: Request, next: Next) -> Response {
     let path = request.uri().path();
     let is_api = path == "/api" || path.starts_with("/api/");
@@ -49,8 +50,10 @@ async fn no_store_for_api(request: Request, next: Next) -> Response {
         return response;
     }
     let (mut parts, body) = response.into_parts();
-    parts
-        .headers
-        .insert(CACHE_CONTROL, HeaderValue::from_static("no-store"));
+    if !parts.headers.contains_key(CACHE_CONTROL) {
+        parts
+            .headers
+            .insert(CACHE_CONTROL, HeaderValue::from_static("no-store"));
+    }
     Response::from_parts(parts, body)
 }

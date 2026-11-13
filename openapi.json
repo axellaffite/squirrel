@@ -813,6 +813,18 @@
     },
     {
       "name": "admin"
+    },
+    {
+      "name": "files"
+    },
+    {
+      "name": "uploads"
+    },
+    {
+      "name": "trash"
+    },
+    {
+      "name": "storage"
     }
   ]
 }

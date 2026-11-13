@@ -33,11 +33,20 @@ use utoipa_axum::routes;
 const CREDENTIAL_BODY_LIMIT: usize = 16 * 1024;
 const API_BODY_LIMIT: usize = 64 * 1024;
 const API_TIMEOUT: Duration = Duration::from_secs(30);
+/// Room for framing beyond one chunk in a chunk upload body.
+const CHUNK_BODY_MARGIN: usize = 64 * 1024;
+/// One chunk (8 MiB by default) must arrive within this time (~28 KB/s at
+/// worst): long enough for slow links, short enough to bound slow-loris bodies.
+const CHUNK_TIMEOUT: Duration = Duration::from_secs(5 * 60);
 
 #[derive(OpenApi)]
 #[openapi(
     info(title = "Squirrel API", version = "0.1.0"),
-    tags((name = "system"), (name = "setup"), (name = "auth"), (name = "invitations"), (name = "admin"))
+    tags(
+        (name = "system"), (name = "setup"), (name = "auth"), (name = "invitations"),
+        (name = "admin"), (name = "files"), (name = "uploads"), (name = "trash"),
+        (name = "storage")
+    )
 )]
 struct ApiDoc;
 
@@ -66,18 +75,21 @@ pub fn openapi() -> utoipa::openapi::OpenApi {
 /// - [`json_routes`]: ordinary JSON endpoints (64 KiB body, 30 s timeout). The default.
 /// - [`credential_routes`]: endpoints that receive passwords or one-time secrets
 ///   (16 KiB body, 30 s timeout, per-route rate limits).
-/// - `transfer_routes` (none yet): uploads, downloads and streaming. They will get
-///   their own large body limit and no request timeout, so they must not be added
-///   to the groups above, whose limits would cut transfers short. Merge them here
-///   without the timeout layer.
+/// - [`transfer_routes`]: upload chunks, upload completion and file downloads. No
+///   30 s timeout (hashing or streaming a large file takes longer); chunks get a
+///   body limit of one chunk and their own timeout. Never add them to the groups
+///   above, whose limits would cut transfers short.
 fn api_router(config: &ApiConfig) -> OpenApiRouter<AppState> {
+    let timed =
+        json_routes()
+            .merge(credential_routes(config))
+            .layer(TimeoutLayer::with_status_code(
+                StatusCode::REQUEST_TIMEOUT,
+                API_TIMEOUT,
+            ));
     OpenApiRouter::with_openapi(ApiDoc::openapi())
-        .merge(json_routes())
-        .merge(credential_routes(config))
-        .layer(TimeoutLayer::with_status_code(
-            StatusCode::REQUEST_TIMEOUT,
-            API_TIMEOUT,
-        ))
+        .merge(timed)
+        .merge(transfer_routes(config))
 }
 
 /// Ordinary JSON endpoints: small bodies. The request timeout is applied by [`api_router`].
@@ -120,4 +132,22 @@ fn credential_routes(config: &ApiConfig) -> OpenApiRouter<AppState> {
         .merge(join_routes);
     rate_limit::apply(routes, config.login_rate_limit, Method::POST, trusted)
         .layer(DefaultBodyLimit::max(CREDENTIAL_BODY_LIMIT))
+}
+
+/// Uploads and downloads. Still session- and CSRF-protected by their extractors.
+fn transfer_routes(config: &ApiConfig) -> OpenApiRouter<AppState> {
+    let chunk_limit = usize::try_from(config.upload_chunk_size)
+        .unwrap_or(usize::MAX)
+        .saturating_add(CHUNK_BODY_MARGIN);
+    let chunks = OpenApiRouter::new()
+        // Task 13: put_chunk
+        .layer(DefaultBodyLimit::max(chunk_limit))
+        .layer(TimeoutLayer::with_status_code(
+            StatusCode::REQUEST_TIMEOUT,
+            CHUNK_TIMEOUT,
+        ));
+    let long_running = OpenApiRouter::new()
+        // Task 14: complete_upload; Task 19: file_content
+        .layer(DefaultBodyLimit::max(API_BODY_LIMIT));
+    chunks.merge(long_running)
 }

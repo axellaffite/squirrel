@@ -1,6 +1,8 @@
 #![allow(dead_code)]
 
 use std::net::SocketAddr;
+use std::path::Path;
+use std::sync::Arc;
 
 use axum::Extension;
 use axum::extract::ConnectInfo;
@@ -9,10 +11,15 @@ use axum_test::TestServer;
 use serde_json::{Value, json};
 use sqlx::PgPool;
 use squirrel_api::{ApiConfig, AppState, SetupToken};
+use squirrel_storage::BlobStore;
+use tempfile::TempDir;
 
 pub const PASSWORD: &str = "correct horse battery";
 pub const CSRF: HeaderName = HeaderName::from_static("x-csrf-token");
 pub const SETUP_TOKEN: &str = "test-setup-token";
+
+/// Small chunks keep multi-chunk tests fast.
+pub const TEST_CHUNK_SIZE: u64 = 1024;
 
 pub fn test_config() -> ApiConfig {
     ApiConfig {
@@ -20,25 +27,81 @@ pub fn test_config() -> ApiConfig {
         login_rate_limit: None,
         join_check_rate_limit: None,
         setup_token: Some(SetupToken::new(SETUP_TOKEN)),
+        upload_chunk_size: TEST_CHUNK_SIZE,
+        min_free_bytes: 0,
         ..ApiConfig::default()
     }
 }
 
-pub fn server(pool: PgPool) -> TestServer {
-    server_with(pool, test_config())
+/// One server: database, data directory and state. Each [`Instance::browser`]
+/// has its own cookie jar but shares the storage, like real browsers.
+pub struct Instance {
+    pub state: AppState,
+    data: Arc<TempDir>,
 }
 
-/// Each TestServer has its own cookie jar, i.e. acts as one browser.
-/// A real `ConnectInfo` extension (not `MockConnectInfo`) is inserted, because
-/// tower_governor's peer-IP key extractor only reads `ConnectInfo<SocketAddr>`.
+impl Instance {
+    pub fn new(pool: PgPool) -> Self {
+        Self::with_config(pool, test_config())
+    }
+
+    pub fn with_config(pool: PgPool, config: ApiConfig) -> Self {
+        let data = Arc::new(tempfile::tempdir().expect("temporary data dir"));
+        let storage = BlobStore::open(data.path()).expect("blob store");
+        Self {
+            state: AppState::new(pool, storage, config),
+            data,
+        }
+    }
+
+    pub fn data_dir(&self) -> &Path {
+        self.data.path()
+    }
+
+    /// A real `ConnectInfo` is inserted (not `MockConnectInfo`) because
+    /// tower_governor's peer-IP key extractor only reads `ConnectInfo<SocketAddr>`.
+    /// The router holds the data directory, so it lives as long as any browser does.
+    pub fn browser(&self) -> TestServer {
+        let app = squirrel_api::router(self.state.clone())
+            .layer(Extension(self.data.clone()))
+            .layer(Extension(ConnectInfo(SocketAddr::from((
+                [127, 0, 0, 1],
+                40_000,
+            )))));
+        TestServer::builder()
+            .save_cookies()
+            .build(app)
+            .expect("test server builds")
+    }
+}
+
+pub fn server(pool: PgPool) -> TestServer {
+    Instance::new(pool).browser()
+}
+
 pub fn server_with(pool: PgPool, config: ApiConfig) -> TestServer {
-    let app = squirrel_api::router(AppState::new(pool, config)).layer(Extension(ConnectInfo(
-        SocketAddr::from(([127, 0, 0, 1], 40_000)),
-    )));
-    TestServer::builder()
-        .save_cookies()
-        .build(app)
-        .expect("test server builds")
+    Instance::with_config(pool, config).browser()
+}
+
+/// Alice (admin) and Bob (invited by her), each in their own browser.
+pub async fn two_users(instance: &Instance) -> ((TestServer, Value), (TestServer, Value)) {
+    let alice = instance.browser();
+    let alice_me = setup_admin(&alice, "alice").await;
+    let created: Value = alice
+        .post("/api/invitations")
+        .add_header(CSRF, csrf(&alice_me))
+        .json(&json!({}))
+        .await
+        .json();
+    let token = created["token"].as_str().expect("token");
+    let bob = instance.browser();
+    let joined = bob
+        .post(&format!("/api/join/{token}"))
+        .json(&account("bob"))
+        .await;
+    joined.assert_status(StatusCode::CREATED);
+    let bob_me = joined.json();
+    ((alice, alice_me), (bob, bob_me))
 }
 
 pub fn account(username: &str) -> Value {

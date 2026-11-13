@@ -1,10 +1,12 @@
 use std::net::SocketAddr;
+use std::path::PathBuf;
 use std::time::Duration;
 
 use anyhow::Context;
 use clap::{ArgAction, Args, Parser, Subcommand};
 use sqlx::PgPool;
 use squirrel_api::{ApiConfig, AppState, SetupToken, TrustedProxies};
+use squirrel_storage::BlobStore;
 use tokio::net::TcpListener;
 use tokio::sync::watch;
 use tokio::time::MissedTickBehavior;
@@ -60,6 +62,10 @@ struct ServeArgs {
     /// believed for rate limiting and logs. Empty: use the TCP peer address.
     #[arg(long, env = "SQUIRREL_TRUSTED_PROXIES", default_value = "")]
     trusted_proxies: TrustedProxies,
+    /// Where blobs and in-progress uploads live (created if missing). `tmp/` and
+    /// `blobs/` inside it must be on the same filesystem.
+    #[arg(long, env = "SQUIRREL_DATA_DIR")]
+    data_dir: PathBuf,
 }
 
 #[tokio::main]
@@ -100,6 +106,8 @@ async fn migrate(args: &DatabaseArgs) -> anyhow::Result<()> {
 
 async fn serve(args: ServeArgs) -> anyhow::Result<()> {
     let pool = connect_and_migrate(&args.database).await?;
+    let storage = BlobStore::open(&args.data_dir)
+        .with_context(|| format!("opening data directory {}", args.data_dir.display()))?;
     let setup_token = resolve_setup_token(&pool, args.setup_token.clone()).await?;
     let config = ApiConfig {
         cookie_secure: args.cookie_secure,
@@ -107,8 +115,8 @@ async fn serve(args: ServeArgs) -> anyhow::Result<()> {
         trusted_proxies: args.trusted_proxies.clone(),
         ..ApiConfig::default()
     };
-    let app =
-        squirrel_api::router(AppState::new(pool.clone(), config)).layer(TraceLayer::new_for_http());
+    let state = AppState::new(pool.clone(), storage, config);
+    let app = squirrel_api::router(state).layer(TraceLayer::new_for_http());
 
     // Precompute the timing-equalizer hash so the first unknown-user login isn't slower.
     tokio::task::spawn_blocking(squirrel_auth::warm_up)

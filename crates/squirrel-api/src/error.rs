@@ -3,8 +3,11 @@ use axum::http::StatusCode;
 use axum::response::{IntoResponse, Response};
 use serde::Serialize;
 use squirrel_auth::HashError;
-use squirrel_core::{DisplayNameError, PasswordError, UsernameError};
+use squirrel_core::{
+    ContentHashError, DisplayNameError, NodeNameError, PasswordError, UsernameError,
+};
 use squirrel_db::DbError;
+use squirrel_storage::StorageError;
 use utoipa::ToSchema;
 
 #[derive(Debug, thiserror::Error)]
@@ -42,6 +45,14 @@ pub enum ApiError {
     NameConflict,
     #[error("this would exceed your storage quota")]
     QuotaExceeded,
+    #[error("the server is out of disk space")]
+    StorageFull,
+    #[error("the uploaded content does not match its SHA-256; upload it again")]
+    HashMismatch,
+    #[error("{0}")]
+    UploadIncomplete(String),
+    #[error("the requested range is not satisfiable")]
+    RangeNotSatisfiable,
     #[error("internal server error")]
     Internal(#[source] anyhow::Error),
 }
@@ -80,6 +91,12 @@ impl ApiError {
             ApiError::InvitationInvalid => (StatusCode::GONE, "invitation_invalid"),
             ApiError::NameConflict => (StatusCode::CONFLICT, "name_conflict"),
             ApiError::QuotaExceeded => (StatusCode::INSUFFICIENT_STORAGE, "quota_exceeded"),
+            ApiError::StorageFull => (StatusCode::INSUFFICIENT_STORAGE, "storage_full"),
+            ApiError::HashMismatch => (StatusCode::UNPROCESSABLE_ENTITY, "hash_mismatch"),
+            ApiError::UploadIncomplete(_) => (StatusCode::CONFLICT, "upload_incomplete"),
+            ApiError::RangeNotSatisfiable => {
+                (StatusCode::RANGE_NOT_SATISFIABLE, "range_not_satisfiable")
+            }
             ApiError::Internal(_) => (StatusCode::INTERNAL_SERVER_ERROR, "internal_error"),
         }
     }
@@ -124,6 +141,19 @@ impl From<DbError> for ApiError {
     }
 }
 
+impl From<StorageError> for ApiError {
+    fn from(err: StorageError) -> Self {
+        match err {
+            StorageError::NoSpace => {
+                tracing::error!("disk full while writing to the data directory");
+                ApiError::StorageFull
+            }
+            StorageError::NotFound => ApiError::NotFound,
+            other => ApiError::Internal(other.into()),
+        }
+    }
+}
+
 impl From<HashError> for ApiError {
     fn from(err: HashError) -> Self {
         ApiError::Internal(err.into())
@@ -139,7 +169,13 @@ macro_rules! validation_from {
         }
     )*};
 }
-validation_from!(UsernameError, PasswordError, DisplayNameError);
+validation_from!(
+    UsernameError,
+    PasswordError,
+    DisplayNameError,
+    NodeNameError,
+    ContentHashError
+);
 
 #[cfg(test)]
 mod tests {
@@ -150,5 +186,45 @@ mod tests {
         let err = ApiError::from(DbError::Busy(sqlx::Error::PoolTimedOut));
         assert!(matches!(err, ApiError::Busy));
         assert_eq!(err.status_and_code().0, StatusCode::SERVICE_UNAVAILABLE);
+    }
+
+    #[test]
+    fn storage_failures_are_507_with_distinct_codes() {
+        assert_eq!(
+            ApiError::from(StorageError::NoSpace).status_and_code(),
+            (StatusCode::INSUFFICIENT_STORAGE, "storage_full")
+        );
+        assert_eq!(
+            ApiError::from(DbError::QuotaExceeded).status_and_code(),
+            (StatusCode::INSUFFICIENT_STORAGE, "quota_exceeded")
+        );
+    }
+
+    #[test]
+    fn upload_failures_have_stable_codes() {
+        assert_eq!(
+            ApiError::HashMismatch.status_and_code(),
+            (StatusCode::UNPROCESSABLE_ENTITY, "hash_mismatch")
+        );
+        assert_eq!(
+            ApiError::UploadIncomplete("x".into()).status_and_code(),
+            (StatusCode::CONFLICT, "upload_incomplete")
+        );
+        assert_eq!(
+            ApiError::from(DbError::NameConflict).status_and_code(),
+            (StatusCode::CONFLICT, "name_conflict")
+        );
+        assert_eq!(
+            ApiError::RangeNotSatisfiable.status_and_code(),
+            (StatusCode::RANGE_NOT_SATISFIABLE, "range_not_satisfiable")
+        );
+    }
+
+    #[test]
+    fn a_missing_blob_or_upload_file_is_not_found() {
+        assert_eq!(
+            ApiError::from(StorageError::NotFound).status_and_code().0,
+            StatusCode::NOT_FOUND
+        );
     }
 }
