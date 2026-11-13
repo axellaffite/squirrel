@@ -1,0 +1,40 @@
+[workspace]
+resolver = "3"
+members = ["crates/*"]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.94"
+
+[workspace.dependencies]
+anyhow = "1"
+argon2 = { version = "0.5", features = ["std"] }
+axum = { version = "0.8", features = ["macros"] }
+axum-extra = { version = "0.10", features = ["cookie"] }
+axum-test = "17"
+base64 = "0.22"
+clap = { version = "4", features = ["derive", "env"] }
+rand = "0.8"
+rust-embed = { version = "8", features = ["mime-guess"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+sha2 = "0.10"
+sqlx = { version = "0.8", default-features = false, features = ["runtime-tokio", "postgres", "uuid", "time", "migrate", "macros"] }
+subtle = "2"
+thiserror = "2"
+time = { version = "0.3", features = ["serde", "serde-well-known"] }
+tokio = { version = "1", features = ["full"] }
+tower = "0.5"
+tower-http = { version = "0.6", features = ["trace"] }
+tower_governor = "0.7"
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter", "json"] }
+utoipa = { version = "5", features = ["uuid", "time"] }
+utoipa-axum = "0.2"
+uuid = { version = "1", features = ["v7", "serde"] }
+
+squirrel-core = { path = "crates/squirrel-core" }
+squirrel-auth = { path = "crates/squirrel-auth" }
+squirrel-db = { path = "crates/squirrel-db" }
+squirrel-api = { path = "crates/squirrel-api" }

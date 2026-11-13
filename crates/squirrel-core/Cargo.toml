@@ -1,0 +1,10 @@
+[package]
+name = "squirrel-core"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+serde.workspace = true
+thiserror.workspace = true
+utoipa.workspace = true
