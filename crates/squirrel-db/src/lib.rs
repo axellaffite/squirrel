@@ -2,6 +2,8 @@
 
 mod error;
 pub mod invitations;
+pub mod sessions;
+pub mod settings;
 pub mod users;
 
 pub use error::DbError;
