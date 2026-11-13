@@ -2,6 +2,7 @@ use std::sync::Arc;
 use std::time::Duration as StdDuration;
 
 use sqlx::PgPool;
+use squirrel_storage::BlobStore;
 use time::Duration;
 use tokio::sync::Semaphore;
 
@@ -37,6 +38,16 @@ pub struct ApiConfig {
     pub hash_concurrency: usize,
     /// How long a request waits for a hashing slot before answering 503 `busy`.
     pub hash_wait: StdDuration,
+    /// Chunk size announced to clients. Every chunk but the last has exactly this size.
+    pub upload_chunk_size: u64,
+    /// Upload sessions expire after this long without a chunk.
+    pub upload_ttl: Duration,
+    /// Uploads are refused when they would leave less than this free on the data disk.
+    pub min_free_bytes: u64,
+    /// Trash entries older than this are deleted for good.
+    pub trash_retention: Duration,
+    /// Blobs are deleted only after this long without any reference.
+    pub blob_gc_grace: Duration,
 }
 
 /// Available cores clamped to 2..=4: enough for a few simultaneous logins,
@@ -67,6 +78,11 @@ impl Default for ApiConfig {
             setup_token: None,
             hash_concurrency: default_hash_concurrency(),
             hash_wait: StdDuration::from_secs(5),
+            upload_chunk_size: 8 * 1024 * 1024,
+            upload_ttl: Duration::hours(24),
+            min_free_bytes: 1024 * 1024 * 1024,
+            trash_retention: Duration::days(30),
+            blob_gc_grace: Duration::hours(24),
         }
     }
 }
@@ -74,15 +90,18 @@ impl Default for ApiConfig {
 #[derive(Clone)]
 pub struct AppState {
     pub pool: PgPool,
+    /// Blobs and in-progress uploads on disk.
+    pub storage: BlobStore,
     pub config: Arc<ApiConfig>,
     /// Bounds concurrent password hashing (see [`ApiConfig::hash_concurrency`]).
     pub hash_permits: Arc<Semaphore>,
 }
 
 impl AppState {
-    pub fn new(pool: PgPool, config: ApiConfig) -> Self {
+    pub fn new(pool: PgPool, storage: BlobStore, config: ApiConfig) -> Self {
         Self {
             pool,
+            storage,
             hash_permits: Arc::new(Semaphore::new(config.hash_concurrency)),
             config: Arc::new(config),
         }
