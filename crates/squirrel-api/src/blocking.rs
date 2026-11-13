@@ -29,7 +29,6 @@ where
 }
 
 /// Runs blocking filesystem work on the blocking pool and maps its errors.
-#[allow(dead_code, reason = "used by the upload routes (Task 12)")]
 pub async fn run_storage<T, F>(work: F) -> Result<T, ApiError>
 where
     F: FnOnce() -> squirrel_storage::Result<T> + Send + 'static,

@@ -5,6 +5,7 @@ mod client_ip;
 mod dto;
 mod error;
 mod extract;
+mod files_dto;
 mod input;
 mod rate_limit;
 mod routes;
@@ -108,6 +109,11 @@ fn json_routes() -> OpenApiRouter<AppState> {
         .routes(routes!(
             routes::admin::get_settings,
             routes::admin::update_settings
+        ))
+        .routes(routes!(routes::uploads::create_upload))
+        .routes(routes!(
+            routes::uploads::upload_status,
+            routes::uploads::abort_upload
         ))
         .layer(DefaultBodyLimit::max(API_BODY_LIMIT))
 }
