@@ -175,20 +175,21 @@ pub async fn find_by_id(pool: &PgPool, id: Uuid) -> Result<Option<UserRecord>, D
 /// Increments the failure counter (saturating at 1000); from the threshold on, locks
 /// the account for 1, 2, 4… minutes, capped at one hour. The exponent is clamped so
 /// the interval arithmetic cannot overflow however many failures accumulate.
-pub async fn record_login_failure(pool: &PgPool, id: Uuid) -> Result<(), DbError> {
-    sqlx::query(
+/// Returns the new failure count (compare with [`LOCKOUT_THRESHOLD`]).
+pub async fn record_login_failure(pool: &PgPool, id: Uuid) -> Result<i32, DbError> {
+    let failed_logins = sqlx::query_scalar(
         "UPDATE users SET \
            failed_logins = LEAST(failed_logins + 1, 1000), \
            locked_until = CASE WHEN failed_logins + 1 >= $2 \
              THEN now() + LEAST(interval '1 minute' * power(2, LEAST(failed_logins + 1 - $2, 6)), interval '1 hour') \
              ELSE locked_until END \
-         WHERE id = $1",
+         WHERE id = $1 RETURNING failed_logins",
     )
     .bind(id)
     .bind(LOCKOUT_THRESHOLD)
-    .execute(pool)
+    .fetch_one(pool)
     .await?;
-    Ok(())
+    Ok(failed_logins)
 }
 
 pub async fn record_login_success(pool: &PgPool, id: Uuid) -> Result<(), DbError> {

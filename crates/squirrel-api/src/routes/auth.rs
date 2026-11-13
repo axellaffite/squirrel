@@ -8,6 +8,7 @@ use squirrel_db::{sessions, users};
 use time::OffsetDateTime;
 
 use crate::blocking::run_blocking;
+use crate::client_ip::ClientIp;
 use crate::dto::{LoginRequest, MeResponse};
 use crate::error::{ApiError, ErrorBody};
 use crate::extract::CurrentUser;
@@ -40,9 +41,17 @@ pub async fn logout(
 pub async fn logout_all(
     State(state): State<AppState>,
     current: CurrentUser,
+    client_ip: ClientIp,
     jar: CookieJar,
 ) -> Result<(StatusCode, CookieJar), ApiError> {
-    sessions::delete_all_for_user(&state.pool, current.user.id).await?;
+    let revoked = sessions::delete_all_for_user(&state.pool, current.user.id).await?;
+    tracing::info!(
+        user_id = %current.user.id,
+        username = %current.user.username,
+        %client_ip,
+        revoked,
+        "logged out of all sessions"
+    );
     Ok((StatusCode::NO_CONTENT, jar.remove(session::removal())))
 }
 
@@ -54,30 +63,55 @@ const MAX_PASSWORD_BYTES: usize = Password::MAX_LEN * 4;
     responses((status = 200, body = MeResponse), (status = 401, body = ErrorBody), (status = 429)))]
 pub async fn login(
     State(state): State<AppState>,
+    client_ip: ClientIp,
     jar: CookieJar,
     headers: HeaderMap,
     ApiJson(request): ApiJson<LoginRequest>,
 ) -> Result<(CookieJar, Json<MeResponse>), ApiError> {
     if request.password.len() > MAX_PASSWORD_BYTES {
+        tracing::warn!(%client_ip, reason = "password too long", "login failed");
         return Err(ApiError::InvalidCredentials);
     }
-    let user = match Username::parse(&request.username) {
-        Ok(username) => users::find_by_username(&state.pool, &username).await?,
-        Err(_) => None,
+    // Only a syntactically valid username is logged: a password typed into the
+    // username field must never reach the logs.
+    let username = Username::parse(&request.username).ok();
+    let logged_name = username.as_ref().map_or("<invalid>", Username::as_str);
+    let user = match &username {
+        Some(username) => users::find_by_username(&state.pool, username).await?,
+        None => None,
     };
     let now = OffsetDateTime::now_utc();
     let Some(user) = user.filter(|u| !u.is_disabled() && !u.is_locked(now)) else {
-        run_blocking(move || burn_verification_time(&request.password)).await?;
+        tracing::warn!(
+            username = logged_name,
+            %client_ip,
+            reason = "unknown, disabled or locked account",
+            "login failed"
+        );
+        burn_verification(request.password).await?;
         return Err(ApiError::InvalidCredentials);
     };
 
-    let stored_hash = user.password_hash.clone();
-    let valid = run_blocking(move || verify_password(&request.password, &stored_hash)).await??;
-    if !valid {
-        users::record_login_failure(&state.pool, user.id).await?;
+    if !verify(request.password, user.password_hash.clone()).await? {
+        let failures = users::record_login_failure(&state.pool, user.id).await?;
+        tracing::warn!(user_id = %user.id, username = %user.username, %client_ip,
+            failures, reason = "wrong password", "login failed");
+        if failures >= users::LOCKOUT_THRESHOLD {
+            tracing::warn!(user_id = %user.id, username = %user.username, %client_ip,
+                failures, "account temporarily locked after repeated login failures");
+        }
         return Err(ApiError::InvalidCredentials);
     }
     users::record_login_success(&state.pool, user.id).await?;
+    tracing::info!(user_id = %user.id, username = %user.username, %client_ip, "login succeeded");
     let (cookie, me) = session::start(&state, &user, &headers, &jar).await?;
     Ok((jar.add(cookie), Json(me)))
+}
+
+async fn burn_verification(password: String) -> Result<(), ApiError> {
+    run_blocking(move || burn_verification_time(&password)).await
+}
+
+async fn verify(password: String, stored_hash: String) -> Result<bool, ApiError> {
+    Ok(run_blocking(move || verify_password(&password, &stored_hash)).await??)
 }

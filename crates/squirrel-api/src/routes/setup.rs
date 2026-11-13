@@ -7,6 +7,7 @@ use squirrel_core::{DisplayName, Password, Username};
 use squirrel_db::users::{self, NewUser};
 
 use crate::blocking::run_blocking;
+use crate::client_ip::ClientIp;
 use crate::dto::{AccountRequest, MeResponse, SetupRequest, SetupStatus};
 use crate::error::{ApiError, ErrorBody};
 use crate::input::ApiJson;
@@ -31,6 +32,7 @@ pub async fn setup_status(State(state): State<AppState>) -> Result<Json<SetupSta
 )]
 pub async fn create_first_admin(
     State(state): State<AppState>,
+    client_ip: ClientIp,
     jar: CookieJar,
     headers: HeaderMap,
     ApiJson(request): ApiJson<SetupRequest>,
@@ -47,10 +49,13 @@ pub async fn create_first_admin(
         .as_ref()
         .is_some_and(|expected| expected.matches(&request.setup_token));
     if !token_ok {
+        tracing::warn!(%client_ip, "setup attempt with a missing or wrong setup code");
         return Err(ApiError::Forbidden);
     }
     let new_user = prepare_new_user(request.into_account()).await?;
     let user = users::create_first_admin(&state.pool, &new_user).await?;
+    tracing::info!(user_id = %user.id, username = %user.username, %client_ip,
+        "setup completed: first administrator created");
     let (cookie, me) = session::start(&state, &user, &headers, &jar).await?;
     Ok((StatusCode::CREATED, jar.add(cookie), Json(me)))
 }
