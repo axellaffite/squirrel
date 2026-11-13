@@ -1,0 +1,109 @@
+import type { components } from '#lib/api/schema.d.ts';
+import { isServerRetryable, isTransient } from '#lib/upload/errors.ts';
+import { chunkRange, missingChunks } from '#lib/upload/plan.ts';
+import { delay, runPool, withRetry, type RetryOptions } from '#lib/upload/retry.ts';
+
+export { UploadError } from '#lib/upload/errors.ts';
+
+type FileNode = components['schemas']['NodeDto'];
+type UploadSession = components['schemas']['UploadSessionDto'];
+
+export type StartResult = { kind: 'deduplicated'; node: FileNode } | { kind: 'session'; session: UploadSession };
+
+export interface UploadTransport {
+	start(
+		request: { parent_id: string; name: string; size: number; sha256: string },
+		signal: AbortSignal
+	): Promise<StartResult>;
+	putChunk(uploadId: string, index: number, body: Blob, signal: AbortSignal): Promise<void>;
+	complete(uploadId: string, signal: AbortSignal): Promise<FileNode>;
+	abort(uploadId: string): Promise<void>;
+}
+
+export type UploadPhase = 'hashing' | 'uploading' | 'finishing';
+
+export interface UploadProgress {
+	phase: UploadPhase;
+	done: number;
+	total: number;
+}
+
+export interface UploadDeps {
+	transport: UploadTransport;
+	hash: (file: Blob, onProgress: (hashed: number) => void, signal: AbortSignal) => Promise<string>;
+	sleep?: (ms: number) => Promise<void>;
+	/** Chunks in flight at once. */
+	concurrency?: number;
+	/** Attempts per request for transient failures. */
+	maxAttempts?: number;
+}
+
+export interface UploadResult {
+	node: FileNode;
+	deduplicated: boolean;
+}
+
+/**
+ * Hash → start (dedup or session) → send missing chunks with retries → complete.
+ * A failure keeps the server session, so calling again resumes where it stopped;
+ * cancelling (aborting `signal`) deletes it.
+ */
+export async function uploadFile(
+	file: File,
+	parentId: string,
+	deps: UploadDeps,
+	onProgress: (progress: UploadProgress) => void,
+	signal: AbortSignal
+): Promise<UploadResult> {
+	const total = file.size;
+	const retry = retryOptions(deps);
+	const sha256 = await deps.hash(file, (done) => onProgress({ phase: 'hashing', done, total }), signal);
+	const request = { parent_id: parentId, name: file.name, size: total, sha256 };
+	// Starting is idempotent: the server hands back the open session for the same file.
+	const started = await withRetry(() => deps.transport.start(request, signal), retry, signal);
+	if (started.kind === 'deduplicated') return { node: started.node, deduplicated: true };
+
+	const { session } = started;
+	try {
+		await sendMissingChunks(file, session, deps, retry, onProgress, signal);
+		onProgress({ phase: 'finishing', done: total, total });
+		// Retried only when the server answered "busy": after a lost response the file may already exist.
+		const completeRetry = { ...retry, retryable: isServerRetryable };
+		const node = await withRetry(() => deps.transport.complete(session.upload_id, signal), completeRetry, signal);
+		return { node, deduplicated: false };
+	} catch (error) {
+		if (signal.aborted) await deps.transport.abort(session.upload_id).catch(() => undefined);
+		throw error;
+	}
+}
+
+function retryOptions(deps: UploadDeps): RetryOptions {
+	return { attempts: deps.maxAttempts ?? 4, sleep: deps.sleep ?? delay, retryable: isTransient };
+}
+
+async function sendMissingChunks(
+	file: File,
+	session: UploadSession,
+	deps: UploadDeps,
+	retry: RetryOptions,
+	onProgress: (progress: UploadProgress) => void,
+	signal: AbortSignal
+): Promise<void> {
+	const total = file.size;
+	const missing = missingChunks(session.chunk_count, session.received_chunks);
+	const pending = missing.reduce((sum, i) => sum + rangeLength(chunkRange(i, session.chunk_size, total)), 0);
+	let sent = total - pending;
+	onProgress({ phase: 'uploading', done: sent, total });
+	await runPool(missing, deps.concurrency ?? 3, async (index) => {
+		// Exact sizes: the server rejects a chunk whose length is not the expected one.
+		const [start, end] = chunkRange(index, session.chunk_size, total);
+		const body = file.slice(start, end);
+		await withRetry(() => deps.transport.putChunk(session.upload_id, index, body, signal), retry, signal);
+		sent += end - start;
+		onProgress({ phase: 'uploading', done: sent, total });
+	});
+}
+
+function rangeLength([start, end]: [number, number]): number {
+	return end - start;
+}
