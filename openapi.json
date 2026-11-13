@@ -1161,6 +1161,16 @@
               }
             }
           },
+          "429": {
+            "description": "rate_limited, or too_many_uploads: too many open sessions",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
           "507": {
             "description": "quota_exceeded or storage_full",
             "content": {
@@ -1309,7 +1319,7 @@
             "description": "Chunk stored"
           },
           "404": {
-            "description": "",
+            "description": "No such upload (or it was aborted, completed or expired)",
             "content": {
               "application/json": {
                 "schema": {
@@ -1329,7 +1339,7 @@
             }
           },
           "413": {
-            "description": "",
+            "description": "Longer than the planned chunk",
             "content": {
               "application/json": {
                 "schema": {
@@ -1340,6 +1350,16 @@
           },
           "422": {
             "description": "Wrong index or length",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "busy: too many chunk uploads at once",
             "content": {
               "application/json": {
                 "schema": {
@@ -1412,6 +1432,16 @@
           },
           "422": {
             "description": "hash_mismatch: the upload was discarded",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "busy: too many completions at once; retry",
             "content": {
               "application/json": {
                 "schema": {

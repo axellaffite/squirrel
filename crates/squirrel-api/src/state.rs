@@ -8,6 +8,7 @@ use tokio::sync::Semaphore;
 
 use crate::client_ip::TrustedProxies;
 use crate::setup_token::SetupToken;
+use crate::upload_runtime::{UploadLimits, UploadRuntime};
 
 #[derive(Debug, Clone, Copy)]
 pub struct RateLimit {
@@ -42,8 +43,12 @@ pub struct ApiConfig {
     pub upload_chunk_size: u64,
     /// Upload sessions expire after this long without a chunk.
     pub upload_ttl: Duration,
-    /// Uploads are refused when they would leave less than this free on the data disk.
+    /// Uploads are refused when they would leave less than this free on the
+    /// data disk, counting what open sessions may still write; chunk writes are
+    /// refused below it.
     pub min_free_bytes: u64,
+    /// Concurrency, session and rate limits for uploads.
+    pub upload_limits: UploadLimits,
     /// Trash entries older than this are deleted for good.
     pub trash_retention: Duration,
     /// Blobs are deleted only after this long without any reference.
@@ -81,6 +86,7 @@ impl Default for ApiConfig {
             upload_chunk_size: 8 * 1024 * 1024,
             upload_ttl: Duration::hours(24),
             min_free_bytes: 1024 * 1024 * 1024,
+            upload_limits: UploadLimits::default(),
             trash_retention: Duration::days(30),
             blob_gc_grace: Duration::hours(24),
         }
@@ -95,6 +101,8 @@ pub struct AppState {
     pub config: Arc<ApiConfig>,
     /// Bounds concurrent password hashing (see [`ApiConfig::hash_concurrency`]).
     pub hash_permits: Arc<Semaphore>,
+    /// Per-upload locks and upload concurrency limits.
+    pub uploads: Arc<UploadRuntime>,
 }
 
 impl AppState {
@@ -103,6 +111,7 @@ impl AppState {
             pool,
             storage,
             hash_permits: Arc::new(Semaphore::new(config.hash_concurrency)),
+            uploads: Arc::new(UploadRuntime::new(&config.upload_limits)),
             config: Arc::new(config),
         }
     }

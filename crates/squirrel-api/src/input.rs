@@ -1,7 +1,6 @@
 //! `Json`, `Path`, `Query` and raw body extractors whose rejections use the API error envelope
 //! instead of axum's plain-text bodies.
 
-use axum::body::Bytes;
 use axum::extract::rejection::{JsonRejection, PathRejection, QueryRejection};
 use axum::extract::{FromRequest, FromRequestParts, Request};
 use axum::http::StatusCode;
@@ -76,25 +75,5 @@ where
             .await
             .map(|axum::extract::Query(value)| Self(value))
             .map_err(|_| ApiError::BadRequest("invalid query parameter".into()))
-    }
-}
-
-/// Raw request body (upload chunks). Over the route's body limit → 413 envelope.
-pub struct ApiBytes(pub Bytes);
-
-impl<S: Send + Sync> FromRequest<S> for ApiBytes {
-    type Rejection = ApiError;
-
-    async fn from_request(req: Request, state: &S) -> Result<Self, Self::Rejection> {
-        Bytes::from_request(req, state)
-            .await
-            .map(Self)
-            .map_err(|rejection| {
-                if rejection.status() == StatusCode::PAYLOAD_TOO_LARGE {
-                    ApiError::PayloadTooLarge
-                } else {
-                    ApiError::BadRequest("the request body could not be read".into())
-                }
-            })
     }
 }

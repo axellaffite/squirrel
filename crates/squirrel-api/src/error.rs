@@ -37,6 +37,8 @@ pub enum ApiError {
     RateLimited,
     #[error("the server is busy, try again in a moment")]
     Busy,
+    #[error("too many uploads in progress; finish or cancel some first")]
+    TooManyUploads,
     #[error("{0}")]
     Conflict(String),
     #[error("this invitation is invalid, expired or already used")]
@@ -87,6 +89,7 @@ impl ApiError {
             }
             ApiError::RateLimited => (StatusCode::TOO_MANY_REQUESTS, "rate_limited"),
             ApiError::Busy => (StatusCode::SERVICE_UNAVAILABLE, "busy"),
+            ApiError::TooManyUploads => (StatusCode::TOO_MANY_REQUESTS, "too_many_uploads"),
             ApiError::Conflict(_) => (StatusCode::CONFLICT, "conflict"),
             ApiError::InvitationInvalid => (StatusCode::GONE, "invitation_invalid"),
             ApiError::NameConflict => (StatusCode::CONFLICT, "name_conflict"),
@@ -131,6 +134,7 @@ impl From<DbError> for ApiError {
                 ApiError::Validation(other.to_string())
             }
             other @ DbError::UploadBusy => ApiError::Conflict(other.to_string()),
+            DbError::TooManyUploads => ApiError::TooManyUploads,
             DbError::Busy(source) => {
                 tracing::warn!(error = %source, "database conflict persisted after retries");
                 ApiError::Busy

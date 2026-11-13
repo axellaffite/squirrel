@@ -80,16 +80,15 @@ pub async fn link_existing(
     Ok(Some(node))
 }
 
-/// Resumes the caller's open session for this exact file, or opens a new one
-/// (after checking disk space and quota) with its sparse upload file.
+/// Resumes the caller's session for this exact file, or opens a new one (after
+/// checking disk space, quota and the open-session cap) with its sparse file.
 pub async fn open_session(
     state: &AppState,
     owner_id: Uuid,
     input: &UploadInput,
 ) -> Result<UploadRecord, ApiError> {
-    let pool = &state.pool;
     let resumable = uploads::find_resumable(
-        pool,
+        &state.pool,
         owner_id,
         input.parent_id,
         &input.name,
@@ -98,47 +97,89 @@ pub async fn open_session(
     )
     .await?;
     if let Some(existing) = resumable {
-        // Recreates the file if it went missing; keeps received bytes otherwise.
-        let (store, id, size) = (state.storage.clone(), existing.id, input.size);
-        run_storage(move || store.create_upload(id, size)).await?;
-        return Ok(existing);
+        return resume(state, existing, input.size).await;
     }
+    // One admission at a time, so parallel creations cannot all count the
+    // same free space.
+    let _admission = state.uploads.admission.lock().await;
     ensure_disk_space(state, input.size).await?;
-    let plan = UploadPlan::new(input.size, state.config.upload_chunk_size)
-        .ok_or_else(|| ApiError::Internal(anyhow::anyhow!("upload_chunk_size must be positive")))?;
-    let chunk_count = i32::try_from(plan.chunk_count())
-        .map_err(|_| ApiError::Validation("the file is too large".into()))?;
-    let chunk_size = i64::try_from(plan.chunk_size())
-        .map_err(|_| ApiError::Internal(anyhow::anyhow!("upload_chunk_size is too large")))?;
-    let record = uploads::create(
-        pool,
-        &NewUpload {
-            owner_id,
-            parent_id: input.parent_id,
-            name: &input.name,
-            sha256: &input.hash,
-            size: input.db_size(),
-            chunk_size,
-            chunk_count,
-            expires_at: OffsetDateTime::now_utc() + state.config.upload_ttl,
-        },
-    )
-    .await?;
-    let (store, id) = (state.storage.clone(), record.id);
-    if let Err(err) = run_storage(move || store.create_upload(id, plan.size())).await {
-        uploads::delete(pool, record.id).await?;
+    let record = create_session(state, owner_id, input).await?;
+    let (store, id, size) = (state.storage.clone(), record.id, input.size);
+    if let Err(err) = run_storage(move || store.create_upload(id, size)).await {
+        uploads::delete(&state.pool, record.id).await?;
         return Err(err);
     }
     tracing::info!(user_id = %owner_id, upload_id = %record.id, size = input.size, "upload started");
     Ok(record)
 }
 
+async fn create_session(
+    state: &AppState,
+    owner_id: Uuid,
+    input: &UploadInput,
+) -> Result<UploadRecord, ApiError> {
+    let plan = UploadPlan::new(input.size, state.config.upload_chunk_size)
+        .ok_or_else(|| ApiError::Internal(anyhow::anyhow!("upload_chunk_size must be positive")))?;
+    let chunk_count = i32::try_from(plan.chunk_count())
+        .map_err(|_| ApiError::Validation("the file is too large".into()))?;
+    let chunk_size = i64::try_from(plan.chunk_size())
+        .map_err(|_| ApiError::Internal(anyhow::anyhow!("upload_chunk_size is too large")))?;
+    let new = NewUpload {
+        owner_id,
+        parent_id: input.parent_id,
+        name: &input.name,
+        sha256: &input.hash,
+        size: input.db_size(),
+        chunk_size,
+        chunk_count,
+        expires_at: OffsetDateTime::now_utc() + state.config.upload_ttl,
+        max_open: state.config.upload_limits.max_open_per_user,
+    };
+    Ok(uploads::create(&state.pool, &new).await?)
+}
+
+/// Returns an existing session. An open one gets its upload file back if it
+/// went missing, and then forgets its received chunks so the client re-sends
+/// them. A session being completed is returned untouched.
+async fn resume(
+    state: &AppState,
+    existing: UploadRecord,
+    size: u64,
+) -> Result<UploadRecord, ApiError> {
+    if !existing.is_open() {
+        return Ok(existing);
+    }
+    // Under the chunk lock, so a completion cannot start meanwhile.
+    let _guard = state.uploads.locks.chunk(existing.id).await;
+    let current = uploads::find(&state.pool, existing.owner_id, existing.id)
+        .await?
+        .ok_or(ApiError::NotFound)?;
+    if !current.is_open() {
+        return Ok(current);
+    }
+    let (store, id) = (state.storage.clone(), current.id);
+    let recreated = run_storage(move || store.create_upload(id, size)).await?;
+    if recreated {
+        tracing::warn!(upload_id = %id, "upload file was missing; chunks must be sent again");
+        uploads::clear_chunks(&state.pool, id).await?;
+    }
+    Ok(current)
+}
+
+/// Refuses an upload that would leave less than `min_free_bytes`, counting
+/// the bytes open sessions have declared but not written yet (their sparse
+/// files grow into that space).
 async fn ensure_disk_space(state: &AppState, size: u64) -> Result<(), ApiError> {
     let store = state.storage.clone();
     let available = run_storage(move || store.available_space()).await?;
-    if available.saturating_sub(state.config.min_free_bytes) < size {
+    let pending = u64::try_from(uploads::pending_bytes(&state.pool).await?).unwrap_or_default();
+    let usable = available
+        .saturating_sub(pending)
+        .saturating_sub(state.config.min_free_bytes);
+    if usable < size {
         tracing::warn!(
             available,
+            pending,
             size,
             "refusing upload: not enough free disk space"
         );

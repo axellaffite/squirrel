@@ -20,6 +20,10 @@ const CLAIM_MIN_TTL: &str = "6 hours";
 /// A `completing` session whose claim expired this long ago was abandoned
 /// (crash mid-completion); only then may cleanup remove it.
 const STALE_CLAIM_GRACE: &str = "1 day";
+/// A claim older than this was abandoned (crash, panic, cancelled completion):
+/// the session may be claimed again. In-process, the API's per-upload lock
+/// keeps a live completion from being claimed twice whatever its duration.
+const CLAIM_LEASE: &str = "10 minutes";
 
 #[derive(Debug, Clone, FromRow)]
 pub struct UploadRecord {
@@ -53,16 +57,38 @@ pub struct NewUpload<'a> {
     pub chunk_size: i64,
     pub chunk_count: i32,
     pub expires_at: OffsetDateTime,
+    /// The owner may have at most this many unexpired sessions.
+    pub max_open: i64,
 }
 
-/// Opens a session after checking the destination and that the file fits the
-/// quota together with the owner's other open sessions.
+/// Why [`record_chunk`] did or did not record a chunk.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ChunkWrite {
+    Recorded,
+    /// The session is being completed.
+    Busy,
+    /// The session is gone: completed, aborted or expired.
+    Gone,
+}
+
+/// Opens a session after checking the destination, the owner's number of open
+/// sessions, and that the file fits the quota together with those sessions.
 pub async fn create(pool: &PgPool, new: &NewUpload<'_>) -> Result<UploadRecord, DbError> {
     let mut tx = pool.begin().await?;
     let quota_bytes = quota::lock_owner(&mut tx, new.owner_id).await?;
     find_live_folder(&mut *tx, new.owner_id, new.parent_id)
         .await?
         .ok_or(DbError::NotFound)?;
+    // Serialized per owner by `lock_owner`.
+    let open: i64 = sqlx::query_scalar(
+        "SELECT count(*) FROM upload_sessions WHERE owner_id = $1 AND expires_at > now()",
+    )
+    .bind(new.owner_id)
+    .fetch_one(&mut *tx)
+    .await?;
+    if open >= new.max_open {
+        return Err(DbError::TooManyUploads);
+    }
     quota::ensure_room(
         &mut tx,
         new.owner_id,
@@ -92,7 +118,9 @@ pub async fn create(pool: &PgPool, new: &NewUpload<'_>) -> Result<UploadRecord, 
     Ok(record)
 }
 
-/// The owner's newest open, unexpired session for exactly this file and destination.
+/// The owner's newest unexpired session for exactly this file and destination,
+/// open or being completed (a client resuming after a dropped completion gets
+/// the session back and may complete it again).
 pub async fn find_resumable(
     pool: &PgPool,
     owner_id: Uuid,
@@ -104,7 +132,7 @@ pub async fn find_resumable(
     let sql = format!(
         "SELECT {UPLOAD_COLUMNS} FROM upload_sessions \
          WHERE owner_id = $1 AND parent_id = $2 AND name = $3 AND sha256 = $4 AND size = $5 \
-           AND status = 'open' AND expires_at > now() \
+           AND expires_at > now() \
          ORDER BY created_at DESC LIMIT 1"
     );
     Ok(sqlx::query_as::<_, UploadRecord>(&sql)
@@ -143,16 +171,16 @@ pub async fn received_chunks(pool: &PgPool, upload_id: Uuid) -> Result<Vec<i32>,
     .await?)
 }
 
-/// Marks a chunk as received and pushes the expiry back. `false` when the
-/// session is gone, expired or being completed; `InvalidInput` when `index` is
-/// outside `0..chunk_count`.
+/// Marks a chunk as received and pushes the expiry back. [`ChunkWrite::Busy`]
+/// while the session is being completed, [`ChunkWrite::Gone`] when it is
+/// missing or expired; `InvalidInput` when `index` is outside `0..chunk_count`.
 pub async fn record_chunk(
     pool: &PgPool,
     owner_id: Uuid,
     id: Uuid,
     index: i32,
     expires_at: OffsetDateTime,
-) -> Result<bool, DbError> {
+) -> Result<ChunkWrite, DbError> {
     let mut tx = pool.begin().await?;
     let chunk_count: Option<i32> = sqlx::query_scalar(
         "UPDATE upload_sessions SET expires_at = $3 \
@@ -165,7 +193,11 @@ pub async fn record_chunk(
     .fetch_optional(&mut *tx)
     .await?;
     let Some(chunk_count) = chunk_count else {
-        return Ok(false);
+        drop(tx);
+        return Ok(match find(pool, owner_id, id).await? {
+            Some(_) => ChunkWrite::Busy,
+            None => ChunkWrite::Gone,
+        });
     };
     if !(0..chunk_count).contains(&index) {
         return Err(DbError::InvalidInput("chunk index out of range"));
@@ -178,12 +210,39 @@ pub async fn record_chunk(
     .execute(&mut *tx)
     .await?;
     tx.commit().await?;
-    Ok(true)
+    Ok(ChunkWrite::Recorded)
+}
+
+/// Forgets every received chunk (the upload file was recreated empty).
+pub async fn clear_chunks(pool: &PgPool, upload_id: Uuid) -> Result<(), DbError> {
+    sqlx::query("DELETE FROM upload_chunks WHERE upload_id = $1")
+        .bind(upload_id)
+        .execute(pool)
+        .await?;
+    Ok(())
+}
+
+/// Bytes that unexpired sessions (all owners) have declared but not yet
+/// written: what their sparse files may still claim on disk. A received chunk
+/// counts as `chunk_size` bytes, so the short last chunk is slightly
+/// over-counted as written.
+pub async fn pending_bytes(pool: &PgPool) -> Result<i64, DbError> {
+    Ok(sqlx::query_scalar(
+        "SELECT COALESCE(SUM(GREATEST(s.size - COALESCE(c.n, 0) * s.chunk_size, 0)), 0)::BIGINT \
+           FROM upload_sessions s \
+           LEFT JOIN (SELECT upload_id, count(*) AS n FROM upload_chunks GROUP BY upload_id) c \
+             ON c.upload_id = s.id \
+          WHERE s.expires_at > now()",
+    )
+    .fetch_one(pool)
+    .await?)
 }
 
 /// Moves an open session to `completing`, so concurrent completes, chunk writes
-/// and aborts are refused. The session then expires at `expires_at` but no
-/// sooner than [`CLAIM_MIN_TTL`] from now. `NotFound` or `UploadBusy` otherwise.
+/// and aborts are refused. A `completing` session whose claim is older than
+/// [`CLAIM_LEASE`] (its completion died) is claimed again. The session then
+/// expires at `expires_at` but no sooner than [`CLAIM_MIN_TTL`] from now.
+/// `NotFound` or `UploadBusy` otherwise.
 pub async fn claim(
     pool: &PgPool,
     owner_id: Uuid,
@@ -191,9 +250,10 @@ pub async fn claim(
     expires_at: OffsetDateTime,
 ) -> Result<UploadRecord, DbError> {
     let sql = format!(
-        "UPDATE upload_sessions SET status = 'completing', \
+        "UPDATE upload_sessions SET status = 'completing', claimed_at = now(), \
            expires_at = GREATEST($3, now() + $4::interval) \
-         WHERE id = $1 AND owner_id = $2 AND status = 'open' AND expires_at > now() \
+         WHERE id = $1 AND owner_id = $2 AND expires_at > now() \
+           AND (status = 'open' OR claimed_at IS NULL OR claimed_at <= now() - $5::interval) \
          RETURNING {UPLOAD_COLUMNS}"
     );
     let claimed = sqlx::query_as::<_, UploadRecord>(&sql)
@@ -201,6 +261,7 @@ pub async fn claim(
         .bind(owner_id)
         .bind(expires_at)
         .bind(CLAIM_MIN_TTL)
+        .bind(CLAIM_LEASE)
         .fetch_optional(pool)
         .await?;
     match claimed {
@@ -219,7 +280,7 @@ pub async fn release(
     expires_at: OffsetDateTime,
 ) -> Result<bool, DbError> {
     let result = sqlx::query(
-        "UPDATE upload_sessions SET status = 'open', expires_at = $3 \
+        "UPDATE upload_sessions SET status = 'open', claimed_at = NULL, expires_at = $3 \
          WHERE id = $1 AND owner_id = $2 AND status = 'completing'",
     )
     .bind(id)

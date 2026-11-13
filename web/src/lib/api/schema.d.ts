@@ -1507,6 +1507,15 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorBody"];
                 };
             };
+            /** @description rate_limited, or too_many_uploads: too many open sessions */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
             /** @description quota_exceeded or storage_full */
             507: {
                 headers: {
@@ -1611,6 +1620,7 @@ export interface operations {
                 };
                 content?: never;
             };
+            /** @description No such upload (or it was aborted, completed or expired) */
             404: {
                 headers: {
                     [name: string]: unknown;
@@ -1628,6 +1638,7 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorBody"];
                 };
             };
+            /** @description Longer than the planned chunk */
             413: {
                 headers: {
                     [name: string]: unknown;
@@ -1638,6 +1649,15 @@ export interface operations {
             };
             /** @description Wrong index or length */
             422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description busy: too many chunk uploads at once */
+            503: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -1695,6 +1715,15 @@ export interface operations {
             };
             /** @description hash_mismatch: the upload was discarded */
             422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description busy: too many completions at once; retry */
+            503: {
                 headers: {
                     [name: string]: unknown;
                 };

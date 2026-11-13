@@ -22,11 +22,15 @@ mod session;
 mod setup_token;
 mod spa;
 mod state;
+mod upload_runtime;
 
 pub use client_ip::{TrustedProxies, TrustedProxiesError};
 pub use error::{ApiError, ErrorBody};
 pub use setup_token::SetupToken;
 pub use state::{ApiConfig, AppState, RateLimit};
+pub use upload_runtime::{
+    ChunkGuard, CompletionGuard, Slot, Slots, UploadLimits, UploadLocks, UploadRuntime, UserRate,
+};
 
 use std::time::Duration;
 

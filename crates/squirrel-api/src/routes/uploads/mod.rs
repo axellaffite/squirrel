@@ -25,6 +25,7 @@ use crate::state::AppState;
         (status = 201, body = UploadSessionDto, description = "Session opened or resumed: send the missing chunks"),
         (status = 404, body = ErrorBody, description = "Destination folder not found"),
         (status = 422, body = ErrorBody),
+        (status = 429, body = ErrorBody, description = "rate_limited, or too_many_uploads: too many open sessions"),
         (status = 507, body = ErrorBody, description = "quota_exceeded or storage_full"),
     ))]
 pub async fn create_upload(
@@ -32,8 +33,14 @@ pub async fn create_upload(
     current: CurrentUser,
     ApiJson(request): ApiJson<CreateUploadRequest>,
 ) -> Result<Response, ApiError> {
-    let input = create::UploadInput::parse(request)?;
     let owner_id = current.user.id;
+    if let Some(limiter) = &state.uploads.create_rate
+        && !limiter.check(owner_id)
+    {
+        tracing::warn!(user_id = %owner_id, "upload creation rate limited");
+        return Err(ApiError::RateLimited);
+    }
+    let input = create::UploadInput::parse(request)?;
     if let Some(node) = create::link_existing(&state, owner_id, &input).await? {
         let body = DeduplicatedUpload {
             deduplicated: true,

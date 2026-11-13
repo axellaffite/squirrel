@@ -100,6 +100,7 @@ async fn parallel_upload_sessions_never_exceed_the_quota(pool: PgPool) {
                 chunk_size: 10,
                 chunk_count: 3,
                 expires_at: OffsetDateTime::now_utc() + Duration::hours(1),
+                max_open: 100,
             };
             uploads::create(&pool, &new).await
         });
