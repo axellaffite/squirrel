@@ -108,3 +108,20 @@ async fn gc_waits_for_the_grace_period(pool: PgPool) {
             .contains(&ContentHash::parse(&files::sha256_hex(b"recent")).unwrap())
     );
 }
+
+#[sqlx::test(migrator = "squirrel_db::MIGRATOR")]
+async fn one_undeletable_orphan_does_not_stop_the_sweep(pool: PgPool) {
+    let instance = common::Instance::new(pool);
+    let uploads_dir = instance.data_dir().join("tmp/uploads");
+    // A directory under an upload id cannot be removed as a file.
+    let stuck = Uuid::now_v7();
+    std::fs::create_dir(uploads_dir.join(stuck.to_string())).unwrap();
+    let orphan = Uuid::now_v7();
+    instance.state.storage.create_upload(orphan, 1).unwrap();
+
+    let cleanup = maintenance::purge_expired_uploads(&instance.state)
+        .await
+        .unwrap();
+    assert_eq!((cleanup.files_removed, cleanup.files_failed), (1, 1));
+    assert!(!uploads_dir.join(orphan.to_string()).exists());
+}
