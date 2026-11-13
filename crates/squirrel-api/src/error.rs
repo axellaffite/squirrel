@@ -19,6 +19,9 @@ pub enum ApiError {
     Unauthorized,
     #[error("you are not allowed to do this")]
     Forbidden,
+    /// The `X-CSRF-Token` header is missing or does not match the session.
+    #[error("your session needs to be refreshed, please retry")]
+    CsrfInvalid,
     #[error("not found")]
     NotFound,
     #[error("this method is not allowed here")]
@@ -60,6 +63,7 @@ impl ApiError {
             ApiError::InvalidCredentials => (StatusCode::UNAUTHORIZED, "invalid_credentials"),
             ApiError::Unauthorized => (StatusCode::UNAUTHORIZED, "unauthorized"),
             ApiError::Forbidden => (StatusCode::FORBIDDEN, "forbidden"),
+            ApiError::CsrfInvalid => (StatusCode::FORBIDDEN, "csrf_invalid"),
             ApiError::NotFound => (StatusCode::NOT_FOUND, "not_found"),
             ApiError::MethodNotAllowed => (StatusCode::METHOD_NOT_ALLOWED, "method_not_allowed"),
             ApiError::PayloadTooLarge => (StatusCode::PAYLOAD_TOO_LARGE, "payload_too_large"),

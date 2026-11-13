@@ -74,12 +74,12 @@ describe('session middleware', () => {
 		expect(stale).not.toHaveBeenCalled();
 	});
 
-	it('reloads the session after a 403 forbidden on a state-changing request', async () => {
+	it('reloads the session after a 403 csrf_invalid on a state-changing request', async () => {
 		const stale = vi.fn();
 		onStaleCsrf(stale);
-		const { client } = clientAnswering(() => envelope(403, 'forbidden'));
+		const { client } = clientAnswering(() => envelope(403, 'csrf_invalid'));
 		const { error } = await client.POST('/api/invitations', { body: {} });
-		expect(error).toEqual({ error: { code: 'forbidden', message: 'forbidden' } });
+		expect(error).toEqual({ error: { code: 'csrf_invalid', message: 'csrf_invalid' } });
 		await vi.waitFor(() => expect(stale).toHaveBeenCalledOnce());
 	});
 
@@ -87,7 +87,7 @@ describe('session middleware', () => {
 		let release: () => void = () => undefined;
 		const stale = vi.fn(() => new Promise<void>((resolve) => (release = resolve)));
 		onStaleCsrf(stale);
-		const { client } = clientAnswering(() => envelope(403, 'forbidden'));
+		const { client } = clientAnswering(() => envelope(403, 'csrf_invalid'));
 		await Promise.all([
 			client.POST('/api/invitations', { body: {} }),
 			client.POST('/api/auth/logout')
@@ -101,8 +101,10 @@ describe('session middleware', () => {
 	it('does not reload after a 403 on a GET or with another error code', async () => {
 		const stale = vi.fn();
 		onStaleCsrf(stale);
-		const forbiddenGet = clientAnswering(() => envelope(403, 'forbidden'));
-		await forbiddenGet.client.GET('/api/admin/settings');
+		const csrfGet = clientAnswering(() => envelope(403, 'csrf_invalid'));
+		await csrfGet.client.GET('/api/admin/settings');
+		const forbidden = clientAnswering(() => envelope(403, 'forbidden'));
+		await forbidden.client.POST('/api/invitations', { body: {} });
 		const otherCode = clientAnswering(() => envelope(403, 'something_else'));
 		await otherCode.client.POST('/api/invitations', { body: {} });
 		const notJson = clientAnswering(() => new Response('nope', { status: 403 }));

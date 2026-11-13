@@ -56,7 +56,7 @@ impl FromRequestParts<AppState> for CurrentUser {
                 .map(|v| v.as_bytes())
                 .unwrap_or_default();
             if !bool::from(provided.ct_eq(session.csrf_token.as_bytes())) {
-                return Err(ApiError::Forbidden);
+                return Err(ApiError::CsrfInvalid);
             }
         }
 
