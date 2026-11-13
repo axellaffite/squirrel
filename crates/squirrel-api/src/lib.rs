@@ -2,6 +2,12 @@
 
 mod blocking;
 mod client_ip;
+#[allow(
+    dead_code,
+    unused_imports,
+    reason = "used by the content route (Task 19)"
+)]
+mod content;
 mod cursor;
 mod dto;
 mod error;
