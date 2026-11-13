@@ -1,0 +1,29 @@
+[package]
+name = "squirrel-api"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+anyhow.workspace = true
+axum.workspace = true
+axum-extra.workspace = true
+rust-embed.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+sqlx.workspace = true
+squirrel-auth.workspace = true
+squirrel-core.workspace = true
+squirrel-db.workspace = true
+subtle.workspace = true
+thiserror.workspace = true
+time.workspace = true
+tokio.workspace = true
+tower_governor.workspace = true
+tracing.workspace = true
+utoipa.workspace = true
+utoipa-axum.workspace = true
+uuid.workspace = true
+
+[dev-dependencies]
+axum-test.workspace = true
