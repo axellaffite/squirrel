@@ -1,6 +1,9 @@
 use serde::{Deserialize, Serialize};
 use squirrel_core::Role;
+use squirrel_db::invitations::{InvitationRecord, InvitationStatus};
+use squirrel_db::settings::InstanceSettings;
 use squirrel_db::users::UserRecord;
+use time::OffsetDateTime;
 use utoipa::ToSchema;
 use uuid::Uuid;
 
@@ -42,4 +45,85 @@ impl MeResponse {
 #[derive(Debug, Serialize, ToSchema)]
 pub struct SetupStatus {
     pub needs_setup: bool,
+}
+
+#[derive(Debug, Deserialize, ToSchema)]
+pub struct CreateInvitationRequest {
+    /// Optional reminder of who the invitation is for. Not used to send email.
+    #[serde(default)]
+    pub email_hint: Option<String>,
+}
+
+#[derive(Debug, Clone, Copy, Serialize, ToSchema)]
+#[serde(rename_all = "lowercase")]
+pub enum InvitationStatusDto {
+    Active,
+    Used,
+    Expired,
+    Revoked,
+}
+
+impl From<InvitationStatus> for InvitationStatusDto {
+    fn from(status: InvitationStatus) -> Self {
+        match status {
+            InvitationStatus::Active => Self::Active,
+            InvitationStatus::Used => Self::Used,
+            InvitationStatus::Expired => Self::Expired,
+            InvitationStatus::Revoked => Self::Revoked,
+        }
+    }
+}
+
+#[derive(Debug, Serialize, ToSchema)]
+pub struct InvitationDto {
+    pub id: Uuid,
+    pub email_hint: Option<String>,
+    pub status: InvitationStatusDto,
+    pub used_count: i32,
+    pub max_uses: i32,
+    #[serde(with = "time::serde::rfc3339")]
+    #[schema(value_type = String, format = DateTime)]
+    pub expires_at: OffsetDateTime,
+    #[serde(with = "time::serde::rfc3339")]
+    #[schema(value_type = String, format = DateTime)]
+    pub created_at: OffsetDateTime,
+}
+
+impl InvitationDto {
+    pub fn new(record: &InvitationRecord, now: OffsetDateTime) -> Self {
+        Self {
+            id: record.id,
+            email_hint: record.email_hint.clone(),
+            status: record.status(now).into(),
+            used_count: record.used_count,
+            max_uses: record.max_uses,
+            expires_at: record.expires_at,
+            created_at: record.created_at,
+        }
+    }
+}
+
+#[derive(Debug, Serialize, ToSchema)]
+pub struct CreatedInvitation {
+    pub invitation: InvitationDto,
+    /// Shown once. Build the link as `<origin>/join/<token>`.
+    pub token: String,
+}
+
+#[derive(Debug, Serialize, ToSchema)]
+pub struct JoinStatus {
+    pub valid: bool,
+}
+
+#[derive(Debug, Serialize, Deserialize, ToSchema)]
+pub struct InstanceSettingsDto {
+    pub invites_admin_only: bool,
+}
+
+impl From<InstanceSettings> for InstanceSettingsDto {
+    fn from(settings: InstanceSettings) -> Self {
+        Self {
+            invites_admin_only: settings.invites_admin_only,
+        }
+    }
 }

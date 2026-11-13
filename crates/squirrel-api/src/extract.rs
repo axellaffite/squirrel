@@ -18,6 +18,16 @@ pub struct CurrentUser {
     pub session: SessionRecord,
 }
 
+impl CurrentUser {
+    pub fn require_admin(&self) -> Result<(), ApiError> {
+        if self.user.role().is_admin() {
+            Ok(())
+        } else {
+            Err(ApiError::Forbidden)
+        }
+    }
+}
+
 impl FromRequestParts<AppState> for CurrentUser {
     type Rejection = ApiError;
 
