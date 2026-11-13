@@ -1,0 +1,15 @@
+[package]
+name = "squirrel-db"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+squirrel-core.workspace = true
+sqlx.workspace = true
+thiserror.workspace = true
+time.workspace = true
+uuid.workspace = true
+
+[dev-dependencies]
+tokio.workspace = true
