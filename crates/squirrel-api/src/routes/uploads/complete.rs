@@ -9,6 +9,8 @@ use squirrel_db::quota::{self, Pending};
 use squirrel_db::uploads::{self, UploadRecord};
 use squirrel_db::{DbError, blobs};
 use squirrel_storage::mime;
+use std::time::Duration;
+
 use time::OffsetDateTime;
 use uuid::Uuid;
 
@@ -36,6 +38,9 @@ fn discard(err: impl Into<ApiError>) -> Failure {
     Failure::Discard(err.into())
 }
 
+/// How long a completion waits for in-flight chunk writes of the same upload.
+const LOCK_WAIT: Duration = Duration::from_secs(5);
+
 #[utoipa::path(post, path = "/api/uploads/{id}/complete", tag = "uploads",
     params(("id" = Uuid, Path, description = "Upload id")),
     responses(
@@ -43,6 +48,7 @@ fn discard(err: impl Into<ApiError>) -> Failure {
         (status = 404, body = ErrorBody),
         (status = 409, body = ErrorBody, description = "upload_incomplete, already completing, or destination folder gone"),
         (status = 422, body = ErrorBody, description = "hash_mismatch: the upload was discarded"),
+        (status = 503, body = ErrorBody, description = "busy: too many completions at once; retry"),
         (status = 507, body = ErrorBody),
     ))]
 pub async fn complete_upload(
@@ -51,20 +57,58 @@ pub async fn complete_upload(
     ApiPath(id): ApiPath<Uuid>,
 ) -> Result<(StatusCode, Json<NodeDto>), ApiError> {
     let owner_id = current.user.id;
+    let slot = state
+        .uploads
+        .completions
+        .acquire(owner_id)
+        .await
+        .ok_or_else(|| {
+            tracing::warn!(user_id = %owner_id, upload_id = %id, "no completion slot, answering busy");
+            ApiError::Busy
+        })?;
+    // Held from the claim until the blob is adopted and linked (or the session
+    // released or discarded): no chunk write can land after verification.
+    let guard = state
+        .uploads
+        .locks
+        .completion(id, LOCK_WAIT)
+        .await
+        .ok_or(DbError::UploadBusy)?;
     let expires_at = OffsetDateTime::now_utc() + state.config.upload_ttl;
     let session = uploads::claim(&state.pool, owner_id, id, expires_at).await?;
-    match finish(&state, &session).await {
+    // Once claimed, the work runs to the end even if the client disconnects:
+    // a dropped request must not leave the session stuck in `completing`.
+    let task_state = state.clone();
+    let task = tokio::spawn(async move {
+        let _held = (slot, guard);
+        complete_claimed(&task_state, &session, expires_at).await
+    });
+    let node = task.await.map_err(|err| ApiError::Internal(err.into()))??;
+    Ok((StatusCode::CREATED, Json((&node).into())))
+}
+
+async fn complete_claimed(
+    state: &AppState,
+    session: &UploadRecord,
+    expires_at: OffsetDateTime,
+) -> Result<NodeRecord, ApiError> {
+    let (owner_id, id) = (session.owner_id, session.id);
+    match finish(state, session).await {
         Ok(node) => {
             tracing::info!(user_id = %owner_id, upload_id = %id, node_id = %node.id,
                 size = node.size, "upload completed");
-            Ok((StatusCode::CREATED, Json((&node).into())))
+            Ok(node)
         }
         Err(Failure::Retry(err)) => {
-            uploads::release(&state.pool, owner_id, id, expires_at).await?;
+            if let Err(release) = uploads::release(&state.pool, owner_id, id, expires_at).await {
+                // The claim lease lets a later complete take the session again.
+                tracing::error!(upload_id = %id, error = %release,
+                    "could not release an upload session after a failed completion");
+            }
             Err(err)
         }
         Err(Failure::Discard(err)) => {
-            discard_session(&state, id).await;
+            discard_session(state, id).await;
             Err(err)
         }
     }
@@ -138,13 +182,17 @@ async fn store_and_link(
     blobs::lock(&mut tx, hash).await.map_err(retry)?;
 
     let (store, id, blob) = (state.storage.clone(), session.id, hash.clone());
-    run_storage(move || store.adopt_upload(id, &blob))
+    let size = u64::try_from(session.size).unwrap_or_default();
+    run_storage(move || store.adopt_upload(id, &blob, size))
         .await
         .map_err(Failure::Retry)?;
     // The upload file has moved: from here on a failure cannot be retried.
-    blobs::insert_if_absent(&mut tx, hash, session.size, mime)
+    // Content already catalogued keeps its type: every node of a blob reports
+    // the blob's MIME (as dedup links do); fresh content gets the sniffed one.
+    let blob = blobs::insert_if_absent(&mut tx, hash, session.size, mime)
         .await
         .map_err(discard)?;
+    let mime = blob.mime.as_str();
     let file = NewFile {
         owner_id,
         parent_id: session.parent_id,

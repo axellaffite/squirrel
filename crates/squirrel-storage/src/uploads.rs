@@ -42,7 +42,8 @@ impl BlobStore {
 
     /// Creates the (sparse) file that chunks of upload `id` are written into.
     /// Calling it again for the same id keeps what was already received.
-    pub fn create_upload(&self, id: Uuid, size: u64) -> Result<()> {
+    /// `true` when the file did not exist (so no chunk is on disk).
+    pub fn create_upload(&self, id: Uuid, size: u64) -> Result<bool> {
         let created = OpenOptions::new()
             .write(true)
             .create_new(true)
@@ -53,18 +54,23 @@ impl BlobStore {
                 file.set_len(size)?;
                 file.sync_all()?;
                 sync_dir(self.uploads_dir())?;
-                return Ok(());
+                return Ok(true);
             }
             Err(err) if err.kind() == io::ErrorKind::AlreadyExists => self.open_upload(id, true)?,
             Err(err) => return Err(err.into()),
         };
         file.set_len(size)?;
-        Ok(())
+        Ok(false)
     }
 
     /// Writes one chunk at `offset` and makes it durable before returning, so a
     /// chunk recorded as received in the database is really on disk. A chunk
     /// reaching past the size given to [`BlobStore::create_upload`] is refused.
+    ///
+    /// The file is opened by path for this one write and closed before
+    /// returning: the API holds the upload's in-process read lock around this
+    /// call, and completion its write lock, so no write can land between
+    /// verification and adoption.
     pub fn write_chunk(&self, id: Uuid, offset: u64, data: &[u8]) -> Result<()> {
         let file = self.open_upload(id, true)?;
         let planned = file.metadata()?.len();
@@ -97,9 +103,25 @@ impl BlobStore {
     }
 
     /// Moves a verified upload into the blob store (idempotent, see
-    /// [`BlobStore::adopt`]). The caller must hold the per-blob lock.
-    pub fn adopt_upload(&self, id: Uuid, hash: &ContentHash) -> Result<Adopted> {
-        self.adopt(&self.upload_path(id), hash)
+    /// [`BlobStore::adopt`]) and checks that the blob has the verified `size`.
+    /// The caller must hold the per-blob lock. No writable descriptor is kept:
+    /// adoption only syncs through a read-only handle, then renames.
+    ///
+    /// A blob of another size is refused; if this call stored it, it is removed.
+    pub fn adopt_upload(&self, id: Uuid, hash: &ContentHash, size: u64) -> Result<Adopted> {
+        let adopted = self.adopt(&self.upload_path(id), hash)?;
+        let stored = fs::metadata(self.blob_path(hash))?.len();
+        if stored != size {
+            if adopted == Adopted::Stored {
+                remove_if_exists(&self.blob_path(hash))?;
+            }
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidData,
+                format!("blob {hash} has {stored} bytes, expected {size}"),
+            )
+            .into());
+        }
+        Ok(adopted)
     }
 
     pub fn discard_upload(&self, id: Uuid) -> Result<()> {
@@ -173,7 +195,7 @@ mod tests {
         store.create_upload(id, 5).unwrap();
         store.write_chunk(id, 0, b"hello").unwrap();
         let hash = store.hash_upload(id).unwrap().hash;
-        assert_eq!(store.adopt_upload(id, &hash).unwrap(), Adopted::Stored);
+        assert_eq!(store.adopt_upload(id, &hash, 5).unwrap(), Adopted::Stored);
         assert!(store.contains(&hash));
         assert!(store.list_uploads().unwrap().is_empty());
     }
@@ -187,10 +209,31 @@ mod tests {
         store.write_chunk(id, 0, b"hello").unwrap();
         let hash = store.hash_upload(id).unwrap().hash;
         assert_eq!(
-            store.adopt_upload(id, &hash).unwrap(),
+            store.adopt_upload(id, &hash, 5).unwrap(),
             Adopted::AlreadyPresent
         );
         assert!(store.list_uploads().unwrap().is_empty());
+    }
+
+    #[test]
+    fn creating_an_upload_reports_whether_the_file_is_new() {
+        let (_dir, store) = store();
+        let id = Uuid::now_v7();
+        assert!(store.create_upload(id, 5).unwrap());
+        assert!(!store.create_upload(id, 5).unwrap());
+        store.discard_upload(id).unwrap();
+        assert!(store.create_upload(id, 5).unwrap());
+    }
+
+    #[test]
+    fn adopting_refuses_a_file_of_the_wrong_size() {
+        let (_dir, store) = store();
+        let id = Uuid::now_v7();
+        store.create_upload(id, 5).unwrap();
+        store.write_chunk(id, 0, b"hello").unwrap();
+        let hash = store.hash_upload(id).unwrap().hash;
+        assert!(store.adopt_upload(id, &hash, 6).is_err());
+        assert!(!store.contains(&hash), "a wrong-sized blob must not stay");
     }
 
     #[test]
@@ -237,7 +280,7 @@ mod tests {
             (EMPTY, 0, 0)
         );
         assert_eq!(
-            store.adopt_upload(id, &hashed.hash).unwrap(),
+            store.adopt_upload(id, &hashed.hash, 0).unwrap(),
             Adopted::Stored
         );
         assert!(store.contains(&hashed.hash));

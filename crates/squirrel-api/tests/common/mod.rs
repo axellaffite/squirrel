@@ -56,6 +56,14 @@ impl Instance {
         }
     }
 
+    /// Another server over the same database and data directory, with `config`.
+    pub fn sharing(&self, config: ApiConfig) -> Self {
+        Self {
+            state: AppState::new(self.state.pool.clone(), self.state.storage.clone(), config),
+            data: self.data.clone(),
+        }
+    }
+
     pub fn data_dir(&self) -> &Path {
         self.data.path()
     }
@@ -129,5 +137,15 @@ pub async fn setup_admin(server: &TestServer, username: &str) -> Value {
         .json(&setup_request(username))
         .await;
     response.assert_status(StatusCode::CREATED);
+    response.json()
+}
+
+/// Logs `username` in on `server`; returns the `me` body.
+pub async fn login(server: &TestServer, username: &str) -> Value {
+    let response = server
+        .post("/api/auth/login")
+        .json(&json!({ "username": username, "password": PASSWORD }))
+        .await;
+    response.assert_status_ok();
     response.json()
 }

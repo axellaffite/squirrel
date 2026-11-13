@@ -18,6 +18,9 @@ pub enum DbError {
     QuotaExceeded,
     #[error("this upload is already being completed")]
     UploadBusy,
+    /// The owner already has the maximum number of open upload sessions.
+    #[error("too many uploads in progress; finish or cancel some first")]
+    TooManyUploads,
     /// A deadlock or serialization failure that persisted after retries.
     #[error("the database is busy, try again in a moment")]
     Busy(#[source] sqlx::Error),

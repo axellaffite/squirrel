@@ -9,6 +9,7 @@ anyhow.workspace = true
 axum.workspace = true
 axum-extra.workspace = true
 base64.workspace = true
+http-body-util.workspace = true
 http-range-header.workspace = true
 ipnet.workspace = true
 percent-encoding.workspace = true

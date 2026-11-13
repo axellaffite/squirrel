@@ -3,7 +3,7 @@ mod common;
 use sqlx::PgPool;
 use squirrel_core::NodeName;
 use squirrel_db::DbError;
-use squirrel_db::uploads::{self, NewUpload};
+use squirrel_db::uploads::{self, ChunkWrite, NewUpload};
 use time::{Duration, OffsetDateTime};
 use uuid::Uuid;
 
@@ -29,6 +29,7 @@ async fn open(
             chunk_size: 4,
             chunk_count: i32::try_from(u64::try_from(size).unwrap().div_ceil(4)).unwrap(),
             expires_at: OffsetDateTime::now_utc() + Duration::hours(24),
+            max_open: 100,
         },
     )
     .await
@@ -70,10 +71,11 @@ async fn chunks_are_recorded_once_and_listed_in_order(pool: PgPool) {
     let files = common::root(&pool, alice.id, "Files").await;
     let session = open(&pool, alice.id, files.id, 10).await.unwrap();
     for index in [2, 0, 2] {
-        assert!(
+        assert_eq!(
             uploads::record_chunk(&pool, alice.id, session.id, index, later())
                 .await
-                .unwrap()
+                .unwrap(),
+            ChunkWrite::Recorded
         );
     }
     assert_eq!(
@@ -96,10 +98,11 @@ async fn claiming_is_exclusive_until_released(pool: PgPool) {
         uploads::claim(&pool, alice.id, session.id, later()).await,
         Err(DbError::UploadBusy)
     ));
-    assert!(
-        !uploads::record_chunk(&pool, alice.id, session.id, 0, later())
+    assert_eq!(
+        uploads::record_chunk(&pool, alice.id, session.id, 0, later())
             .await
-            .unwrap()
+            .unwrap(),
+        ChunkWrite::Busy
     );
     assert!(matches!(
         uploads::abort(&pool, alice.id, session.id).await,

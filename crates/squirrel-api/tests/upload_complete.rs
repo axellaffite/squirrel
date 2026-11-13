@@ -203,3 +203,18 @@ async fn completing_into_a_trashed_folder_fails(pool: PgPool) {
         .await
         .assert_status(StatusCode::CONFLICT);
 }
+
+#[sqlx::test(migrator = "squirrel_db::MIGRATOR")]
+async fn content_stored_before_keeps_the_blobs_mime(pool: PgPool) {
+    let instance = common::Instance::new(pool);
+    let ((alice, alice_me), (bob, bob_me)) = common::two_users(&instance).await;
+    let bob_root = files::root_id(&instance, &bob_me, "Files").await;
+    let alice_root = files::root_id(&instance, &alice_me, "Files").await;
+    let first = files::upload(&bob, &bob_me, bob_root, "notes.txt", b"plain words").await;
+    assert_eq!(first["mime"], "text/plain");
+
+    // Alice's name alone would give application/octet-stream; the shared blob
+    // already has a type, and every node of a blob reports that one.
+    let second = files::upload(&alice, &alice_me, alice_root, "notes", b"plain words").await;
+    assert_eq!(second["mime"], "text/plain");
+}
