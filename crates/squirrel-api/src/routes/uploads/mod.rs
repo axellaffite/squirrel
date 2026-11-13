@@ -1,6 +1,7 @@
 //! Resumable, deduplicating chunked uploads.
 
 pub mod chunks;
+pub mod complete;
 mod create;
 
 use axum::Json;
