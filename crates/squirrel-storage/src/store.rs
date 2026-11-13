@@ -127,6 +127,10 @@ impl BlobStore {
         let stat = rustix::fs::statvfs(&self.blobs).map_err(io::Error::from)?;
         Ok(stat.f_bavail.saturating_mul(stat.f_frsize))
     }
+
+    pub(crate) fn uploads_dir(&self) -> &Path {
+        &self.uploads
+    }
 }
 
 #[cfg(test)]
