@@ -100,12 +100,34 @@ export function createApiClient(options: { baseUrl?: string; fetch?: typeof fetc
 
 export const api = createApiClient();
 
+/**
+ * Messages for error codes the user can act on, worded for the file pages. They take
+ * precedence over the server's own message, which is written for API clients.
+ */
+const FRIENDLY_MESSAGES: Record<string, string> = {
+	busy: 'The server is busy. Try again in a moment.',
+	storage_full: 'The server is out of disk space. Ask your administrator to free some space.',
+	too_many_uploads: 'Too many uploads are in progress. Wait for some to finish, then try again.',
+	quota_exceeded: 'This would exceed your storage quota. Free up some space, including the trash, then try again.',
+	hash_mismatch: 'The file changed or was damaged while uploading. Try again.',
+	upload_incomplete: 'Part of the file did not reach the server. Retry to send the rest.'
+};
+
 /** Extracts the server's `{ error: { message } }` envelope, with sensible fallbacks. */
 export function errorMessage(error: unknown, response?: Response): string {
+	const detail = errorDetail(error);
+	if (detail.code !== null && Object.hasOwn(FRIENDLY_MESSAGES, detail.code)) return FRIENDLY_MESSAGES[detail.code];
 	if (response?.status === 429) return 'Too many attempts. Wait a moment and try again.';
-	if (typeof error === 'object' && error !== null && 'error' in error) {
-		const detail = (error as { error?: { message?: unknown } }).error;
-		if (typeof detail?.message === 'string') return detail.message;
-	}
+	if (detail.message !== null) return detail.message;
+	if (response?.status === 503) return FRIENDLY_MESSAGES.busy;
 	return DEFAULT_ERROR;
+}
+
+function errorDetail(error: unknown): { code: string | null; message: string | null } {
+	if (typeof error !== 'object' || error === null || !('error' in error)) return { code: null, message: null };
+	const detail = (error as { error?: { code?: unknown; message?: unknown } }).error;
+	return {
+		code: typeof detail?.code === 'string' ? detail.code : null,
+		message: typeof detail?.message === 'string' ? detail.message : null
+	};
 }

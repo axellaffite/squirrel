@@ -14,9 +14,14 @@ export default defineConfig({
 			adapter: adapter({ pages: 'build', assets: 'build', fallback: 'index.html', strict: false }),
 			// Emits a <meta> CSP with hashes of SvelteKit's inline bootstrap script. The server adds
 			// the directives a <meta> cannot carry (frame-ancestors) as response headers.
+			// 'wasm-unsafe-eval' lets hash-wasm compile WebAssembly; it does not allow eval().
 			csp: {
 				mode: 'hash',
-				directives: { 'script-src': ['self'], 'object-src': ['none'], 'base-uri': ['none'] }
+				directives: {
+					'script-src': ['self', 'wasm-unsafe-eval'],
+					'object-src': ['none'],
+					'base-uri': ['none']
+				}
 			}
 		})
 	],
