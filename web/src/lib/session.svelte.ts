@@ -1,7 +1,7 @@
-import { api, setCsrfToken } from './api/client';
-import type { components } from './api/schema';
+import { api, onStaleCsrf, onUnauthorized, setCsrfToken } from '#lib/api/client.ts';
+import { interpretSession, logoutOutcome, type LogoutOutcome, type Me } from '#lib/session-logic.ts';
 
-export type Me = components['schemas']['MeResponse'];
+export type { Me } from '#lib/session-logic.ts';
 
 interface SessionState {
 	me: Me | null;
@@ -22,15 +22,28 @@ export function setMe(me: Me | null): void {
 	setCsrfToken(me?.csrf_token ?? null);
 }
 
-export async function loadSession(): Promise<void> {
+let pendingLoad: Promise<void> | null = null;
+
+/** Loads setup status and the current user; concurrent calls share one request pair. */
+export function loadSession(): Promise<void> {
+	pendingLoad ??= fetchSession().finally(() => {
+		pendingLoad = null;
+	});
+	return pendingLoad;
+}
+
+async function fetchSession(): Promise<void> {
 	try {
 		const [status, me] = await Promise.all([
 			api.GET('/api/setup/status'),
 			api.GET('/api/auth/me')
 		]);
-		session.unreachable = !status.data;
-		session.needsSetup = status.data?.needs_setup ?? false;
-		setMe(me.data ?? null);
+		const outcome = interpretSession(status, me);
+		session.unreachable = outcome.unreachable;
+		if (!outcome.unreachable) {
+			session.needsSetup = outcome.needsSetup;
+			setMe(outcome.me);
+		}
 	} catch {
 		session.unreachable = true;
 	} finally {
@@ -38,7 +51,19 @@ export async function loadSession(): Promise<void> {
 	}
 }
 
-export async function logout(): Promise<void> {
-	await api.POST('/api/auth/logout');
-	setMe(null);
+/** Logs out. On failure the session is kept, so the user can retry. */
+export async function logout(): Promise<LogoutOutcome> {
+	let status: number | null = null;
+	try {
+		const { response } = await api.POST('/api/auth/logout');
+		status = response.status;
+	} catch {
+		// Network failure: keep the session, report the error below.
+	}
+	const outcome = logoutOutcome(status);
+	if (outcome.loggedOut) setMe(null);
+	return outcome;
 }
+
+onUnauthorized(() => setMe(null));
+onStaleCsrf(loadSession);

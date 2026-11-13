@@ -51,16 +51,19 @@ pub struct MeResponse {
     pub role: Role,
     /// Send back as `X-CSRF-Token` on every non-GET request.
     pub csrf_token: String,
+    /// Whether this user may create invitations (instance setting and role).
+    pub can_invite: bool,
 }
 
 impl MeResponse {
-    pub fn new(user: &UserRecord, csrf_token: String) -> Self {
+    pub fn new(user: &UserRecord, csrf_token: String, settings: &InstanceSettings) -> Self {
         Self {
             id: user.id,
             username: user.username.clone(),
             display_name: user.display_name.clone(),
             role: user.role(),
             csrf_token,
+            can_invite: settings.allows_invites_from(user.role()),
         }
     }
 }

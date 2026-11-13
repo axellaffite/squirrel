@@ -726,9 +726,14 @@
           "username",
           "display_name",
           "role",
-          "csrf_token"
+          "csrf_token",
+          "can_invite"
         ],
         "properties": {
+          "can_invite": {
+            "type": "boolean",
+            "description": "Whether this user may create invitations (instance setting and role)."
+          },
           "csrf_token": {
             "type": "string",
             "description": "Send back as `X-CSRF-Token` on every non-GET request."

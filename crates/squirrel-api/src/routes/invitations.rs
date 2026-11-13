@@ -27,7 +27,7 @@ pub async fn create_invitation(
     ApiJson(request): ApiJson<CreateInvitationRequest>,
 ) -> Result<(StatusCode, Json<CreatedInvitation>), ApiError> {
     let instance = settings::get(&state.pool).await?;
-    if instance.invites_admin_only && !current.user.role().is_admin() {
+    if !instance.allows_invites_from(current.user.role()) {
         return Err(ApiError::Forbidden);
     }
     let email_hint = request
