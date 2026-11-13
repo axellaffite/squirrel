@@ -1,3 +1,5 @@
+use std::collections::HashSet;
+
 use sqlx::PgConnection;
 use squirrel_core::{ContentHash, NodeName};
 use uuid::Uuid;
@@ -19,7 +21,8 @@ pub struct NewFile<'a> {
 }
 
 /// The first free variant of `name` among the live children of `parent_id`
-/// (`name`, `name (1)`, …). The caller holds the owner lock, so the answer
+/// (`name`, `name (1)`, …). One query fetches the taken names sharing the
+/// variants' common prefix. The caller holds the owner lock, so the answer
 /// stays true until it writes.
 pub async fn free_name(
     conn: &mut PgConnection,
@@ -27,22 +30,39 @@ pub async fn free_name(
     parent_id: Uuid,
     name: &NodeName,
 ) -> Result<NodeName, DbError> {
-    for n in 0..MAX_NAME_VARIANTS {
-        let candidate = name.variant(n);
-        let taken: bool = sqlx::query_scalar(
-            "SELECT EXISTS (SELECT 1 FROM nodes \
-             WHERE owner_id = $1 AND parent_id = $2 AND name = $3 AND deleted_at IS NULL)",
-        )
-        .bind(owner_id)
-        .bind(parent_id)
-        .bind(candidate.as_str())
-        .fetch_one(&mut *conn)
-        .await?;
-        if !taken {
-            return Ok(candidate);
-        }
-    }
-    Err(DbError::NameConflict)
+    let variants: Vec<NodeName> = (0..MAX_NAME_VARIANTS).map(|n| name.variant(n)).collect();
+    let prefix = common_prefix(variants.iter().map(NodeName::as_str));
+    let taken: HashSet<String> = sqlx::query_scalar(
+        "SELECT name FROM nodes \
+         WHERE owner_id = $1 AND parent_id = $2 AND deleted_at IS NULL AND starts_with(name, $3)",
+    )
+    .bind(owner_id)
+    .bind(parent_id)
+    .bind(prefix)
+    .fetch_all(&mut *conn)
+    .await?
+    .into_iter()
+    .collect();
+    variants
+        .into_iter()
+        .find(|candidate| !taken.contains(candidate.as_str()))
+        .ok_or(DbError::NameConflict)
+}
+
+/// Longest prefix (on a character boundary) shared by every name.
+fn common_prefix<'a>(mut names: impl Iterator<Item = &'a str>) -> &'a str {
+    let Some(first) = names.next() else {
+        return "";
+    };
+    names.fold(first, |prefix, name| {
+        let len = prefix
+            .char_indices()
+            .zip(name.chars())
+            .take_while(|((_, a), b)| a == b)
+            .last()
+            .map_or(0, |((i, c), _)| i + c.len_utf8());
+        &prefix[..len]
+    })
 }
 
 /// Inserts a file node under a free variant of its name. Preconditions: the
@@ -67,4 +87,20 @@ pub async fn insert_file(
         .bind(file.mime)
         .fetch_one(conn)
         .await?)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::common_prefix;
+
+    #[test]
+    fn common_prefix_stops_at_the_first_difference() {
+        assert_eq!(
+            common_prefix(["report.pdf", "report (1).pdf"].into_iter()),
+            "report"
+        );
+        assert_eq!(common_prefix(["\u{e9}a", "\u{e9}b"].into_iter()), "\u{e9}");
+        assert_eq!(common_prefix(["a", "b"].into_iter()), "");
+        assert_eq!(common_prefix(std::iter::empty()), "");
+    }
 }
