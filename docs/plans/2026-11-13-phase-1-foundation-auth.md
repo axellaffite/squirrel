@@ -94,7 +94,7 @@ components = ["rustfmt", "clippy"]
 `.cargo/config.toml` (used by `sqlx::test` at test runtime; does not override an already-set env var):
 ```toml
 [env]
-DATABASE_URL = "postgres://squirrel:squirrel@localhost:5433/squirrel"
+DATABASE_URL = "postgres://squirrel:squirrel@localhost:55432/squirrel"
 ```
 
 `.gitignore`:
@@ -120,7 +120,7 @@ services:
       POSTGRES_PASSWORD: squirrel
       POSTGRES_DB: squirrel
     ports:
-      - "5433:5432"
+      - "55432:5432"
     volumes:
       - squirrel-dev-pg:/var/lib/postgresql/data
     healthcheck:
@@ -3068,7 +3068,7 @@ Expected: all tests PASS, including `committed_openapi_json_is_up_to_date`.
 
 Smoke-test the server:
 ```bash
-SQUIRREL_DATABASE_URL=postgres://squirrel:squirrel@localhost:5433/squirrel SQUIRREL_COOKIE_SECURE=false cargo run -p squirrel -- serve &
+SQUIRREL_DATABASE_URL=postgres://squirrel:squirrel@localhost:55432/squirrel SQUIRREL_COOKIE_SECURE=false cargo run -p squirrel -- serve &
 curl -s localhost:8080/api/healthz   # → {"status":"ok"}
 curl -s localhost:8080/api/setup/status   # → {"needs_setup":true}
 kill %1
@@ -3732,7 +3732,7 @@ COMPOSE=(docker compose -f deploy/docker-compose.dev.yml)
 
 (cd web && pnpm build)
 
-export SQUIRREL_DATABASE_URL=postgres://squirrel:squirrel@localhost:5433/squirrel_e2e
+export SQUIRREL_DATABASE_URL=postgres://squirrel:squirrel@localhost:55432/squirrel_e2e
 export SQUIRREL_BIND=127.0.0.1:8099
 export SQUIRREL_COOKIE_SECURE=false
 exec cargo run -q -p squirrel -- serve
@@ -3838,7 +3838,7 @@ jobs:
           POSTGRES_USER: squirrel
           POSTGRES_PASSWORD: squirrel
           POSTGRES_DB: squirrel
-        ports: ["5433:5432"]
+        ports: ["55432:5432"]
         options: >-
           --health-cmd "pg_isready -U squirrel" --health-interval 2s --health-timeout 3s --health-retries 20
     steps:
@@ -3885,7 +3885,7 @@ Design: `docs/plans/2026-11-13-squirrel-home-drive-design.md`.
 Requirements: Rust 1.94, Node 22, pnpm 10, Docker.
 
     docker compose -f deploy/docker-compose.dev.yml up -d --wait
-    SQUIRREL_DATABASE_URL=postgres://squirrel:squirrel@localhost:5433/squirrel \
+    SQUIRREL_DATABASE_URL=postgres://squirrel:squirrel@localhost:55432/squirrel \
     SQUIRREL_COOKIE_SECURE=false cargo run -p squirrel -- serve
     cd web && pnpm install && pnpm dev   # http://localhost:5173
 
