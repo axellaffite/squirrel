@@ -2906,6 +2906,7 @@ axum.workspace = true
 clap.workspace = true
 sqlx.workspace = true
 squirrel-api.workspace = true
+squirrel-auth.workspace = true
 squirrel-db.workspace = true
 tokio.workspace = true
 tower-http.workspace = true
@@ -3012,6 +3013,9 @@ async fn serve(args: ServeArgs) -> anyhow::Result<()> {
     let pool = connect_and_migrate(&args.database).await?;
     let config = ApiConfig { cookie_secure: args.cookie_secure, ..ApiConfig::default() };
     let app = squirrel_api::router(AppState::new(pool, config)).layer(TraceLayer::new_for_http());
+
+    // Precompute the timing-equalizer hash so the first unknown-user login isn't slower.
+    tokio::task::spawn_blocking(squirrel_auth::warm_up).await.context("warming up auth")?;
 
     let listener = TcpListener::bind(args.bind).await.with_context(|| format!("binding {}", args.bind))?;
     tracing::info!(address = %args.bind, "squirrel is listening");
