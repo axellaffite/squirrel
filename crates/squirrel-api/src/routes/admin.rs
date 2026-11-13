@@ -5,6 +5,7 @@ use squirrel_db::settings;
 use crate::dto::InstanceSettingsDto;
 use crate::error::{ApiError, ErrorBody};
 use crate::extract::CurrentUser;
+use crate::input::ApiJson;
 use crate::state::AppState;
 
 #[utoipa::path(get, path = "/api/admin/settings", tag = "admin",
@@ -23,7 +24,7 @@ pub async fn get_settings(
 pub async fn update_settings(
     State(state): State<AppState>,
     current: CurrentUser,
-    Json(request): Json<InstanceSettingsDto>,
+    ApiJson(request): ApiJson<InstanceSettingsDto>,
 ) -> Result<Json<InstanceSettingsDto>, ApiError> {
     current.require_admin()?;
     Ok(Json(

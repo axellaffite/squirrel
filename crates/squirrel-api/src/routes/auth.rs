@@ -11,6 +11,7 @@ use crate::blocking::run_blocking;
 use crate::dto::{LoginRequest, MeResponse};
 use crate::error::{ApiError, ErrorBody};
 use crate::extract::CurrentUser;
+use crate::input::ApiJson;
 use crate::session;
 use crate::state::AppState;
 
@@ -55,7 +56,7 @@ pub async fn login(
     State(state): State<AppState>,
     jar: CookieJar,
     headers: HeaderMap,
-    Json(request): Json<LoginRequest>,
+    ApiJson(request): ApiJson<LoginRequest>,
 ) -> Result<(CookieJar, Json<MeResponse>), ApiError> {
     if request.password.len() > MAX_PASSWORD_BYTES {
         return Err(ApiError::InvalidCredentials);

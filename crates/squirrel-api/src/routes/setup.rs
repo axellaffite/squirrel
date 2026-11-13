@@ -9,6 +9,7 @@ use squirrel_db::users::{self, NewUser};
 use crate::blocking::run_blocking;
 use crate::dto::{AccountRequest, MeResponse, SetupRequest, SetupStatus};
 use crate::error::{ApiError, ErrorBody};
+use crate::input::ApiJson;
 use crate::session;
 use crate::state::AppState;
 
@@ -32,7 +33,7 @@ pub async fn create_first_admin(
     State(state): State<AppState>,
     jar: CookieJar,
     headers: HeaderMap,
-    Json(request): Json<SetupRequest>,
+    ApiJson(request): ApiJson<SetupRequest>,
 ) -> Result<(StatusCode, CookieJar, Json<MeResponse>), ApiError> {
     // Completed setup answers 409 whatever the token: once an account exists the
     // token is useless, so this leaks nothing an attacker could not see in /status.

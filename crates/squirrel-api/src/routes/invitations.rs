@@ -1,5 +1,5 @@
 use axum::Json;
-use axum::extract::{Path, State};
+use axum::extract::State;
 use axum::http::StatusCode;
 use squirrel_auth::{generate_token, hash_token};
 use squirrel_db::invitations::{self, NewInvitation};
@@ -10,6 +10,7 @@ use uuid::Uuid;
 use crate::dto::{CreateInvitationRequest, CreatedInvitation, InvitationDto};
 use crate::error::{ApiError, ErrorBody};
 use crate::extract::CurrentUser;
+use crate::input::{ApiJson, ApiPath};
 use crate::state::AppState;
 
 const EMAIL_HINT_MAX_LEN: usize = 254;
@@ -21,7 +22,7 @@ const EMAIL_HINT_MAX_LEN: usize = 254;
 pub async fn create_invitation(
     State(state): State<AppState>,
     current: CurrentUser,
-    Json(request): Json<CreateInvitationRequest>,
+    ApiJson(request): ApiJson<CreateInvitationRequest>,
 ) -> Result<(StatusCode, Json<CreatedInvitation>), ApiError> {
     let instance = settings::get(&state.pool).await?;
     if instance.invites_admin_only && !current.user.role().is_admin() {
@@ -82,7 +83,7 @@ pub async fn list_invitations(
 pub async fn revoke_invitation(
     State(state): State<AppState>,
     current: CurrentUser,
-    Path(id): Path<Uuid>,
+    ApiPath(id): ApiPath<Uuid>,
 ) -> Result<StatusCode, ApiError> {
     if invitations::revoke(&state.pool, id, current.user.id).await? {
         Ok(StatusCode::NO_CONTENT)
