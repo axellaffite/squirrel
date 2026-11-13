@@ -118,3 +118,16 @@ pub async fn update_node(
     let node = nodes::update(&state.pool, current.user.id, id, &change).await?;
     Ok(Json((&node).into()))
 }
+
+#[utoipa::path(delete, path = "/api/nodes/{id}", tag = "files",
+    params(("id" = Uuid, Path, description = "Node id")),
+    responses((status = 204, description = "Moved to the trash with everything inside it"),
+              (status = 404, body = ErrorBody), (status = 422, body = ErrorBody)))]
+pub async fn trash_node(
+    State(state): State<AppState>,
+    current: CurrentUser,
+    ApiPath(id): ApiPath<Uuid>,
+) -> Result<StatusCode, ApiError> {
+    squirrel_db::trash::trash(&state.pool, current.user.id, id).await?;
+    Ok(StatusCode::NO_CONTENT)
+}

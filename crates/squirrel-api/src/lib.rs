@@ -113,8 +113,18 @@ fn json_routes() -> OpenApiRouter<AppState> {
             routes::admin::update_settings
         ))
         .routes(routes!(routes::nodes::list_nodes))
-        .routes(routes!(routes::nodes::get_node, routes::nodes::update_node))
+        .routes(routes!(
+            routes::nodes::get_node,
+            routes::nodes::update_node,
+            routes::nodes::trash_node
+        ))
         .routes(routes!(routes::nodes::create_folder))
+        .routes(routes!(
+            routes::trash::list_trash,
+            routes::trash::empty_trash
+        ))
+        .routes(routes!(routes::trash::restore))
+        .routes(routes!(routes::trash::delete_forever))
         .routes(routes!(routes::uploads::create_upload))
         .routes(routes!(
             routes::uploads::upload_status,
