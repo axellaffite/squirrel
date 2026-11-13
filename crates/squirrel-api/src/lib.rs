@@ -38,7 +38,11 @@ pub fn openapi() -> utoipa::openapi::OpenApi {
 fn api_router(config: &ApiConfig) -> OpenApiRouter<AppState> {
     let credential_routes = OpenApiRouter::new()
         .routes(routes!(routes::setup::create_first_admin))
-        .routes(routes!(routes::auth::login));
+        .routes(routes!(routes::auth::login))
+        .routes(routes!(
+            routes::join::check_invitation,
+            routes::join::accept_invitation
+        ));
     let credential_routes = match config.login_rate_limit {
         Some(limit) => rate_limit::apply(credential_routes, limit),
         None => credential_routes,
@@ -50,5 +54,14 @@ fn api_router(config: &ApiConfig) -> OpenApiRouter<AppState> {
         .routes(routes!(routes::auth::me))
         .routes(routes!(routes::auth::logout))
         .routes(routes!(routes::auth::logout_all))
+        .routes(routes!(
+            routes::invitations::create_invitation,
+            routes::invitations::list_invitations
+        ))
+        .routes(routes!(routes::invitations::revoke_invitation))
+        .routes(routes!(
+            routes::admin::get_settings,
+            routes::admin::update_settings
+        ))
         .merge(credential_routes)
 }
