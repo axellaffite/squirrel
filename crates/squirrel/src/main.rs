@@ -15,6 +15,8 @@ use tracing_subscriber::EnvFilter;
 const SESSION_CLEANUP_INTERVAL: Duration = Duration::from_secs(60 * 60);
 /// In-flight requests get this long to finish after a shutdown signal.
 const SHUTDOWN_DEADLINE: Duration = Duration::from_secs(10);
+/// A configured setup token shorter than this is guessable; warn about it.
+const MIN_SETUP_TOKEN_LEN: usize = 16;
 
 #[derive(Parser)]
 #[command(name = "squirrel", version, about = "Self-hosted home drive")]
@@ -151,7 +153,14 @@ async fn resolve_setup_token(
     configured: Option<String>,
 ) -> anyhow::Result<Option<SetupToken>> {
     if let Some(token) = configured.filter(|t| !t.trim().is_empty()) {
-        return Ok(Some(SetupToken::new(token.trim())));
+        let token = token.trim();
+        if is_weak_setup_token(token) {
+            tracing::warn!(
+                min_len = MIN_SETUP_TOKEN_LEN,
+                "SQUIRREL_SETUP_TOKEN is short and could be guessed; use a longer random value"
+            );
+        }
+        return Ok(Some(SetupToken::new(token)));
     }
     if squirrel_db::users::any_exists(pool)
         .await
@@ -165,6 +174,10 @@ async fn resolve_setup_token(
         token.expose()
     );
     Ok(Some(token))
+}
+
+fn is_weak_setup_token(token: &str) -> bool {
+    token.chars().count() < MIN_SETUP_TOKEN_LEN
 }
 
 /// Periodically deletes expired sessions. Failures are logged and retried next tick.
@@ -216,5 +229,18 @@ fn init_tracing(json: bool) {
         builder.json().init();
     } else {
         builder.init();
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn setup_tokens_shorter_than_16_characters_are_weak() {
+        assert!(is_weak_setup_token("short"));
+        assert!(is_weak_setup_token("fifteen-chars-x"));
+        assert!(!is_weak_setup_token("sixteen-chars-xx"));
+        assert!(!is_weak_setup_token(&squirrel_auth::generate_token()));
     }
 }

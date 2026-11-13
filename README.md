@@ -17,8 +17,12 @@ The Vite dev server proxies `/api` to the Rust server on port 8080.
 
 On first start, the server logs a one-time setup code (`first-run setup code: ...`).
 Open the web UI, enter that code, and create the administrator account.
-To choose the code yourself (e.g. for automated deployments), set `SQUIRREL_SETUP_TOKEN`.
+To choose the code yourself (e.g. for automated deployments), set `SQUIRREL_SETUP_TOKEN`
+to a long random value (the server warns below 16 characters).
 Everyone else joins with an invitation link.
+
+Logs are sensitive: the first-start log contains the setup code, and with `RUST_LOG=debug`
+request logs may include invitation tokens (they appear in `/api/join/{token}` paths).
 
 ### Configuration
 
