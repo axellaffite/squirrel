@@ -7,10 +7,12 @@ mod extract;
 mod rate_limit;
 mod routes;
 mod session;
+mod setup_token;
 mod spa;
 mod state;
 
 pub use error::{ApiError, ErrorBody};
+pub use setup_token::SetupToken;
 pub use state::{ApiConfig, AppState, RateLimit};
 
 use axum::Router;

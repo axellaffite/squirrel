@@ -3744,6 +3744,7 @@ COMPOSE=(docker compose -f deploy/docker-compose.dev.yml)
 export SQUIRREL_DATABASE_URL=postgres://squirrel:squirrel@localhost:55432/squirrel_e2e
 export SQUIRREL_BIND=127.0.0.1:8099
 export SQUIRREL_COOKIE_SECURE=false
+export SQUIRREL_SETUP_TOKEN=e2e-setup-token
 exec cargo run -q -p squirrel -- serve
 ```
 > The SPA is embedded at compile time in release builds; in debug builds rust-embed reads `web/build` from disk, so building the web first is enough.
@@ -3770,6 +3771,7 @@ export default defineConfig({
 import { expect, test, type Page } from '@playwright/test';
 
 const PASSWORD = 'correct horse battery';
+const SETUP_CODE = 'e2e-setup-token'; // matches SQUIRREL_SETUP_TOKEN in scripts/e2e-server.sh
 
 async function fillAccount(page: Page, username: string, displayName: string) {
 	await page.getByLabel('Username').fill(username);
@@ -3781,6 +3783,7 @@ async function fillAccount(page: Page, username: string, displayName: string) {
 test('first user sets up the drive and invites a second user', async ({ page, browser }) => {
 	await page.goto('/');
 	await expect(page).toHaveURL(/\/setup$/);
+	await page.getByLabel('Setup code').fill(SETUP_CODE);
 	await fillAccount(page, 'alice', 'Alice');
 	await page.getByRole('button', { name: 'Create administrator account' }).click();
 	await expect(page.getByRole('heading', { name: 'Hello, Alice' })).toBeVisible();
@@ -3898,7 +3901,10 @@ Requirements: Rust 1.94, Node 22, pnpm 10, Docker.
     SQUIRREL_COOKIE_SECURE=false cargo run -p squirrel -- serve
     cd web && pnpm install && pnpm dev   # http://localhost:5173
 
-The first visitor creates the administrator account. Everyone else joins with an invitation link.
+On first start, the server logs a one-time setup code (`first-run setup code: ...`).
+Open the web UI, enter that code, and create the administrator account.
+To choose the code yourself (e.g. for automated deployments), set `SQUIRREL_SETUP_TOKEN`.
+Everyone else joins with an invitation link.
 
 ## Tests
 

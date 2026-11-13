@@ -472,7 +472,7 @@
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/AccountRequest"
+                "$ref": "#/components/schemas/SetupRequest"
               }
             }
           },
@@ -485,6 +485,16 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/MeResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Missing or wrong setup code",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
                 }
               }
             }
@@ -744,6 +754,31 @@
           "admin",
           "user"
         ]
+      },
+      "SetupRequest": {
+        "type": "object",
+        "description": "Creates the first administrator. `setup_token` is the setup code printed in\nthe server log on first start (or `SQUIRREL_SETUP_TOKEN`).",
+        "required": [
+          "setup_token",
+          "username",
+          "display_name",
+          "password"
+        ],
+        "properties": {
+          "display_name": {
+            "type": "string"
+          },
+          "password": {
+            "type": "string"
+          },
+          "setup_token": {
+            "type": "string",
+            "description": "Missing is treated like a wrong code (403), not a validation error."
+          },
+          "username": {
+            "type": "string"
+          }
+        }
       },
       "SetupStatus": {
         "type": "object",

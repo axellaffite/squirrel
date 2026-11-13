@@ -14,6 +14,29 @@ pub struct AccountRequest {
     pub password: String,
 }
 
+/// Creates the first administrator. `setup_token` is the setup code printed in
+/// the server log on first start (or `SQUIRREL_SETUP_TOKEN`).
+#[derive(Debug, Deserialize, ToSchema)]
+pub struct SetupRequest {
+    /// Missing is treated like a wrong code (403), not a validation error.
+    #[serde(default)]
+    #[schema(required = true)]
+    pub setup_token: String,
+    pub username: String,
+    pub display_name: String,
+    pub password: String,
+}
+
+impl SetupRequest {
+    pub fn into_account(self) -> AccountRequest {
+        AccountRequest {
+            username: self.username,
+            display_name: self.display_name,
+            password: self.password,
+        }
+    }
+}
+
 #[derive(Debug, Deserialize, ToSchema)]
 pub struct LoginRequest {
     pub username: String,

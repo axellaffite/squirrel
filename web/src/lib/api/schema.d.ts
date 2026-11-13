@@ -247,6 +247,17 @@ export interface components {
         };
         /** @enum {string} */
         Role: "admin" | "user";
+        /**
+         * @description Creates the first administrator. `setup_token` is the setup code printed in
+         *     the server log on first start (or `SQUIRREL_SETUP_TOKEN`).
+         */
+        SetupRequest: {
+            display_name: string;
+            password: string;
+            /** @description Missing is treated like a wrong code (403), not a validation error. */
+            setup_token: string;
+            username: string;
+        };
         SetupStatus: {
             needs_setup: boolean;
         };
@@ -649,7 +660,7 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "application/json": components["schemas"]["AccountRequest"];
+                "application/json": components["schemas"]["SetupRequest"];
             };
         };
         responses: {
@@ -660,6 +671,15 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["MeResponse"];
+                };
+            };
+            /** @description Missing or wrong setup code */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
                 };
             };
             /** @description Setup already complete */

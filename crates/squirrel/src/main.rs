@@ -4,7 +4,7 @@ use std::time::Duration;
 use anyhow::Context;
 use clap::{ArgAction, Args, Parser, Subcommand};
 use sqlx::PgPool;
-use squirrel_api::{ApiConfig, AppState};
+use squirrel_api::{ApiConfig, AppState, SetupToken};
 use tokio::net::TcpListener;
 use tokio::time::MissedTickBehavior;
 use tower_http::trace::TraceLayer;
@@ -47,6 +47,10 @@ struct ServeArgs {
     cookie_secure: bool,
     #[arg(long, env = "SQUIRREL_LOG_JSON", default_value_t = false, action = ArgAction::Set)]
     log_json: bool,
+    /// Code required to create the first administrator. Generated and logged
+    /// on startup when unset and no account exists yet.
+    #[arg(long, env = "SQUIRREL_SETUP_TOKEN", hide_env_values = true)]
+    setup_token: Option<String>,
 }
 
 #[tokio::main]
@@ -87,8 +91,10 @@ async fn migrate(args: &DatabaseArgs) -> anyhow::Result<()> {
 
 async fn serve(args: ServeArgs) -> anyhow::Result<()> {
     let pool = connect_and_migrate(&args.database).await?;
+    let setup_token = resolve_setup_token(&pool, args.setup_token.clone()).await?;
     let config = ApiConfig {
         cookie_secure: args.cookie_secure,
+        setup_token,
         ..ApiConfig::default()
     };
     let app =
@@ -111,6 +117,29 @@ async fn serve(args: ServeArgs) -> anyhow::Result<()> {
     .with_graceful_shutdown(shutdown_signal())
     .await
     .context("serving HTTP")
+}
+
+/// Uses the configured setup token, or generates and logs one while the
+/// instance still has no account. Once set up, no token is needed.
+async fn resolve_setup_token(
+    pool: &PgPool,
+    configured: Option<String>,
+) -> anyhow::Result<Option<SetupToken>> {
+    if let Some(token) = configured.filter(|t| !t.trim().is_empty()) {
+        return Ok(Some(SetupToken::new(token.trim())));
+    }
+    if squirrel_db::users::any_exists(pool)
+        .await
+        .context("checking for existing accounts")?
+    {
+        return Ok(None);
+    }
+    let token = SetupToken::new(squirrel_auth::generate_token());
+    tracing::warn!(
+        "first-run setup code: {} (enter it on the setup page to create the administrator)",
+        token.expose()
+    );
+    Ok(Some(token))
 }
 
 /// Periodically deletes expired sessions. Failures are logged and retried next tick.

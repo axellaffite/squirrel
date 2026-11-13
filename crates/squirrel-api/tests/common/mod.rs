@@ -8,15 +8,17 @@ use axum::http::{HeaderName, HeaderValue, StatusCode};
 use axum_test::TestServer;
 use serde_json::{Value, json};
 use sqlx::PgPool;
-use squirrel_api::{ApiConfig, AppState};
+use squirrel_api::{ApiConfig, AppState, SetupToken};
 
 pub const PASSWORD: &str = "correct horse battery";
 pub const CSRF: HeaderName = HeaderName::from_static("x-csrf-token");
+pub const SETUP_TOKEN: &str = "test-setup-token";
 
 pub fn test_config() -> ApiConfig {
     ApiConfig {
         cookie_secure: false,
         login_rate_limit: None,
+        setup_token: Some(SetupToken::new(SETUP_TOKEN)),
         ..ApiConfig::default()
     }
 }
@@ -42,6 +44,15 @@ pub fn account(username: &str) -> Value {
     json!({ "username": username, "display_name": username, "password": PASSWORD })
 }
 
+pub fn setup_request(username: &str) -> Value {
+    json!({
+        "setup_token": SETUP_TOKEN,
+        "username": username,
+        "display_name": username,
+        "password": PASSWORD,
+    })
+}
+
 pub fn csrf(me: &Value) -> HeaderValue {
     HeaderValue::from_str(me["csrf_token"].as_str().expect("csrf_token present")).unwrap()
 }
@@ -49,7 +60,7 @@ pub fn csrf(me: &Value) -> HeaderValue {
 pub async fn setup_admin(server: &TestServer, username: &str) -> Value {
     let response = server
         .post("/api/setup/admin")
-        .json(&account(username))
+        .json(&setup_request(username))
         .await;
     response.assert_status(StatusCode::CREATED);
     response.json()
