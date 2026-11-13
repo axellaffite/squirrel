@@ -1,7 +1,10 @@
 //! HTTP API for Squirrel.
 
+mod blocking;
+mod dto;
 mod error;
 mod routes;
+mod session;
 mod spa;
 mod state;
 
@@ -31,5 +34,8 @@ pub fn openapi() -> utoipa::openapi::OpenApi {
 }
 
 fn api_router(_config: &ApiConfig) -> OpenApiRouter<AppState> {
-    OpenApiRouter::with_openapi(ApiDoc::openapi()).routes(routes!(routes::health::healthz))
+    OpenApiRouter::with_openapi(ApiDoc::openapi())
+        .routes(routes!(routes::health::healthz))
+        .routes(routes!(routes::setup::setup_status))
+        .routes(routes!(routes::setup::create_first_admin))
 }
