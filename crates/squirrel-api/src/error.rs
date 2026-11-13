@@ -114,6 +114,11 @@ impl From<DbError> for ApiError {
                 ApiError::Validation(other.to_string())
             }
             other @ DbError::UploadBusy => ApiError::Conflict(other.to_string()),
+            DbError::Busy(source) => {
+                tracing::warn!(error = %source, "database conflict persisted after retries");
+                ApiError::Busy
+            }
+            DbError::InvalidInput(message) => ApiError::BadRequest(message.into()),
             DbError::Sqlx(source) => ApiError::Internal(source.into()),
         }
     }
@@ -135,3 +140,15 @@ macro_rules! validation_from {
     )*};
 }
 validation_from!(UsernameError, PasswordError, DisplayNameError);
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn transient_database_conflicts_map_to_busy() {
+        let err = ApiError::from(DbError::Busy(sqlx::Error::PoolTimedOut));
+        assert!(matches!(err, ApiError::Busy));
+        assert_eq!(err.status_and_code().0, StatusCode::SERVICE_UNAVAILABLE);
+    }
+}

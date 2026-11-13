@@ -210,6 +210,25 @@ async fn trash_is_private(pool: PgPool) {
     ));
 }
 
+async fn all_pages(pool: &PgPool, owner: uuid::Uuid, limit: u32) -> Vec<uuid::Uuid> {
+    let mut seen = Vec::new();
+    let mut cursor: Option<trash::TrashCursor> = None;
+    loop {
+        let page = trash::list(pool, owner, cursor.as_ref(), limit)
+            .await
+            .unwrap();
+        seen.extend(page.items.iter().map(|n| n.id));
+        if !page.has_more {
+            return seen;
+        }
+        let last = page.items.last().unwrap();
+        cursor = Some(trash::TrashCursor {
+            deleted_at: last.deleted_at.unwrap(),
+            id: last.id,
+        });
+    }
+}
+
 #[sqlx::test(migrator = "squirrel_db::MIGRATOR")]
 async fn trash_listing_paginates_newest_first(pool: PgPool) {
     let alice = common::admin(&pool).await;
@@ -218,25 +237,81 @@ async fn trash_listing_paginates_newest_first(pool: PgPool) {
     for (i, fill) in ['a', 'b', 'c'].into_iter().enumerate() {
         let id = common::raw_file(&pool, alice.id, files.id, &format!("{i}.txt"), fill, 1).await;
         trash::trash(&pool, alice.id, id).await.unwrap();
-        ids.push(id);
-    }
-    let first = trash::list(&pool, alice.id, None, 2).await.unwrap();
-    assert!(first.has_more);
-    let last = first.items.last().unwrap();
-    let cursor = trash::TrashCursor {
-        deleted_at: last.deleted_at.unwrap(),
-        id: last.id,
-    };
-    let second = trash::list(&pool, alice.id, Some(&cursor), 2)
+        sqlx::query(
+            "UPDATE nodes SET deleted_at = now() - make_interval(mins => $2) WHERE id = $1",
+        )
+        .bind(id)
+        .bind(10 - i32::try_from(i).unwrap())
+        .execute(&pool)
         .await
         .unwrap();
-    let mut all: Vec<_> = first
-        .items
-        .iter()
-        .chain(&second.items)
-        .map(|n| n.id)
-        .collect();
-    all.sort();
+        ids.push(id);
+    }
+    ids.reverse();
+    assert_eq!(all_pages(&pool, alice.id, 2).await, ids);
+}
+
+#[sqlx::test(migrator = "squirrel_db::MIGRATOR")]
+async fn trash_listing_breaks_deleted_at_ties_by_id_desc(pool: PgPool) {
+    let alice = common::admin(&pool).await;
+    let files = common::root(&pool, alice.id, "Files").await;
+    let mut ids = Vec::new();
+    for (i, fill) in ['a', 'b', 'c', 'd', 'e'].into_iter().enumerate() {
+        let id = common::raw_file(&pool, alice.id, files.id, &format!("{i}.txt"), fill, 1).await;
+        trash::trash(&pool, alice.id, id).await.unwrap();
+        ids.push(id);
+    }
+    sqlx::query("UPDATE nodes SET deleted_at = '2026-11-01T00:00:00Z' WHERE owner_id = $1 AND trash_root IS NOT NULL")
+        .bind(alice.id)
+        .execute(&pool)
+        .await
+        .unwrap();
     ids.sort();
-    assert_eq!(all, ids);
+    ids.reverse();
+    for limit in [1, 2, 3] {
+        assert_eq!(
+            all_pages(&pool, alice.id, limit).await,
+            ids,
+            "limit {limit}"
+        );
+    }
+}
+
+#[sqlx::test(migrator = "squirrel_db::MIGRATOR")]
+async fn restore_goes_to_files_when_the_original_folder_is_in_the_trash(pool: PgPool) {
+    let alice = common::admin(&pool).await;
+    let files = common::root(&pool, alice.id, "Files").await;
+    let docs = common::root(&pool, alice.id, "Documents").await;
+    let folder = common::raw_folder(&pool, alice.id, docs.id, "dir").await;
+    let note = common::raw_file(&pool, alice.id, folder, "note.txt", 'd', 1).await;
+    trash::trash(&pool, alice.id, note).await.unwrap();
+    trash::trash(&pool, alice.id, folder).await.unwrap();
+
+    let restored = trash::restore(&pool, alice.id, note).await.unwrap();
+    assert_eq!(
+        (restored.name.as_str(), restored.parent_id),
+        ("note.txt", Some(files.id))
+    );
+    assert!(
+        nodes::find_live(&pool, alice.id, folder)
+            .await
+            .unwrap()
+            .is_none()
+    );
+}
+
+#[sqlx::test(migrator = "squirrel_db::MIGRATOR")]
+async fn restore_sanitizes_a_stored_name_that_is_no_longer_valid(pool: PgPool) {
+    let alice = common::admin(&pool).await;
+    let files = common::root(&pool, alice.id, "Files").await;
+    let bad = common::raw_file(&pool, alice.id, files.id, "a/b\nc\u{202e}.txt", 'a', 1).await;
+    let dots = common::raw_file(&pool, alice.id, files.id, "..", 'b', 1).await;
+    trash::trash(&pool, alice.id, bad).await.unwrap();
+    trash::trash(&pool, alice.id, dots).await.unwrap();
+
+    let restored = trash::restore(&pool, alice.id, bad).await.unwrap();
+    assert_eq!(restored.name, "a_bc.txt");
+    let restored = trash::restore(&pool, alice.id, dots).await.unwrap();
+    assert!(squirrel_core::NodeName::parse(&restored.name).is_ok());
+    assert_ne!(restored.name, "..");
 }
