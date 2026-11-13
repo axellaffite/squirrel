@@ -30,8 +30,12 @@ export function statusLabel(entry: QueueEntry): string {
 		case 'finishing':
 			return 'Finishing';
 		case 'done':
-			if (entry.deduplicated) return 'Already on your drive';
-			return entry.finalName && entry.finalName !== entry.name ? `Saved as ${entry.finalName}` : 'Done';
+			if (entry.finalName && entry.finalName !== entry.name) {
+				return entry.deduplicated
+					? `Already on your drive, saved as ${entry.finalName}`
+					: `Saved as ${entry.finalName}`;
+			}
+			return entry.deduplicated ? 'Already on your drive' : 'Done';
 		case 'failed':
 			return entry.error ?? 'Upload failed';
 		case 'cancelled':

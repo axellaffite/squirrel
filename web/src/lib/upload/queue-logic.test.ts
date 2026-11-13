@@ -19,6 +19,7 @@ describe('statusLabel', () => {
 		[entry({ status: 'uploading', done: 1500, total: 3000 }), 'Uploading 1.5 KB of 3.0 KB'],
 		[entry({ status: 'finishing' }), 'Finishing'],
 		[entry({ status: 'done', deduplicated: true }), 'Already on your drive'],
+		[entry({ status: 'done', deduplicated: true, finalName: 'a (1).bin' }), 'Already on your drive, saved as a (1).bin'],
 		[entry({ status: 'done', finalName: 'a (1).bin' }), 'Saved as a (1).bin'],
 		[entry({ status: 'done', finalName: 'a.bin' }), 'Done'],
 		[entry({ status: 'failed', error: 'this would exceed your storage quota' }), 'this would exceed your storage quota'],

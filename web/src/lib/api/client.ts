@@ -108,7 +108,7 @@ const FRIENDLY_MESSAGES: Record<string, string> = {
 	busy: 'The server is busy. Try again in a moment.',
 	storage_full: 'The server is out of disk space. Ask your administrator to free some space.',
 	too_many_uploads: 'Too many uploads are in progress. Wait for some to finish, then try again.',
-	quota_exceeded: 'This would exceed your storage quota. Free up some space, including the trash, then try again.',
+	quota_exceeded: 'This would exceed your storage quota. Delete some files, then try again.',
 	hash_mismatch: 'The file changed or was damaged while uploading. Try again.',
 	upload_incomplete: 'Part of the file did not reach the server. Retry to send the rest.'
 };
