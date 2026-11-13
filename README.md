@@ -46,6 +46,12 @@ in the dev Postgres, builds the web UI and starts the server on `127.0.0.1:8099`
 (set `SQUIRREL_E2E_PORT` to use another port). In CI, `SQUIRREL_E2E_DATABASE_URL`
 points it at the CI Postgres instead of docker compose.
 
+### Troubleshooting
+
+- `migration ... was previously applied but has been modified`: a committed migration changed
+  under an existing dev database. Reset it with `docker compose -f deploy/docker-compose.dev.yml down -v`
+  (this destroys local dev data), then start it again. Never edit a migration once merged: add a new one.
+
 ## API contract
 
 `openapi.json` is generated from the Rust code and committed. After changing an endpoint:
