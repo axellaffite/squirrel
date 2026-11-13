@@ -4,7 +4,7 @@ use std::time::Duration;
 use anyhow::Context;
 use clap::{ArgAction, Args, Parser, Subcommand};
 use sqlx::PgPool;
-use squirrel_api::{ApiConfig, AppState, SetupToken};
+use squirrel_api::{ApiConfig, AppState, SetupToken, TrustedProxies};
 use tokio::net::TcpListener;
 use tokio::time::MissedTickBehavior;
 use tower_http::trace::TraceLayer;
@@ -51,6 +51,10 @@ struct ServeArgs {
     /// on startup when unset and no account exists yet.
     #[arg(long, env = "SQUIRREL_SETUP_TOKEN", hide_env_values = true)]
     setup_token: Option<String>,
+    /// Reverse proxies (comma-separated IPs or CIDRs) whose X-Forwarded-For is
+    /// believed for rate limiting and logs. Empty: use the TCP peer address.
+    #[arg(long, env = "SQUIRREL_TRUSTED_PROXIES", default_value = "")]
+    trusted_proxies: TrustedProxies,
 }
 
 #[tokio::main]
@@ -95,6 +99,7 @@ async fn serve(args: ServeArgs) -> anyhow::Result<()> {
     let config = ApiConfig {
         cookie_secure: args.cookie_secure,
         setup_token,
+        trusted_proxies: args.trusted_proxies.clone(),
         ..ApiConfig::default()
     };
     let app =

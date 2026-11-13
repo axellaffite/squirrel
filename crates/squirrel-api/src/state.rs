@@ -3,6 +3,7 @@ use std::sync::Arc;
 use sqlx::PgPool;
 use time::Duration;
 
+use crate::client_ip::TrustedProxies;
 use crate::setup_token::SetupToken;
 
 #[derive(Debug, Clone, Copy)]
@@ -22,8 +23,12 @@ pub struct ApiConfig {
     pub session_absolute_ttl: Duration,
     pub session_touch_interval: Duration,
     pub invitation_ttl: Duration,
-    /// Per-IP limit on credential endpoints (login, setup, join). `None` disables it.
+    /// Per-client limit on credential POSTs (login, setup, join). `None` disables it.
     pub login_rate_limit: Option<RateLimit>,
+    /// Separate, more generous per-client limit on `GET /api/join/{token}`.
+    pub join_check_rate_limit: Option<RateLimit>,
+    /// Proxies whose `X-Forwarded-For` is believed when resolving client addresses.
+    pub trusted_proxies: TrustedProxies,
     /// Required to create the first administrator. `None` refuses setup entirely.
     pub setup_token: Option<SetupToken>,
 }
@@ -40,6 +45,11 @@ impl Default for ApiConfig {
                 replenish_every_secs: 2,
                 burst: 10,
             }),
+            join_check_rate_limit: Some(RateLimit {
+                replenish_every_secs: 1,
+                burst: 30,
+            }),
+            trusted_proxies: TrustedProxies::default(),
             setup_token: None,
         }
     }
