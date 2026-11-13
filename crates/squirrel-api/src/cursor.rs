@@ -13,6 +13,8 @@ use crate::error::ApiError;
 
 pub const DEFAULT_PAGE_SIZE: u32 = 100;
 pub const MAX_PAGE_SIZE: u32 = 500;
+/// Encoded cursors are far shorter (a node name is at most 255 bytes).
+const MAX_CURSOR_LEN: usize = 1024;
 
 pub fn page_size(requested: Option<u32>) -> u32 {
     requested
@@ -28,10 +30,18 @@ fn encode(first: &str, second: &str) -> String {
     URL_SAFE_NO_PAD.encode(format!("{first}\n{second}"))
 }
 
+/// Decoding stops at the separator: neither part may hold a control
+/// character (a NUL would otherwise reach Postgres and fail as a 500).
 fn decode(raw: &str) -> Result<(String, String), ApiError> {
+    if raw.len() > MAX_CURSOR_LEN {
+        return Err(invalid());
+    }
     let bytes = URL_SAFE_NO_PAD.decode(raw).map_err(|_| invalid())?;
     let text = String::from_utf8(bytes).map_err(|_| invalid())?;
     let (first, second) = text.split_once('\n').ok_or_else(invalid)?;
+    if first.chars().chain(second.chars()).any(char::is_control) {
+        return Err(invalid());
+    }
     Ok((first.to_owned(), second.to_owned()))
 }
 
@@ -97,6 +107,35 @@ mod tests {
                 "{raw}"
             );
         }
+    }
+
+    #[test]
+    fn control_characters_are_a_bad_request() {
+        for text in [
+            "file\nbad\0name",
+            "file\na\nb",
+            "file\n\u{7f}",
+            "\u{1b}file\nx",
+        ] {
+            let raw = URL_SAFE_NO_PAD.encode(text);
+            assert!(
+                matches!(decode_folder(&raw), Err(ApiError::BadRequest(_))),
+                "{text:?}"
+            );
+        }
+        let trash = URL_SAFE_NO_PAD.encode(format!("1\n{}\0", Uuid::now_v7()));
+        assert!(matches!(decode_trash(&trash), Err(ApiError::BadRequest(_))));
+    }
+
+    #[test]
+    fn oversized_cursors_are_a_bad_request() {
+        let long = URL_SAFE_NO_PAD.encode(format!("file\n{}", "a".repeat(MAX_CURSOR_LEN)));
+        assert!(matches!(decode_folder(&long), Err(ApiError::BadRequest(_))));
+        let fits = ListCursor {
+            kind: NodeKind::File,
+            name: "a".repeat(255),
+        };
+        assert_eq!(decode_folder(&encode_folder(&fits)).unwrap(), fits);
     }
 
     #[test]

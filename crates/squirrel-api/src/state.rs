@@ -7,8 +7,9 @@ use time::Duration;
 use tokio::sync::Semaphore;
 
 use crate::client_ip::TrustedProxies;
+use crate::downloads::DownloadLimits;
 use crate::setup_token::SetupToken;
-use crate::upload_runtime::{UploadLimits, UploadRuntime};
+use crate::upload_runtime::{Slots, UploadLimits, UploadRuntime};
 
 #[derive(Debug, Clone, Copy)]
 pub struct RateLimit {
@@ -49,6 +50,8 @@ pub struct ApiConfig {
     pub min_free_bytes: u64,
     /// Concurrency, session and rate limits for uploads.
     pub upload_limits: UploadLimits,
+    /// Concurrent file content responses (503 `busy` beyond them).
+    pub download_limits: DownloadLimits,
     /// Trash entries older than this are deleted for good.
     pub trash_retention: Duration,
     /// Blobs are deleted only after this long without any reference.
@@ -87,6 +90,7 @@ impl Default for ApiConfig {
             upload_ttl: Duration::hours(24),
             min_free_bytes: 1024 * 1024 * 1024,
             upload_limits: UploadLimits::default(),
+            download_limits: DownloadLimits::default(),
             trash_retention: Duration::days(30),
             blob_gc_grace: Duration::hours(24),
         }
@@ -103,6 +107,8 @@ pub struct AppState {
     pub hash_permits: Arc<Semaphore>,
     /// Per-upload locks and upload concurrency limits.
     pub uploads: Arc<UploadRuntime>,
+    /// Streaming file bodies; a slot lives as long as its body.
+    pub downloads: Slots,
 }
 
 impl AppState {
@@ -112,6 +118,7 @@ impl AppState {
             storage,
             hash_permits: Arc::new(Semaphore::new(config.hash_concurrency)),
             uploads: Arc::new(UploadRuntime::new(&config.upload_limits)),
+            downloads: config.download_limits.slots(),
             config: Arc::new(config),
         }
     }

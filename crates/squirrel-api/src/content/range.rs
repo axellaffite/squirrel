@@ -16,8 +16,9 @@ pub enum RangeRequest {
 }
 
 /// Interprets a `Range` header for content of `size` bytes. Only single ranges
-/// are honoured; multiple ranges, malformed values and other units fall back to
-/// the full content, which RFC 9110 §14.2 allows.
+/// are honoured; multiple ranges (even partly unsatisfiable ones), malformed
+/// values and other units fall back to the full content, which RFC 9110 §14.2
+/// allows.
 pub fn resolve(header: Option<&str>, size: u64) -> RangeRequest {
     let Some(value) = header else {
         return RangeRequest::Full;
@@ -25,6 +26,9 @@ pub fn resolve(header: Option<&str>, size: u64) -> RangeRequest {
     let Ok(parsed) = http_range_header::parse_range_header(value) else {
         return RangeRequest::Full;
     };
+    if parsed.len() != 1 {
+        return RangeRequest::Full;
+    }
     match parsed.validate(size) {
         Ok(mut ranges) if ranges.len() == 1 => RangeRequest::Partial(ranges.remove(0)),
         Ok(_) => RangeRequest::Full,
@@ -64,5 +68,7 @@ mod tests {
         assert_eq!(resolve(Some("bytes=abc"), 10), RangeRequest::Full);
         assert_eq!(resolve(Some("items=0-1"), 10), RangeRequest::Full);
         assert_eq!(resolve(Some("bytes=0-1,4-5"), 10), RangeRequest::Full);
+        assert_eq!(resolve(Some("bytes=0-1,50-60"), 10), RangeRequest::Full);
+        assert_eq!(resolve(Some("bytes=50-60,70-80"), 10), RangeRequest::Full);
     }
 }
