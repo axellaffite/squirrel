@@ -44,7 +44,7 @@ pub async fn accept_invitation(
         tracing::warn!(%client_ip, reason = "invalid invitation", "join failed");
         return Err(ApiError::InvitationInvalid);
     }
-    let new_user = prepare_new_user(request).await?;
+    let new_user = prepare_new_user(&state, request).await?;
     let user = users::create_with_invitation(&state.pool, &new_user, &token_hash)
         .await
         .inspect_err(|err| {

@@ -7,7 +7,7 @@ use squirrel_core::{Password, Username};
 use squirrel_db::{sessions, users};
 use time::OffsetDateTime;
 
-use crate::blocking::run_blocking;
+use crate::blocking::run_hashing;
 use crate::client_ip::ClientIp;
 use crate::dto::{LoginRequest, MeResponse};
 use crate::error::{ApiError, ErrorBody};
@@ -88,11 +88,11 @@ pub async fn login(
             reason = "unknown, disabled or locked account",
             "login failed"
         );
-        burn_verification(request.password).await?;
+        burn_verification(&state, request.password).await?;
         return Err(ApiError::InvalidCredentials);
     };
 
-    if !verify(request.password, user.password_hash.clone()).await? {
+    if !verify(&state, request.password, user.password_hash.clone()).await? {
         let failures = users::record_login_failure(&state.pool, user.id).await?;
         tracing::warn!(user_id = %user.id, username = %user.username, %client_ip,
             failures, reason = "wrong password", "login failed");
@@ -108,10 +108,10 @@ pub async fn login(
     Ok((jar.add(cookie), Json(me)))
 }
 
-async fn burn_verification(password: String) -> Result<(), ApiError> {
-    run_blocking(move || burn_verification_time(&password)).await
+async fn burn_verification(state: &AppState, password: String) -> Result<(), ApiError> {
+    run_hashing(state, move || burn_verification_time(&password)).await
 }
 
-async fn verify(password: String, stored_hash: String) -> Result<bool, ApiError> {
-    Ok(run_blocking(move || verify_password(&password, &stored_hash)).await??)
+async fn verify(state: &AppState, password: String, stored_hash: String) -> Result<bool, ApiError> {
+    Ok(run_hashing(state, move || verify_password(&password, &stored_hash)).await??)
 }
