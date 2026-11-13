@@ -8,6 +8,7 @@ mod page;
 pub mod quota;
 pub mod sessions;
 pub mod settings;
+pub mod trash;
 pub mod uploads;
 pub mod users;
 
