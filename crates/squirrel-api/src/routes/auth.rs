@@ -1,10 +1,14 @@
 use axum::Json;
 use axum::extract::State;
-use axum::http::StatusCode;
+use axum::http::{HeaderMap, StatusCode};
 use axum_extra::extract::CookieJar;
-use squirrel_db::sessions;
+use squirrel_auth::{burn_verification_time, verify_password};
+use squirrel_core::{Password, Username};
+use squirrel_db::{sessions, users};
+use time::OffsetDateTime;
 
-use crate::dto::MeResponse;
+use crate::blocking::run_blocking;
+use crate::dto::{LoginRequest, MeResponse};
 use crate::error::{ApiError, ErrorBody};
 use crate::extract::CurrentUser;
 use crate::session;
@@ -39,4 +43,40 @@ pub async fn logout_all(
 ) -> Result<(StatusCode, CookieJar), ApiError> {
     sessions::delete_all_for_user(&state.pool, current.user.id).await?;
     Ok((StatusCode::NO_CONTENT, jar.remove(session::removal())))
+}
+
+/// Inputs longer than this are rejected before hashing (protects the CPU).
+const MAX_PASSWORD_BYTES: usize = Password::MAX_LEN * 4;
+
+#[utoipa::path(post, path = "/api/auth/login", tag = "auth",
+    request_body = LoginRequest,
+    responses((status = 200, body = MeResponse), (status = 401, body = ErrorBody), (status = 429)))]
+pub async fn login(
+    State(state): State<AppState>,
+    jar: CookieJar,
+    headers: HeaderMap,
+    Json(request): Json<LoginRequest>,
+) -> Result<(CookieJar, Json<MeResponse>), ApiError> {
+    if request.password.len() > MAX_PASSWORD_BYTES {
+        return Err(ApiError::InvalidCredentials);
+    }
+    let user = match Username::parse(&request.username) {
+        Ok(username) => users::find_by_username(&state.pool, &username).await?,
+        Err(_) => None,
+    };
+    let now = OffsetDateTime::now_utc();
+    let Some(user) = user.filter(|u| !u.is_disabled() && !u.is_locked(now)) else {
+        run_blocking(move || burn_verification_time(&request.password)).await?;
+        return Err(ApiError::InvalidCredentials);
+    };
+
+    let stored_hash = user.password_hash.clone();
+    let valid = run_blocking(move || verify_password(&request.password, &stored_hash)).await??;
+    if !valid {
+        users::record_login_failure(&state.pool, user.id).await?;
+        return Err(ApiError::InvalidCredentials);
+    }
+    users::record_login_success(&state.pool, user.id).await?;
+    let (cookie, me) = session::start(&state, &user, &headers).await?;
+    Ok((jar.add(cookie), Json(me)))
 }

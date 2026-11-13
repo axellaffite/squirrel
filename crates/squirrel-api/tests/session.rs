@@ -63,7 +63,6 @@ async fn state_changing_requests_need_the_csrf_header(pool: PgPool) {
 }
 
 #[sqlx::test(migrator = "squirrel_db::MIGRATOR")]
-#[ignore = "needs login (Task 13)"]
 async fn logout_all_revokes_other_browsers(pool: PgPool) {
     let first = common::server(pool.clone());
     let me = common::setup_admin(&first, "alice").await;

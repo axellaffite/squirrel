@@ -4,6 +4,7 @@ mod blocking;
 mod dto;
 mod error;
 mod extract;
+mod rate_limit;
 mod routes;
 mod session;
 mod spa;
@@ -34,12 +35,20 @@ pub fn openapi() -> utoipa::openapi::OpenApi {
     api_router(&ApiConfig::default()).split_for_parts().1
 }
 
-fn api_router(_config: &ApiConfig) -> OpenApiRouter<AppState> {
+fn api_router(config: &ApiConfig) -> OpenApiRouter<AppState> {
+    let credential_routes = OpenApiRouter::new()
+        .routes(routes!(routes::setup::create_first_admin))
+        .routes(routes!(routes::auth::login));
+    let credential_routes = match config.login_rate_limit {
+        Some(limit) => rate_limit::apply(credential_routes, limit),
+        None => credential_routes,
+    };
+
     OpenApiRouter::with_openapi(ApiDoc::openapi())
         .routes(routes!(routes::health::healthz))
         .routes(routes!(routes::setup::setup_status))
-        .routes(routes!(routes::setup::create_first_admin))
         .routes(routes!(routes::auth::me))
         .routes(routes!(routes::auth::logout))
         .routes(routes!(routes::auth::logout_all))
+        .merge(credential_routes)
 }

@@ -2,7 +2,8 @@
 
 use std::net::SocketAddr;
 
-use axum::extract::connect_info::MockConnectInfo;
+use axum::Extension;
+use axum::extract::ConnectInfo;
 use axum::http::{HeaderName, HeaderValue, StatusCode};
 use axum_test::TestServer;
 use serde_json::{Value, json};
@@ -25,9 +26,12 @@ pub fn server(pool: PgPool) -> TestServer {
 }
 
 /// Each TestServer has its own cookie jar, i.e. acts as one browser.
+/// A real `ConnectInfo` extension (not `MockConnectInfo`) is inserted, because
+/// tower_governor's peer-IP key extractor only reads `ConnectInfo<SocketAddr>`.
 pub fn server_with(pool: PgPool, config: ApiConfig) -> TestServer {
-    let app = squirrel_api::router(AppState::new(pool, config))
-        .layer(MockConnectInfo(SocketAddr::from(([127, 0, 0, 1], 40_000))));
+    let app = squirrel_api::router(AppState::new(pool, config)).layer(Extension(ConnectInfo(
+        SocketAddr::from(([127, 0, 0, 1], 40_000)),
+    )));
     TestServer::builder()
         .save_cookies()
         .build(app)
