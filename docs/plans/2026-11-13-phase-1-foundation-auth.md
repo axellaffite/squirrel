@@ -15,6 +15,22 @@
 - `devices` table and mobile tokens are deferred to Phase 6 (mobile app).
 - Cookie `Max-Age` is 365 days; the **server-side** `expires_at` (30-day sliding) is authoritative.
 
+## As built (supersedes task code below)
+
+The task bodies below are the original plan. The implementation diverged during review; **the code is the source of truth**. Notable differences:
+
+- **Setup code:** `SetupRequest.setup_token` is required to create the first admin. It comes from `SQUIRREL_SETUP_TOKEN`, or is generated and logged on first start while no account exists (a warning is logged if the configured value is shorter than 16 characters).
+- **Sessions:** besides the 30-day sliding `expires_at`, sessions have `absolute_expires_at` (90 days from login, also the cookie `Max-Age`). Logging in deletes the session the browser already carried.
+- **`MeResponse.can_invite`** tells the UI whether the user may create invitations.
+- **Errors:** `ApiJson`/`ApiPath` extractors map rejections to the `{ error: { code, message } }` envelope; 405, 413, 415, 429 and 503 also use it. A CSRF mismatch is 403 `csrf_invalid` (distinct from `forbidden`).
+- **Client address and rate limiting:** `SQUIRREL_TRUSTED_PROXIES` controls when `X-Forwarded-For` is believed. Credential POSTs (setup, login, join) share one per-client bucket; `GET /api/join/{token}` has its own, more generous one.
+- **Limits:** 16 KiB bodies on credential routes, 64 KiB on other JSON routes, 30 s request timeout, and a semaphore bounding concurrent Argon2 operations (503 `busy` when saturated). Routes are grouped by these limits in `squirrel-api/src/lib.rs`.
+- **Security headers** on every response, and SvelteKit CSP in `hash` mode.
+- **Background tasks:** expired sessions are purged hourly; shutdown is graceful with a 10 s deadline.
+- **CI:** an `e2e` job runs Playwright against a CI Postgres via `SQUIRREL_E2E_DATABASE_URL`; `SQUIRREL_E2E_PORT` overrides the e2e server port. The rust job also refuses edits to already-committed migrations on pull requests.
+- **Web:** SvelteKit 3, adapter configured in `vite.config.ts`, imports via `#lib/...`.
+- **Dev environment:** dev Postgres listens on `localhost:55432`; Node 22 via nvm (`web/.nvmrc`).
+
 ---
 
 ## Prerequisites (do once, before Task 1)

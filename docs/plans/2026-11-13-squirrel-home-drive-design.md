@@ -73,6 +73,11 @@ docs/                design and plans
 - **Hardening**: Argon2id (19 MiB, 2 iterations), min password length 10, rate limiting per IP and per username with backoff, generic login errors.
 - **Authorization**: every query scoped by `owner_id`. Cross-user sharing is out of scope for v1.
 
+**Phase 1 as built** (corrects the bullets above; the code is the source of truth):
+- Bootstrap is `POST /api/setup/admin`, which requires a setup code (`SQUIRREL_SETUP_TOKEN`, or one logged on first start). Invited people join with `POST /api/join/{token}`. There is no `/api/auth/register`.
+- CSRF uses a synchronizer token stored with the session and sent in `X-CSRF-Token`, not double-submit.
+- Health is `GET /api/healthz` and checks the database only.
+
 ## Storage and sync
 
 - **Blobs**: `blobs(sha256, size, mime, ref_count, created_at)`. Upload streams to `/data/tmp`, hashed while writing, fsync, atomic rename. Existing blob → increment `ref_count`. Daily GC of `ref_count = 0` after a grace period; weekly scrub re-hashes a sample.
