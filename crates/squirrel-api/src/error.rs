@@ -38,6 +38,10 @@ pub enum ApiError {
     Conflict(String),
     #[error("this invitation is invalid, expired or already used")]
     InvitationInvalid,
+    #[error("a file or folder with this name already exists here")]
+    NameConflict,
+    #[error("this would exceed your storage quota")]
+    QuotaExceeded,
     #[error("internal server error")]
     Internal(#[source] anyhow::Error),
 }
@@ -74,6 +78,8 @@ impl ApiError {
             ApiError::Busy => (StatusCode::SERVICE_UNAVAILABLE, "busy"),
             ApiError::Conflict(_) => (StatusCode::CONFLICT, "conflict"),
             ApiError::InvitationInvalid => (StatusCode::GONE, "invitation_invalid"),
+            ApiError::NameConflict => (StatusCode::CONFLICT, "name_conflict"),
+            ApiError::QuotaExceeded => (StatusCode::INSUFFICIENT_STORAGE, "quota_exceeded"),
             ApiError::Internal(_) => (StatusCode::INTERNAL_SERVER_ERROR, "internal_error"),
         }
     }
@@ -101,6 +107,13 @@ impl From<DbError> for ApiError {
             DbError::NotFirstUser => ApiError::Conflict("setup is already complete".into()),
             DbError::UsernameTaken => ApiError::Conflict("this username is already taken".into()),
             DbError::InvitationInvalid => ApiError::InvitationInvalid,
+            DbError::NotFound => ApiError::NotFound,
+            DbError::NameConflict => ApiError::NameConflict,
+            DbError::QuotaExceeded => ApiError::QuotaExceeded,
+            other @ (DbError::ProtectedRoot | DbError::MoveIntoSelf) => {
+                ApiError::Validation(other.to_string())
+            }
+            other @ DbError::UploadBusy => ApiError::Conflict(other.to_string()),
             DbError::Sqlx(source) => ApiError::Internal(source.into()),
         }
     }
