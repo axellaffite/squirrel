@@ -1,7 +1,9 @@
 use std::sync::Arc;
+use std::time::Duration as StdDuration;
 
 use sqlx::PgPool;
 use time::Duration;
+use tokio::sync::Semaphore;
 
 use crate::client_ip::TrustedProxies;
 use crate::setup_token::SetupToken;
@@ -31,6 +33,18 @@ pub struct ApiConfig {
     pub trusted_proxies: TrustedProxies,
     /// Required to create the first administrator. `None` refuses setup entirely.
     pub setup_token: Option<SetupToken>,
+    /// Concurrent Argon2 hash/verify operations (each uses ~19 MiB and a core).
+    pub hash_concurrency: usize,
+    /// How long a request waits for a hashing slot before answering 503 `busy`.
+    pub hash_wait: StdDuration,
+}
+
+/// Available cores clamped to 2..=4: enough for a few simultaneous logins,
+/// bounded so a burst cannot exhaust memory or starve other requests.
+fn default_hash_concurrency() -> usize {
+    std::thread::available_parallelism()
+        .map_or(2, |n| n.get())
+        .clamp(2, 4)
 }
 
 impl Default for ApiConfig {
@@ -51,6 +65,8 @@ impl Default for ApiConfig {
             }),
             trusted_proxies: TrustedProxies::default(),
             setup_token: None,
+            hash_concurrency: default_hash_concurrency(),
+            hash_wait: StdDuration::from_secs(5),
         }
     }
 }
@@ -59,12 +75,15 @@ impl Default for ApiConfig {
 pub struct AppState {
     pub pool: PgPool,
     pub config: Arc<ApiConfig>,
+    /// Bounds concurrent password hashing (see [`ApiConfig::hash_concurrency`]).
+    pub hash_permits: Arc<Semaphore>,
 }
 
 impl AppState {
     pub fn new(pool: PgPool, config: ApiConfig) -> Self {
         Self {
             pool,
+            hash_permits: Arc::new(Semaphore::new(config.hash_concurrency)),
             config: Arc::new(config),
         }
     }

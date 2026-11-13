@@ -8,6 +8,7 @@ mod extract;
 mod input;
 mod rate_limit;
 mod routes;
+mod security_headers;
 mod session;
 mod setup_token;
 mod spa;
@@ -18,11 +19,20 @@ pub use error::{ApiError, ErrorBody};
 pub use setup_token::SetupToken;
 pub use state::{ApiConfig, AppState, RateLimit};
 
+use std::time::Duration;
+
 use axum::Router;
-use axum::http::Method;
+use axum::extract::DefaultBodyLimit;
+use axum::http::{Method, StatusCode};
+use tower_http::timeout::TimeoutLayer;
 use utoipa::OpenApi;
 use utoipa_axum::router::OpenApiRouter;
 use utoipa_axum::routes;
+
+/// Credential bodies (setup, login, join) are tiny; keep them so.
+const CREDENTIAL_BODY_LIMIT: usize = 16 * 1024;
+const API_BODY_LIMIT: usize = 64 * 1024;
+const API_TIMEOUT: Duration = Duration::from_secs(30);
 
 #[derive(OpenApi)]
 #[openapi(
@@ -33,10 +43,12 @@ struct ApiDoc;
 
 pub fn router(state: AppState) -> Router {
     let (router, _) = api_router(&state.config).split_for_parts();
-    router
+    let hsts = state.config.cookie_secure;
+    let router = router
         .method_not_allowed_fallback(method_not_allowed)
         .fallback(spa::serve)
-        .with_state(state)
+        .with_state(state);
+    security_headers::apply(router, hsts)
 }
 
 async fn method_not_allowed() -> ApiError {
@@ -69,7 +81,8 @@ fn api_router(config: &ApiConfig) -> OpenApiRouter<AppState> {
         config.login_rate_limit,
         Method::POST,
         trusted,
-    );
+    )
+    .layer(DefaultBodyLimit::max(CREDENTIAL_BODY_LIMIT));
 
     OpenApiRouter::with_openapi(ApiDoc::openapi())
         .routes(routes!(routes::health::healthz))
@@ -86,5 +99,10 @@ fn api_router(config: &ApiConfig) -> OpenApiRouter<AppState> {
             routes::admin::get_settings,
             routes::admin::update_settings
         ))
+        .layer(DefaultBodyLimit::max(API_BODY_LIMIT))
         .merge(credential_routes)
+        .layer(TimeoutLayer::with_status_code(
+            StatusCode::REQUEST_TIMEOUT,
+            API_TIMEOUT,
+        ))
 }

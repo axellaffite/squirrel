@@ -6,12 +6,15 @@ use clap::{ArgAction, Args, Parser, Subcommand};
 use sqlx::PgPool;
 use squirrel_api::{ApiConfig, AppState, SetupToken, TrustedProxies};
 use tokio::net::TcpListener;
+use tokio::sync::watch;
 use tokio::time::MissedTickBehavior;
 use tower_http::trace::TraceLayer;
 use tracing_subscriber::EnvFilter;
 
 /// How often expired sessions are purged from the database.
 const SESSION_CLEANUP_INTERVAL: Duration = Duration::from_secs(60 * 60);
+/// In-flight requests get this long to finish after a shutdown signal.
+const SHUTDOWN_DEADLINE: Duration = Duration::from_secs(10);
 
 #[derive(Parser)]
 #[command(name = "squirrel", version, about = "Self-hosted home drive")]
@@ -115,13 +118,30 @@ async fn serve(args: ServeArgs) -> anyhow::Result<()> {
         .await
         .with_context(|| format!("binding {}", args.bind))?;
     tracing::info!(address = %args.bind, "squirrel is listening");
-    axum::serve(
+    let (stopping_tx, mut stopping_rx) = watch::channel(false);
+    let server = axum::serve(
         listener,
         app.into_make_service_with_connect_info::<SocketAddr>(),
     )
-    .with_graceful_shutdown(shutdown_signal())
-    .await
-    .context("serving HTTP")
+    .with_graceful_shutdown(async move {
+        shutdown_signal().await;
+        let _ = stopping_tx.send(true);
+    });
+    let deadline = async move {
+        // Errors only if the sender is gone, i.e. the server already stopped.
+        let _ = stopping_rx.wait_for(|stopping| *stopping).await;
+        tokio::time::sleep(SHUTDOWN_DEADLINE).await;
+    };
+    tokio::select! {
+        result = server => result.context("serving HTTP"),
+        () = deadline => {
+            tracing::warn!(
+                deadline_secs = SHUTDOWN_DEADLINE.as_secs(),
+                "graceful shutdown deadline reached, dropping remaining connections"
+            );
+            Ok(())
+        }
+    }
 }
 
 /// Uses the configured setup token, or generates and logs one while the

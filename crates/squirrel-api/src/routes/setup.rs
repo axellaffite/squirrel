@@ -6,7 +6,7 @@ use squirrel_auth::hash_password;
 use squirrel_core::{DisplayName, Password, Username};
 use squirrel_db::users::{self, NewUser};
 
-use crate::blocking::run_blocking;
+use crate::blocking::run_hashing;
 use crate::client_ip::ClientIp;
 use crate::dto::{AccountRequest, MeResponse, SetupRequest, SetupStatus};
 use crate::error::{ApiError, ErrorBody};
@@ -52,7 +52,7 @@ pub async fn create_first_admin(
         tracing::warn!(%client_ip, "setup attempt with a missing or wrong setup code");
         return Err(ApiError::Forbidden);
     }
-    let new_user = prepare_new_user(request.into_account()).await?;
+    let new_user = prepare_new_user(&state, request.into_account()).await?;
     let user = users::create_first_admin(&state.pool, &new_user).await?;
     tracing::info!(user_id = %user.id, username = %user.username, %client_ip,
         "setup completed: first administrator created");
@@ -61,11 +61,14 @@ pub async fn create_first_admin(
 }
 
 /// Validates the account fields and hashes the password off the async executor.
-pub async fn prepare_new_user(request: AccountRequest) -> Result<NewUser, ApiError> {
+pub async fn prepare_new_user(
+    state: &AppState,
+    request: AccountRequest,
+) -> Result<NewUser, ApiError> {
     let username = Username::parse(&request.username)?;
     let display_name = DisplayName::parse(&request.display_name)?;
     let password = Password::parse(&request.password)?;
-    let password_hash = run_blocking(move || hash_password(&password)).await??;
+    let password_hash = run_hashing(state, move || hash_password(&password)).await??;
     Ok(NewUser {
         username,
         display_name,

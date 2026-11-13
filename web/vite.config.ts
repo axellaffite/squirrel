@@ -11,7 +11,13 @@ export default defineConfig({
 					filename.split(/[/\\]/).includes('node_modules') ? undefined : true
 			},
 			// Static SPA: every unknown path falls back to index.html, which the Rust server embeds.
-			adapter: adapter({ pages: 'build', assets: 'build', fallback: 'index.html', strict: false })
+			adapter: adapter({ pages: 'build', assets: 'build', fallback: 'index.html', strict: false }),
+			// Emits a <meta> CSP with hashes of SvelteKit's inline bootstrap script. The server adds
+			// the directives a <meta> cannot carry (frame-ancestors) as response headers.
+			csp: {
+				mode: 'hash',
+				directives: { 'script-src': ['self'], 'object-src': ['none'], 'base-uri': ['none'] }
+			}
 		})
 	],
 	server: { proxy: { '/api': 'http://localhost:8080' } },
