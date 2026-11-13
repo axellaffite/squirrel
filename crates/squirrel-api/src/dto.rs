@@ -11,6 +11,12 @@ pub struct AccountRequest {
     pub password: String,
 }
 
+#[derive(Debug, Deserialize, ToSchema)]
+pub struct LoginRequest {
+    pub username: String,
+    pub password: String,
+}
+
 #[derive(Debug, Serialize, ToSchema)]
 pub struct MeResponse {
     pub id: Uuid,
