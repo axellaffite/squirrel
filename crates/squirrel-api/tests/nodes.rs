@@ -90,6 +90,13 @@ async fn creates_lists_and_paginates_folders(pool: PgPool) {
         .get(&format!("/api/nodes?parent_id={parent}&cursor=garbage!"))
         .await
         .assert_status(StatusCode::BAD_REQUEST);
+    // A NUL in the name used to reach Postgres (500).
+    use base64::Engine;
+    let nul = base64::engine::general_purpose::URL_SAFE_NO_PAD.encode("file\na\0b");
+    browser
+        .get(&format!("/api/nodes?parent_id={parent}&cursor={nul}"))
+        .await
+        .assert_status(StatusCode::BAD_REQUEST);
 }
 
 #[sqlx::test(migrator = "squirrel_db::MIGRATOR")]

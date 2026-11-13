@@ -16,6 +16,7 @@ percent-encoding.workspace = true
 rust-embed.workspace = true
 serde.workspace = true
 serde_json.workspace = true
+sha2.workspace = true
 sqlx.workspace = true
 squirrel-auth.workspace = true
 squirrel-core.workspace = true
@@ -35,5 +36,4 @@ uuid.workspace = true
 
 [dev-dependencies]
 axum-test.workspace = true
-sha2.workspace = true
 tempfile.workspace = true

@@ -2,13 +2,9 @@
 
 mod blocking;
 mod client_ip;
-#[allow(
-    dead_code,
-    unused_imports,
-    reason = "used by the content route (Task 19)"
-)]
 mod content;
 mod cursor;
+mod downloads;
 mod dto;
 mod error;
 mod extract;
@@ -25,6 +21,7 @@ mod state;
 mod upload_runtime;
 
 pub use client_ip::{TrustedProxies, TrustedProxiesError};
+pub use downloads::DownloadLimits;
 pub use error::{ApiError, ErrorBody};
 pub use setup_token::SetupToken;
 pub use state::{ApiConfig, AppState, RateLimit};

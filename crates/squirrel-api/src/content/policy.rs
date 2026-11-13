@@ -13,8 +13,10 @@ pub struct ContentPolicy {
 pub const SANDBOX_CSP: &str = "sandbox; default-src 'none'; img-src 'self'; media-src 'self'; \
      style-src 'unsafe-inline'; frame-ancestors 'self'";
 /// Built-in PDF viewers refuse to start in a sandboxed document, so inline PDFs
-/// get a strict policy without `sandbox` (see Task 25 for the browser checks).
-pub const PDF_CSP: &str = "default-src 'none'; object-src 'self'; frame-ancestors 'self'";
+/// get a strict policy without `sandbox` (see Task 25 for the browser checks):
+/// no scripts, form submissions or `<base>` rewrites in the document itself.
+pub const PDF_CSP: &str = "default-src 'none'; object-src 'self'; script-src 'none'; \
+     form-action 'none'; base-uri 'none'; frame-ancestors 'self'";
 const OCTET_STREAM: &str = "application/octet-stream";
 const PDF: &str = "application/pdf";
 const TEXT: &str = "text/plain";
@@ -89,16 +91,6 @@ impl ContentPolicy {
     }
 }
 
-/// `If-None-Match` matching (weak comparison, RFC 9110 §13.1.2): `*` or any listed tag.
-pub fn etag_matches(if_none_match: Option<&str>, etag: &str) -> bool {
-    if_none_match.is_some_and(|value| {
-        value
-            .split(',')
-            .map(str::trim)
-            .any(|tag| tag == "*" || tag.trim_start_matches("W/") == etag)
-    })
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -150,15 +142,5 @@ mod tests {
             (zip.content_type.as_str(), zip.inline),
             ("application/zip", false)
         );
-    }
-
-    #[test]
-    fn if_none_match_uses_weak_comparison() {
-        let etag = "\"abc\"";
-        assert!(etag_matches(Some("\"abc\""), etag));
-        assert!(etag_matches(Some("W/\"abc\", \"def\""), etag));
-        assert!(etag_matches(Some("*"), etag));
-        assert!(!etag_matches(Some("\"def\""), etag));
-        assert!(!etag_matches(None, etag));
     }
 }

@@ -21,12 +21,14 @@ use uuid::Uuid;
 
 use crate::blocking::run_storage;
 use crate::content::{
-    ContentPolicy, RangeRequest, content_disposition, etag_matches, resolve_range,
+    ContentPolicy, RangeRequest, content_disposition, entity_tag, etag_matches, resolve_range,
 };
+use crate::downloads::HeldReader;
 use crate::error::{ApiError, ErrorBody};
 use crate::extract::CurrentUser;
 use crate::input::{ApiPath, ApiQuery};
 use crate::state::AppState;
+use crate::upload_runtime::Slot;
 
 /// Browsers may keep a copy but must revalidate it (auth + ETag) every time.
 const CACHE_POLICY: &str = "private, no-cache";
@@ -59,6 +61,7 @@ struct Selection {
         (status = 400, body = ErrorBody),
         (status = 404, body = ErrorBody),
         (status = 416, body = ErrorBody),
+        (status = 503, body = ErrorBody, description = "Too many downloads in progress"),
     ))]
 pub async fn file_content(
     State(state): State<AppState>,
@@ -67,17 +70,27 @@ pub async fn file_content(
     ApiQuery(query): ApiQuery<ContentQuery>,
     headers: HeaderMap,
 ) -> Result<Response, ApiError> {
-    let node = nodes::find_live(&state.pool, current.user.id, id)
+    let owner_id = current.user.id;
+    let node = nodes::find_live(&state.pool, owner_id, id)
         .await?
         .filter(|node| node.kind() == NodeKind::File)
         .ok_or(ApiError::NotFound)?;
     let hash = blob_hash(&node)?;
-    let etag = format!("\"{hash}\"");
+    let policy = ContentPolicy::for_mime(node.mime.as_deref(), query.download);
+    let disposition = content_disposition(policy.inline, &node.name);
+    let etag = entity_tag(&hash, &policy, &disposition);
+    // A 304 carries the same policy headers as the 200: browsers merge them
+    // into the cached response, and the global layers would add `DENY`.
+    let mut response_headers = policy_headers(&policy, disposition, etag.clone())?;
     if etag_matches(header_str(&headers, IF_NONE_MATCH), &etag) {
-        let headers = [(ETAG, etag), (CACHE_CONTROL, CACHE_POLICY.to_owned())];
-        return Ok((StatusCode::NOT_MODIFIED, headers).into_response());
+        return Ok((StatusCode::NOT_MODIFIED, response_headers).into_response());
     }
 
+    let slot = state
+        .downloads
+        .acquire(owner_id)
+        .await
+        .ok_or(ApiError::Busy)?;
     let (store, blob) = (state.storage.clone(), hash.clone());
     let (file, size) = run_storage(move || store.open_blob(&blob))
         .await
@@ -90,9 +103,8 @@ pub async fn file_content(
         let headers = [(CONTENT_RANGE, format!("bytes */{size}"))];
         return Ok((headers, ApiError::RangeNotSatisfiable).into_response());
     };
-    let policy = ContentPolicy::for_mime(node.mime.as_deref(), query.download);
-    let response_headers = content_headers(&policy, &node.name, &etag, &selection)?;
-    let body = stream(file, selection.start, selection.len).await?;
+    response_headers.extend(body_headers(&policy, &selection)?);
+    let body = stream(file, &selection, slot).await?;
     Ok((selection.status, response_headers, body).into_response())
 }
 
@@ -134,32 +146,39 @@ fn header_str(headers: &HeaderMap, name: HeaderName) -> Option<&str> {
     headers.get(name).and_then(|value| value.to_str().ok())
 }
 
-/// The handler sets CSP and `X-Frame-Options` itself; the global layers only
-/// add theirs when absent, so these (frameable by the app, sandboxed) win.
-fn content_headers(
+/// Headers shared by 200, 206 and 304. The handler sets CSP and
+/// `X-Frame-Options` itself; the global layers only add theirs when absent, so
+/// these (frameable by the app, sandboxed) win.
+fn policy_headers(
     policy: &ContentPolicy,
-    name: &str,
-    etag: &str,
-    selection: &Selection,
+    disposition: String,
+    etag: String,
 ) -> Result<HeaderMap, ApiError> {
-    let mut pairs = vec![
-        (CONTENT_TYPE, policy.content_type.clone()),
-        (CONTENT_LENGTH, selection.len.to_string()),
-        (
-            CONTENT_DISPOSITION,
-            content_disposition(policy.inline, name),
-        ),
+    to_header_map(vec![
+        (CONTENT_DISPOSITION, disposition),
         (CONTENT_SECURITY_POLICY, policy.csp.to_owned()),
-        (ETAG, etag.to_owned()),
+        (ETAG, etag),
         (CACHE_CONTROL, CACHE_POLICY.to_owned()),
-        (ACCEPT_RANGES, "bytes".to_owned()),
         (X_CONTENT_TYPE_OPTIONS, "nosniff".to_owned()),
         (X_FRAME_OPTIONS, "SAMEORIGIN".to_owned()),
         (CROSS_ORIGIN_RESOURCE_POLICY, "same-origin".to_owned()),
+    ])
+}
+
+/// Headers describing the bytes actually sent.
+fn body_headers(policy: &ContentPolicy, selection: &Selection) -> Result<HeaderMap, ApiError> {
+    let mut pairs = vec![
+        (CONTENT_TYPE, policy.content_type.clone()),
+        (CONTENT_LENGTH, selection.len.to_string()),
+        (ACCEPT_RANGES, "bytes".to_owned()),
     ];
     if let Some(range) = &selection.content_range {
         pairs.push((CONTENT_RANGE, range.clone()));
     }
+    to_header_map(pairs)
+}
+
+fn to_header_map(pairs: Vec<(HeaderName, String)>) -> Result<HeaderMap, ApiError> {
     pairs
         .into_iter()
         .map(|(name, value)| HeaderValue::try_from(value).map(|value| (name, value)))
@@ -167,13 +186,16 @@ fn content_headers(
         .map_err(|err| ApiError::Internal(err.into()))
 }
 
-async fn stream(file: std::fs::File, start: u64, len: u64) -> Result<Body, ApiError> {
+/// The download slot travels with the body and is released when it finishes
+/// streaming or the client disconnects (the body is dropped).
+async fn stream(file: std::fs::File, selection: &Selection, slot: Slot) -> Result<Body, ApiError> {
     let mut file = tokio::fs::File::from_std(file);
-    file.seek(SeekFrom::Start(start))
+    file.seek(SeekFrom::Start(selection.start))
         .await
         .map_err(|err| ApiError::Internal(err.into()))?;
+    let reader = HeldReader::new(file.take(selection.len), slot);
     Ok(Body::from_stream(ReaderStream::with_capacity(
-        file.take(len),
+        reader,
         STREAM_BUFFER,
     )))
 }

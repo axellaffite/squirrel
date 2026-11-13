@@ -306,6 +306,16 @@
                 }
               }
             }
+          },
+          "503": {
+            "description": "Too many downloads in progress",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
           }
         }
       }
