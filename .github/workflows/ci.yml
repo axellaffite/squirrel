@@ -1,0 +1,99 @@
+name: CI
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  rust:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: pgvector/pgvector:pg17
+        env:
+          POSTGRES_USER: squirrel
+          POSTGRES_PASSWORD: squirrel
+          POSTGRES_DB: squirrel
+        # Same host port as deploy/docker-compose.dev.yml, so .cargo/config.toml's DATABASE_URL works.
+        ports: ["55432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U squirrel" --health-interval 2s --health-timeout 3s --health-retries 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@1.94
+        with:
+          components: rustfmt, clippy
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo fmt --all --check
+      - run: cargo clippy --workspace --all-targets -- -D warnings
+      - run: cargo test --workspace
+
+  web:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: web
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          package_json_file: web/package.json
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: web/.nvmrc
+          cache: pnpm
+          cache-dependency-path: web/pnpm-lock.yaml
+      - run: pnpm install --frozen-lockfile
+      - name: Generated API client matches openapi.json
+        run: pnpm gen:api && git diff --exit-code src/lib/api/schema.d.ts
+      - run: pnpm check
+      - run: pnpm test:unit
+      - run: pnpm build
+
+  e2e:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: pgvector/pgvector:pg17
+        env:
+          POSTGRES_USER: squirrel
+          POSTGRES_PASSWORD: squirrel
+          POSTGRES_DB: squirrel
+        ports: ["55432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U squirrel" --health-interval 2s --health-timeout 3s --health-retries 20
+    env:
+      # Makes scripts/e2e-server.sh skip docker compose and recreate this database with psql.
+      SQUIRREL_E2E_DATABASE_URL: postgres://squirrel:squirrel@localhost:55432/squirrel_e2e
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@1.94
+      - uses: Swatinem/rust-cache@v2
+      - uses: pnpm/action-setup@v4
+        with:
+          package_json_file: web/package.json
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: web/.nvmrc
+          cache: pnpm
+          cache-dependency-path: web/pnpm-lock.yaml
+      - run: pnpm install --frozen-lockfile
+        working-directory: web
+      - name: Build the server before Playwright starts it
+        run: cargo build -p squirrel
+      - run: pnpm exec playwright install --with-deps chromium
+        working-directory: web
+      - run: pnpm test:e2e
+        working-directory: web
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: playwright-report
+          path: |
+            web/playwright-report
+            web/test-results
+          retention-days: 7
