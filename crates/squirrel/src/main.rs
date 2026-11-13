@@ -1,0 +1,166 @@
+use std::net::SocketAddr;
+use std::time::Duration;
+
+use anyhow::Context;
+use clap::{ArgAction, Args, Parser, Subcommand};
+use sqlx::PgPool;
+use squirrel_api::{ApiConfig, AppState};
+use tokio::net::TcpListener;
+use tokio::time::MissedTickBehavior;
+use tower_http::trace::TraceLayer;
+use tracing_subscriber::EnvFilter;
+
+/// How often expired sessions are purged from the database.
+const SESSION_CLEANUP_INTERVAL: Duration = Duration::from_secs(60 * 60);
+
+#[derive(Parser)]
+#[command(name = "squirrel", version, about = "Self-hosted home drive")]
+struct Cli {
+    #[command(subcommand)]
+    command: Command,
+}
+
+#[derive(Subcommand)]
+enum Command {
+    /// Run the HTTP server (applies pending migrations first).
+    Serve(ServeArgs),
+    /// Apply pending database migrations and exit.
+    Migrate(DatabaseArgs),
+    /// Print the OpenAPI document to stdout.
+    Openapi,
+}
+
+#[derive(Args)]
+struct DatabaseArgs {
+    #[arg(long, env = "SQUIRREL_DATABASE_URL")]
+    database_url: String,
+}
+
+#[derive(Args)]
+struct ServeArgs {
+    #[command(flatten)]
+    database: DatabaseArgs,
+    #[arg(long, env = "SQUIRREL_BIND", default_value = "0.0.0.0:8080")]
+    bind: SocketAddr,
+    /// Set to false only for local HTTP development.
+    #[arg(long, env = "SQUIRREL_COOKIE_SECURE", default_value_t = true, action = ArgAction::Set)]
+    cookie_secure: bool,
+    #[arg(long, env = "SQUIRREL_LOG_JSON", default_value_t = false, action = ArgAction::Set)]
+    log_json: bool,
+}
+
+#[tokio::main]
+async fn main() -> anyhow::Result<()> {
+    match Cli::parse().command {
+        Command::Openapi => print_openapi(),
+        Command::Migrate(args) => {
+            init_tracing(false);
+            migrate(&args).await
+        }
+        Command::Serve(args) => {
+            init_tracing(args.log_json);
+            serve(args).await
+        }
+    }
+}
+
+fn print_openapi() -> anyhow::Result<()> {
+    println!("{}", squirrel_api::openapi().to_pretty_json()?);
+    Ok(())
+}
+
+async fn connect_and_migrate(args: &DatabaseArgs) -> anyhow::Result<PgPool> {
+    let pool = squirrel_db::connect(&args.database_url)
+        .await
+        .context("connecting to Postgres")?;
+    squirrel_db::migrate(&pool)
+        .await
+        .context("applying migrations")?;
+    Ok(pool)
+}
+
+async fn migrate(args: &DatabaseArgs) -> anyhow::Result<()> {
+    connect_and_migrate(args).await?;
+    tracing::info!("migrations applied");
+    Ok(())
+}
+
+async fn serve(args: ServeArgs) -> anyhow::Result<()> {
+    let pool = connect_and_migrate(&args.database).await?;
+    let config = ApiConfig {
+        cookie_secure: args.cookie_secure,
+        ..ApiConfig::default()
+    };
+    let app =
+        squirrel_api::router(AppState::new(pool.clone(), config)).layer(TraceLayer::new_for_http());
+
+    // Precompute the timing-equalizer hash so the first unknown-user login isn't slower.
+    tokio::task::spawn_blocking(squirrel_auth::warm_up)
+        .await
+        .context("warming up auth")?;
+    spawn_session_cleanup(pool);
+
+    let listener = TcpListener::bind(args.bind)
+        .await
+        .with_context(|| format!("binding {}", args.bind))?;
+    tracing::info!(address = %args.bind, "squirrel is listening");
+    axum::serve(
+        listener,
+        app.into_make_service_with_connect_info::<SocketAddr>(),
+    )
+    .with_graceful_shutdown(shutdown_signal())
+    .await
+    .context("serving HTTP")
+}
+
+/// Periodically deletes expired sessions. Failures are logged and retried next tick.
+fn spawn_session_cleanup(pool: PgPool) {
+    tokio::spawn(async move {
+        let mut ticker = tokio::time::interval(SESSION_CLEANUP_INTERVAL);
+        ticker.set_missed_tick_behavior(MissedTickBehavior::Delay);
+        loop {
+            ticker.tick().await;
+            match squirrel_db::sessions::delete_expired(&pool).await {
+                Ok(0) => {}
+                Ok(deleted) => tracing::info!(deleted, "removed expired sessions"),
+                Err(err) => tracing::error!(error = %err, "failed to remove expired sessions"),
+            }
+        }
+    });
+}
+
+async fn shutdown_signal() {
+    let ctrl_c = async {
+        let _ = tokio::signal::ctrl_c().await;
+    };
+    #[cfg(unix)]
+    let terminate = async {
+        match tokio::signal::unix::signal(tokio::signal::unix::SignalKind::terminate()) {
+            Ok(mut signal) => {
+                signal.recv().await;
+            }
+            Err(err) => {
+                tracing::warn!(error = %err, "cannot listen for SIGTERM");
+                std::future::pending::<()>().await;
+            }
+        }
+    };
+    #[cfg(not(unix))]
+    let terminate = std::future::pending::<()>();
+    tokio::select! {
+        () = ctrl_c => {},
+        () = terminate => {},
+    }
+    tracing::info!("shutting down");
+}
+
+fn init_tracing(json: bool) {
+    let filter = EnvFilter::try_from_default_env()
+        .unwrap_or_else(|_| EnvFilter::new("info,squirrel=debug,tower_http=info"));
+    let builder = tracing_subscriber::fmt().with_env_filter(filter);
+    if json {
+        builder.json().init();
+    } else {
+        builder.init();
+    }
+}
