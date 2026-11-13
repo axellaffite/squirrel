@@ -20,7 +20,7 @@
 ## Prerequisites (do once, before Task 1)
 
 1. **Node 22 LTS** — current Vite requires Node ≥ 20.19 and the machine has 20.12.
-   Run: `brew install node@22 && brew link --overwrite --force node@22` (or `fnm install 22 && fnm use 22`)
+   Install it with nvm, without changing the default Node: `nvm install 22`; `web/.nvmrc` pins it, so run `nvm use` in `web/` (or prefix commands with `source ~/.nvm/nvm.sh && nvm use 22 &&`).
    Verify: `node --version` → `v22.x`
 2. **Docker** running (`docker info` succeeds).
 3. **pnpm** ≥ 10 (`pnpm --version`).
@@ -3101,6 +3101,8 @@ pnpm remove @sveltejs/adapter-auto
 echo 22 > .nvmrc
 ```
 (If `sv` prompts despite the flags, choose: minimal template, TypeScript, no add-ons, pnpm.)
+
+> **Note (SvelteKit 3):** the resolved scaffold is SvelteKit 3, which has no `svelte.config.js`: the adapter is passed to `sveltekit({ adapter })` in `vite.config.ts`, and `$lib` is replaced by the `#lib` subpath import (`package.json` `imports`). The code below uses `$lib`; the committed code uses `#lib`.
 
 **Step 2: Configure static SPA output** — `web/svelte.config.js`:
 ```js
