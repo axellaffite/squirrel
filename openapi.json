@@ -798,6 +798,78 @@
           }
         }
       }
+    },
+    "/api/uploads/{id}/complete": {
+      "post": {
+        "tags": [
+          "uploads"
+        ],
+        "operationId": "complete_upload",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "Upload id",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": "File created; its name may carry a \" (n)\" suffix if the name was taken",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NodeDto"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "upload_incomplete, already completing, or destination folder gone",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "hash_mismatch: the upload was discarded",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "507": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        }
+      }
     }
   },
   "components": {

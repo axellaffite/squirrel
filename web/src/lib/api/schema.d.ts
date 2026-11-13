@@ -232,6 +232,22 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/uploads/{id}/complete": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["complete_upload"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -1015,6 +1031,63 @@ export interface operations {
                 };
             };
             /** @description Wrong index or length */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            507: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    complete_upload: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Upload id */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description File created; its name may carry a " (n)" suffix if the name was taken */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["NodeDto"];
+                };
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description upload_incomplete, already completing, or destination folder gone */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description hash_mismatch: the upload was discarded */
             422: {
                 headers: {
                     [name: string]: unknown;
