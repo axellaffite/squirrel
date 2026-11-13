@@ -3102,7 +3102,7 @@ echo 22 > .nvmrc
 ```
 (If `sv` prompts despite the flags, choose: minimal template, TypeScript, no add-ons, pnpm.)
 
-> **Note (SvelteKit 3):** the resolved scaffold is SvelteKit 3, which has no `svelte.config.js`: the adapter is passed to `sveltekit({ adapter })` in `vite.config.ts`, and `$lib` is replaced by the `#lib` subpath import (`package.json` `imports`). The code below uses `$lib`; the committed code uses `#lib`.
+> **Note (SvelteKit 3):** the resolved scaffold is SvelteKit 3, which has no `svelte.config.js`: the adapter is passed to `sveltekit({ adapter })` in `vite.config.ts`, and `$lib` is replaced by the `#lib` subpath import (`package.json` `imports`). Subpath imports need explicit extensions (`#lib/api/client.ts`, `#lib/session.svelte.ts`, `#lib/api/schema.d.ts`). The code below uses `$lib`; the committed code uses `#lib`.
 
 **Step 2: Configure static SPA output** — `web/svelte.config.js`:
 ```js

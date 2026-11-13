@@ -1,2 +1,10 @@
-<h1>Welcome to SvelteKit</h1>
-<p>Visit <a href="https://svelte.dev/docs/kit">svelte.dev/docs/kit</a> to read the documentation</p>
+<script lang="ts">
+	import { session } from '#lib/session.svelte.ts';
+</script>
+
+{#if session.me}
+	<main class="page">
+		<h1>Hello, {session.me.display_name}</h1>
+		<p class="muted">Your drive is ready. Files, photos and videos arrive in the next phases.</p>
+	</main>
+{/if}
