@@ -42,3 +42,23 @@ export function statusLabel(entry: QueueEntry): string {
 			return 'Cancelled';
 	}
 }
+
+const RUNNING: ReadonlySet<UploadStatus> = new Set(['queued', 'hashing', 'uploading', 'finishing']);
+
+/**
+ * One sentence for the uploads live region. It changes only when an upload changes state,
+ * not on every progress tick, so screen readers are not flooded.
+ */
+export function uploadSummary(entries: readonly QueueEntry[]): string {
+	if (entries.length === 0) return '';
+	const running = entries.filter((entry) => RUNNING.has(entry.status)).length;
+	const done = entries.filter((entry) => entry.status === 'done').length;
+	const failed = entries.filter((entry) => entry.status === 'failed');
+	if (running > 0) {
+		const files = `${running} ${running === 1 ? 'file' : 'files'}`;
+		const parts = [`Uploading ${files}`, done > 0 ? `${done} done` : null, failed.length > 0 ? `${failed.length} failed` : null];
+		return `${parts.filter(Boolean).join(', ')}.`;
+	}
+	if (failed.length === 0) return 'Uploads finished.';
+	return `Uploads finished. ${failed.length} failed: ${failed.map((entry) => entry.name).join(', ')}.`;
+}

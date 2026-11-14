@@ -1,72 +1,148 @@
 <script lang="ts">
-	import { onMount } from 'svelte';
+	import Icon from '#lib/components/icons/Icon.svelte';
+	import Alert from '#lib/components/ui/Alert.svelte';
+	import Button from '#lib/components/ui/Button.svelte';
+	import Dialog from '#lib/components/ui/Dialog.svelte';
+	import IconButton from '#lib/components/ui/IconButton.svelte';
+	import EmptyState from '#lib/components/ui/EmptyState.svelte';
 	import type { FileNode } from '#lib/files/api.ts';
-	import { contentUrl, formatBytes, previewKind } from '#lib/files/format.ts';
+	import { contentUrl, formatBytes, formatDate, previewKind } from '#lib/files/format.ts';
+	import { fetchTextPreview, TEXT_PREVIEW_BYTES } from '#lib/files/textPreview.ts';
 
-	/** Text previews show the start of the file only. */
-	const TEXT_PREVIEW_BYTES = 256 * 1024;
+	interface Props {
+		node: FileNode;
+		/** Runs once the dialog closed, however it closed. */
+		onClose: () => void;
+	}
 
-	let { node, onClose }: { node: FileNode; onClose: () => void } = $props();
+	let { node, onClose }: Props = $props();
 
-	let dialog: HTMLDialogElement;
+	let open = $state(true);
 	const kind = $derived(previewKind(node.mime));
 	const url = $derived(contentUrl(node.id));
 	let text: string | null = $state(null);
 	let textError: string | null = $state(null);
 
-	onMount(() => {
-		dialog.showModal();
-		if (kind === 'text') void loadText();
-	});
-
-	async function loadText() {
-		try {
-			const response = await fetch(url, {
-				headers: { Range: `bytes=0-${TEXT_PREVIEW_BYTES - 1}` },
-				credentials: 'same-origin'
+	// Text previews are fetched (not framed); a newer file or closing the preview aborts the request.
+	$effect(() => {
+		if (kind !== 'text') return;
+		const controller = new AbortController();
+		text = null;
+		textError = null;
+		fetchTextPreview(url, node.size, controller.signal)
+			.then((value) => {
+				if (!controller.signal.aborted) text = value;
+			})
+			.catch(() => {
+				if (!controller.signal.aborted) textError = 'Could not load the preview.';
 			});
-			if (!response.ok) throw new Error(String(response.status));
-			text = await response.text();
-		} catch {
-			textError = 'Could not load the preview.';
-		}
-	}
+		return () => controller.abort();
+	});
 </script>
 
-<dialog bind:this={dialog} onclose={onClose} class="preview" aria-labelledby="preview-title">
-	<header>
-		<h2 id="preview-title">{node.name}</h2>
-		<span class="muted">{formatBytes(node.size)}</span>
-		<a href={url} target="_blank" rel="noopener">Open in new tab</a>
-		<a href={contentUrl(node.id, true)} download>Download</a>
-		<button class="link" onclick={() => dialog.close()}>Close</button>
-	</header>
-	{#if kind === 'image'}
-		<img src={url} alt={node.name} />
-	{:else if kind === 'pdf'}
-		<iframe src={url} title={`PDF preview of ${node.name}`}></iframe>
-	{:else if kind === 'video'}
-		<!-- svelte-ignore a11y_media_has_caption -->
-		<video src={url} controls preload="metadata"></video>
-	{:else if kind === 'audio'}
-		<audio src={url} controls preload="metadata"></audio>
-	{:else if kind === 'text'}
-		{#if textError}<p class="error" role="alert">{textError}</p>
-		{:else if text === null}<p class="muted">Loading…</p>
-		{:else}
-			<pre data-testid="text-preview">{text}</pre>
-			{#if node.size > TEXT_PREVIEW_BYTES}<p class="muted">Showing the first {formatBytes(TEXT_PREVIEW_BYTES)}.</p>{/if}
+<Dialog bind:open title={node.name} size="wide" onclose={onClose}>
+	{#snippet tools()}
+		<IconButton icon="external-link" label={`Open ${node.name} in new tab`} tooltip="Open in new tab" fill="tint" href={url} newTab />
+		<IconButton icon="download" label={`Download ${node.name}`} tooltip="Download" fill="tint" href={contentUrl(node.id, true)} download />
+	{/snippet}
+	<div class="body">
+		<p class="meta tabular">{formatBytes(node.size)} <span aria-hidden="true">·</span> {formatDate(node.modified_at)}</p>
+		<div class="stage">
+			{#if kind === 'image'}
+				<img src={url} alt={node.name} />
+			{:else if kind === 'pdf'}
+				<!--
+					The server sends PDFs inline with a strict CSP but without `sandbox` (built-in PDF viewers
+					refuse sandboxed documents), and `frame-ancestors 'self'` so only this app can frame them.
+					No referrer leaves with the frame's own requests.
+				-->
+				<iframe src={url} title={`PDF preview of ${node.name}`} referrerpolicy="no-referrer"></iframe>
+			{:else if kind === 'video'}
+				<!-- svelte-ignore a11y_media_has_caption -->
+				<video src={url} controls preload="metadata"></video>
+			{:else if kind === 'audio'}
+				<audio src={url} controls preload="metadata"></audio>
+			{:else if kind === 'text'}
+				{#if textError}<Alert>{textError}</Alert>
+				{:else if text === null}<p class="muted" aria-live="polite">Loading…</p>
+				{:else}
+					<pre data-testid="text-preview">{text}</pre>
+				{/if}
+			{:else}
+				<EmptyState icon="file" title="No preview for this kind of file">Download it to open it.</EmptyState>
+			{/if}
+		</div>
+		{#if kind === 'text' && text !== null && node.size > TEXT_PREVIEW_BYTES}
+			<p class="meta">Showing the first {formatBytes(TEXT_PREVIEW_BYTES)}.</p>
 		{/if}
-	{:else}
-		<p class="muted">No preview for this kind of file. Download it to open it.</p>
-	{/if}
-</dialog>
+		{#if kind === null}
+			<div class="download">
+				<Button href={contentUrl(node.id, true)} download><Icon name="download" />Download</Button>
+			</div>
+		{/if}
+	</div>
+</Dialog>
 
 <style>
-	.preview { width: min(90vw, 960px); }
-	header { display: flex; flex-wrap: wrap; gap: 1rem; align-items: baseline; margin-bottom: 1rem; }
-	h2 { margin: 0; font-size: 1.1rem; overflow-wrap: anywhere; }
-	img, video { max-width: 100%; max-height: 75vh; display: block; margin: 0 auto; }
-	iframe { width: 100%; height: 75vh; border: 0; background: white; }
-	pre { max-height: 70vh; overflow: auto; white-space: pre-wrap; overflow-wrap: anywhere; }
+	.body {
+		display: grid;
+		gap: var(--space-3);
+	}
+
+	.meta {
+		color: var(--ink-muted);
+		font-size: var(--text-sm);
+		line-height: var(--text-sm-lh);
+	}
+
+	.stage {
+		display: grid;
+		place-items: center;
+		min-width: 0;
+		border-radius: var(--radius-card);
+		overflow: hidden;
+	}
+
+	img,
+	video {
+		max-width: 100%;
+		max-height: var(--preview-max);
+		border-radius: var(--radius-card);
+	}
+
+	audio {
+		width: 100%;
+	}
+
+	iframe {
+		width: 100%;
+		height: var(--preview-max);
+		border: 0;
+		border-radius: var(--radius-card);
+		background: var(--fill);
+	}
+
+	pre {
+		width: 100%;
+		max-height: var(--preview-max);
+		margin: 0;
+		padding: var(--space-4);
+		overflow: auto;
+		border-radius: var(--radius-card);
+		background: var(--tint);
+		font-family: var(--font-mono);
+		font-size: var(--text-sm);
+		line-height: var(--text-sm-lh);
+		white-space: pre-wrap;
+		overflow-wrap: anywhere;
+	}
+
+	.stage :global(.empty) {
+		width: 100%;
+	}
+
+	.download {
+		display: flex;
+		justify-content: center;
+	}
 </style>

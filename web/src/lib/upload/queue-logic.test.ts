@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { progressPercent, statusLabel, type QueueEntry } from '#lib/upload/queue-logic.ts';
+import { progressPercent, statusLabel, uploadSummary, type QueueEntry } from '#lib/upload/queue-logic.ts';
 
 const entry = (over: Partial<QueueEntry>): QueueEntry => ({
 	status: 'queued',
@@ -32,5 +32,26 @@ describe('progressPercent', () => {
 		expect(progressPercent(entry({ total: 0 }))).toBe(0);
 		expect(progressPercent(entry({ status: 'done', total: 0 }))).toBe(100);
 		expect(progressPercent(entry({ done: 50 }))).toBe(50);
+	});
+});
+
+describe('uploadSummary', () => {
+	it('is empty without uploads', () => {
+		expect(uploadSummary([])).toBe('');
+	});
+
+	it('counts running uploads, ignoring byte progress', () => {
+		const items = [entry({ status: 'uploading', done: 10 }), entry({ status: 'queued' }), entry({ status: 'done' })];
+		expect(uploadSummary(items)).toBe('Uploading 2 files, 1 done.');
+		items[0] = entry({ status: 'uploading', done: 90 });
+		expect(uploadSummary(items)).toBe('Uploading 2 files, 1 done.');
+	});
+
+	it('names failures once everything settled', () => {
+		expect(uploadSummary([entry({ status: 'done' }), entry({ status: 'failed', name: 'b.bin' })])).toBe(
+			'Uploads finished. 1 failed: b.bin.'
+		);
+		expect(uploadSummary([entry({ status: 'hashing' })])).toBe('Uploading 1 file.');
+		expect(uploadSummary([entry({ status: 'done' }), entry({ status: 'cancelled' })])).toBe('Uploads finished.');
 	});
 });
