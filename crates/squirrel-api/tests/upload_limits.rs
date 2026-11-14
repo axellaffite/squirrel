@@ -249,8 +249,9 @@ async fn open_sessions_reserve_disk_space(pool: PgPool) {
 async fn one_user_cannot_reserve_most_of_the_free_space(pool: PgPool) {
     const MIB: u64 = 1024 * 1024;
     let config = ApiConfig {
-        // Leaves ~100 MiB usable; each session declares 30 MiB.
-        min_free_bytes: free_space().saturating_sub(100 * MIB),
+        // Leaves ~1 GiB usable; each session declares 300 MiB (wide margins, so
+        // other processes changing the free space do not matter).
+        min_free_bytes: free_space().saturating_sub(1000 * MIB),
         upload_chunk_size: MIB,
         ..common::test_config()
     };
@@ -258,7 +259,7 @@ async fn one_user_cannot_reserve_most_of_the_free_space(pool: PgPool) {
     let ((alice, alice_me), (bob, bob_me)) = common::two_users(&instance).await;
     let declare = |browser: &axum_test::TestServer, me: &Value, parent: Uuid, name: &str| {
         let body = serde_json::json!({
-            "parent_id": parent, "name": name, "size": 30 * MIB,
+            "parent_id": parent, "name": name, "size": 300 * MIB,
             "sha256": files::sha256_hex(name.as_bytes()),
         });
         browser
@@ -271,7 +272,7 @@ async fn one_user_cannot_reserve_most_of_the_free_space(pool: PgPool) {
     declare(&alice, &alice_me, alice_files, "a.bin")
         .await
         .assert_status(StatusCode::CREATED);
-    // 60 of ~100 MiB would be more than half the usable space.
+    // 600 of ~1000 MiB would be more than half the usable space.
     let greedy = declare(&alice, &alice_me, alice_files, "b.bin").await;
     greedy.assert_status(StatusCode::TOO_MANY_REQUESTS);
     assert_eq!(files::code(&greedy), "too_many_uploads");
