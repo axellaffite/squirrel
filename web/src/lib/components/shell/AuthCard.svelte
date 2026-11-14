@@ -31,7 +31,7 @@
 		justify-items: center;
 		align-content: center;
 		gap: var(--space-5);
-		min-height: 100dvh;
+		min-height: 100svh;
 		padding: calc(var(--space-6) + env(safe-area-inset-top)) var(--gutter)
 			calc(var(--space-6) + env(safe-area-inset-bottom));
 	}

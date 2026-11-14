@@ -158,7 +158,7 @@
 
 	/* Ground (body gradient) holding the graphite rail and one large rounded panel. */
 	.shell {
-		min-height: 100dvh;
+		min-height: 100svh;
 		padding: calc(var(--frame) + env(safe-area-inset-top)) var(--frame)
 			calc(var(--rail-bar-h) + var(--space-5) + env(safe-area-inset-bottom));
 	}
@@ -168,7 +168,7 @@
 		gap: var(--space-5);
 		align-content: start;
 		min-width: 0;
-		min-height: calc(100dvh - 2 * var(--frame) - var(--rail-bar-h) - var(--space-3));
+		min-height: calc(100svh - 2 * var(--frame) - var(--rail-bar-h) - var(--space-3));
 		padding: var(--panel-pad);
 		border-radius: var(--radius-panel);
 		background: var(--panel);
@@ -260,7 +260,7 @@
 		}
 
 		.panel {
-			min-height: calc(100dvh - 2 * var(--frame));
+			min-height: calc(100svh - 2 * var(--frame));
 		}
 
 		.phone-top {
