@@ -1516,7 +1516,7 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorBody"];
                 };
             };
-            /** @description rate_limited, or too_many_uploads: too many open sessions */
+            /** @description rate_limited, or too_many_uploads: too many open sessions, or they would reserve more than half the free space */
             429: {
                 headers: {
                     [name: string]: unknown;

@@ -246,6 +246,42 @@ async fn open_sessions_reserve_disk_space(pool: PgPool) {
 }
 
 #[sqlx::test(migrator = "squirrel_db::MIGRATOR")]
+async fn one_user_cannot_reserve_most_of_the_free_space(pool: PgPool) {
+    const MIB: u64 = 1024 * 1024;
+    let config = ApiConfig {
+        // Leaves ~100 MiB usable; each session declares 30 MiB.
+        min_free_bytes: free_space().saturating_sub(100 * MIB),
+        upload_chunk_size: MIB,
+        ..common::test_config()
+    };
+    let instance = common::Instance::with_config(pool, config);
+    let ((alice, alice_me), (bob, bob_me)) = common::two_users(&instance).await;
+    let declare = |browser: &axum_test::TestServer, me: &Value, parent: Uuid, name: &str| {
+        let body = serde_json::json!({
+            "parent_id": parent, "name": name, "size": 30 * MIB,
+            "sha256": files::sha256_hex(name.as_bytes()),
+        });
+        browser
+            .post("/api/uploads")
+            .add_header(common::CSRF, common::csrf(me))
+            .json(&body)
+    };
+    let alice_files = files::root_id(&instance, &alice_me, "Files").await;
+    let bob_files = files::root_id(&instance, &bob_me, "Files").await;
+    declare(&alice, &alice_me, alice_files, "a.bin")
+        .await
+        .assert_status(StatusCode::CREATED);
+    // 60 of ~100 MiB would be more than half the usable space.
+    let greedy = declare(&alice, &alice_me, alice_files, "b.bin").await;
+    greedy.assert_status(StatusCode::TOO_MANY_REQUESTS);
+    assert_eq!(files::code(&greedy), "too_many_uploads");
+    // Someone else still gets room.
+    declare(&bob, &bob_me, bob_files, "c.bin")
+        .await
+        .assert_status(StatusCode::CREATED);
+}
+
+#[sqlx::test(migrator = "squirrel_db::MIGRATOR")]
 async fn chunks_are_refused_below_the_free_space_floor(pool: PgPool) {
     let instance = common::Instance::new(pool);
     let (browser, me, parent) = alice(&instance).await;

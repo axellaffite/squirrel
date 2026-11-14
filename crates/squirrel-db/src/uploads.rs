@@ -227,13 +227,23 @@ pub async fn clear_chunks(pool: &PgPool, upload_id: Uuid) -> Result<(), DbError>
 /// counts as `chunk_size` bytes, so the short last chunk is slightly
 /// over-counted as written.
 pub async fn pending_bytes(pool: &PgPool) -> Result<i64, DbError> {
+    pending_bytes_where(pool, None).await
+}
+
+/// [`pending_bytes`] of one owner's sessions.
+pub async fn pending_bytes_of(pool: &PgPool, owner_id: Uuid) -> Result<i64, DbError> {
+    pending_bytes_where(pool, Some(owner_id)).await
+}
+
+async fn pending_bytes_where(pool: &PgPool, owner_id: Option<Uuid>) -> Result<i64, DbError> {
     Ok(sqlx::query_scalar(
         "SELECT COALESCE(SUM(GREATEST(s.size - COALESCE(c.n, 0) * s.chunk_size, 0)), 0)::BIGINT \
            FROM upload_sessions s \
            LEFT JOIN (SELECT upload_id, count(*) AS n FROM upload_chunks GROUP BY upload_id) c \
              ON c.upload_id = s.id \
-          WHERE s.expires_at > now()",
+          WHERE s.expires_at > now() AND ($1::uuid IS NULL OR s.owner_id = $1)",
     )
+    .bind(owner_id)
     .fetch_one(pool)
     .await?)
 }
