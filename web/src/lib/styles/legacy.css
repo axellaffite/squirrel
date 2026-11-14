@@ -1,0 +1,171 @@
+/*
+ * Interim styles for views not yet redesigned (files, preview, trash, invitations).
+ * Zero specificity (:where) so the ui/ components always win. Remove as views move over.
+ */
+
+:where(.page) {
+	max-width: var(--content-max);
+	margin: var(--space-6) auto;
+	padding: 0 var(--gutter);
+	display: grid;
+	gap: var(--space-4);
+	align-content: start;
+}
+
+:where(.error) {
+	color: var(--danger);
+}
+
+:where(form) {
+	display: grid;
+	gap: var(--space-4);
+}
+
+:where(label) {
+	display: grid;
+	gap: var(--space-2);
+	font-size: var(--text-sm);
+	line-height: var(--text-sm-lh);
+	font-weight: var(--weight-label);
+}
+
+:where(input:not([type='checkbox'], [type='radio'], [type='file'])) {
+	min-height: var(--tap);
+	padding: var(--space-2) var(--space-3);
+	border: 1px solid var(--edge);
+	border-radius: var(--radius-md);
+	background: var(--surface);
+	box-shadow: var(--inset-2);
+	color: var(--ink);
+	font-size: var(--text-md);
+	font-weight: var(--weight-body);
+}
+
+:where(button, label.button) {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	gap: var(--space-2);
+	min-height: var(--tap);
+	padding: var(--space-2) var(--space-4);
+	border: 0;
+	border-radius: var(--radius-md);
+	background: var(--accent);
+	color: var(--on-accent);
+	font-weight: var(--weight-label);
+	box-shadow: var(--raise-1);
+	cursor: pointer;
+	transition:
+		box-shadow var(--dur-fast) var(--ease),
+		transform var(--dur-fast) var(--ease),
+		color var(--dur-fast) var(--ease);
+}
+
+:where(button:active:not(:disabled), label.button:active) {
+	box-shadow: var(--inset-1);
+	transform: translateY(var(--press));
+}
+
+:where(button:disabled) {
+	opacity: var(--disabled-opacity);
+	box-shadow: none;
+	cursor: not-allowed;
+}
+
+:where(label.button:focus-within) {
+	outline: var(--ring-width) solid var(--accent);
+	outline-offset: var(--ring-offset);
+}
+
+:where(button.link) {
+	min-height: 0;
+	padding: 0;
+	background: none;
+	box-shadow: none;
+	color: var(--accent);
+	font-weight: var(--weight-body);
+}
+
+:where(button.link.name) {
+	color: var(--ink);
+	text-align: left;
+}
+
+:where(.danger) {
+	color: var(--danger) !important;
+}
+
+:where(.danger-button) {
+	background: var(--danger);
+	color: var(--surface);
+}
+
+:where(table) {
+	width: 100%;
+	border-collapse: collapse;
+	font-variant-numeric: tabular-nums;
+}
+
+:where(th, td) {
+	text-align: left;
+	padding: var(--space-2) var(--space-3);
+	border-bottom: 1px solid var(--surface-lo);
+}
+
+:where(th) {
+	font-size: var(--text-sm);
+	color: var(--ink-muted);
+	font-weight: var(--weight-label);
+}
+
+:where(code) {
+	word-break: break-all;
+}
+
+:where(.files-header) {
+	display: flex;
+	flex-wrap: wrap;
+	justify-content: space-between;
+	align-items: center;
+	gap: var(--space-4);
+}
+
+:where(.files-actions, .row-actions) {
+	display: flex;
+	flex-wrap: wrap;
+	gap: var(--space-3);
+	align-items: center;
+}
+
+:where(.row-actions) {
+	justify-content: flex-end;
+}
+
+:where(dialog) {
+	max-width: min(90vw, var(--content-max));
+	padding: var(--space-5);
+	border: 0;
+	border-radius: var(--radius-xl);
+	background: var(--surface);
+	color: var(--ink);
+	box-shadow: var(--raise-3);
+}
+
+:where(dialog)::backdrop {
+	background: var(--scrim);
+}
+
+:where(.dialog-actions) {
+	display: flex;
+	justify-content: flex-end;
+	align-items: center;
+	gap: var(--space-4);
+	margin-top: var(--space-4);
+}
+
+:where(.folder-picker) {
+	list-style: none;
+	padding: 0;
+	max-height: 50vh;
+	overflow: auto;
+}

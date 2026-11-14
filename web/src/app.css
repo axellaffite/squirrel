@@ -1,60 +1,157 @@
-:root {
-	--bg: #111315;
-	--surface: #1b1e21;
-	--border: #2c3136;
-	--text: #e8eaed;
-	--muted: #9aa0a6;
-	--accent: #e0a458;
-	--accent-text: #1b1e21;
-	--danger: #f28b82;
-	--radius: 10px;
-	color-scheme: dark;
-	font-family: system-ui, -apple-system, 'Segoe UI', sans-serif;
+/* Base layer. Values come from tokens.css (which implements /MASTER.md). */
+@import './lib/styles/tokens.css';
+@import './lib/styles/fonts.css';
+@import './lib/styles/legacy.css';
+
+*,
+*::before,
+*::after {
+	box-sizing: border-box;
 }
-@media (prefers-color-scheme: light) {
-	:root {
-		--bg: #f6f5f2;
-		--surface: #ffffff;
-		--border: #dcd9d2;
-		--text: #1f2328;
-		--muted: #5f6368;
-		--accent: #a8641c;
-		--accent-text: #ffffff;
-		--danger: #b3261e;
-		color-scheme: light;
+
+html {
+	background: var(--surface);
+	-webkit-text-size-adjust: 100%;
+	text-size-adjust: 100%;
+	-webkit-tap-highlight-color: transparent;
+}
+
+body {
+	margin: 0;
+	min-height: 100dvh;
+	background: var(--surface);
+	color: var(--ink);
+	font-family: var(--font);
+	font-size: var(--text-md);
+	line-height: var(--text-md-lh);
+	font-weight: var(--weight-body);
+	-webkit-font-smoothing: antialiased;
+	-moz-osx-font-smoothing: grayscale;
+	padding-left: env(safe-area-inset-left);
+	padding-right: env(safe-area-inset-right);
+	transition:
+		background-color var(--dur) var(--ease),
+		color var(--dur) var(--ease);
+}
+
+h1,
+h2,
+h3 {
+	margin: 0;
+	text-wrap: balance;
+	letter-spacing: -0.01em;
+}
+
+h1 {
+	font-size: var(--text-2xl);
+	line-height: var(--text-2xl-lh);
+	font-weight: var(--weight-heading);
+}
+
+h2 {
+	font-size: var(--text-xl);
+	line-height: var(--text-xl-lh);
+	font-weight: var(--weight-strong);
+}
+
+h3 {
+	font-size: var(--text-lg);
+	line-height: var(--text-lg-lh);
+	font-weight: var(--weight-label);
+}
+
+@media (min-width: 48rem) {
+	h1 {
+		font-size: var(--text-3xl);
+		line-height: var(--text-3xl-lh);
 	}
 }
-* { box-sizing: border-box; }
-body { margin: 0; background: var(--bg); color: var(--text); }
-a { color: var(--accent); }
-.card { max-width: 420px; margin: 10vh auto; padding: 2rem; background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); }
-.page { max-width: 880px; margin: 2rem auto; padding: 0 1rem; }
-.center { display: grid; place-items: center; place-content: center; gap: 1rem; min-height: 60vh; }
-.muted { color: var(--muted); }
-.error { color: var(--danger); }
-form { display: grid; gap: 1rem; }
-label { display: grid; gap: 0.35rem; font-size: 0.9rem; }
-input { padding: 0.6rem 0.75rem; border-radius: 8px; border: 1px solid var(--border); background: var(--bg); color: var(--text); font: inherit; }
-button { padding: 0.6rem 1rem; border: 0; border-radius: 8px; background: var(--accent); color: var(--accent-text); font: inherit; font-weight: 600; cursor: pointer; }
-button:disabled { opacity: 0.6; cursor: progress; }
-button.link { background: none; color: var(--accent); padding: 0; font-weight: 400; }
-.topbar { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; padding: 0.75rem 1.5rem; border-bottom: 1px solid var(--border); background: var(--surface); }
-.topbar nav { display: flex; gap: 1.25rem; align-items: center; }
-.topbar .error { flex-basis: 100%; margin: 0.5rem 0 0; text-align: right; }
-.brand { font-weight: 700; text-decoration: none; color: var(--text); }
-table { width: 100%; border-collapse: collapse; }
-th, td { text-align: left; padding: 0.5rem; border-bottom: 1px solid var(--border); }
-code { word-break: break-all; }
-.visually-hidden { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
-.files-header { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 1rem; margin-bottom: 1rem; }
-.files-actions { display: flex; gap: 0.75rem; align-items: center; }
-label.button { display: inline-block; padding: 0.6rem 1rem; border-radius: 8px; background: var(--accent); color: var(--accent-text); font-weight: 600; cursor: pointer; }
-label.button:focus-within { outline: 2px solid var(--accent); outline-offset: 2px; }
-.row-actions { display: flex; gap: 0.75rem; justify-content: flex-end; }
-button.link.name { color: var(--text); text-align: left; }
-.danger { color: var(--danger) !important; }
-dialog { border: 1px solid var(--border); border-radius: var(--radius); background: var(--surface); color: var(--text); max-width: min(90vw, 960px); }
-dialog::backdrop { background: rgb(0 0 0 / 0.5); }
-.dialog-actions { display: flex; justify-content: flex-end; gap: 1rem; margin-top: 1rem; }
-.folder-picker { list-style: none; padding: 0; max-height: 50vh; overflow: auto; }
-.danger-button { background: var(--danger); color: var(--accent-text); }
+
+p {
+	margin: 0;
+	max-width: var(--measure);
+}
+
+a {
+	color: var(--accent);
+	text-underline-offset: 0.2em;
+	transition: color var(--dur-fast) var(--ease);
+}
+
+img,
+svg,
+video {
+	display: block;
+	max-width: 100%;
+}
+
+input,
+button,
+select,
+textarea {
+	font: inherit;
+	color: inherit;
+}
+
+::selection {
+	background: var(--accent-soft);
+	color: var(--ink);
+}
+
+/* Focus ring: 3 px accent, offset 3 px, keyboard only */
+:focus-visible {
+	outline: var(--ring-width) solid var(--accent);
+	outline-offset: var(--ring-offset);
+}
+
+:focus:not(:focus-visible) {
+	outline: none;
+}
+
+/* Utilities */
+.tabular {
+	font-variant-numeric: tabular-nums;
+}
+
+.muted {
+	color: var(--ink-muted);
+}
+
+.visually-hidden {
+	position: absolute;
+	width: 1px;
+	height: 1px;
+	margin: -1px;
+	padding: 0;
+	overflow: hidden;
+	clip: rect(0 0 0 0);
+	white-space: nowrap;
+	border: 0;
+}
+
+/* Arrival: rise + fade on a view's first load. Set --i on each item (capped at 8 items). */
+.arrive {
+	animation: arrive var(--dur) var(--ease) both;
+	animation-delay: calc(min(var(--i, 0), 7) * var(--stagger));
+}
+
+@keyframes arrive {
+	from {
+		opacity: 0;
+		transform: translateY(var(--rise));
+	}
+}
+
+/* Reduced motion: tokens zero every duration; also stop smooth scrolling. */
+@media (prefers-reduced-motion: reduce) {
+	html {
+		scroll-behavior: auto;
+	}
+}
+
+/* Forced colours: shadows vanish, so edges carry the shapes. */
+@media (forced-colors: active) {
+	:focus-visible {
+		outline-color: Highlight;
+	}
+}
