@@ -31,7 +31,7 @@
 - **Optional native pieces in dev:**
   - pdfium: `scripts/fetch-pdfium.sh` (Task 28) downloads the pinned build into `target/pdfium/` and prints `SQUIRREL_PDFIUM_DIR=…`. Without it, PDFs get `thumbs_state = 'unsupported'` and PDF tests skip with a message (never fail).
   - HEIC: `brew install libheif` (macOS) or `apt install libheif-dev libheif-plugin-libde265` (Debian trixie / Ubuntu 24.04), then build with `--features heic`. Default builds do not need it.
-  - GeoNames: `scripts/fetch-geodata.sh` (Task 20) or `SQUIRREL_GEODATA_FILE=crates/squirrel-media/tests/fixtures/geo-sample.tsv` for a tiny offline sample.
+  - GeoNames: `scripts/install-geodata.sh` (Task 20) or `SQUIRREL_GEODATA_FILE=crates/squirrel-media/tests/fixtures/geo-sample.tsv` for a tiny offline sample.
 - `libwebp` is compiled from the vendored C sources by `libwebp-sys`: a C compiler must be present (Xcode Command Line Tools on macOS, `build-essential` on Debian; GitHub's `ubuntu-latest` has one).
 
 ### What was verified while writing this plan
@@ -85,8 +85,8 @@
 | Topic | Decision | Why |
 |---|---|---|
 | Dataset | GeoNames **cities500** (places with population ≥ 500; CC BY 4.0) joined with `admin1CodesASCII.txt` and `countryInfo.txt` into one TSV line per place: `lat \t lon \t name \t admin1 \t country code \t country \t timezone`, first lines `#` comments carrying the attribution and source date. Built by `squirrel admin geodata build` (Task 19) from the three GeoNames files. | Offline, private, ~12 MB, parses in ~0.2 s. |
-| Pinning | GeoNames republishes daily, so its own files cannot be pinned. The built snapshot (`geonames-cities500-<YYYYMMDD>.tsv`) is published once as a release asset of the Squirrel repository (**Open question 4**) and pinned in `squirrel_media::geo::PINNED` (file name + SHA-256). | A pinned SHA-256 needs a stable file. |
-| Fetching | Not by the worker (no HTTP client in Phase 3, **Open question 5**): `scripts/fetch-geodata.sh` (curl + `shasum -a 256 -c`) puts it in `<data_dir>/geo/`; the Phase 7 Docker image bakes it in. The worker loads it lazily on the first `geocode` job and **re-verifies the SHA-256** before use. `SQUIRREL_GEODATA_FILE=<path>` overrides it with an operator-trusted file (tests, E2E, custom extracts) without a pin. Missing dataset → `geocode` reschedules in 1 h (no attempt used); places stay empty; coordinates still show. Backfill enqueues `geocode` for media with GPS whose `geocoded_with` differs from the loaded dataset, so installing the file later fills every place. | — |
+| Pinning | GeoNames republishes daily, so its own files cannot be pinned. The built snapshot (`geonames-cities500-<YYYYMMDD>.tsv`) is committed gzip-compressed under `data/geodata/` (**Open question 4**) and pinned in `squirrel_media::geo::PINNED` (file name + SHA-256). | A pinned SHA-256 needs a stable file. |
+| Fetching | Not by the worker (no HTTP client in Phase 3, **Open question 5**): `scripts/install-geodata.sh` (gunzip from `data/geodata/` + `shasum -a 256 -c`, no network) puts it in `<data_dir>/geo/`; the Phase 7 Docker image bakes it in. The worker loads it lazily on the first `geocode` job and **re-verifies the SHA-256** before use. `SQUIRREL_GEODATA_FILE=<path>` overrides it with an operator-trusted file (tests, E2E, custom extracts) without a pin. Missing dataset → `geocode` reschedules in 1 h (no attempt used); places stay empty; coordinates still show. Backfill enqueues `geocode` for media with GPS whose `geocoded_with` differs from the loaded dataset, so installing the file later fills every place. | — |
 | Index | Hand-rolled 1° × 1° grid (`HashMap<(lat, lon), Vec<u32>>`), haversine, nearest place within **50 km** (else no place), longitude wrap at the antimeridian. `kiddo` 6.3 (k-d tree) was considered: a dependency for ~80 lines of verified code, and its query API changed shape in 6.x. | Verified (Task 19 tests). |
 | Attribution | "Place names: GeoNames (CC BY 4.0)" under the place in the lightbox info panel and in the README. | Licence requirement. |
 | PDF engine | **`pdfium-render` 0.9.5** (MIT/Apache-2.0) + the **pdfium** shared library from `bblanchon/pdfium-binaries` release `chromium/8125` (matches the crate's `pdfium_latest = pdfium_8125` feature; non-V8 build, so no JavaScript engine), BSD-3-Clause/Apache-2.0 with third-party notices shipped in the archive's `licenses/`. Bound at runtime from `SQUIRREL_PDFIUM_DIR`; if absent, PDFs get `unsupported` thumbnails/text (logged once). Rejected: **MuPDF** (`mupdf` 0.8 crate) — **AGPL-3.0** (or a commercial licence) would force Squirrel's licence; **`pdf-extract` 0.12 / `lopdf` 0.47** — text only (no first-page render), and `pdf-extract` panics on some malformed files; **poppler-utils** CLIs — viable GPL fallback as separate executables, but two more system tools and a looser output contract. | First-page render and text from one engine with the best real-world PDF coverage (Chromium's). |
@@ -114,14 +114,14 @@
 
 ## Open questions for the user
 
-Each needs a yes/no (or a choice) before the task that uses it. The plan is written for the recommended answer.
+**Answered 2026-11-14: every recommendation below was accepted.** The one that changes the plan is question 4: the GeoNames snapshot is **committed to the repository** (gzip-compressed, with attribution) instead of published as a release asset; Task 20 is written for that. Question 8 (MASTER.md photo additions) is validated.
 
 | # | Question | Recommendation |
 |---|---|---|
 | 1 | **New Rust crates** (licences): `kamadak-exif` 0.6.2 (BSD-2), `image` 0.25.10 (MIT/Apache-2.0), `fast_image_resize` 6.1.0 (MIT/Apache-2.0), `webp` 0.3.1 + `libwebp-sys` 0.9 (MIT/Apache-2.0; vendored libwebp BSD-3, needs a C compiler), `blurhash` 0.2.3 (MIT/Apache-2.0), `pdfium-render` 0.9.5 (MIT/Apache-2.0), optional `libheif-rs` 3.0.0 (MIT). Workspace feature changes: `sqlx` + `json`, `rustix` + `process`. | **Accept.** All permissive; each replaces substantial hand-written code. |
 | 2 | **pdfium binary** (Google's PDF engine, BSD-3/Apache-2.0 + bundled third-party notices; ~6 MB) downloaded from `github.com/bblanchon/pdfium-binaries` release `chromium/8125`, pinned by SHA-256, loaded at runtime from `SQUIRREL_PDFIUM_DIR`. | **Accept.** Building pdfium ourselves is a multi-hour Chromium toolchain job; pinning the hash gives the same integrity. |
 | 3 | **HEIC support via libheif + libde265** (system libraries, LGPL-3.0, dynamically linked). HEVC is patent-encumbered; decoding for private home use is what every Linux distribution ships. | **Optional cargo feature `heic`, on in the Docker image (Phase 7), off in default dev builds.** |
-| 4 | **Where to publish the GeoNames snapshot** (CC BY 4.0 allows redistribution with attribution). | **A GitHub release asset of the Squirrel repository** (`geodata-2026-11`), pinned by SHA-256; the maintainer publishes it once (Task 20 documents the steps). Alternative: no pin, download GeoNames' daily zip at install time. |
+| 4 | **Where to keep the GeoNames snapshot** (CC BY 4.0 allows redistribution with attribution). | **Answered: committed to the repository** as `data/geodata/geonames-cities500-<YYYYMMDD>.tsv.gz` (~4 MB) with an attribution README, pinned by SHA-256 (the repository has no remote). |
 | 5 | **Should the worker download data files itself** (adds `reqwest` 0.13 + rustls/aws-lc, ~60 transitive crates)? | **No, not in Phase 3:** a script for dev and the Docker build for production. Revisit for Phase 5 models. |
 | 6 | **Map in the lightbox:** a privacy-preserving offline locator (Natural Earth 1:110m land outlines, public domain, ~40 KB static SVG) with an accent dot, the coordinates, and an "Open in OpenStreetMap" link that only the user's click follows. A real tile map needs `maplibre-gl` (BSD-3, ~800 KB) + self-hosted tiles (Protomaps PMTiles, `pmtiles` npm) or third-party tile servers (leak locations). | **Offline locator now**; decide on self-hosted vector tiles with the Explore → Places map. |
 | 7 | **No npm dependency** for the justified grid, virtualization and blurhash (hand-rolled, ~250 lines, unit-tested). Alternatives: `@tanstack/svelte-virtual`, `justified-layout` (Flickr, MIT), `blurhash` (MIT). | **Hand-roll** (done and verified in planning). |
@@ -3871,38 +3871,35 @@ CLI: `squirrel admin geodata build --cities cities500.txt --admin1 admin1CodesAS
 
 ---
 
-### Task 20: Dataset pinning, verification and the fetch script
+### Task 20: Dataset snapshot, pinning, verification and the install script
 
 **Files:**
-- Create: `crates/squirrel-media/src/geo_data.rs`, `scripts/fetch-geodata.sh`
-- Modify: `crates/squirrel-media/src/lib.rs`, `crates/squirrel-media/Cargo.toml` (`sha2.workspace = true`)
+- Create: `data/geodata/geonames-cities500-<YYYYMMDD>.tsv.gz`, `data/geodata/README.md` (source, date, CC BY 4.0 attribution, how to rebuild), `crates/squirrel-media/src/geo_data.rs`, `scripts/install-geodata.sh`, `scripts/build-geodata.sh`
+- Modify: `crates/squirrel-media/src/lib.rs`, `crates/squirrel-media/Cargo.toml` (`sha2.workspace = true`), `.gitattributes` (`data/geodata/*.gz binary`)
 
-**Step 1: Write the failing tests** (`geo_data.rs`): `load_verified(path, &Pinned { file_name, sha256 })` loads a file whose SHA-256 matches; a modified file → `GeoDataError::Checksum { expected, actual }`; `GeoSource::resolve(explicit: Option<PathBuf>, data_dir)` returns `Explicit(path)` when set, else `Pinned(data_dir/geo/<PINNED.file_name>)`; `dataset_id()` is the pinned file name for the pinned source and `custom:<file name>` for an explicit file.
+**Step 1: Build the snapshot.** `scripts/build-geodata.sh <out_dir>`: downloads `cities500.zip`, `admin1CodesASCII.txt`, `countryInfo.txt` from `https://download.geonames.org/export/dump/` into a fresh temp directory (public data, no credentials, no identifying headers beyond curl's default), unzips, runs `squirrel admin geodata build …` (Task 19), writes `geonames-cities500-<YYYYMMDD>.tsv`, then `gzip -9n` (no timestamp, so the .gz is reproducible from the TSV) and prints both SHA-256s. Run it once and commit the `.tsv.gz` (expect ~4 MB; if > 8 MB stop and report).
 
-**Step 2: Run** → FAIL.
+**Step 2: Write the failing tests** (`geo_data.rs`): `load_verified(path, &Pinned { file_name, sha256 })` loads a file whose SHA-256 matches; a modified file → `GeoDataError::Checksum { expected, actual }`; `GeoSource::resolve(explicit: Option<PathBuf>, data_dir)` returns `Explicit(path)` when set, else `Pinned(data_dir/geo/<PINNED.file_name>)`; `dataset_id()` is the pinned file name for the pinned source and `custom:<file name>` for an explicit file; `PINNED.sha256` is 64 lowercase hex and not all zeros; a test reads `data/geodata/<PINNED.file_name>.gz` (path from `CARGO_MANIFEST_DIR`), gunzips it **with the `gzip -dc` CLI** (no new crate) and checks the hash equals `PINNED.sha256`, so the committed file and the pin cannot drift.
 
-**Step 3: Implement:**
+**Step 3: Run** → FAIL.
+
+**Step 4: Implement:**
 
 ```rust
-/// The published snapshot (Open question 4). Update both fields together when
-/// publishing a new snapshot; backfill then re-geocodes every geotagged photo.
+/// The committed snapshot (Open question 4): `data/geodata/<file_name>.gz`.
+/// Hash of the uncompressed TSV. Update both fields together with the file;
+/// backfill then re-geocodes every geotagged photo.
 pub const PINNED: Pinned = Pinned {
-    file_name: "geonames-cities500-20261114.tsv",
-    // Filled in when the release asset is published (Task 20, step "Publish").
-    sha256: "0000000000000000000000000000000000000000000000000000000000000000",
-    url: "https://github.com/<owner>/squirrel/releases/download/geodata-2026-11/geonames-cities500-20261114.tsv",
+    file_name: "geonames-cities500-<YYYYMMDD>.tsv",
+    sha256: "<sha256 of the uncompressed TSV>",
 };
 ```
 
-A unit test asserts `PINNED.sha256` is 64 lowercase hex characters and **is not all zeros** — marked `#[ignore = "set PINNED.sha256 after publishing the snapshot"]` until the maintainer publishes it, then un-ignored in the same commit that sets the hash.
-
 `GeoSource` (shared by the worker): `Disabled` (tests), `Explicit(PathBuf)`, `Pinned(PathBuf)`; `load(&self) -> Result<Option<Arc<GeoIndex>>, GeoDataError>` → `Ok(None)` when the pinned file is absent (caller reschedules), loads and verifies otherwise, caching the index in a `tokio::sync::OnceCell` owned by the worker's `MediaContext`.
 
-`scripts/fetch-geodata.sh <data_dir>`: `set -euo pipefail`; refuses an empty argument; `mkdir -p "$1/geo"`; reads the URL and hash from `squirrel admin geodata pinned` (which prints `PINNED`, so they live in one place), downloads to a temp file, `shasum -a 256 -c` against the pinned hash, moves it into place with mode 0400.
+`squirrel admin geodata pinned` prints the file name and hash. `scripts/install-geodata.sh <data_dir>`: `set -euo pipefail`; refuses an empty argument; `mkdir -p "$1/geo"`; reads name and hash from `squirrel admin geodata pinned` (one source of truth), `gzip -dc data/geodata/<name>.gz` to a temp file in `$1/geo`, `shasum -a 256 -c`, moves it into place with mode 0400. No network.
 
-**Publish (maintainer, once, documented in README "Geodata"):** download `cities500.zip`, `admin1CodesASCII.txt`, `countryInfo.txt` from `https://download.geonames.org/export/dump/`, unzip, run `squirrel admin geodata build …`, create the GitHub release `geodata-2026-11` with the TSV as an asset, put its SHA-256 into `PINNED` and the repository's real owner into `PINNED.url` (the repo has no remote yet, hence `<owner>`), un-ignore the test.
-
-**Step 4: Run** → PASS. **Step 5: Commit** — `feat(media): pin and verify the geodata snapshot`.
+**Step 5: Run** → PASS. **Step 6: Commit** — `feat(media): commit, pin and verify the geodata snapshot`.
 
 ---
 
@@ -4951,7 +4948,7 @@ Scenarios (each waits for worker output with `expect.poll` on the API, at most 6
 - `e2e` job: fetch pdfium the same way (so the PDF scenario runs).
 - The migration guard already protects the new migrations once merged.
 
-**README:** a "Media processing" section: the worker (`squirrel worker`, or `serve --worker` / `SQUIRREL_EMBEDDED_WORKER=true`), its options (`SQUIRREL_WORKER_CONCURRENCY`, `SQUIRREL_MEDIA_EXEC`, `SQUIRREL_PDFIUM_DIR`, `SQUIRREL_GEODATA_FILE`), the data directory additions (`derived/ab/cd/<sha256>/…`, `geo/`), `scripts/fetch-pdfium.sh` and `scripts/fetch-geodata.sh`, building with `--features heic` (libheif ≥ 1.17 + libde265), `squirrel admin jobs`, `squirrel admin media backfill`, the GeoNames attribution (CC BY 4.0) and pdfium's licences, and the "Geodata" publishing steps from Task 20.
+**README:** a "Media processing" section: the worker (`squirrel worker`, or `serve --worker` / `SQUIRREL_EMBEDDED_WORKER=true`), its options (`SQUIRREL_WORKER_CONCURRENCY`, `SQUIRREL_MEDIA_EXEC`, `SQUIRREL_PDFIUM_DIR`, `SQUIRREL_GEODATA_FILE`), the data directory additions (`derived/ab/cd/<sha256>/…`, `geo/`), `scripts/fetch-pdfium.sh` and `scripts/install-geodata.sh`, building with `--features heic` (libheif ≥ 1.17 + libde265), `squirrel admin jobs`, `squirrel admin media backfill`, the GeoNames attribution (CC BY 4.0) and pdfium's licences, and how to rebuild the committed geodata snapshot (Task 20).
 
 **Verify** — full gate:
 ```bash
