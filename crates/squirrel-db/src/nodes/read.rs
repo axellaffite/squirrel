@@ -1,6 +1,6 @@
 use sqlx::postgres::PgExecutor;
 use sqlx::{FromRow, PgPool};
-use squirrel_core::NodeKind;
+use squirrel_core::{ContentHash, NodeKind, NodeName};
 use uuid::Uuid;
 
 use super::{NODE_COLUMNS, NodeRecord};
@@ -47,6 +47,30 @@ pub async fn find_live_folder<'e>(
     Ok(find_live(executor, owner_id, id)
         .await?
         .filter(NodeRecord::is_folder))
+}
+
+/// The owner's live file named exactly `name` in `parent_id` holding `blob`:
+/// the same file at the same place (a repeated or retried upload).
+pub async fn find_live_file<'e>(
+    executor: impl PgExecutor<'e>,
+    owner_id: Uuid,
+    parent_id: Uuid,
+    name: &NodeName,
+    blob: &ContentHash,
+) -> Result<Option<NodeRecord>, DbError> {
+    let sql = format!(
+        "SELECT {NODE_COLUMNS} FROM nodes \
+         WHERE owner_id = $1 AND parent_id = $2 AND name = $3 AND blob_sha256 = $4 \
+           AND kind = 'file' AND deleted_at IS NULL \
+         LIMIT 1"
+    );
+    Ok(sqlx::query_as::<_, NodeRecord>(&sql)
+        .bind(owner_id)
+        .bind(parent_id)
+        .bind(name.as_str())
+        .bind(blob.as_str())
+        .fetch_optional(executor)
+        .await?)
 }
 
 /// Live children of `parent_id` (the roots when `None`), after `after`, in

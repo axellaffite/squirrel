@@ -75,3 +75,43 @@ async fn dedup_counts_against_the_quota(pool: PgPool) {
     let response = files::start_upload(&browser, &me, parent, "b.bin", &[1; 60]).await;
     response.assert_status(StatusCode::INSUFFICIENT_STORAGE);
 }
+
+#[sqlx::test(migrator = "squirrel_db::MIGRATOR")]
+async fn the_same_file_at_the_same_place_is_returned_not_duplicated(pool: PgPool) {
+    // A completion whose response was lost (or a cancel during "finishing")
+    // makes the client start the same upload again: it must get the file back.
+    let instance = common::Instance::new(pool.clone());
+    let browser = instance.browser();
+    let me = common::setup_admin(&browser, "alice").await;
+    let parent = files::root_id(&instance, &me, "Files").await;
+    let first = files::upload(&browser, &me, parent, "photo.jpg", b"one photo").await;
+
+    let again = files::start_upload(&browser, &me, parent, "photo.jpg", b"one photo").await;
+    again.assert_status(StatusCode::OK);
+    let body: Value = again.json();
+    assert_eq!(body["deduplicated"], true);
+    assert_eq!(body["node"]["id"], first["id"]);
+    assert_eq!(body["node"]["name"], "photo.jpg");
+
+    let hash = ContentHash::parse(&files::sha256_hex(b"one photo")).unwrap();
+    let blob = squirrel_db::blobs::find(&pool, &hash)
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(blob.ref_count, 1);
+}
+
+#[sqlx::test(migrator = "squirrel_db::MIGRATOR")]
+async fn a_different_file_under_a_taken_name_still_gets_a_variant(pool: PgPool) {
+    let instance = common::Instance::new(pool);
+    let browser = instance.browser();
+    let me = common::setup_admin(&browser, "alice").await;
+    let parent = files::root_id(&instance, &me, "Files").await;
+    let docs = files::root_id(&instance, &me, "Documents").await;
+    files::upload(&browser, &me, docs, "photo.jpg", b"same bytes").await;
+    files::upload(&browser, &me, parent, "photo.jpg", b"other bytes").await;
+
+    // Known content, but the name in this folder holds something else.
+    let linked = files::upload(&browser, &me, parent, "photo.jpg", b"same bytes").await;
+    assert_eq!(linked["name"], "photo (1).jpg");
+}
