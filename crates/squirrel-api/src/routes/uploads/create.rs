@@ -42,7 +42,10 @@ impl UploadInput {
 
 /// Dedup within the caller's own library: if one of their nodes already
 /// references this content, link a new node to it. `None` otherwise — even when
-/// another user has the content (never revealed).
+/// another user has the content (never revealed). Idempotent: when the
+/// destination already holds this content under this exact name (a completion
+/// whose response was lost, or a cancel that came too late), that node is
+/// returned instead of a "name (1)" copy.
 pub async fn link_existing(
     state: &AppState,
     owner_id: Uuid,
@@ -61,6 +64,18 @@ pub async fn link_existing(
     nodes::find_live_folder(&mut *tx, owner_id, input.parent_id)
         .await?
         .ok_or(ApiError::NotFound)?;
+    if let Some(node) = nodes::find_live_file(
+        &mut *tx,
+        owner_id,
+        input.parent_id,
+        &input.name,
+        &input.hash,
+    )
+    .await?
+    {
+        tracing::info!(user_id = %owner_id, node_id = %node.id, "upload already present");
+        return Ok(Some(node));
+    }
     quota::ensure_room(&mut tx, owner_id, quota_bytes, blob.size, Pending::Ignore).await?;
     blobs::lock(&mut tx, &input.hash).await?;
     let node = nodes::insert_file(
