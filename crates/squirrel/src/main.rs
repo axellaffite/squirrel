@@ -1,6 +1,7 @@
 mod admin;
 mod data_dir;
 mod tasks;
+mod worker;
 
 use std::net::SocketAddr;
 use std::path::PathBuf;
@@ -18,6 +19,8 @@ use tracing_subscriber::EnvFilter;
 
 /// In-flight requests get this long to finish after a shutdown signal.
 const SHUTDOWN_DEADLINE: Duration = Duration::from_secs(10);
+/// Time for the embedded worker to release its jobs after its grace period.
+const WORKER_RELEASE_MARGIN: Duration = Duration::from_secs(5);
 /// A configured setup token shorter than this is guessable; warn about it.
 const MIN_SETUP_TOKEN_LEN: usize = 16;
 
@@ -36,6 +39,9 @@ enum Command {
     Migrate(DatabaseArgs),
     /// Print the OpenAPI document to stdout.
     Openapi,
+    /// Run the background job worker. Never migrates: waits until the server
+    /// (or `squirrel migrate`) has applied this binary's migrations.
+    Worker(WorkerArgs),
     /// Administrative commands (run on the server). Never migrates: fails if
     /// migrations are pending (run `squirrel migrate` or start the server first).
     Admin(AdminArgs),
@@ -47,6 +53,16 @@ struct AdminArgs {
     database: DatabaseArgs,
     #[command(subcommand)]
     command: admin::AdminCommand,
+}
+
+#[derive(Args)]
+struct WorkerArgs {
+    #[command(flatten)]
+    database: DatabaseArgs,
+    #[arg(long, env = "SQUIRREL_LOG_JSON", default_value_t = false, action = ArgAction::Set)]
+    log_json: bool,
+    #[command(flatten)]
+    options: worker::WorkerOptions,
 }
 
 #[derive(Args)]
@@ -78,6 +94,19 @@ struct ServeArgs {
     /// `blobs/` inside it must be on the same filesystem.
     #[arg(long, env = "SQUIRREL_DATA_DIR")]
     data_dir: PathBuf,
+    /// Also run the job worker inside the server (development, tests, tiny
+    /// installs). By default it runs as its own process (`squirrel worker`).
+    #[arg(
+        long = "worker",
+        env = "SQUIRREL_EMBEDDED_WORKER",
+        default_value_t = false,
+        num_args = 0..=1,
+        default_missing_value = "true",
+        action = ArgAction::Set
+    )]
+    embedded_worker: bool,
+    #[command(flatten)]
+    worker_options: worker::WorkerOptions,
 }
 
 #[tokio::main]
@@ -91,6 +120,10 @@ async fn main() -> anyhow::Result<()> {
         Command::Serve(args) => {
             init_tracing(args.log_json);
             serve(args).await
+        }
+        Command::Worker(args) => {
+            init_tracing(args.log_json);
+            run_worker(args).await
         }
         Command::Admin(args) => {
             init_tracing(false);
@@ -140,6 +173,19 @@ fn pending_message(pending: &[i64]) -> String {
     )
 }
 
+async fn run_worker(args: WorkerArgs) -> anyhow::Result<()> {
+    let pool = squirrel_db::connect(&args.database.database_url)
+        .await
+        .context("connecting to Postgres")?;
+    worker::wait_for_migrations(&pool).await?;
+    let (stop_tx, stop_rx) = watch::channel(false);
+    tokio::spawn(async move {
+        shutdown_signal().await;
+        let _ = stop_tx.send(true);
+    });
+    worker::run(pool, args.options, stop_rx).await
+}
+
 async fn migrate(args: &DatabaseArgs) -> anyhow::Result<()> {
     connect_and_migrate(args).await?;
     tracing::info!("migrations applied");
@@ -172,6 +218,14 @@ async fn serve(args: ServeArgs) -> anyhow::Result<()> {
         .with_context(|| format!("binding {}", args.bind))?;
     tracing::info!(address = %args.bind, "squirrel is listening");
     let (stopping_tx, mut stopping_rx) = watch::channel(false);
+    let embedded_worker = args.embedded_worker.then(|| {
+        tracing::info!("running the job worker inside the server");
+        tokio::spawn(worker::run(
+            pool.clone(),
+            args.worker_options.clone(),
+            stopping_rx.clone(),
+        ))
+    });
     let server = axum::serve(
         listener,
         app.into_make_service_with_connect_info::<SocketAddr>(),
@@ -185,7 +239,7 @@ async fn serve(args: ServeArgs) -> anyhow::Result<()> {
         let _ = stopping_rx.wait_for(|stopping| *stopping).await;
         tokio::time::sleep(SHUTDOWN_DEADLINE).await;
     };
-    tokio::select! {
+    let served = tokio::select! {
         result = server => result.context("serving HTTP"),
         () = deadline => {
             tracing::warn!(
@@ -194,6 +248,22 @@ async fn serve(args: ServeArgs) -> anyhow::Result<()> {
             );
             Ok(())
         }
+    };
+    if let Some(worker) = embedded_worker {
+        stop_embedded_worker(worker).await;
+    }
+    served
+}
+
+/// The worker saw the same stop signal as the server (or its sender is gone):
+/// wait for it to drain and release its jobs, bounded by its grace period.
+async fn stop_embedded_worker(worker: tokio::task::JoinHandle<anyhow::Result<()>>) {
+    let bound = worker::SHUTDOWN_GRACE + WORKER_RELEASE_MARGIN;
+    match tokio::time::timeout(bound, worker).await {
+        Ok(Ok(Ok(()))) => {}
+        Ok(Ok(Err(err))) => tracing::error!(error = %format!("{err:#}"), "the job worker failed"),
+        Ok(Err(err)) => tracing::error!(error = %err, "the job worker panicked"),
+        Err(_) => tracing::warn!("the job worker did not stop in time; its leases will expire"),
     }
 }
 
@@ -278,6 +348,44 @@ mod tests {
             "the database has 2 pending migration(s) (20261113000002, 20261114000001); \
              run `squirrel migrate` (or start the server) first"
         );
+    }
+
+    fn serve_args(extra: &[&str]) -> ServeArgs {
+        let base = [
+            "squirrel",
+            "serve",
+            "--database-url",
+            "postgres://x",
+            "--data-dir",
+            "/tmp/x",
+        ];
+        let argv: Vec<&str> = base.iter().chain(extra).copied().collect();
+        match Cli::try_parse_from(argv).unwrap().command {
+            Command::Serve(args) => args,
+            _ => unreachable!("parsed as serve"),
+        }
+    }
+
+    #[test]
+    fn the_embedded_worker_is_a_flag_that_can_be_turned_off() {
+        assert!(serve_args(&["--worker"]).embedded_worker);
+        assert!(serve_args(&["--worker", "true"]).embedded_worker);
+        assert!(!serve_args(&["--worker", "false"]).embedded_worker);
+        assert_eq!(
+            serve_args(&["--concurrency", "3"])
+                .worker_options
+                .concurrency,
+            Some(3)
+        );
+        let zero = [
+            "squirrel",
+            "worker",
+            "--database-url",
+            "x",
+            "--concurrency",
+            "0",
+        ];
+        assert!(Cli::try_parse_from(zero).is_err());
     }
 
     #[test]
