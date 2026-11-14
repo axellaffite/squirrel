@@ -1172,7 +1172,7 @@
             }
           },
           "429": {
-            "description": "rate_limited, or too_many_uploads: too many open sessions",
+            "description": "rate_limited, or too_many_uploads: too many open sessions, or they would reserve more than half the free space",
             "content": {
               "application/json": {
                 "schema": {

@@ -25,7 +25,7 @@ use crate::state::AppState;
         (status = 201, body = UploadSessionDto, description = "Session opened or resumed: send the missing chunks"),
         (status = 404, body = ErrorBody, description = "Destination folder not found"),
         (status = 422, body = ErrorBody),
-        (status = 429, body = ErrorBody, description = "rate_limited, or too_many_uploads: too many open sessions"),
+        (status = 429, body = ErrorBody, description = "rate_limited, or too_many_uploads: too many open sessions, or they would reserve more than half the free space"),
         (status = 507, body = ErrorBody, description = "quota_exceeded or storage_full"),
     ))]
 pub async fn create_upload(

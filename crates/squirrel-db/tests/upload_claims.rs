@@ -190,3 +190,23 @@ async fn pending_bytes_count_what_open_sessions_still_have_to_write(pool: PgPool
     }
     assert_eq!(uploads::pending_bytes(&pool).await.unwrap(), 7);
 }
+
+#[sqlx::test(migrator = "squirrel_db::MIGRATOR")]
+async fn pending_bytes_can_be_counted_per_owner(pool: PgPool) {
+    let alice = common::admin(&pool).await;
+    let bob = common::invited(&pool, &alice, "bob").await;
+    let alice_files = common::root(&pool, alice.id, "Files").await;
+    let bob_files = common::root(&pool, bob.id, "Files").await;
+    open_named(&pool, alice.id, alice_files.id, "a.bin", 10, 100)
+        .await
+        .unwrap();
+    open_named(&pool, bob.id, bob_files.id, "b.bin", 7, 100)
+        .await
+        .unwrap();
+    assert_eq!(
+        uploads::pending_bytes_of(&pool, alice.id).await.unwrap(),
+        10
+    );
+    assert_eq!(uploads::pending_bytes_of(&pool, bob.id).await.unwrap(), 7);
+    assert_eq!(uploads::pending_bytes(&pool).await.unwrap(), 17);
+}

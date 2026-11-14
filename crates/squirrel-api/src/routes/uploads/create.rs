@@ -117,7 +117,7 @@ pub async fn open_session(
     // One admission at a time, so parallel creations cannot all count the
     // same free space.
     let _admission = state.uploads.admission.lock().await;
-    ensure_disk_space(state, input.size).await?;
+    ensure_disk_space(state, owner_id, input.size).await?;
     let record = create_session(state, owner_id, input).await?;
     let (store, id, size) = (state.storage.clone(), record.id, input.size);
     if let Err(err) = run_storage(move || store.create_upload(id, size)).await {
@@ -188,15 +188,15 @@ async fn resume(
 
 /// Refuses an upload that would leave less than `min_free_bytes`, counting
 /// the bytes open sessions have declared but not written yet (their sparse
-/// files grow into that space).
-async fn ensure_disk_space(state: &AppState, size: u64) -> Result<(), ApiError> {
+/// files grow into that space). One user's reservations together may take at
+/// most [`MAX_PENDING_SHARE_PERCENT`] of the usable space, except for their
+/// only open upload: a single large file must stay possible.
+async fn ensure_disk_space(state: &AppState, owner_id: Uuid, size: u64) -> Result<(), ApiError> {
     let store = state.storage.clone();
     let available = run_storage(move || store.available_space()).await?;
     let pending = u64::try_from(uploads::pending_bytes(&state.pool).await?).unwrap_or_default();
-    let usable = available
-        .saturating_sub(pending)
-        .saturating_sub(state.config.min_free_bytes);
-    if usable < size {
+    let room = available.saturating_sub(state.config.min_free_bytes);
+    if room.saturating_sub(pending) < size {
         tracing::warn!(
             available,
             pending,
@@ -205,5 +205,38 @@ async fn ensure_disk_space(state: &AppState, size: u64) -> Result<(), ApiError> 
         );
         return Err(ApiError::StorageFull);
     }
+    let mine =
+        u64::try_from(uploads::pending_bytes_of(&state.pool, owner_id).await?).unwrap_or_default();
+    if exceeds_share(mine, size, room) {
+        tracing::warn!(user_id = %owner_id, mine, size, room,
+            "refusing upload: the user's pending uploads would take most of the free space");
+        return Err(ApiError::TooManyUploads);
+    }
     Ok(())
+}
+
+/// Share of the usable free space one user's open uploads may reserve.
+const MAX_PENDING_SHARE_PERCENT: u64 = 50;
+
+/// Whether adding `size` to a user's `mine` pending bytes takes more than
+/// their share of `room`. A first reservation is never refused here.
+fn exceeds_share(mine: u64, size: u64, room: u64) -> bool {
+    mine > 0 && mine.saturating_add(size) > room / 100 * MAX_PENDING_SHARE_PERCENT
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_single_upload_may_use_all_the_room() {
+        assert!(!exceeds_share(0, 90, 100));
+    }
+
+    #[test]
+    fn further_uploads_stay_within_half_the_room() {
+        assert!(!exceeds_share(20, 30, 100));
+        assert!(exceeds_share(20, 31, 100));
+        assert!(exceeds_share(60, 1, 100));
+    }
 }
