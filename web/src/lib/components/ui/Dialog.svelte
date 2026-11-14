@@ -81,6 +81,8 @@
 		box-shadow: var(--shadow-pop);
 		opacity: 0;
 		transform: translateY(var(--rise-sheet));
+		/* Keep the sheet on its own layer so the rise does not repaint its shadow each frame. */
+		will-change: transform, opacity;
 		transition:
 			opacity var(--dur-fast) var(--ease),
 			transform var(--dur-fast) var(--ease),

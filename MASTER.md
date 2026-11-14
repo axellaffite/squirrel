@@ -139,7 +139,9 @@ Selection is a 2 px accent ring (`--select-ring`), stacked on the card shadow.
 
 Animate only `transform`, `opacity`, `box-shadow`, `background-color`, `color` (and the meter's
 `clip-path`). Dialogs reverse their arrival at `--dur-fast`. `prefers-reduced-motion: reduce` sets
-every duration to 0 and removes the rises.
+every duration to 0 and removes the rises. On touch devices (`pointer: coarse`) the list/section
+arrival is skipped (content appears at once): it stuttered on Firefox for Android (2026-11-14).
+Presses, sheets and dialogs still animate there.
 
 ## Layout
 
