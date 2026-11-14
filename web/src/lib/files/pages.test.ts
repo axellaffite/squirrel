@@ -16,4 +16,19 @@ describe('collectPages', () => {
 		const failure = { ok: false as const, error: 'boom', status: 500 };
 		expect(await collectPages(async () => failure)).toEqual(failure);
 	});
+
+	it('stops when the server hands back a cursor it already gave', async () => {
+		const fetchPage = vi.fn(async () => ({ ok: true as const, data: { items: [1], next_cursor: 'same' } }));
+		const result = await collectPages(fetchPage);
+		expect(result).toMatchObject({ ok: false, status: 0 });
+		expect(fetchPage).toHaveBeenCalledTimes(2);
+	});
+
+	it('gives up after too many pages', async () => {
+		let page = 0;
+		const fetchPage = vi.fn(async () => ({ ok: true as const, data: { items: [page], next_cursor: `c${++page}` } }));
+		const result = await collectPages(fetchPage, 5);
+		expect(result).toEqual({ ok: false, error: expect.stringMatching(/too many/i), status: 0 });
+		expect(fetchPage).toHaveBeenCalledTimes(5);
+	});
 });
