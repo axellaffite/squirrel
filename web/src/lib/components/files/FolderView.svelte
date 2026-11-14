@@ -172,40 +172,43 @@
 	<StorageMeter refresh={storageVersion} />
 </Page>
 
-{#if dialog?.kind === 'new-folder' && folderId !== null}
-	{@const parent = folderId}
-	<NameDialog
-		title="New folder"
-		submitLabel="Create folder"
-		onSubmit={async (name) => outcome(await createFolder(parent, name))}
-		onClose={() => (dialog = null)}
-	/>
-{:else if dialog?.kind === 'rename'}
-	{@const node = dialog.node}
-	<NameDialog
-		title={`Rename “${node.name}”`}
-		initial={node.name}
-		submitLabel="Save"
-		onSubmit={async (name) => outcome(await renameNode(node.id, name))}
-		onClose={() => (dialog = null)}
-	/>
-{:else if dialog?.kind === 'move'}
-	{@const node = dialog.node}
-	<MoveDialog
-		{node}
-		onMove={async (parentId) => outcome(await moveNode(node.id, parentId))}
-		onClose={() => (dialog = null)}
-	/>
-{:else if dialog?.kind === 'preview'}
-	<Preview node={dialog.node} onClose={() => (dialog = null)} />
-{:else if dialog?.kind === 'actions'}
-	{@const node = dialog.node}
-	<NodeActions
-		{node}
-		onOpen={() => open(node)}
-		onRename={() => (dialog = { kind: 'rename', node })}
-		onMove={() => (dialog = { kind: 'move', node })}
-		onDelete={() => remove(node)}
-		onClose={() => (dialog = null)}
-	/>
-{/if}
+<!-- Keyed: a dialog opened while the previous one is still fading out gets its own instance. -->
+{#key dialog}
+	{#if dialog?.kind === 'new-folder' && folderId !== null}
+		{@const parent = folderId}
+		<NameDialog
+			title="New folder"
+			submitLabel="Create folder"
+			onSubmit={async (name) => outcome(await createFolder(parent, name))}
+			onClose={() => (dialog = null)}
+		/>
+	{:else if dialog?.kind === 'rename'}
+		{@const node = dialog.node}
+		<NameDialog
+			title={`Rename “${node.name}”`}
+			initial={node.name}
+			submitLabel="Save"
+			onSubmit={async (name) => outcome(await renameNode(node.id, name))}
+			onClose={() => (dialog = null)}
+		/>
+	{:else if dialog?.kind === 'move'}
+		{@const node = dialog.node}
+		<MoveDialog
+			{node}
+			onMove={async (parentId) => outcome(await moveNode(node.id, parentId))}
+			onClose={() => (dialog = null)}
+		/>
+	{:else if dialog?.kind === 'preview'}
+		<Preview node={dialog.node} onClose={() => (dialog = null)} />
+	{:else if dialog?.kind === 'actions'}
+		{@const node = dialog.node}
+		<NodeActions
+			{node}
+			onOpen={() => open(node)}
+			onRename={() => (dialog = { kind: 'rename', node })}
+			onMove={() => (dialog = { kind: 'move', node })}
+			onDelete={() => remove(node)}
+			onClose={() => (dialog = null)}
+		/>
+	{/if}
+{/key}

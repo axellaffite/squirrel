@@ -143,7 +143,7 @@
 	.center {
 		display: grid;
 		place-items: center;
-		min-height: 60dvh;
+		min-height: var(--center-min);
 		padding: var(--space-6) var(--gutter);
 	}
 
@@ -187,7 +187,11 @@
 		gap: var(--space-3);
 	}
 
+	/* A 44 px tall target: the row already holds the 44 px account button. */
 	.wordmark {
+		display: inline-flex;
+		align-items: center;
+		min-height: var(--tap);
 		border-radius: var(--radius-sm);
 		color: var(--ink);
 		font-size: var(--text-xl);

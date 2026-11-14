@@ -101,4 +101,19 @@
 		opacity: var(--disabled-opacity);
 		cursor: not-allowed;
 	}
+
+	/* Forced colours drop the fills: keep the knob and the checked track visible. */
+	@media (forced-colors: active) {
+		.knob {
+			background: CanvasText;
+		}
+
+		[aria-checked='true'] .track {
+			background: Highlight;
+		}
+
+		[aria-checked='true'] .knob {
+			background: Canvas;
+		}
+	}
 </style>

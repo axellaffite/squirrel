@@ -121,7 +121,7 @@
 
 	@media (forced-colors: active) {
 		.checked {
-			outline: 2px solid Highlight;
+			outline: var(--ring-width) solid Highlight;
 		}
 	}
 </style>

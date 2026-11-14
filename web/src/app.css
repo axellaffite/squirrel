@@ -82,7 +82,7 @@ p {
 
 a {
 	color: var(--accent-ink);
-	text-underline-offset: 0.2em;
+	text-underline-offset: var(--underline-offset);
 	transition: color var(--dur-fast) var(--ease);
 }
 
