@@ -201,13 +201,13 @@
 	{:else if dialog?.kind === 'preview'}
 		<Preview node={dialog.node} onClose={() => (dialog = null)} />
 	{:else if dialog?.kind === 'actions'}
-		{@const node = dialog.node}
+		<!-- The chosen action runs after onClose cleared `dialog`: use the node the sheet hands back. -->
 		<NodeActions
-			{node}
-			onOpen={() => open(node)}
-			onRename={() => (dialog = { kind: 'rename', node })}
-			onMove={() => (dialog = { kind: 'move', node })}
-			onDelete={() => remove(node)}
+			node={dialog.node}
+			onOpen={open}
+			onRename={(node) => (dialog = { kind: 'rename', node })}
+			onMove={(node) => (dialog = { kind: 'move', node })}
+			onDelete={remove}
 			onClose={() => (dialog = null)}
 		/>
 	{/if}

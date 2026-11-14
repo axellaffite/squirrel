@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { untrack } from 'svelte';
 	import Icon from '#lib/components/icons/Icon.svelte';
 	import type { IconName } from '#lib/components/icons/paths.ts';
 	import Dialog from '#lib/components/ui/Dialog.svelte';
@@ -7,10 +8,11 @@
 
 	interface Props {
 		node: FileNode;
-		onOpen: () => void;
-		onRename: () => void;
-		onMove: () => void;
-		onDelete: () => void;
+		/** Actions get the node back: the parent's own reference may be gone once the sheet closed. */
+		onOpen: (node: FileNode) => void;
+		onRename: (node: FileNode) => void;
+		onMove: (node: FileNode) => void;
+		onDelete: (node: FileNode) => void;
 		/** Runs once the sheet closed, however it closed. */
 		onClose: () => void;
 	}
@@ -21,11 +23,13 @@
 	let open = $state(true);
 	/** The chosen action runs after the sheet closed, so focus and the next dialog start clean. */
 	let chosen: (() => void) | null = null;
+	// The node this sheet was opened for, kept for the action that runs after it closed.
+	const target = untrack(() => node);
 
 	interface Action {
 		label: string;
 		icon: IconName;
-		run: () => void;
+		run: (node: FileNode) => void;
 		danger?: boolean;
 	}
 
@@ -40,8 +44,8 @@
 				])
 	]);
 
-	function choose(run: () => void) {
-		chosen = run;
+	function choose(run: (node: FileNode) => void) {
+		chosen = () => run(target);
 		dialog?.close();
 	}
 
