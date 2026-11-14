@@ -4,6 +4,14 @@
 	import { expiryNotice, newestInvitation, validityDays } from '#lib/invitations.ts';
 	import type { components } from '#lib/api/schema.d.ts';
 	import { session } from '#lib/session.svelte.ts';
+	import Icon from '#lib/components/icons/Icon.svelte';
+	import Page from '#lib/components/shell/Page.svelte';
+	import Alert from '#lib/components/ui/Alert.svelte';
+	import Badge from '#lib/components/ui/Badge.svelte';
+	import Button from '#lib/components/ui/Button.svelte';
+	import EmptyState from '#lib/components/ui/EmptyState.svelte';
+	import ListRow from '#lib/components/ui/ListRow.svelte';
+	import TextField from '#lib/components/ui/TextField.svelte';
 
 	type Invitation = components['schemas']['InvitationDto'];
 
@@ -20,6 +28,14 @@
 	// Derived from what the server returned, so it follows the server's configured validity.
 	const expiry = $derived(expiryNotice(validityDays(created ?? newestInvitation(invitations))));
 	const dateFormat = new Intl.DateTimeFormat(undefined, { dateStyle: 'medium', timeStyle: 'short' });
+	let loaded = $state(false);
+
+	const STATUS: Record<Invitation['status'], { label: string; tone: 'accent' | 'neutral' | 'success' | 'danger' }> = {
+		active: { label: 'Active', tone: 'accent' },
+		used: { label: 'Used', tone: 'success' },
+		expired: { label: 'Expired', tone: 'neutral' },
+		revoked: { label: 'Revoked', tone: 'danger' }
+	};
 
 	/** Reloads the list. Returns an error message, or null (and clears the error) on success. */
 	async function refresh(): Promise<string | null> {
@@ -27,6 +43,7 @@
 			const { data, error: apiError, response } = await api.GET('/api/invitations');
 			if (!data) return (error = errorMessage(apiError, response));
 			invitations = data;
+			loaded = true;
 			error = null;
 			return null;
 		} catch {
@@ -93,57 +110,124 @@
 
 <svelte:head><title>Invitations · Squirrel</title></svelte:head>
 
-<main class="page">
-	<h1>Invitations</h1>
-	{#if canInvite}
-		<p class="muted">Each link lets one person create an account. {expiry}</p>
+<Page title="Invitations">
+	{#snippet description()}
+		{#if canInvite}Each link lets one person create an account. {expiry}{:else}Only administrators can invite people
+			to this drive. Ask an administrator if someone needs an account.{/if}
+	{/snippet}
 
-		<form onsubmit={create}>
-			<label>Who is it for? (optional) <input bind:value={emailHint} placeholder="bob@example.com" /></label>
-			<button type="submit" disabled={busy}>Create invitation</button>
+	{#if canInvite}
+		<form class="create" onsubmit={create}>
+			<div class="field">
+				<TextField label="Who is it for? (optional)" bind:value={emailHint} placeholder="bob@example.com" />
+			</div>
+			<Button type="submit" disabled={busy}><Icon name="link" />Create invitation</Button>
 		</form>
-	{:else}
-		<p class="muted">
-			Only administrators can invite people to this drive. Ask an administrator if someone needs an
-			account.
-		</p>
 	{/if}
 
-	<div aria-live="polite">
+	<div class="live" aria-live="polite">
 		{#if newLink}
-			<section>
+			<section class="new-link" aria-label="New invitation link">
 				<p>Send this link now. It will not be shown again.</p>
-				<p data-testid="invite-link"><code>{newLink}</code></p>
-				<button class="link" onclick={copyLink}>Copy link</button>
-				{#if copied}<p class="muted">Copied</p>{/if}
+				<p class="link" data-testid="invite-link"><code>{newLink}</code></p>
+				<div class="copy">
+					<Button variant="secondary" size="sm" onclick={copyLink}><Icon name="copy" />Copy link</Button>
+					{#if copied}<span class="copied"><Icon name="check" />Copied</span>{/if}
+				</div>
 			</section>
 		{/if}
 	</div>
-	{#if copyError}<p class="error" role="alert">{copyError}</p>{/if}
+	{#if copyError}<Alert>{copyError}</Alert>{/if}
 
-	{#if error}<p class="error" role="alert">{error}</p>{/if}
+	{#if error}<Alert>{error}</Alert>{/if}
 
-	<table>
-		<thead><tr><th>For</th><th>Status</th><th>Expires</th><th><span class="visually-hidden">Actions</span></th></tr></thead>
-		<tbody>
+	{#if invitations.length > 0}
+		<ul class="rows" aria-label="Invitations">
 			{#each invitations as invitation (invitation.id)}
-				<tr>
-					<td>{invitation.email_hint ?? '—'}</td>
-					<td>{invitation.status}</td>
-					<td>{dateFormat.format(new Date(invitation.expires_at))}</td>
-					<td>
+				<ListRow>
+					{#snippet icon()}<Icon name="mail" />{/snippet}
+					{#snippet title()}{invitation.email_hint ?? 'Anyone with the link'}{/snippet}
+					{#snippet meta()}Expires {dateFormat.format(new Date(invitation.expires_at))}{/snippet}
+					{#snippet actions()}
+						<Badge tone={STATUS[invitation.status].tone}>{STATUS[invitation.status].label}</Badge>
 						{#if invitation.status === 'active'}
-							<button
-								class="link"
+							<Button
+								variant="quiet"
+								size="sm"
 								aria-label={`Revoke invitation for ${invitation.email_hint ?? 'unnamed recipient'}`}
-								onclick={() => revoke(invitation.id)}>Revoke</button
+								onclick={() => revoke(invitation.id)}>Revoke</Button
 							>
 						{/if}
-					</td>
-				</tr>
-			{:else}
-				<tr><td colspan="4" class="muted">No invitations yet.</td></tr>
+					{/snippet}
+				</ListRow>
 			{/each}
-		</tbody>
-	</table>
-</main>
+		</ul>
+	{:else if loaded && !error}
+		<EmptyState icon="user-plus" title="No invitations yet">Links you create appear here with their status.</EmptyState>
+	{/if}
+</Page>
+
+<style>
+	.create {
+		display: grid;
+		gap: var(--space-3);
+		padding: var(--well-pad);
+		border-radius: var(--radius-well);
+		background: var(--tint);
+	}
+
+	@media (min-width: 48rem) {
+		.create {
+			grid-template-columns: minmax(0, 1fr) auto;
+			align-items: end;
+		}
+	}
+
+	.field {
+		min-width: 0;
+	}
+
+	.live {
+		display: contents;
+	}
+
+	.new-link {
+		display: grid;
+		gap: var(--space-3);
+		padding: var(--card-pad);
+		border-radius: var(--radius-card);
+		background: var(--card);
+		box-shadow: var(--shadow-card), var(--select-ring);
+	}
+
+	.link {
+		max-width: none;
+		padding: var(--space-3) var(--space-4);
+		border-radius: var(--radius-sm);
+		background: var(--tint);
+	}
+
+	.copy {
+		display: flex;
+		flex-wrap: wrap;
+		align-items: center;
+		gap: var(--space-3);
+	}
+
+	.copied {
+		display: inline-flex;
+		align-items: center;
+		gap: var(--space-1);
+		color: var(--success);
+		font-size: var(--text-sm);
+		font-weight: var(--weight-label);
+	}
+
+	.rows {
+		display: grid;
+		gap: var(--space-2);
+		margin: 0;
+		padding: 0;
+		list-style: none;
+	}
+</style>

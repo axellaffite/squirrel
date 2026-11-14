@@ -6,8 +6,14 @@
 	import FileTable from '#lib/components/files/FileTable.svelte';
 	import MoveDialog from '#lib/components/files/MoveDialog.svelte';
 	import NameDialog from '#lib/components/files/NameDialog.svelte';
+	import NodeActions from '#lib/components/files/NodeActions.svelte';
 	import Preview from '#lib/components/files/Preview.svelte';
 	import StorageMeter from '#lib/components/files/StorageMeter.svelte';
+	import Icon from '#lib/components/icons/Icon.svelte';
+	import Page from '#lib/components/shell/Page.svelte';
+	import Alert from '#lib/components/ui/Alert.svelte';
+	import Button from '#lib/components/ui/Button.svelte';
+	import EmptyState from '#lib/components/ui/EmptyState.svelte';
 	import {
 		createFolder,
 		getNode,
@@ -18,7 +24,8 @@
 		type FileNode,
 		type PathSegment
 	} from '#lib/files/api.ts';
-	import { enqueue, onUploadFinished } from '#lib/upload/uploads.svelte.ts';
+	import { latestOnly } from '#lib/files/latest.ts';
+	import { enqueue, onUploadsSettled } from '#lib/upload/uploads.svelte.ts';
 
 	let { folderId }: { folderId: string | null } = $props();
 
@@ -27,36 +34,55 @@
 		| { kind: 'rename'; node: FileNode }
 		| { kind: 'move'; node: FileNode }
 		| { kind: 'preview'; node: FileNode }
+		| { kind: 'actions'; node: FileNode }
 		| null;
 
-	let folder: FileNode | null = $state(null);
+	let folder = $state<FileNode | null>(null);
 	let path: PathSegment[] = $state([]);
 	let items: FileNode[] = $state([]);
+	let loaded = $state(false);
 	let loading = $state(true);
 	let error: string | null = $state(null);
-	let dialog: Dialog = $state(null);
+	let dialog = $state<Dialog>(null);
 	let storageVersion = $state(0);
+	let uploadInput: HTMLInputElement | undefined = $state();
+	// Uploads, dialogs and navigation can overlap loads: only the latest one counts.
+	const track = latestOnly();
 
 	/** Files can only live inside a folder; the top level is fixed. */
 	const canWrite = $derived(folderId !== null && folder !== null);
+	const title = $derived(folderId === null ? 'My drive' : (folder?.name ?? 'Folder'));
+	const selectedId = $derived(dialog && 'node' in dialog ? dialog.node.id : null);
+
+	async function fetchFolder() {
+		let details = null;
+		if (folderId !== null) {
+			details = await getNode(folderId);
+			if (!details.ok || details.data.node.kind !== 'folder') return { details, listing: null };
+		}
+		return { details, listing: await listFolder(folderId) };
+	}
 
 	async function load() {
 		loading = true;
-		error = null;
-		if (folderId !== null) {
-			const details = await getNode(folderId);
-			if (!details.ok || details.data.node.kind !== 'folder') {
-				error = details.ok || details.status === 404 ? 'This folder does not exist or was deleted.' : details.error;
-				loading = false;
-				return;
-			}
+		const result = await track(fetchFolder());
+		if (result.stale) return;
+		const { details, listing } = result.value;
+		loading = false;
+		loaded = true;
+		if (details && (!details.ok || details.data.node.kind !== 'folder')) {
+			error = details.ok || details.status === 404 ? 'This folder does not exist or was deleted.' : details.error;
+			return;
+		}
+		if (details?.ok) {
 			folder = details.data.node;
 			path = details.data.path;
 		}
-		const listing = await listFolder(folderId);
-		if (listing.ok) items = listing.data;
-		else error = listing.error;
-		loading = false;
+		if (!listing) return;
+		if (listing.ok) {
+			items = listing.data;
+			error = null;
+		} else error = listing.error;
 	}
 
 	function changed() {
@@ -66,8 +92,9 @@
 
 	onMount(() => {
 		void load();
-		return onUploadFinished((parentId) => {
-			if (parentId === folderId) void changed();
+		// One refresh per settled batch of uploads, not one per file.
+		return onUploadsSettled((parentIds) => {
+			if (folderId !== null && parentIds.has(folderId)) void changed();
 		});
 	});
 
@@ -101,41 +128,49 @@
 
 <svelte:head><title>{folder?.name ?? 'Files'} · Squirrel</title></svelte:head>
 
-<main class="page files">
-	<header class="files-header">
-		<Breadcrumbs {path} current={folder?.name ?? null} />
-		<div class="files-actions">
-			{#if canWrite}
-				<button onclick={() => (dialog = { kind: 'new-folder' })}>New folder</button>
-				<label class="button">
-					Upload files
-					<input type="file" multiple class="visually-hidden" onchange={chosen} />
-				</label>
-			{/if}
-			<a href="/trash">Trash</a>
-		</div>
-	</header>
+<Page {title}>
+	{#snippet above()}
+		{#if folderId !== null}<Breadcrumbs {path} current={folder?.name ?? null} />{/if}
+	{/snippet}
+	{#snippet description()}
+		{#if folderId === null}Open a folder to add files.{:else if loaded && !error && items.length > 0}{items.length}
+			{items.length === 1 ? 'item' : 'items'}{/if}
+	{/snippet}
+	{#snippet actions()}
+		{#if canWrite}
+			<Button variant="secondary" onclick={() => (dialog = { kind: 'new-folder' })}>
+				<Icon name="folder-plus" />New folder
+			</Button>
+			<Button onclick={() => uploadInput?.click()}><Icon name="upload" />Upload files</Button>
+			<input bind:this={uploadInput} type="file" multiple hidden onchange={chosen} />
+		{/if}
+	{/snippet}
 
-	{#if error}<p class="error" role="alert">{error}</p>{/if}
-	{#if loading && items.length === 0}
-		<p class="muted">Loading…</p>
-	{:else}
+	{#if error}<Alert>{error}</Alert>{/if}
+	{#if !loaded}
+		<p class="muted" aria-live="polite">Loading…</p>
+	{:else if !error || items.length > 0}
 		<DropZone enabled={canWrite} onFiles={upload}>
-			<FileTable
-				{items}
-				onOpen={open}
-				onRename={(node) => (dialog = { kind: 'rename', node })}
-				onMove={(node) => (dialog = { kind: 'move', node })}
-				onDelete={remove}
-			/>
+			{#if items.length > 0}
+				<FileTable
+					{items}
+					{selectedId}
+					onOpen={open}
+					onRename={(node) => (dialog = { kind: 'rename', node })}
+					onMove={(node) => (dialog = { kind: 'move', node })}
+					onDelete={remove}
+					onActions={(node) => (dialog = { kind: 'actions', node })}
+				/>
+			{:else if !error && !loading}
+				<EmptyState icon="upload" title="This folder is empty">
+					Drop files here or use “Upload files”.
+				</EmptyState>
+			{/if}
 		</DropZone>
-	{/if}
-	{#if !canWrite && folderId === null}
-		<p class="muted">Open a folder to add files.</p>
 	{/if}
 
 	<StorageMeter refresh={storageVersion} />
-</main>
+</Page>
 
 {#if dialog?.kind === 'new-folder' && folderId !== null}
 	{@const parent = folderId}
@@ -163,4 +198,14 @@
 	/>
 {:else if dialog?.kind === 'preview'}
 	<Preview node={dialog.node} onClose={() => (dialog = null)} />
+{:else if dialog?.kind === 'actions'}
+	{@const node = dialog.node}
+	<NodeActions
+		{node}
+		onOpen={() => open(node)}
+		onRename={() => (dialog = { kind: 'rename', node })}
+		onMove={() => (dialog = { kind: 'move', node })}
+		onDelete={() => remove(node)}
+		onClose={() => (dialog = null)}
+	/>
 {/if}

@@ -1,29 +1,30 @@
 <script lang="ts">
-	import { onMount, untrack } from 'svelte';
+	import { untrack } from 'svelte';
+	import Button from '#lib/components/ui/Button.svelte';
+	import Dialog from '#lib/components/ui/Dialog.svelte';
+	import TextField from '#lib/components/ui/TextField.svelte';
 	import { nameProblem } from '#lib/files/names.ts';
 
-	let {
-		title,
-		initial = '',
-		submitLabel,
-		onSubmit,
-		onClose
-	}: {
+	interface Props {
 		title: string;
 		initial?: string;
 		submitLabel: string;
 		/** Resolves to an error message, or null on success. */
 		onSubmit: (name: string) => Promise<string | null>;
+		/** Runs once the dialog closed, however it closed. */
 		onClose: () => void;
-	} = $props();
+	}
 
-	let dialog: HTMLDialogElement;
+	let { title, initial = '', submitLabel, onSubmit, onClose }: Props = $props();
+
+	let dialog: Dialog | undefined = $state();
+	let open = $state(true);
 	// The field starts from the current name, then belongs to the user.
 	let name = $state(untrack(() => initial));
 	let error: string | null = $state(null);
 	let busy = $state(false);
-
-	onMount(() => dialog.showModal());
+	const uid = $props.id();
+	const formId = `name-form-${uid}`;
 
 	async function submit(event: SubmitEvent) {
 		event.preventDefault();
@@ -32,21 +33,27 @@
 		busy = true;
 		try {
 			error = await onSubmit(name.trim());
-			if (!error) onClose();
+			if (!error) dialog?.close();
 		} finally {
 			busy = false;
 		}
 	}
 </script>
 
-<dialog bind:this={dialog} onclose={onClose} aria-labelledby="name-dialog-title">
-	<form onsubmit={submit}>
-		<h2 id="name-dialog-title">{title}</h2>
-		<label>Name <input bind:value={name} required autocomplete="off" /></label>
-		{#if error}<p class="error" role="alert">{error}</p>{/if}
-		<div class="dialog-actions">
-			<button type="button" class="link" onclick={() => dialog.close()}>Cancel</button>
-			<button type="submit" disabled={busy}>{submitLabel}</button>
-		</div>
+<Dialog bind:this={dialog} bind:open {title} onclose={onClose}>
+	<form id={formId} onsubmit={submit} novalidate>
+		<TextField
+			label="Name"
+			bind:value={name}
+			{error}
+			required
+			autofocus
+			autocomplete="off"
+			spellcheck="false"
+		/>
 	</form>
-</dialog>
+	{#snippet actions()}
+		<Button variant="secondary" onclick={() => dialog?.close()}>Cancel</Button>
+		<Button type="submit" form={formId} disabled={busy}>{submitLabel}</Button>
+	{/snippet}
+</Dialog>
