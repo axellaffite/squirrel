@@ -2,10 +2,9 @@
 	import Icon from '#lib/components/icons/Icon.svelte';
 	import Button from '#lib/components/ui/Button.svelte';
 	import IconButton from '#lib/components/ui/IconButton.svelte';
-	import { progressPercent, statusLabel, uploadSummary } from '#lib/upload/queue-logic.ts';
+	import { isCancellable, progressPercent, statusLabel, uploadSummary } from '#lib/upload/queue-logic.ts';
 	import { cancel, clearFinished, retry, uploadQueue } from '#lib/upload/uploads.svelte.ts';
 
-	const active = new Set(['queued', 'hashing', 'uploading', 'finishing']);
 	// One sentence that changes with upload states, not with every progress tick.
 	const summary = $derived(uploadSummary(uploadQueue.items));
 </script>
@@ -30,7 +29,7 @@
 						<progress max="100" value={progressPercent(item)} aria-label={`Upload progress for ${item.name}`}></progress>
 						<span class="status" class:error={item.status === 'failed'}>{statusLabel(item)}</span>
 					</div>
-					{#if active.has(item.status)}
+					{#if isCancellable(item)}
 						<IconButton icon="x" label={`Cancel upload of ${item.name}`} tooltip="Cancel" onclick={() => cancel(item.id)} />
 					{:else if item.status === 'failed' || item.status === 'cancelled'}
 						<IconButton icon="refresh" label={`Retry upload of ${item.name}`} tooltip="Retry" onclick={() => retry(item.id)} />

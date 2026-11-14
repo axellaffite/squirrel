@@ -39,8 +39,15 @@ export function statusLabel(entry: QueueEntry): string {
 		case 'failed':
 			return entry.error ?? 'Upload failed';
 		case 'cancelled':
-			return 'Cancelled';
+			return entry.error ?? 'Cancelled';
 	}
+}
+
+const CANCELLABLE: ReadonlySet<UploadStatus> = new Set(['queued', 'hashing', 'uploading']);
+
+/** Once finishing, the server stores the file whatever the client does: no Cancel. */
+export function isCancellable(entry: QueueEntry): boolean {
+	return CANCELLABLE.has(entry.status);
 }
 
 const RUNNING: ReadonlySet<UploadStatus> = new Set(['queued', 'hashing', 'uploading', 'finishing']);

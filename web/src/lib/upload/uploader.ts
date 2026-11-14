@@ -1,5 +1,5 @@
 import type { components } from '#lib/api/schema.d.ts';
-import { isServerRetryable, isTransient } from '#lib/upload/errors.ts';
+import { isServerRetryable, isTransient, UploadError } from '#lib/upload/errors.ts';
 import { chunkRange, missingChunks } from '#lib/upload/plan.ts';
 import { abortableDelay, runPool, withRetry, type RetryOptions } from '#lib/upload/retry.ts';
 
@@ -41,6 +41,14 @@ export interface UploadDeps {
 	chunkAttempts?: number;
 }
 
+/** Cancelled after the server started storing the file: it may be saved anyway. */
+export class CancelledTooLate extends Error {
+	constructor() {
+		super('Cancelled, but the file may have been saved already');
+		this.name = 'CancelledTooLate';
+	}
+}
+
 const DEFAULT_ATTEMPTS = 4;
 const DEFAULT_CHUNK_ATTEMPTS = 6;
 
@@ -71,19 +79,37 @@ export async function uploadFile(
 	if (started.kind === 'deduplicated') return { node: started.node, deduplicated: true };
 
 	const { session } = started;
+	let completing = false;
 	try {
 		// Cancelled while the start request was in flight: the session exists server-side anyway.
 		signal.throwIfAborted();
 		const chunkRetry = { ...retry, attempts: deps.chunkAttempts ?? DEFAULT_CHUNK_ATTEMPTS };
 		await sendMissingChunks(file, session, deps, chunkRetry, onProgress, signal);
 		onProgress({ phase: 'finishing', done: total, total });
+		completing = true;
 		// Retried only when the server answered "busy": after a lost response the file may already exist.
 		const completeRetry = { ...retry, retryable: isServerRetryable };
 		const node = await withRetry(() => deps.transport.complete(session.upload_id, signal), completeRetry, signal);
 		return { node, deduplicated: false };
 	} catch (error) {
-		if (signal.aborted) await deps.transport.abort(session.upload_id).catch(() => undefined);
+		if (signal.aborted && (await abortSession(deps.transport, session.upload_id, completing))) {
+			throw new CancelledTooLate();
+		}
 		throw error;
+	}
+}
+
+/**
+ * Deletes the server session. Returns true when the upload may have completed anyway: the
+ * server is storing it (409), or it is gone after the completion request went out.
+ */
+async function abortSession(transport: UploadTransport, uploadId: string, completing: boolean): Promise<boolean> {
+	try {
+		await transport.abort(uploadId);
+		return false;
+	} catch (error) {
+		if (!(error instanceof UploadError)) return false;
+		return error.status === 409 || (completing && error.status === 404);
 	}
 }
 

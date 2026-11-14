@@ -123,6 +123,49 @@ describe('UploadQueue', () => {
 	});
 });
 
+describe('UploadQueue cancellation races', () => {
+	it('does not cancel an upload that is finishing', async () => {
+		let finish!: () => void;
+		const { queue, transport } = queueWith({
+			complete: vi.fn(
+				() =>
+					new Promise<never>((resolve) => {
+						finish = () => resolve(node('a.bin'));
+					})
+			)
+		});
+		queue.enqueue([file()], 'p1');
+		for (let i = 0; i < 50 && queue.items[0].status !== 'finishing'; i += 1) await tick();
+		expect(queue.items[0].status).toBe('finishing');
+		queue.cancel(queue.items[0].id);
+		finish();
+		await settled(queue);
+		expect(queue.items[0].status).toBe('done');
+		expect(transport.abort).not.toHaveBeenCalled();
+	});
+
+	it('refreshes the folder when a cancel came too late', async () => {
+		let queue!: UploadQueue;
+		({ queue } = queueWith({
+			putChunk: vi.fn(async () => {
+				queue.cancel(queue.items[0].id);
+				throw new DOMException('aborted', 'AbortError');
+			}),
+			abort: vi.fn(async () => {
+				throw new UploadError('being completed', 409, false);
+			})
+		}));
+		const listener = vi.fn();
+		queue.onUploadsSettled(listener);
+		queue.enqueue([file()], 'p1');
+		await settled(queue);
+		await tick();
+		expect(queue.items[0].status).toBe('cancelled');
+		expect(queue.items[0].error).toMatch(/may/);
+		expect(listener).toHaveBeenCalledWith(new Set(['p1']));
+	});
+});
+
 describe('installBeforeUnloadGuard', () => {
 	function fakeWindow() {
 		const listeners = new Map<string, EventListener>();
