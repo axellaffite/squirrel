@@ -59,6 +59,8 @@
 		background: var(--rail);
 		color: var(--rail-ink);
 		box-shadow: var(--shadow-pop);
+		/* Own compositor layer so scrolling under the floating bar does not repaint it. */
+		transform: translateZ(0);
 	}
 
 	.brand,
@@ -152,7 +154,7 @@
 			display: flex;
 			flex-direction: column;
 			gap: var(--space-2);
-			height: calc(100dvh - 2 * var(--frame));
+			height: calc(100svh - 2 * var(--frame));
 			padding: var(--space-5) var(--space-4);
 			box-shadow: none;
 		}
