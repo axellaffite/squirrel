@@ -1,7 +1,7 @@
 import type { components } from '#lib/api/schema.d.ts';
 import { isServerRetryable, isTransient } from '#lib/upload/errors.ts';
 import { chunkRange, missingChunks } from '#lib/upload/plan.ts';
-import { delay, runPool, withRetry, type RetryOptions } from '#lib/upload/retry.ts';
+import { abortableDelay, runPool, withRetry, type RetryOptions } from '#lib/upload/retry.ts';
 
 export { UploadError } from '#lib/upload/errors.ts';
 
@@ -31,12 +31,18 @@ export interface UploadProgress {
 export interface UploadDeps {
 	transport: UploadTransport;
 	hash: (file: Blob, onProgress: (hashed: number) => void, signal: AbortSignal) => Promise<string>;
-	sleep?: (ms: number) => Promise<void>;
+	/** Backoff wait; must reject promptly when `signal` aborts. */
+	sleep?: (ms: number, signal: AbortSignal) => Promise<void>;
 	/** Chunks in flight at once. */
 	concurrency?: number;
-	/** Attempts per request for transient failures. */
+	/** Attempts for starting and completing on transient failures. */
 	maxAttempts?: number;
+	/** Attempts per chunk PUT on transient failures. */
+	chunkAttempts?: number;
 }
+
+const DEFAULT_ATTEMPTS = 4;
+const DEFAULT_CHUNK_ATTEMPTS = 6;
 
 export interface UploadResult {
 	node: FileNode;
@@ -58,6 +64,7 @@ export async function uploadFile(
 	const total = file.size;
 	const retry = retryOptions(deps);
 	const sha256 = await deps.hash(file, (done) => onProgress({ phase: 'hashing', done, total }), signal);
+	signal.throwIfAborted();
 	const request = { parent_id: parentId, name: file.name, size: total, sha256 };
 	// Starting is idempotent: the server hands back the open session for the same file.
 	const started = await withRetry(() => deps.transport.start(request, signal), retry, signal);
@@ -65,7 +72,10 @@ export async function uploadFile(
 
 	const { session } = started;
 	try {
-		await sendMissingChunks(file, session, deps, retry, onProgress, signal);
+		// Cancelled while the start request was in flight: the session exists server-side anyway.
+		signal.throwIfAborted();
+		const chunkRetry = { ...retry, attempts: deps.chunkAttempts ?? DEFAULT_CHUNK_ATTEMPTS };
+		await sendMissingChunks(file, session, deps, chunkRetry, onProgress, signal);
 		onProgress({ phase: 'finishing', done: total, total });
 		// Retried only when the server answered "busy": after a lost response the file may already exist.
 		const completeRetry = { ...retry, retryable: isServerRetryable };
@@ -78,7 +88,7 @@ export async function uploadFile(
 }
 
 function retryOptions(deps: UploadDeps): RetryOptions {
-	return { attempts: deps.maxAttempts ?? 4, sleep: deps.sleep ?? delay, retryable: isTransient };
+	return { attempts: deps.maxAttempts ?? DEFAULT_ATTEMPTS, sleep: deps.sleep ?? abortableDelay, retryable: isTransient };
 }
 
 async function sendMissingChunks(
@@ -94,14 +104,17 @@ async function sendMissingChunks(
 	const pending = missing.reduce((sum, i) => sum + rangeLength(chunkRange(i, session.chunk_size, total)), 0);
 	let sent = total - pending;
 	onProgress({ phase: 'uploading', done: sent, total });
-	await runPool(missing, deps.concurrency ?? 3, async (index) => {
+	const sendChunk = async (index: number, laneSignal: AbortSignal) => {
 		// Exact sizes: the server rejects a chunk whose length is not the expected one.
 		const [start, end] = chunkRange(index, session.chunk_size, total);
 		const body = file.slice(start, end);
-		await withRetry(() => deps.transport.putChunk(session.upload_id, index, body, signal), retry, signal);
+		await withRetry(() => deps.transport.putChunk(session.upload_id, index, body, laneSignal), retry, laneSignal);
 		sent += end - start;
-		onProgress({ phase: 'uploading', done: sent, total });
-	});
+		// Another chunk already failed: the upload is over, so stay quiet.
+		if (!laneSignal.aborted) onProgress({ phase: 'uploading', done: sent, total });
+	};
+	// One failing chunk aborts the others, and the pool waits for them: no request outlives the upload.
+	await runPool(missing, deps.concurrency ?? 3, sendChunk, signal);
 }
 
 function rangeLength([start, end]: [number, number]): number {

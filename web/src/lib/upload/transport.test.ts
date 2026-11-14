@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { createApiClient, setCsrfToken } from '#lib/api/client.ts';
 import { createTransport } from '#lib/upload/transport.ts';
 import { UploadError } from '#lib/upload/uploader.ts';
+import { NetworkError } from '#lib/upload/errors.ts';
 
 function transportAnswering(response: () => Response) {
 	const fetchMock = vi.fn(async (_input: Request) => response());
@@ -47,5 +48,43 @@ describe('upload transport', () => {
 		const error = await transport.complete('u1', signal()).catch((e: unknown) => e);
 		expect(error).toBeInstanceOf(UploadError);
 		expect(error).toMatchObject({ status, retryable });
+	});
+});
+
+describe('upload transport failures', () => {
+	it('wraps fetch transport failures in a NetworkError', async () => {
+		const fetchMock = vi.fn(async () => {
+			throw new TypeError('Failed to fetch');
+		});
+		const client = createApiClient({ baseUrl: 'http://squirrel.test', fetch: fetchMock as typeof fetch });
+		const error = await createTransport(client)
+			.putChunk('u1', 0, new Blob([]), signal())
+			.catch((e: unknown) => e);
+		expect(error).toBeInstanceOf(NetworkError);
+		expect((error as NetworkError).cause).toBeInstanceOf(TypeError);
+	});
+
+	it('leaves cancellations as they are', async () => {
+		const fetchMock = vi.fn(async () => {
+			throw new DOMException('aborted', 'AbortError');
+		});
+		const client = createApiClient({ baseUrl: 'http://squirrel.test', fetch: fetchMock as typeof fetch });
+		const error = await createTransport(client)
+			.complete('u1', signal())
+			.catch((e: unknown) => e);
+		expect(error).not.toBeInstanceOf(NetworkError);
+		expect(error).toMatchObject({ name: 'AbortError' });
+	});
+
+	it('reads Retry-After on 429 and 503', async () => {
+		const { transport } = transportAnswering(
+			() =>
+				new Response(JSON.stringify({ error: { code: 'busy', message: 'busy' } }), {
+					status: 503,
+					headers: { 'Content-Type': 'application/json', 'Retry-After': '2' }
+				})
+		);
+		const error = await transport.complete('u1', signal()).catch((e: unknown) => e);
+		expect(error).toMatchObject({ status: 503, retryable: true, retryAfterMs: 2000 });
 	});
 });

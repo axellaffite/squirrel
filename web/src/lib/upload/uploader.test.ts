@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
+import { NetworkError } from '#lib/upload/errors.ts';
 import { UploadError, uploadFile, type UploadDeps, type UploadTransport } from '#lib/upload/uploader.ts';
 
 const node = { id: 'n1', name: 'a.bin' } as never;
@@ -113,5 +114,68 @@ describe('uploadFile', () => {
 		});
 		await expect(run(d, controller.signal)).rejects.toThrow();
 		expect(d.transport.abort).toHaveBeenCalledWith('u1');
+	});
+
+	it('retries a chunk up to six times by default', async () => {
+		const d = deps({
+			start: vi.fn(async () => session(1)),
+			putChunk: vi.fn(async () => {
+				throw new NetworkError(new TypeError('offline'));
+			})
+		});
+		await expect(run(d)).rejects.toBeInstanceOf(NetworkError);
+		expect(d.transport.putChunk).toHaveBeenCalledTimes(6);
+	});
+
+	it('does not retry programming errors', async () => {
+		const d = deps({
+			start: vi.fn(async () => session(1)),
+			putChunk: vi.fn(async () => {
+				throw new TypeError('x is not a function');
+			})
+		});
+		await expect(run(d)).rejects.toThrow('x is not a function');
+		expect(d.transport.putChunk).toHaveBeenCalledTimes(1);
+	});
+
+	it('aborts the session when cancelled while starting', async () => {
+		const controller = new AbortController();
+		const d = deps({
+			start: vi.fn(async () => {
+				controller.abort();
+				return session(2);
+			})
+		});
+		await expect(run(d, controller.signal)).rejects.toMatchObject({ name: 'AbortError' });
+		expect(d.transport.abort).toHaveBeenCalledWith('u1');
+		expect(d.transport.putChunk).not.toHaveBeenCalled();
+	});
+
+	it('cancels the other chunks when one fails and waits for them', async () => {
+		let releaseSlow!: () => void;
+		const slowSettled = vi.fn();
+		const signals: AbortSignal[] = [];
+		const d = deps({
+			start: vi.fn(async () => session(3)),
+			putChunk: vi.fn(async (_id: string, index: number, _body: Blob, signal: AbortSignal) => {
+				signals.push(signal);
+				if (index === 0) {
+					await new Promise<void>((resolve) => (releaseSlow = resolve));
+					slowSettled();
+					return;
+				}
+				throw new UploadError('quota', 507, false);
+			})
+		});
+		const progress: number[] = [];
+		const pending = uploadFile(file(), 'p1', d, (p) => progress.push(p.done), new AbortController().signal);
+		const outcome = pending.catch((error: Error) => error.message);
+		await new Promise((resolve) => setTimeout(resolve, 0));
+		expect(signals[0].aborted).toBe(true);
+		releaseSlow();
+		expect(await outcome).toBe('quota');
+		expect(slowSettled).toHaveBeenCalled();
+		expect(d.transport.putChunk).toHaveBeenCalledTimes(2);
+		expect(progress).toEqual([0]);
 	});
 });
