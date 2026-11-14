@@ -116,6 +116,15 @@ Independent, individually retried jobs after `process_media`:
 - Opening a not-yet-transcoded video bumps its job priority; UI shows "preparing…".
 - 3 s muted hover previews in the grid. Pre-transcoding can be disabled per user or globally.
 
+## Visual design
+
+Validated on 2026-11-14 and recorded in `MASTER.md` (repo root), the single source of truth for every visual decision on every platform:
+
+- Soft, readable neumorphism ("it's ours, at home"): cool porcelain light theme, deep charcoal dark theme, porcelain-indigo accent (#3f55c4 / #9fb0ff), Manrope, 8 px spacing, 12–24 px radii, paired raised/inset shadows.
+- Motion "soft and tactile": 160 / 240 / 360 ms on one long ease-out, presses sink, arrival rises 8 px with a 30 ms stagger, no bounce, no scroll-triggered effects, reduced motion respected.
+- Web implements it in `web/src/lib/styles/tokens.css` and `web/src/lib/components/ui/`; the Phase 6 apps derive Compose and SwiftUI tokens from the same file.
+- Every phase plan from Phase 3 on specifies its screens against MASTER.md.
+
 ## Web UI
 
 Setup / join / login; Photos (virtualized justified grid, timeline scrubber, lightbox with EXIF and map, multi-select, drag-and-drop resumable upload with hashing in a Web Worker); Explore (People, Places map, Tags, Albums); Search; Files (browser, PDF preview, trash, document search); Videos (hls.js); Settings (profile, devices, invitations, storage, face toggle); Admin (users, queue, transcode settings). Responsive, dark-first, installable PWA.

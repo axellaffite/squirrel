@@ -11,6 +11,8 @@
 **Design reference:** `docs/plans/2026-11-13-squirrel-home-drive-design.md` (sections "Storage and sync", "Errors and observability", "Testing", "Delivery phases").
 **Phase 1 reference:** `docs/plans/2026-11-13-phase-1-foundation-auth.md` — read its "As built" section; the code is the source of truth.
 
+> **Visual design (added 2026-11-14):** the UI code in this plan predates the design system. `MASTER.md` (repo root) and `web/src/lib/styles/tokens.css` govern every visual decision; follow them, not the markup and CSS snippets below.
+
 ## Conventions / environment
 
 - Run commands from the repo root unless stated. Never `cd` outside the worktree; never `git stash` (use a WIP commit).
