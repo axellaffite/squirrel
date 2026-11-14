@@ -3,15 +3,7 @@
 	import { cancel, clearFinished, retry, uploadQueue } from '#lib/upload/uploads.svelte.ts';
 
 	const active = new Set(['queued', 'hashing', 'uploading', 'finishing']);
-	const busy = $derived(uploadQueue.items.some((item) => active.has(item.status)));
-
-	/** Leaving the page stops the uploads; ask first. They resume when the files are added again. */
-	function warnBeforeLeaving(event: BeforeUnloadEvent) {
-		if (busy) event.preventDefault();
-	}
 </script>
-
-<svelte:window onbeforeunload={warnBeforeLeaving} />
 
 {#if uploadQueue.items.length > 0}
 	<section class="uploads" aria-label="Uploads">
@@ -39,11 +31,11 @@
 {/if}
 
 <style>
-	.uploads { margin-top: 1.5rem; padding: 1rem; border: 1px solid var(--border); border-radius: var(--radius); background: var(--surface); }
+	.uploads { margin-top: var(--space-5); padding: var(--space-4); border-radius: var(--radius-lg); background: var(--surface); box-shadow: var(--raise-2); }
 	header { display: flex; justify-content: space-between; align-items: center; }
-	h2 { font-size: 1rem; margin: 0; }
-	ul { list-style: none; padding: 0; margin: 0.5rem 0 0; display: grid; gap: 0.5rem; }
-	li { display: grid; grid-template-columns: minmax(0, 1fr) 8rem auto auto; gap: 0.75rem; align-items: center; }
+	h2 { font-size: var(--text-md); margin: 0; }
+	ul { list-style: none; padding: 0; margin: var(--space-2) 0 0; display: grid; gap: var(--space-2); }
+	li { display: grid; grid-template-columns: minmax(0, 1fr) 8rem auto auto; gap: var(--space-3); align-items: center; }
 	.name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 	progress { width: 100%; }
 </style>

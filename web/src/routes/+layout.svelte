@@ -4,15 +4,25 @@
 	import { goto } from '$app/navigation';
 	import { page } from '$app/state';
 	import { onMount } from 'svelte';
+	import UploadPanel from '#lib/components/files/UploadPanel.svelte';
+	import Icon from '#lib/components/icons/Icon.svelte';
+	import AppNav from '#lib/components/shell/AppNav.svelte';
+	import UserMenu from '#lib/components/shell/UserMenu.svelte';
+	import Alert from '#lib/components/ui/Alert.svelte';
+	import Button from '#lib/components/ui/Button.svelte';
+	import Card from '#lib/components/ui/Card.svelte';
 	import { redirectFor } from '#lib/guard.ts';
 	import { LOGOUT_ERROR } from '#lib/session-logic.ts';
 	import { loadSession, logout, session } from '#lib/session.svelte.ts';
+	import { applyTheme, readTheme, saveTheme, type ThemeChoice } from '#lib/theme.ts';
+	import { installBeforeUnloadGuard } from '#lib/upload/uploads.svelte.ts';
 	import type { LayoutProps } from './$types';
 
 	let { children }: LayoutProps = $props();
 
 	let logoutError: string | null = $state(null);
 	let retrying = $state(false);
+	let theme: ThemeChoice = $state(readTheme());
 
 	// Private pages only mount once the guard allows them, so anonymous visitors
 	// never trigger their API calls.
@@ -26,7 +36,11 @@
 		})
 	);
 
-	onMount(loadSession);
+	onMount(() => {
+		void loadSession();
+		// Uploads live app-wide (the panel is mounted here), so the leave warning does too.
+		return installBeforeUnloadGuard();
+	});
 
 	$effect(() => {
 		if (target !== null) goto(target, { replaceState: true });
@@ -35,6 +49,12 @@
 	$effect(() => {
 		if (!session.me) logoutError = null;
 	});
+
+	function changeTheme(choice: ThemeChoice) {
+		theme = choice;
+		applyTheme(choice);
+		saveTheme(choice);
+	}
 
 	async function handleLogout() {
 		logoutError = null;
@@ -65,26 +85,138 @@
 	<main class="center"><p class="muted">Loading…</p></main>
 {:else if session.unreachable}
 	<main class="center">
-		<div role="alert">
-			<p class="error">The Squirrel server is unreachable. Check that it is running.</p>
-		</div>
-		<button onclick={retry} disabled={retrying}>{retrying ? 'Retrying…' : 'Retry'}</button>
+		<Card as="section" class="unreachable">
+			<div class="unreachable-body">
+				<Alert>The Squirrel server is unreachable. Check that it is running.</Alert>
+				<Button onclick={retry} disabled={retrying} full>
+					<Icon name="refresh" />{retrying ? 'Retrying…' : 'Retry'}
+				</Button>
+			</div>
+		</Card>
 	</main>
 {:else}
 	{#if session.me}
 		<header class="topbar">
-			<a href="/" class="brand">Squirrel</a>
-			<nav>
-				<a href="/files">Files</a>
-				{#if session.me.can_invite}<a href="/settings/invitations">Invitations</a>{/if}
-				<button class="link" onclick={handleLogout}>Log out</button>
-			</nav>
-			{#if logoutError}<p class="error" role="alert">{logoutError}</p>{/if}
+			<a href="/" class="wordmark">Squirrel</a>
+			<AppNav path={page.url.pathname} canInvite={session.me.can_invite} />
+			<div class="account">
+				<UserMenu
+					displayName={session.me.display_name}
+					username={session.me.username}
+					{theme}
+					onthemechange={changeTheme}
+					onlogout={handleLogout}
+				/>
+				<span class="desktop-logout">
+					<Button variant="quiet" onclick={handleLogout}><Icon name="log-out" />Log out</Button>
+				</span>
+			</div>
 		</header>
+		{#if logoutError}
+			<div class="logout-error"><Alert>{logoutError}</Alert></div>
+		{/if}
 	{/if}
-	{#if target === null}
-		{@render children()}
-	{:else}
-		<main class="center"><p class="muted">Loading…</p></main>
-	{/if}
+	<div class="view" class:with-nav={session.me}>
+		{#if target === null}
+			{@render children()}
+		{:else}
+			<main class="center"><p class="muted">Loading…</p></main>
+		{/if}
+		{#if session.me}
+			<div class="uploads"><UploadPanel /></div>
+		{/if}
+	</div>
 {/if}
+
+<style>
+	.center {
+		display: grid;
+		place-items: center;
+		min-height: 60dvh;
+		padding: var(--space-6) var(--gutter);
+	}
+
+	.center :global(.unreachable) {
+		width: min(100%, var(--auth-max));
+	}
+
+	.unreachable-body {
+		display: grid;
+		gap: var(--space-4);
+	}
+
+	.topbar {
+		position: sticky;
+		top: 0;
+		z-index: 10;
+		display: flex;
+		align-items: center;
+		justify-content: space-between;
+		gap: var(--space-4);
+		padding: calc(var(--space-3) + env(safe-area-inset-top)) var(--gutter) var(--space-3);
+		background: var(--surface);
+	}
+
+	.wordmark {
+		font-size: var(--text-xl);
+		line-height: var(--text-xl-lh);
+		font-weight: var(--weight-heading);
+		letter-spacing: -0.02em;
+		color: var(--ink);
+		text-decoration: none;
+		border-radius: var(--radius-sm);
+	}
+
+	.wordmark:focus-visible {
+		outline: var(--ring-width) solid var(--accent);
+		outline-offset: var(--ring-offset);
+	}
+
+	.account {
+		display: flex;
+		align-items: center;
+		gap: var(--space-2);
+	}
+
+	.desktop-logout {
+		display: none;
+	}
+
+	.logout-error {
+		padding: 0 var(--gutter) var(--space-3);
+	}
+
+	.view.with-nav {
+		/* Room for the bottom navigation on phones */
+		padding-bottom: calc(var(--space-8) + var(--space-6) + env(safe-area-inset-bottom));
+	}
+
+	.uploads {
+		max-width: var(--content-max);
+		margin: 0 auto;
+		padding: 0 var(--gutter);
+	}
+
+	@media (min-width: 64rem) {
+		.topbar {
+			justify-content: flex-start;
+			gap: var(--space-6);
+			padding-top: calc(var(--space-4) + env(safe-area-inset-top));
+			padding-bottom: var(--space-4);
+			/* Line the bar up with the centred content column */
+			padding-inline: max(var(--gutter), calc((100% - var(--content-max)) / 2 + var(--gutter)));
+		}
+
+		.account {
+			margin-left: auto;
+		}
+
+		.desktop-logout {
+			display: contents;
+		}
+
+		.view.with-nav {
+			padding-bottom: var(--space-7);
+		}
+	}
+</style>
