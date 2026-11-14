@@ -74,13 +74,15 @@ pub async fn complete_upload(
         .completion(id, LOCK_WAIT)
         .await
         .ok_or(DbError::UploadBusy)?;
-    let expires_at = OffsetDateTime::now_utc() + state.config.upload_ttl;
-    let session = uploads::claim(&state.pool, owner_id, id, expires_at).await?;
-    // Once claimed, the work runs to the end even if the client disconnects:
-    // a dropped request must not leave the session stuck in `completing`.
+    // From the claim on, the work runs to the end even if the client
+    // disconnects: a dropped request must not leave the session stuck in
+    // `completing` (the claim itself runs in the task, so it cannot be cut
+    // off between claiming and starting the work either).
     let task_state = state.clone();
     let task = tokio::spawn(async move {
         let _held = (slot, guard);
+        let expires_at = OffsetDateTime::now_utc() + task_state.config.upload_ttl;
+        let session = uploads::claim(&task_state.pool, owner_id, id, expires_at).await?;
         complete_claimed(&task_state, &session, expires_at).await
     });
     let node = task.await.map_err(|err| ApiError::Internal(err.into()))??;
