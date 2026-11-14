@@ -22,6 +22,12 @@ const TRASH_BATCH: i64 = 500;
 const GC_BATCH: i64 = 1000;
 /// Blob files checked against the catalogue per query.
 const SWEEP_BATCH: usize = 1000;
+/// Crashes leave a handful of orphan files at most. More orphans than this,
+/// making up more than [`SWEEP_BRAKE_MAX_PERCENT`] of the files examined, means
+/// the catalogue does not describe this data directory (wrong or restored
+/// database): the sweep then deletes nothing.
+pub const SWEEP_BRAKE_MIN_ORPHANS: usize = 20;
+const SWEEP_BRAKE_MAX_PERCENT: usize = 10;
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub struct UploadCleanup {
@@ -148,6 +154,8 @@ pub struct OrphanSweep {
     pub removed: usize,
     /// Orphans that could not be removed (logged; retried next run).
     pub failed: usize,
+    /// Orphans left alone because there were implausibly many (logged).
+    pub held_back: usize,
 }
 
 impl OrphanSweep {
@@ -160,31 +168,76 @@ impl OrphanSweep {
 /// file and committing its row, or between deleting a row and its file) and
 /// were last modified before the grace period. Each removal re-checks the row
 /// under the blob's advisory lock, which completion holds from before the
-/// rename until its row commits.
+/// rename until its row commits. Deletes nothing when the orphans look like a
+/// catalogue/data-directory mismatch rather than crash leftovers.
 pub async fn sweep_orphan_blobs(state: &AppState) -> Result<OrphanSweep, ApiError> {
     let cutoff = SystemTime::now()
         .checked_sub(state.config.blob_gc_grace.unsigned_abs())
         .unwrap_or(SystemTime::UNIX_EPOCH);
     let store = state.storage.clone();
     let on_disk = run_storage(move || store.list_blobs_older_than(cutoff)).await?;
+    let orphans = uncatalogued(state, &on_disk).await?;
+    if orphans.is_empty() {
+        return Ok(OrphanSweep::default());
+    }
+    let catalogue_empty = !blobs::any_exist(&state.pool).await?;
+    if sweep_looks_wrong(catalogue_empty, on_disk.len(), orphans.len()) {
+        tracing::error!(
+            listed = on_disk.len(),
+            orphans = orphans.len(),
+            catalogue_empty,
+            "not sweeping orphan blob files: far too many files have no catalogue row; \
+             is the server using the right database for this data directory?"
+        );
+        return Ok(OrphanSweep {
+            held_back: orphans.len(),
+            ..OrphanSweep::default()
+        });
+    }
     let mut sweep = OrphanSweep::default();
+    for hash in &orphans {
+        match remove_if_orphan(state, hash).await {
+            Ok(true) => sweep.removed += 1,
+            Ok(false) => {}
+            Err(err) => {
+                tracing::warn!(%hash, error = %err, "could not remove an orphan blob file");
+                sweep.failed += 1;
+            }
+        }
+    }
+    Ok(sweep)
+}
+
+/// The files of `on_disk` without a catalogue row.
+async fn uncatalogued(
+    state: &AppState,
+    on_disk: &[ContentHash],
+) -> Result<Vec<ContentHash>, ApiError> {
+    let mut orphans = Vec::new();
     for batch in on_disk.chunks(SWEEP_BATCH) {
         let known: HashSet<String> = blobs::existing(&state.pool, batch)
             .await?
             .into_iter()
             .collect();
-        for hash in batch.iter().filter(|hash| !known.contains(hash.as_str())) {
-            match remove_if_orphan(state, hash).await {
-                Ok(true) => sweep.removed += 1,
-                Ok(false) => {}
-                Err(err) => {
-                    tracing::warn!(%hash, error = %err, "could not remove an orphan blob file");
-                    sweep.failed += 1;
-                }
-            }
-        }
+        orphans.extend(
+            batch
+                .iter()
+                .filter(|hash| !known.contains(hash.as_str()))
+                .cloned(),
+        );
     }
-    Ok(sweep)
+    Ok(orphans)
+}
+
+/// Whether `orphans` uncatalogued files among `listed` look like a mismatch
+/// between the catalogue and the data directory rather than crash leftovers.
+fn sweep_looks_wrong(catalogue_empty: bool, listed: usize, orphans: usize) -> bool {
+    if orphans == 0 {
+        return false;
+    }
+    catalogue_empty
+        || (orphans > SWEEP_BRAKE_MIN_ORPHANS
+            && orphans.saturating_mul(100) > listed.saturating_mul(SWEEP_BRAKE_MAX_PERCENT))
 }
 
 async fn remove_if_orphan(state: &AppState, hash: &ContentHash) -> Result<bool, ApiError> {
@@ -207,4 +260,31 @@ async fn remove_unless_catalogued(
     run_storage(move || store.remove_blob(&blob)).await?;
     tracing::debug!(%hash, "orphan blob file deleted");
     Ok(true)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_few_crash_leftovers_are_swept() {
+        assert!(!sweep_looks_wrong(false, 10, 0));
+        assert!(!sweep_looks_wrong(false, 2, 1));
+        assert!(!sweep_looks_wrong(false, 10, SWEEP_BRAKE_MIN_ORPHANS));
+        assert!(!sweep_looks_wrong(false, 10_000, 1000));
+    }
+
+    #[test]
+    fn an_empty_catalogue_never_sweeps() {
+        assert!(sweep_looks_wrong(true, 1, 1));
+        assert!(!sweep_looks_wrong(true, 0, 0));
+    }
+
+    #[test]
+    fn many_orphans_making_up_a_large_share_are_held_back() {
+        let many = SWEEP_BRAKE_MIN_ORPHANS + 1;
+        assert!(sweep_looks_wrong(false, many, many));
+        assert!(sweep_looks_wrong(false, many * 9, many));
+        assert!(!sweep_looks_wrong(false, many * 10, many));
+    }
 }

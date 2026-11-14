@@ -159,3 +159,48 @@ async fn recent_orphan_blob_files_are_kept(pool: PgPool) {
     assert!(sweep.is_empty());
     assert!(store.contains(&fresh));
 }
+
+fn no_grace() -> squirrel_api::ApiConfig {
+    squirrel_api::ApiConfig {
+        blob_gc_grace: Duration::ZERO,
+        ..common::test_config()
+    }
+}
+
+#[sqlx::test(migrator = "squirrel_db::MIGRATOR")]
+async fn the_sweep_deletes_nothing_when_the_catalogue_is_empty(pool: PgPool) {
+    // A data directory served against an empty (wrong or fresh) database.
+    let instance = common::Instance::with_config(pool, no_grace());
+    let store = &instance.state.storage;
+    let (blob, _) = store.put_reader(&b"uploaded long ago"[..]).unwrap();
+
+    let sweep = maintenance::sweep_orphan_blobs(&instance.state)
+        .await
+        .unwrap();
+    assert_eq!((sweep.removed, sweep.held_back), (0, 1));
+    assert!(store.contains(&blob));
+}
+
+#[sqlx::test(migrator = "squirrel_db::MIGRATOR")]
+async fn the_sweep_deletes_nothing_when_too_many_files_look_orphaned(pool: PgPool) {
+    let instance = common::Instance::with_config(pool, no_grace());
+    let browser = instance.browser();
+    let me = common::setup_admin(&browser, "alice").await;
+    let parent = files::root_id(&instance, &me, "Files").await;
+    files::upload(&browser, &me, parent, "kept.txt", b"kept").await;
+    let store = &instance.state.storage;
+    let orphans: Vec<ContentHash> = (0..=maintenance::SWEEP_BRAKE_MIN_ORPHANS)
+        .map(|i| {
+            store
+                .put_reader(format!("orphan {i}").as_bytes())
+                .unwrap()
+                .0
+        })
+        .collect();
+
+    let sweep = maintenance::sweep_orphan_blobs(&instance.state)
+        .await
+        .unwrap();
+    assert_eq!((sweep.removed, sweep.held_back), (0, orphans.len()));
+    assert!(orphans.iter().all(|hash| store.contains(hash)));
+}
