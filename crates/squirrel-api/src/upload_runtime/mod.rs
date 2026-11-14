@@ -25,6 +25,10 @@ pub struct UploadLimits {
     pub chunk_per_user: usize,
     /// How long a request waits for a global slot before answering 503 `busy`.
     pub slot_wait: Duration,
+    /// How long a chunk write (or a resume) waits for an upload being
+    /// completed, and a completion for chunk writes in flight, before
+    /// answering 409 `conflict`.
+    pub lock_wait: Duration,
     /// Unexpired upload sessions one user may have (429 `too_many_uploads`).
     pub max_open_per_user: i64,
     /// Per-user limit on `POST /api/uploads`. `None` disables it.
@@ -39,6 +43,7 @@ impl Default for UploadLimits {
             chunk_concurrency: 32,
             chunk_per_user: 8,
             slot_wait: Duration::from_secs(5),
+            lock_wait: Duration::from_secs(5),
             max_open_per_user: 100,
             // Generous: a folder of small files opens one upload per file.
             create_rate: Some(UserRate {

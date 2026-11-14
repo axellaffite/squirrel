@@ -132,6 +132,36 @@ async fn a_chunk_waits_while_its_upload_is_being_completed(pool: PgPool) {
 }
 
 #[sqlx::test(migrator = "squirrel_db::MIGRATOR")]
+async fn a_chunk_gives_up_on_a_long_completion(pool: PgPool) {
+    let config = limited(UploadLimits {
+        lock_wait: StdDuration::from_millis(100),
+        ..quick()
+    });
+    let instance = common::Instance::with_config(pool, config);
+    let (browser, me, parent) = alice(&instance).await;
+    let session: Value = files::start_upload(&browser, &me, parent, "a.bin", b"abc")
+        .await
+        .json();
+    let id = session["upload_id"].as_str().unwrap().to_owned();
+    let locks = &instance.state.uploads.locks;
+    let completing = locks
+        .completion(id.parse().unwrap(), StdDuration::from_secs(1))
+        .await
+        .unwrap();
+
+    let put = tokio::time::timeout(
+        StdDuration::from_secs(5),
+        files::put_chunk(&browser, &me, &id, 0, b"abc"),
+    )
+    .await
+    .expect("the chunk must not wait for the whole completion");
+    put.assert_status(StatusCode::CONFLICT);
+    assert_eq!(files::code(&put), "conflict");
+    drop(completing);
+    assert!(locks.is_empty(), "lock entries are cleaned up");
+}
+
+#[sqlx::test(migrator = "squirrel_db::MIGRATOR")]
 async fn open_sessions_are_capped(pool: PgPool) {
     let config = limited(UploadLimits {
         max_open_per_user: 2,
