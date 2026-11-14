@@ -125,3 +125,37 @@ async fn one_undeletable_orphan_does_not_stop_the_sweep(pool: PgPool) {
     assert_eq!((cleanup.files_removed, cleanup.files_failed), (1, 1));
     assert!(!uploads_dir.join(orphan.to_string()).exists());
 }
+
+#[sqlx::test(migrator = "squirrel_db::MIGRATOR")]
+async fn blob_files_without_a_row_are_swept_after_the_grace_period(pool: PgPool) {
+    let config = squirrel_api::ApiConfig {
+        blob_gc_grace: Duration::ZERO,
+        ..common::test_config()
+    };
+    let instance = common::Instance::with_config(pool, config);
+    let browser = instance.browser();
+    let me = common::setup_admin(&browser, "alice").await;
+    let parent = files::root_id(&instance, &me, "Files").await;
+    files::upload(&browser, &me, parent, "kept.txt", b"kept").await;
+    let store = &instance.state.storage;
+    let (orphan, _) = store.put_reader(&b"crashed before its row"[..]).unwrap();
+
+    let sweep = maintenance::sweep_orphan_blobs(&instance.state)
+        .await
+        .unwrap();
+    assert_eq!((sweep.removed, sweep.failed), (1, 0));
+    assert!(!store.contains(&orphan));
+    assert!(store.contains(&ContentHash::parse(&files::sha256_hex(b"kept")).unwrap()));
+}
+
+#[sqlx::test(migrator = "squirrel_db::MIGRATOR")]
+async fn recent_orphan_blob_files_are_kept(pool: PgPool) {
+    let instance = common::Instance::new(pool);
+    let store = &instance.state.storage;
+    let (fresh, _) = store.put_reader(&b"just written"[..]).unwrap();
+    let sweep = maintenance::sweep_orphan_blobs(&instance.state)
+        .await
+        .unwrap();
+    assert!(sweep.is_empty());
+    assert!(store.contains(&fresh));
+}

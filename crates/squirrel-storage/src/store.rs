@@ -134,6 +134,10 @@ impl BlobStore {
         Ok(stat.f_bavail.saturating_mul(stat.f_frsize))
     }
 
+    pub(crate) fn blobs_dir(&self) -> &Path {
+        &self.blobs
+    }
+
     pub(crate) fn uploads_dir(&self) -> &Path {
         &self.uploads
     }

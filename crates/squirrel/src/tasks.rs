@@ -1,5 +1,5 @@
-//! Background jobs: expired login sessions, abandoned uploads, old trash and
-//! unreferenced blobs.
+//! Background jobs: expired login sessions, abandoned uploads, old trash,
+//! unreferenced blobs and blob files without a catalogue row.
 
 use std::future::Future;
 use std::time::Duration;
@@ -53,8 +53,8 @@ pub fn spawn_all(state: &AppState) {
     spawn_storage_job(state);
 }
 
-/// Purges old trash, then collects garbage: blobs freed by this purge wait out
-/// their grace period and go on a later run.
+/// Purges old trash, then collects garbage (blobs freed by this purge wait out
+/// their grace period and go on a later run), then sweeps orphan blob files.
 fn spawn_storage_job(state: &AppState) {
     let storage_state = state.clone();
     spawn_periodic(STORAGE_INTERVAL, move || {
@@ -69,6 +69,11 @@ fn spawn_storage_job(state: &AppState) {
                 Ok(0) => {}
                 Ok(removed) => tracing::info!(removed, "deleted unreferenced blobs"),
                 Err(err) => tracing::error!(error = %err, "blob garbage collection failed"),
+            }
+            match maintenance::sweep_orphan_blobs(&state).await {
+                Ok(sweep) if sweep.is_empty() => {}
+                Ok(sweep) => tracing::info!(?sweep, "swept blob files without a catalogue row"),
+                Err(err) => tracing::error!(error = %err, "orphan blob sweep failed"),
             }
         }
     });
