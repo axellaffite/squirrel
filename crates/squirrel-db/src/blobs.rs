@@ -136,3 +136,24 @@ pub async fn delete_if_unreferenced(
             .await?;
     Ok(result.rows_affected() == 1)
 }
+
+/// Which of `hashes` have a catalogue row.
+pub async fn existing(pool: &PgPool, hashes: &[ContentHash]) -> Result<Vec<String>, DbError> {
+    let hashes: Vec<&str> = hashes.iter().map(ContentHash::as_str).collect();
+    Ok(
+        sqlx::query_scalar("SELECT sha256 FROM blobs WHERE sha256 = ANY($1)")
+            .bind(hashes)
+            .fetch_all(pool)
+            .await?,
+    )
+}
+
+/// Whether the blob has a catalogue row. Run under [`lock_session`] to act on the answer.
+pub async fn exists(conn: &mut PgConnection, hash: &ContentHash) -> Result<bool, DbError> {
+    Ok(
+        sqlx::query_scalar("SELECT EXISTS (SELECT 1 FROM blobs WHERE sha256 = $1)")
+            .bind(hash.as_str())
+            .fetch_one(conn)
+            .await?,
+    )
+}

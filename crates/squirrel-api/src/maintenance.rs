@@ -1,9 +1,11 @@
 //! Periodic housekeeping, run by the `squirrel` binary (see its `tasks.rs`):
-//! expired uploads, old trash and unreferenced blobs.
+//! expired uploads, old trash, unreferenced blobs and blob files without a row.
 
 use std::collections::HashSet;
+use std::time::SystemTime;
 
-use sqlx::PgConnection;
+use sqlx::pool::PoolConnection;
+use sqlx::{PgConnection, Postgres};
 use squirrel_core::ContentHash;
 use squirrel_db::{DbError, blobs, trash, uploads};
 use squirrel_storage::BlobStore;
@@ -18,6 +20,8 @@ use crate::state::AppState;
 const TRASH_BATCH: i64 = 500;
 /// Blobs examined per GC run; the rest wait for the next run.
 const GC_BATCH: i64 = 1000;
+/// Blob files checked against the catalogue per query.
+const SWEEP_BATCH: usize = 1000;
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub struct UploadCleanup {
@@ -110,12 +114,16 @@ async fn remove_if_unreferenced(
     let mut conn = state.pool.acquire().await.map_err(DbError::from)?;
     blobs::lock_session(&mut conn, hash).await?;
     let result = delete_row_then_file(state, &mut conn, hash, cutoff).await;
+    unlock(conn, hash).await;
+    result
+}
+
+async fn unlock(mut conn: PoolConnection<Postgres>, hash: &ContentHash) {
     if let Err(err) = blobs::unlock_session(&mut conn, hash).await {
         // Never hand a connection that still holds the lock back to the pool.
         tracing::error!(error = %err, %hash, "could not release a blob lock; closing the connection");
         conn.close_on_drop();
     }
-    result
 }
 
 async fn delete_row_then_file(
@@ -131,5 +139,72 @@ async fn delete_row_then_file(
     let (store, blob) = (state.storage.clone(), hash.clone());
     run_storage(move || store.remove_blob(&blob)).await?;
     tracing::debug!(%hash, "blob deleted");
+    Ok(true)
+}
+
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct OrphanSweep {
+    /// Blob files removed because no catalogue row knows them.
+    pub removed: usize,
+    /// Orphans that could not be removed (logged; retried next run).
+    pub failed: usize,
+}
+
+impl OrphanSweep {
+    pub fn is_empty(&self) -> bool {
+        *self == Self::default()
+    }
+}
+
+/// Removes blob files that have no catalogue row (a crash between storing a
+/// file and committing its row, or between deleting a row and its file) and
+/// were last modified before the grace period. Each removal re-checks the row
+/// under the blob's advisory lock, which completion holds from before the
+/// rename until its row commits.
+pub async fn sweep_orphan_blobs(state: &AppState) -> Result<OrphanSweep, ApiError> {
+    let cutoff = SystemTime::now()
+        .checked_sub(state.config.blob_gc_grace.unsigned_abs())
+        .unwrap_or(SystemTime::UNIX_EPOCH);
+    let store = state.storage.clone();
+    let on_disk = run_storage(move || store.list_blobs_older_than(cutoff)).await?;
+    let mut sweep = OrphanSweep::default();
+    for batch in on_disk.chunks(SWEEP_BATCH) {
+        let known: HashSet<String> = blobs::existing(&state.pool, batch)
+            .await?
+            .into_iter()
+            .collect();
+        for hash in batch.iter().filter(|hash| !known.contains(hash.as_str())) {
+            match remove_if_orphan(state, hash).await {
+                Ok(true) => sweep.removed += 1,
+                Ok(false) => {}
+                Err(err) => {
+                    tracing::warn!(%hash, error = %err, "could not remove an orphan blob file");
+                    sweep.failed += 1;
+                }
+            }
+        }
+    }
+    Ok(sweep)
+}
+
+async fn remove_if_orphan(state: &AppState, hash: &ContentHash) -> Result<bool, ApiError> {
+    let mut conn = state.pool.acquire().await.map_err(DbError::from)?;
+    blobs::lock_session(&mut conn, hash).await?;
+    let result = remove_unless_catalogued(state, &mut conn, hash).await;
+    unlock(conn, hash).await;
+    result
+}
+
+async fn remove_unless_catalogued(
+    state: &AppState,
+    conn: &mut PgConnection,
+    hash: &ContentHash,
+) -> Result<bool, ApiError> {
+    if blobs::exists(conn, hash).await? {
+        return Ok(false);
+    }
+    let (store, blob) = (state.storage.clone(), hash.clone());
+    run_storage(move || store.remove_blob(&blob)).await?;
+    tracing::debug!(%hash, "orphan blob file deleted");
     Ok(true)
 }

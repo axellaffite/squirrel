@@ -4,6 +4,7 @@
 mod error;
 mod fsutil;
 pub mod mime;
+mod scan;
 mod store;
 mod uploads;
 
