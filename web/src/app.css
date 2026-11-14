@@ -156,6 +156,14 @@ code {
 	}
 }
 
+/* Touch devices: content appears at once. The staggered arrival stutters on mobile browsers
+   (notably Firefox for Android) while the view is still rendering, and reads as slowness. */
+@media (pointer: coarse) {
+	.arrive {
+		animation: none;
+	}
+}
+
 /* Reduced motion: tokens zero every duration; also stop smooth scrolling. */
 @media (prefers-reduced-motion: reduce) {
 	html {
@@ -169,3 +177,4 @@ code {
 		outline-color: Highlight;
 	}
 }
+
