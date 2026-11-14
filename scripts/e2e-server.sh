@@ -50,4 +50,5 @@ export SQUIRREL_DATABASE_URL="${DATABASE_URL}"
 export SQUIRREL_BIND="127.0.0.1:${SQUIRREL_E2E_PORT:-8099}"
 export SQUIRREL_COOKIE_SECURE=false
 export SQUIRREL_SETUP_TOKEN=e2e-setup-token
+export SQUIRREL_DATA_DIR="${SQUIRREL_E2E_DATA_DIR:-$(mktemp -d -t squirrel-e2e)}"
 exec cargo run -q -p squirrel -- serve
