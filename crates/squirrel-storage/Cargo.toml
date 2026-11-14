@@ -4,6 +4,10 @@ version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
 
+[features]
+# Helpers for tests in other crates (`put_reader`, `contains`).
+test-util = []
+
 [dependencies]
 infer.workspace = true
 mime_guess.workspace = true
