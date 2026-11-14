@@ -3,6 +3,8 @@
 
 mod backoff;
 mod job;
+pub mod queue;
 
 pub use backoff::{jitter, retry_delay};
 pub use job::{JobContext, JobError, NewJob, priority};
+pub use queue::enqueue;
