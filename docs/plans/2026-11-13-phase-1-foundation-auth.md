@@ -10,6 +10,8 @@
 
 **Design reference:** `docs/plans/2026-11-13-squirrel-home-drive-design.md`
 
+> **Visual design (added 2026-11-14):** the UI code in this plan predates the design system. `MASTER.md` (repo root) and `web/src/lib/styles/tokens.css` govern every visual decision; follow them, not the markup and CSS snippets below.
+
 **Deliberate deviations from the design for Phase 1:**
 - sqlx *runtime* queries (`query_as::<_, T>`) instead of compile-time macros, so the workspace builds without a live DB or `sqlx-cli`. Revisit once query count grows.
 - `devices` table and mobile tokens are deferred to Phase 6 (mobile app).
