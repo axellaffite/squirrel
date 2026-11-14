@@ -1,13 +1,18 @@
 use std::fs::{self, File};
-use std::io::{self, Read, Write};
+use std::io;
+#[cfg(any(test, feature = "test-util"))]
+use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
 
 use squirrel_core::ContentHash;
+#[cfg(any(test, feature = "test-util"))]
 use uuid::Uuid;
 
 use crate::error::{Result, StorageError};
+#[cfg(any(test, feature = "test-util"))]
+use crate::fsutil::hash_stream;
 use crate::fsutil::{
-    create_dir_all_durable, device_of, hash_stream, make_read_only, remove_if_exists, sync_dir,
+    create_dir_all_durable, device_of, make_read_only, remove_if_exists, sync_dir,
 };
 
 /// Content-addressed blob store rooted at the data directory:
@@ -60,6 +65,8 @@ impl BlobStore {
         self.blobs.join(a).join(b).join(hash.as_str())
     }
 
+    /// Test helper: whether a blob file exists (the catalogue is the source of truth).
+    #[cfg(any(test, feature = "test-util"))]
     pub fn contains(&self, hash: &ContentHash) -> bool {
         self.blob_path(hash).is_file()
     }
@@ -96,10 +103,11 @@ impl BlobStore {
         Ok(Adopted::Stored)
     }
 
-    /// Streams `reader` into a temporary file while hashing it, syncs it through
-    /// its own handle, then adopts it. The hash is only known at the end, so the
-    /// per-blob lock cannot be held here: callers lock afterwards and re-check
-    /// [`BlobStore::contains`] before recording the blob.
+    /// Test helper: streams `reader` into a temporary file while hashing it,
+    /// syncs it, then adopts it, without the per-blob lock and without a
+    /// catalogue row (so the result looks like an orphan to maintenance).
+    /// Production uploads go through [`BlobStore::adopt_upload`].
+    #[cfg(any(test, feature = "test-util"))]
     pub fn put_reader(&self, reader: impl Read) -> Result<(ContentHash, u64)> {
         let tmp = self.tmp.join(format!("put-{}", Uuid::now_v7()));
         let result = (|| {

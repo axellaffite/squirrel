@@ -22,3 +22,4 @@ uuid.workspace = true
 
 [dev-dependencies]
 tempfile.workspace = true
+squirrel-storage = { workspace = true, features = ["test-util"] }
