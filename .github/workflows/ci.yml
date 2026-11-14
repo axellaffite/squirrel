@@ -101,6 +101,10 @@ jobs:
         working-directory: web
       - run: pnpm test:e2e
         working-directory: web
+        env:
+          # Fresh data directory for scripts/e2e-server.sh (it must be named e2e-data).
+          # Step-level: the runner context is not available in job-level env.
+          SQUIRREL_E2E_DATA_DIR: ${{ runner.temp }}/e2e-data
       - uses: actions/upload-artifact@v4
         if: failure()
         with:
