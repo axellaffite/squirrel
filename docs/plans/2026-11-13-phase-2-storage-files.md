@@ -13,6 +13,39 @@
 
 > **Visual design (added 2026-11-14):** the UI code in this plan predates the design system. `MASTER.md` (repo root) and `web/src/lib/styles/tokens.css` govern every visual decision; follow them, not the markup and CSS snippets below.
 
+## As built (summary)
+
+Phase 2 shipped as planned in scope; the code is the source of truth and the task code
+below is the plan as written. What differs, in short:
+
+- **Hardening after reviews** is recorded in "Upload hardening" and "Download and
+  maintenance hardening" under Key decisions: completion detached from the request, per-upload
+  locks, upload/download limits, disk-space reservation, node MIME = blob MIME, PDF CSP, ETag
+  scope, orphan blob sweep (brought forward from Phase 7), `squirrel admin` never migrates.
+- **After the final review:**
+  - The data directory is bound to its database: migration `20261114000002_instance_identity.sql`
+    creates an installation id, `serve` writes it to `<data_dir>/.squirrel-instance` on an empty
+    directory and refuses a mismatched marker or unmarked blobs; `squirrel admin adopt-data-dir`
+    binds an existing directory deliberately (refuses another installation's, and needs `--force`
+    when the database knows none of the files).
+  - The orphan sweep deletes nothing when the catalogue is empty or more than 20 orphans make up
+    over 10% of the files examined (`held_back` in `OrphanSweep`), and first runs one storage
+    interval (6 h) after start.
+  - Dedupe linking is idempotent: starting an upload of content already in the destination under
+    the same name returns that node (no `name (1)` after a lost completion response or a late
+    cancel). The web client hides Cancel while finishing and refreshes the folder when the server
+    refuses an abort (409, or 404 after completion started).
+  - The claim runs inside the completion task; a failure after the upload file moved into the blob
+    store (`StorageError::Moved`) discards the session instead of releasing it for a retry.
+  - Chunk `PUT`s and resumes wait at most `upload_limits.lock_wait` (5 s) for a completion, then
+    answer 409 `conflict`.
+  - One user's open uploads may reserve at most half the usable free space, except their only one
+    (429 `too_many_uploads`).
+  - Squirrel assumes a single server process per database and data directory (in-process locks and
+    limits); the fixed storage settings become configurable in Phase 7.
+- **Manual checks still outstanding:** PDF preview in Firefox and Safari, and
+  resuming a >1 GB upload after killing the tab.
+
 ## Conventions / environment
 
 - Run commands from the repo root unless stated. Never `cd` outside the worktree; never `git stash` (use a WIP commit).

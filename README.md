@@ -49,10 +49,20 @@ Upload, quota and trash behaviour is not configurable yet; the built-in values a
 | Trash retention | 30 days, then deleted for good |
 | Unreferenced file contents removed after | 24 h |
 | Storage quota | unlimited per user unless set with `squirrel admin set-quota` |
+| Space one user's open uploads may reserve | half the usable free space (their only open upload may use all of it) |
+
+These become configurable in Phase 7.
+
+### Deployment model
+
+Squirrel assumes **one server process per database and data directory**. Upload locks,
+upload admission and rate limits live in that process's memory; two servers sharing a
+database or a data directory would not see each other's locks.
 
 ### Data directory
 
     <SQUIRREL_DATA_DIR>/
+      .squirrel-instance     id of the installation (database) this directory belongs to
       blobs/ab/cd/<sha256>   file contents, stored once per distinct content (read-only)
       tmp/uploads/<id>       uploads in progress (expire after 24 h without activity)
 
@@ -61,10 +71,31 @@ both together (Phase 7 documents `pg_dump` + blob rsync). Files deleted from the
 (or after 30 days in it) are removed from `blobs/` a day later, once nothing references them.
 Uploads are refused while less than 1 GiB would remain free on that disk.
 
+The data directory is bound to its database: each database gets an installation id
+(created by its migrations), written to `.squirrel-instance` the first time the server
+starts on an empty data directory. The server refuses to start when the marker names
+another installation, or when the directory holds files but no marker, because the
+maintenance job would otherwise treat every file the database does not know as an orphan
+and delete it. Restore the database and the data directory as a pair.
+
+A data directory from before markers existed (or restored without its marker) is adopted
+once, deliberately, with the database it belongs to:
+
+    squirrel migrate                         # SQUIRREL_DATABASE_URL set as for serve
+    squirrel admin adopt-data-dir            # SQUIRREL_DATABASE_URL and SQUIRREL_DATA_DIR set
+
+It prints how many stored files the database knows. It refuses a directory bound to another
+installation, and one whose files the database knows none of (pass `--force` if you are sure).
+As a second safety net, the orphan sweep skips deleting when the catalogue is empty or more
+than 20 files making up over 10% of those examined look orphaned, and it first runs 6 hours
+after the server starts.
+
 ### Administration
 
     SQUIRREL_DATABASE_URL=… cargo run -p squirrel -- admin set-quota alice 10737418240   # 10 GiB
     SQUIRREL_DATABASE_URL=… cargo run -p squirrel -- admin set-quota alice unlimited
+
+`admin adopt-data-dir` is described under "Data directory" above.
 
 Quotas are in bytes and count live files (not the trash). Users see their usage on the Files page.
 `squirrel admin` never migrates: it refuses to run while migrations are pending
@@ -89,7 +120,9 @@ The quota test calls `target/debug/squirrel admin set-quota` on the E2E database
 
 PDF rendering itself is checked by hand (headless Chromium has no PDF viewer): open a PDF
 preview in Chrome, Firefox and Safari, reopen it, download it, and check the console for
-CSP errors.
+CSP errors. Resuming a large upload is also checked by hand: start a >1 GB upload, kill the
+tab midway, upload the same file to the same folder again and check it resumes from the
+chunks already sent.
 
 ### Troubleshooting
 
