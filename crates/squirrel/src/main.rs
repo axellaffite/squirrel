@@ -1,4 +1,5 @@
 mod admin;
+mod data_dir;
 mod tasks;
 
 use std::net::SocketAddr;
@@ -149,6 +150,7 @@ async fn serve(args: ServeArgs) -> anyhow::Result<()> {
     let pool = connect_and_migrate(&args.database).await?;
     let storage = BlobStore::open(&args.data_dir)
         .with_context(|| format!("opening data directory {}", args.data_dir.display()))?;
+    data_dir::bind(&pool, &storage, &args.data_dir).await?;
     let setup_token = resolve_setup_token(&pool, args.setup_token.clone()).await?;
     let config = ApiConfig {
         cookie_secure: args.cookie_secure,

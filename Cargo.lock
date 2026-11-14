@@ -2146,10 +2146,12 @@ dependencies = [
  "squirrel-core",
  "squirrel-db",
  "squirrel-storage",
+ "tempfile",
  "tokio",
  "tower-http",
  "tracing",
  "tracing-subscriber",
+ "uuid",
 ]
 
 [[package]]

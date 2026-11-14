@@ -23,6 +23,7 @@ use crate::fsutil::{
 /// All methods block: call them from `spawn_blocking`.
 #[derive(Debug, Clone)]
 pub struct BlobStore {
+    root: PathBuf,
     blobs: PathBuf,
     tmp: PathBuf,
     uploads: PathBuf,
@@ -40,6 +41,7 @@ impl BlobStore {
     /// and `blobs/` share a filesystem (otherwise `rename` would not be atomic).
     pub fn open(data_dir: &Path) -> Result<Self> {
         let store = Self {
+            root: data_dir.to_path_buf(),
             blobs: data_dir.join("blobs"),
             tmp: data_dir.join("tmp"),
             uploads: data_dir.join("tmp").join("uploads"),
@@ -132,6 +134,10 @@ impl BlobStore {
     pub fn available_space(&self) -> Result<u64> {
         let stat = rustix::fs::statvfs(&self.blobs).map_err(io::Error::from)?;
         Ok(stat.f_bavail.saturating_mul(stat.f_frsize))
+    }
+
+    pub(crate) fn root(&self) -> &Path {
+        &self.root
     }
 
     pub(crate) fn blobs_dir(&self) -> &Path {

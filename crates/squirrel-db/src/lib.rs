@@ -2,6 +2,7 @@
 
 pub mod blobs;
 mod error;
+pub mod instance;
 pub mod invitations;
 pub mod nodes;
 mod page;

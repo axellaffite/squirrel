@@ -1,5 +1,7 @@
 //! `squirrel admin …`: operator commands run on the server.
 
+use std::path::PathBuf;
+
 use clap::Subcommand;
 use sqlx::PgPool;
 use squirrel_core::Username;
@@ -11,6 +13,16 @@ pub enum AdminCommand {
         username: String,
         #[arg(value_parser = parse_quota)]
         quota: Quota,
+    },
+    /// Bind an existing data directory to this database. Needed once for a
+    /// data directory created before installation markers (or restored without
+    /// its `.squirrel-instance`): the server refuses to start until then.
+    AdoptDataDir {
+        #[arg(long, env = "SQUIRREL_DATA_DIR")]
+        data_dir: PathBuf,
+        /// Bind even if the database knows none of the stored blobs.
+        #[arg(long)]
+        force: bool,
     },
 }
 
@@ -40,6 +52,10 @@ pub async fn run(pool: &PgPool, command: AdminCommand) -> anyhow::Result<()> {
                 Some(bytes) => println!("quota for {} set to {bytes} bytes", username.as_str()),
                 None => println!("quota for {} removed (unlimited)", username.as_str()),
             }
+            Ok(())
+        }
+        AdminCommand::AdoptDataDir { data_dir, force } => {
+            println!("{}", crate::data_dir::adopt(pool, &data_dir, force).await?);
             Ok(())
         }
     }
