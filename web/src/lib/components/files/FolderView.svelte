@@ -8,7 +8,6 @@
 	import NameDialog from '#lib/components/files/NameDialog.svelte';
 	import Preview from '#lib/components/files/Preview.svelte';
 	import StorageMeter from '#lib/components/files/StorageMeter.svelte';
-	import UploadPanel from '#lib/components/files/UploadPanel.svelte';
 	import {
 		createFolder,
 		getNode,
@@ -135,7 +134,6 @@
 		<p class="muted">Open a folder to add files.</p>
 	{/if}
 
-	<UploadPanel />
 	<StorageMeter refresh={storageVersion} />
 </main>
 

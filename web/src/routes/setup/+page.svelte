@@ -2,6 +2,8 @@
 	import { api, errorMessage } from '#lib/api/client.ts';
 	import type { components } from '#lib/api/schema.d.ts';
 	import AccountForm from '#lib/components/AccountForm.svelte';
+	import AuthCard from '#lib/components/shell/AuthCard.svelte';
+	import TextField from '#lib/components/ui/TextField.svelte';
 	import { session, setMe } from '#lib/session.svelte.ts';
 
 	let setupCode = $state('');
@@ -23,13 +25,19 @@
 
 <svelte:head><title>Set up · Squirrel</title></svelte:head>
 
-<main class="card">
-	<h1>Welcome to Squirrel</h1>
-	<p class="muted">Create the first account. It will administer this drive.</p>
+<AuthCard title="Welcome to Squirrel" subtitle="Create the first account. It will administer this drive.">
 	<AccountForm submitLabel="Create administrator account" onsubmit={createAdmin}>
 		{#snippet before()}
-			<label>Setup code <input name="setup_token" autocomplete="off" spellcheck="false" aria-describedby="setup-code-hint" bind:value={setupCode} required /></label>
-			<p id="setup-code-hint" class="muted">Printed in the Squirrel server log on first start.</p>
+			<TextField
+				label="Setup code"
+				name="setup_token"
+				autocomplete="off"
+				autocapitalize="none"
+				spellcheck="false"
+				hint="Printed in the Squirrel server log on first start."
+				bind:value={setupCode}
+				required
+			/>
 		{/snippet}
 	</AccountForm>
-</main>
+</AuthCard>

@@ -39,6 +39,6 @@
 </div>
 
 <style>
-	.dropzone { border: 2px dashed transparent; border-radius: var(--radius); padding: 0.25rem; }
+	.dropzone { border: 2px dashed transparent; border-radius: var(--radius-md); padding: var(--space-1); }
 	.dropzone.over { border-color: var(--accent); }
 </style>

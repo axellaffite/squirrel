@@ -4,6 +4,10 @@
 	import { api, errorMessage } from '#lib/api/client.ts';
 	import type { components } from '#lib/api/schema.d.ts';
 	import AccountForm from '#lib/components/AccountForm.svelte';
+	import Icon from '#lib/components/icons/Icon.svelte';
+	import AuthCard from '#lib/components/shell/AuthCard.svelte';
+	import Alert from '#lib/components/ui/Alert.svelte';
+	import Button from '#lib/components/ui/Button.svelte';
 	import { session, setMe } from '#lib/session.svelte.ts';
 
 	type Status = 'checking' | 'valid' | 'invalid' | 'error';
@@ -58,19 +62,28 @@
 
 <svelte:head><title>Join · Squirrel</title></svelte:head>
 
-<main class="card">
-	<h1>Join Squirrel</h1>
+<AuthCard title="Join Squirrel" subtitle="A private drive, shared only with invited people.">
 	{#if session.me && !joined}
 		<p>You are already logged in as <strong>{session.me.display_name}</strong>. Log out to use this invitation.</p>
 	{:else if status === 'checking'}
-		<p class="muted">Checking your invitation…</p>
+		<p class="muted" aria-live="polite">Checking your invitation…</p>
 	{:else if status === 'invalid'}
-		<p class="error">This invitation is invalid, expired or already used. Ask for a new link.</p>
+		<p class="invalid"><Icon name="alert" />This invitation is invalid, expired or already used. Ask for a new link.</p>
 	{:else if status === 'error'}
-		<div role="alert"><p class="error">Could not check this invitation: {checkError}</p></div>
-		<button onclick={() => attempt++}>Retry</button>
+		<Alert>Could not check this invitation: {checkError}</Alert>
+		<Button variant="secondary" full onclick={() => attempt++}><Icon name="refresh" />Retry</Button>
 	{:else}
 		<p class="muted">You have been invited. Choose your account details.</p>
 		<AccountForm submitLabel="Join Squirrel" onsubmit={join} />
 	{/if}
-</main>
+</AuthCard>
+
+<style>
+	.invalid {
+		display: flex;
+		gap: var(--space-3);
+		align-items: flex-start;
+		color: var(--danger);
+		font-weight: var(--weight-label);
+	}
+</style>

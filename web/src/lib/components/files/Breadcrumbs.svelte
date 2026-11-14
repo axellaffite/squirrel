@@ -18,5 +18,5 @@
 
 <style>
 	ol { display: flex; flex-wrap: wrap; gap: 0.25rem; list-style: none; padding: 0; margin: 0; }
-	li + li::before { content: '›'; margin-right: 0.25rem; color: var(--muted); }
+	li + li::before { content: '›'; margin-right: 0.25rem; color: var(--ink-muted); }
 </style>
