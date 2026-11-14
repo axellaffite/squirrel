@@ -5,7 +5,9 @@ pub mod admin;
 mod backoff;
 mod job;
 pub mod queue;
+mod worker;
 
 pub use backoff::{jitter, retry_delay};
 pub use job::{JobContext, JobError, NewJob, priority};
 pub use queue::enqueue;
+pub use worker::{Registry, Worker, WorkerConfig};
