@@ -34,3 +34,24 @@ pub async fn connect(database_url: &str) -> Result<PgPool, sqlx::Error> {
 pub async fn migrate(pool: &PgPool) -> Result<(), MigrateError> {
     MIGRATOR.run(pool).await
 }
+
+/// Versions of [`MIGRATOR`] not successfully applied to the database (all of
+/// them on an empty database), in order. Reads only: never migrates.
+pub async fn pending_migrations(pool: &PgPool) -> Result<Vec<i64>, DbError> {
+    let has_table: bool = sqlx::query_scalar("SELECT to_regclass('_sqlx_migrations') IS NOT NULL")
+        .fetch_one(pool)
+        .await?;
+    let applied: Vec<i64> = if has_table {
+        sqlx::query_scalar("SELECT version FROM _sqlx_migrations WHERE success")
+            .fetch_all(pool)
+            .await?
+    } else {
+        Vec::new()
+    };
+    Ok(MIGRATOR
+        .iter()
+        .filter(|migration| !migration.migration_type.is_down_migration())
+        .map(|migration| migration.version)
+        .filter(|version| !applied.contains(version))
+        .collect())
+}

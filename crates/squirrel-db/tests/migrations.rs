@@ -111,3 +111,49 @@ async fn invitation_constraints(pool: PgPool) {
         .await
         .unwrap();
 }
+
+fn all_versions() -> Vec<i64> {
+    squirrel_db::MIGRATOR
+        .iter()
+        .filter(|m| !m.migration_type.is_down_migration())
+        .map(|m| m.version)
+        .collect()
+}
+
+#[sqlx::test(migrator = "squirrel_db::MIGRATOR")]
+async fn a_migrated_database_has_nothing_pending(pool: PgPool) {
+    assert!(
+        squirrel_db::pending_migrations(&pool)
+            .await
+            .unwrap()
+            .is_empty()
+    );
+}
+
+#[sqlx::test(migrations = false)]
+async fn an_empty_database_has_every_migration_pending(pool: PgPool) {
+    assert_eq!(
+        squirrel_db::pending_migrations(&pool).await.unwrap(),
+        all_versions()
+    );
+}
+
+#[sqlx::test(migrator = "squirrel_db::MIGRATOR")]
+async fn missing_or_failed_migrations_are_pending(pool: PgPool) {
+    let versions = all_versions();
+    let (first, last) = (versions[0], *versions.last().unwrap());
+    sqlx::query("DELETE FROM _sqlx_migrations WHERE version = $1")
+        .bind(last)
+        .execute(&pool)
+        .await
+        .unwrap();
+    sqlx::query("UPDATE _sqlx_migrations SET success = false WHERE version = $1")
+        .bind(first)
+        .execute(&pool)
+        .await
+        .unwrap();
+    assert_eq!(
+        squirrel_db::pending_migrations(&pool).await.unwrap(),
+        [first, last]
+    );
+}
