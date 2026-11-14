@@ -35,7 +35,8 @@ enum Command {
     Migrate(DatabaseArgs),
     /// Print the OpenAPI document to stdout.
     Openapi,
-    /// Administrative commands (run on the server; applies pending migrations first).
+    /// Administrative commands (run on the server). Never migrates: fails if
+    /// migrations are pending (run `squirrel migrate` or start the server first).
     Admin(AdminArgs),
 }
 
@@ -92,7 +93,7 @@ async fn main() -> anyhow::Result<()> {
         }
         Command::Admin(args) => {
             init_tracing(false);
-            let pool = connect_and_migrate(&args.database).await?;
+            let pool = connect_migrated(&args.database).await?;
             admin::run(&pool, args.command).await
         }
     }
@@ -111,6 +112,31 @@ async fn connect_and_migrate(args: &DatabaseArgs) -> anyhow::Result<PgPool> {
         .await
         .context("applying migrations")?;
     Ok(pool)
+}
+
+/// Connects without migrating; refuses a database whose schema is behind
+/// this binary, so an admin command never upgrades a live instance by surprise.
+async fn connect_migrated(args: &DatabaseArgs) -> anyhow::Result<PgPool> {
+    let pool = squirrel_db::connect(&args.database_url)
+        .await
+        .context("connecting to Postgres")?;
+    let pending = squirrel_db::pending_migrations(&pool)
+        .await
+        .context("checking applied migrations")?;
+    if !pending.is_empty() {
+        anyhow::bail!("{}", pending_message(&pending));
+    }
+    Ok(pool)
+}
+
+fn pending_message(pending: &[i64]) -> String {
+    let versions: Vec<String> = pending.iter().map(i64::to_string).collect();
+    format!(
+        "the database has {} pending migration(s) ({}); run `squirrel migrate` \
+         (or start the server) first",
+        pending.len(),
+        versions.join(", ")
+    )
 }
 
 async fn migrate(args: &DatabaseArgs) -> anyhow::Result<()> {
@@ -242,6 +268,15 @@ fn init_tracing(json: bool) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn pending_migrations_are_listed_in_the_error() {
+        assert_eq!(
+            pending_message(&[20261113000002, 20261114000001]),
+            "the database has 2 pending migration(s) (20261113000002, 20261114000001); \
+             run `squirrel migrate` (or start the server) first"
+        );
+    }
 
     #[test]
     fn setup_tokens_shorter_than_16_characters_are_weak() {
