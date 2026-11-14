@@ -26,6 +26,22 @@ impl BlobStore {
         Ok(found)
     }
 
+    /// Whether any file is stored under `blobs/` (stray names included: the
+    /// directory is not empty, so it is not a fresh one).
+    pub fn has_blobs(&self) -> Result<bool> {
+        for first in subdirectories(self.blobs_dir())? {
+            for second in subdirectories(&first)? {
+                if entries(&second)?
+                    .iter()
+                    .any(|entry| entry.file_type().is_ok_and(|kind| kind.is_file()))
+                {
+                    return Ok(true);
+                }
+            }
+        }
+        Ok(false)
+    }
+
     /// The blob stored at `entry`, if it is one and older than `cutoff`.
     fn old_blob(&self, entry: &fs::DirEntry, cutoff: SystemTime) -> Result<Option<ContentHash>> {
         let Some(hash) = entry
