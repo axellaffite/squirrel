@@ -8,7 +8,7 @@ use squirrel_db::nodes::{self, NewFile, NodeRecord};
 use squirrel_db::quota::{self, Pending};
 use squirrel_db::uploads::{self, UploadRecord};
 use squirrel_db::{DbError, blobs};
-use squirrel_storage::mime;
+use squirrel_storage::{StorageError, mime};
 use std::time::Duration;
 
 use time::OffsetDateTime;
@@ -183,9 +183,14 @@ async fn store_and_link(
 
     let (store, id, blob) = (state.storage.clone(), session.id, hash.clone());
     let size = u64::try_from(session.size).unwrap_or_default();
-    run_storage(move || store.adopt_upload(id, &blob, size))
+    tokio::task::spawn_blocking(move || store.adopt_upload(id, &blob, size))
         .await
-        .map_err(Failure::Retry)?;
+        .map_err(|err| retry(ApiError::Internal(err.into())))?
+        .map_err(|err| match err {
+            // The upload file is gone: completing again cannot work.
+            StorageError::Moved(_) => discard(err),
+            other => retry(other),
+        })?;
     // The upload file has moved: from here on a failure cannot be retried.
     // Content already catalogued keeps its type: every node of a blob reports
     // the blob's MIME (as dedup links do); fresh content gets the sniffed one.

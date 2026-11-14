@@ -108,20 +108,32 @@ impl BlobStore {
     /// adoption only syncs through a read-only handle, then renames.
     ///
     /// A blob of another size is refused; if this call stored it, it is removed.
+    /// Every failure once the upload file has left the uploads area is
+    /// [`StorageError::Moved`]: the upload cannot be completed again.
     pub fn adopt_upload(&self, id: Uuid, hash: &ContentHash, size: u64) -> Result<Adopted> {
         let adopted = self.adopt(&self.upload_path(id), hash)?;
-        let stored = fs::metadata(self.blob_path(hash))?.len();
-        if stored != size {
-            if adopted == Adopted::Stored {
-                remove_if_exists(&self.blob_path(hash))?;
-            }
-            return Err(io::Error::new(
-                io::ErrorKind::InvalidData,
-                format!("blob {hash} has {stored} bytes, expected {size}"),
-            )
-            .into());
-        }
+        self.check_adopted_size(hash, size, adopted)
+            .map_err(StorageError::Moved)?;
         Ok(adopted)
+    }
+
+    fn check_adopted_size(
+        &self,
+        hash: &ContentHash,
+        size: u64,
+        adopted: Adopted,
+    ) -> io::Result<()> {
+        let stored = fs::metadata(self.blob_path(hash))?.len();
+        if stored == size {
+            return Ok(());
+        }
+        if adopted == Adopted::Stored {
+            remove_if_exists(&self.blob_path(hash))?;
+        }
+        Err(io::Error::new(
+            io::ErrorKind::InvalidData,
+            format!("blob {hash} has {stored} bytes, expected {size}"),
+        ))
     }
 
     pub fn discard_upload(&self, id: Uuid) -> Result<()> {
@@ -232,7 +244,10 @@ mod tests {
         store.create_upload(id, 5).unwrap();
         store.write_chunk(id, 0, b"hello").unwrap();
         let hash = store.hash_upload(id).unwrap().hash;
-        assert!(store.adopt_upload(id, &hash, 6).is_err());
+        assert!(matches!(
+            store.adopt_upload(id, &hash, 6),
+            Err(StorageError::Moved(_))
+        ));
         assert!(!store.contains(&hash), "a wrong-sized blob must not stay");
     }
 
