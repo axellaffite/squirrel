@@ -40,6 +40,19 @@
 		dialog?.close();
 	}
 
+	/**
+	 * Parents unmount a dialog as soon as it closes. This keeps the closed element in the DOM for
+	 * `--dur-fast` (0 with reduced motion) so its CSS exit transition can play. A dialog removed
+	 * while still open (e.g. on navigation) goes at once, as before.
+	 */
+	function linger(node: HTMLDialogElement) {
+		if (node.open) return { duration: 0 };
+		// The build may minify the token from `160ms` to `.16s`.
+		const token = getComputedStyle(node).getPropertyValue('--dur-fast').trim();
+		const value = parseFloat(token) || 0;
+		return { duration: token.endsWith('ms') ? value : value * 1000 };
+	}
+
 	/** A click on the dialog element itself (not its content) landed on the scrim. */
 	function handleClick(event: MouseEvent) {
 		if (event.target === dialog) dialog?.close();
@@ -50,8 +63,10 @@
 	bind:this={dialog}
 	class:wide={size === 'wide'}
 	aria-labelledby={titleId}
+	inert={!open}
 	onclose={handleClose}
 	onclick={handleClick}
+	out:linger|global
 >
 	<div class="panel">
 		<header>
@@ -68,10 +83,14 @@
 
 <style>
 	/* Phones: bottom sheet. ≥ 768 px: centred dialog. Arrival rises, exit reverses faster. */
+	/* Fixed like a modal dialog even while closing, where it may already have left the top layer. */
 	dialog {
+		position: fixed;
+		inset: 0;
+		z-index: 30;
 		width: 100%;
 		max-width: 100%;
-		max-height: 90dvh;
+		max-height: var(--sheet-max);
 		margin: auto auto 0;
 		padding: 0;
 		border: 0;
@@ -88,6 +107,11 @@
 			transform var(--dur-fast) var(--ease),
 			overlay var(--dur-fast) allow-discrete,
 			display var(--dur-fast) allow-discrete;
+	}
+
+	/* While it fades out, a closing dialog takes no clicks. */
+	dialog:not([open]) {
+		pointer-events: none;
 	}
 
 	dialog[open] {

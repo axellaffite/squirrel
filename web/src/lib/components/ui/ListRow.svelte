@@ -52,7 +52,9 @@
 		border-radius: var(--radius-card);
 		background: var(--card);
 		box-shadow: var(--shadow-card);
-		transition: box-shadow var(--dur) var(--ease);
+		transition:
+			box-shadow var(--dur) var(--ease),
+			transform var(--dur-fast) var(--ease);
 	}
 
 	.selected {
@@ -161,7 +163,7 @@
 		}
 
 		.selected {
-			outline: 2px solid Highlight;
+			outline: var(--ring-width) solid Highlight;
 		}
 	}
 </style>

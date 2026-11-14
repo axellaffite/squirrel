@@ -139,7 +139,8 @@
 		transition:
 			background-color var(--dur-fast) var(--ease),
 			box-shadow var(--dur) var(--ease),
-			color var(--dur-fast) var(--ease);
+			color var(--dur-fast) var(--ease),
+			transform var(--dur-fast) var(--ease);
 	}
 
 	@media (hover: hover) {

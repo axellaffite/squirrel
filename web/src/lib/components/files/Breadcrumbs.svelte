@@ -58,14 +58,19 @@
 		text-decoration: none;
 		transition:
 			color var(--dur-fast) var(--ease),
-			background-color var(--dur-fast) var(--ease);
+			background-color var(--dur-fast) var(--ease),
+			transform var(--dur-fast) var(--ease);
 	}
 
-	/* 44 px hit area around the 36 px pill. */
+	/* 44 px hit area around the 36 px pill, also for very short folder names. */
 	a::before {
 		content: '';
 		position: absolute;
-		inset: calc((var(--control-sm) - var(--tap)) / 2) 0;
+		top: calc((var(--control-sm) - var(--tap)) / 2);
+		bottom: calc((var(--control-sm) - var(--tap)) / 2);
+		left: 50%;
+		width: max(100%, var(--tap));
+		transform: translateX(-50%);
 	}
 
 	li:first-child a,

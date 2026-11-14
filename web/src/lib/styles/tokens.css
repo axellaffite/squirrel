@@ -126,6 +126,9 @@
 	--menu-w: 17rem;
 	--name-max: 10rem;
 	--preview-max: 75dvh;
+	--sheet-max: 90dvh;
+	--center-min: 60dvh;
+	--underline-offset: 0.2em;
 
 	/* Motion */
 	--dur-fast: 160ms;
