@@ -137,8 +137,8 @@ Selection is a 2 px accent ring (`--select-ring`), stacked on the card shadow.
 | `--rise-sheet` | 16 px | Sheet and dialog arrival offset |
 | `--stagger` | 30 ms | Delay between arriving items, capped at 8 |
 
-Animate only `transform`, `opacity`, `box-shadow`, `background-color`, `color` (and the meter's
-`clip-path`). Dialogs reverse their arrival at `--dur-fast`. `prefers-reduced-motion: reduce` sets
+Animate only `transform`, `opacity`, `box-shadow`, `background-color`, `border-color`, `color` (and
+the meter's `clip-path`). Dialogs reverse their arrival at `--dur-fast`. `prefers-reduced-motion: reduce` sets
 every duration to 0 and removes the rises. On touch devices (`pointer: coarse`) the list/section
 arrival is skipped (content appears at once): it stuttered on Firefox for Android (2026-11-14).
 Presses, sheets and dialogs still animate there.
@@ -152,6 +152,10 @@ Presses, sheets and dialogs still animate there.
   top row with the wordmark and the account menu.
 - **Page**: breadcrumbs (inside folders), title (`h1`), muted description, actions on the right
   (full width under the title on phones).
+- **Ground layer**: the gradient sits on a fixed `body::before` layer, never
+  `background-attachment: fixed` (full repaints on mobile). Viewport heights use `svh`.
+- **Layout tokens**: `--sheet-max` (90dvh, tallest a sheet or dialog gets), `--center-min` (60dvh,
+  centred loading/error states), `--underline-offset` (0.2em, link underlines).
 
 ## Components (states: default, hover, focus-visible, active, disabled)
 
