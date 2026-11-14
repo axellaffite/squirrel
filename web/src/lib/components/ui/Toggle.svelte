@@ -35,8 +35,8 @@
 	}
 
 	.track {
-		/* Inner box 42 × 24, knob 18: built from spacing steps. Content-box keeps the 1 px edge outside. */
-		--track-w: calc(var(--space-6) + var(--space-3) - var(--space-1) / 2);
+		/* Inner box 40 × 24, knob 18: built from spacing steps. Content-box keeps the 1 px edge outside. */
+		--track-w: calc(var(--space-6) + var(--space-2));
 		--knob: calc(var(--space-4) + var(--space-1) / 2);
 		position: relative;
 		flex: none;
@@ -45,9 +45,10 @@
 		height: var(--space-5);
 		border: 1px solid var(--edge);
 		border-radius: var(--radius-full);
-		background: var(--surface);
-		box-shadow: var(--inset-1);
-		transition: background-color var(--dur-fast) var(--ease);
+		background: var(--tint);
+		transition:
+			background-color var(--dur-fast) var(--ease),
+			border-color var(--dur-fast) var(--ease);
 	}
 
 	.knob {
@@ -57,22 +58,25 @@
 		width: var(--knob);
 		height: var(--knob);
 		border-radius: var(--radius-full);
-		background: var(--surface);
-		box-shadow: var(--raise-1);
+		background: var(--card);
+		box-shadow: var(--shadow-knob);
 		transform: translateY(-50%);
-		transition:
-			transform var(--dur-fast) var(--ease),
-			background-color var(--dur-fast) var(--ease);
+		transition: transform var(--dur-fast) var(--ease);
+	}
+
+	[aria-checked='true'] .track {
+		background: var(--accent);
+		border-color: var(--accent);
 	}
 
 	[aria-checked='true'] .knob {
-		background: var(--accent);
+		background: var(--on-accent);
 		transform: translate(calc(var(--track-w) - var(--knob) - 2 * var(--space-1)), -50%);
 	}
 
 	@media (hover: hover) {
-		.toggle:not(:disabled):hover .knob {
-			box-shadow: var(--raise-2);
+		.toggle:not(:disabled):hover .track {
+			border-color: var(--ink-muted);
 		}
 	}
 
@@ -86,7 +90,11 @@
 	}
 
 	.toggle:not(:disabled):active .knob {
-		box-shadow: var(--inset-1);
+		transform: translate(0, calc(-50% + var(--press)));
+	}
+
+	[aria-checked='true'].toggle:not(:disabled):active .knob {
+		transform: translate(calc(var(--track-w) - var(--knob) - 2 * var(--space-1)), calc(-50% + var(--press)));
 	}
 
 	.toggle:disabled {

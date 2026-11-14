@@ -45,48 +45,50 @@
 	}
 
 	legend {
-		padding: 0;
+		padding: 0 var(--space-1);
 		margin-bottom: var(--space-2);
-		font-size: var(--text-xs);
-		line-height: var(--text-xs-lh);
+		font-size: var(--text-sm);
+		line-height: var(--text-sm-lh);
 		font-weight: var(--weight-label);
-		letter-spacing: 0.04em;
-		text-transform: uppercase;
 		color: var(--ink-muted);
 	}
 
+	/* Pill segmented control: tint track, the chosen segment is a white pill. */
 	.segments {
 		display: grid;
 		grid-template-columns: repeat(3, 1fr);
 		gap: var(--space-1);
 		padding: var(--space-1);
-		border-radius: var(--radius-md);
-		box-shadow: var(--inset-1);
+		border-radius: var(--radius-full);
+		background: var(--tint);
 	}
 
 	label {
 		position: relative;
-		display: grid;
-		justify-items: center;
+		display: flex;
+		align-items: center;
+		justify-content: center;
 		gap: var(--space-1);
-		min-height: var(--tap);
-		padding: var(--space-2) var(--space-1);
-		border-radius: var(--radius-sm);
-		font-size: var(--text-xs);
-		line-height: var(--text-xs-lh);
+		min-height: var(--control-sm);
+		padding: var(--space-1) var(--space-2);
+		border-radius: var(--radius-full);
+		font-size: var(--text-sm);
+		line-height: var(--text-sm-lh);
 		font-weight: var(--weight-label);
 		color: var(--ink-muted);
 		cursor: pointer;
 		transition:
 			color var(--dur-fast) var(--ease),
+			background-color var(--dur-fast) var(--ease),
 			box-shadow var(--dur-fast) var(--ease),
 			transform var(--dur-fast) var(--ease);
 	}
 
+	/* The radio covers the segment and the track padding: a 44 px hit area. */
 	input {
 		position: absolute;
 		opacity: 0;
-		inset: 0;
+		inset: calc(-1 * var(--space-1)) 0;
 		margin: 0;
 		cursor: pointer;
 	}
@@ -107,13 +109,19 @@
 	}
 
 	.checked {
-		color: var(--accent);
-		background: var(--surface);
-		box-shadow: var(--raise-1);
+		color: var(--ink);
+		background: var(--card);
+		box-shadow: var(--shadow-knob);
 	}
 
 	label:has(input:disabled) {
 		opacity: var(--disabled-opacity);
 		cursor: not-allowed;
+	}
+
+	@media (forced-colors: active) {
+		.checked {
+			outline: 2px solid Highlight;
+		}
 	}
 </style>

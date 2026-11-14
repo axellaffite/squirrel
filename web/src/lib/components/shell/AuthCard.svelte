@@ -25,6 +25,7 @@
 </main>
 
 <style>
+	/* The grey ground holds the wordmark and one white card. */
 	.auth {
 		display: grid;
 		justify-items: center;
@@ -38,8 +39,8 @@
 	.wordmark {
 		font-size: var(--text-2xl);
 		line-height: var(--text-2xl-lh);
-		font-weight: var(--weight-heading);
-		letter-spacing: -0.02em;
+		font-weight: var(--weight-strong);
+		letter-spacing: var(--track-tight);
 		color: var(--ink);
 	}
 
@@ -48,22 +49,26 @@
 		gap: var(--space-5);
 		width: 100%;
 		max-width: var(--auth-max);
-		padding: var(--space-5) var(--space-5);
-		border-radius: var(--radius-xl);
-		background: var(--surface);
-		box-shadow: var(--raise-2);
+		padding: var(--space-5);
+		border-radius: var(--radius-panel);
+		background: var(--card);
+		box-shadow: var(--shadow-card);
 	}
 
 	@media (min-width: 48rem) {
 		.card {
 			padding: var(--space-6);
-			box-shadow: var(--raise-3);
 		}
 	}
 
 	header {
 		display: grid;
-		gap: var(--space-2);
+		gap: var(--space-1);
+	}
+
+	header p {
+		font-size: var(--text-sm);
+		line-height: var(--text-sm-lh);
 	}
 
 	footer {

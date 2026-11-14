@@ -28,17 +28,11 @@
 <style>
 	.card {
 		display: block;
-		padding: var(--space-4);
-		border-radius: var(--radius-lg);
-		background: var(--surface);
-		box-shadow: var(--raise-2);
+		padding: var(--card-pad);
+		border-radius: var(--radius-card);
+		background: var(--card);
+		box-shadow: var(--shadow-card);
 		color: var(--ink);
-	}
-
-	@media (min-width: 48rem) {
-		.card {
-			padding: var(--space-5);
-		}
 	}
 
 	.interactive {
@@ -51,7 +45,7 @@
 
 	@media (hover: hover) {
 		.interactive:hover {
-			box-shadow: var(--raise-3);
+			box-shadow: var(--shadow-hover);
 		}
 	}
 
@@ -61,9 +55,7 @@
 	}
 
 	.interactive:active {
-		box-shadow: var(--inset-2);
 		transform: translateY(var(--press));
-		transition-duration: var(--dur-fast);
 	}
 
 	@media (forced-colors: active) {

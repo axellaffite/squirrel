@@ -5,152 +5,212 @@ in `web/` comes from `web/src/lib/styles/tokens.css`, which implements this file
 
 ## Theses (validated 2026-11-14)
 
-**Visual thesis.** A soft, moulded home drive: cool porcelain (#e3e8ef) by day and deep charcoal
-(#25272b) by night, every surface shaped by a paired highlight and shadow, raised for cards and
-pressed in for wells and active states. Controls stay legible through solid porcelain-indigo fills
-(#3f55c4 light, #9fb0ff dark) and 1 px edges of at least 3:1. Manrope throughout, chosen for its
-even digits and calm long names: body at 15–16 px, headings at 20–28 px in weights 650–700,
-figures tabular. Airy spacing on an 8 px base, generous card padding, radii from 12 to 24 px, and
-photos as the only saturated content on screen.
+**Visual thesis.** A calm, gallery-grey home drive. A soft grey-gradient ground holds one large
+rounded panel; a graphite rail carries navigation (sidebar from 1024 px, a floating graphite bottom
+bar on phones); content sits on white cards with a single soft diffuse shadow, or on faintly tinted
+wells. Headings are light and tight (Geist 500, letter-spacing -0.02 to -0.035em) but modest in
+size; everything interactive is a pill or a circle; icons live in round wells. One accent, Orchid
+(#9a3fd0 light, #d7a2ff dark), is spent only on the main action, progress and the active item,
+with a soft coloured glow.
 
-**Interaction thesis.** Soft and tactile: 240 ms on a long ease-out (cubic-bezier(.22,1,.36,1)),
-160 ms for small controls, 360 ms for sheets and dialogs. Presses sink into an inset shadow; on
-desktop, hover deepens the shadow slightly without scaling. A view's photos, files and rows fade
-in rising 8 px, 30 ms apart and capped at 8, only when the view first loads: no scroll-triggered
-reveals. Toggles glide, sheets rise 16 px from the bottom. Never: bounce or overshoot, parallax,
-hover scaling, looping animations other than real progress, or animated width, height or
-position. With reduced motion, everything changes instantly.
+**Interaction thesis.** Calm and exact: 160 ms for small controls, 240 ms for cards, rows and
+hover depth, 360 ms for sheets and dialogs, all on one ease, cubic-bezier(.22, 1, .36, 1). Presses
+sink 1 px (translateY). Hover changes a background or a shadow only, never a size. A view's rows
+arrive once per load, rising 8 px and fading in, 30 ms apart, capped at 8: no scroll-triggered
+reveals. Never: bounce or overshoot, hover scaling, parallax, looping animations other than real
+progress, animated width, height or position. With reduced motion, everything changes instantly.
 
-**Allowed patterns.** Dual neumorphic shadows (raised and inset); a soft gradient or blurred colour
-preview only as a photo placeholder while it loads; tabular figures for sizes and counts; the
-storage meter as a pressed-in track.
+**Allowed patterns.** One diffuse drop shadow (never a paired highlight/shadow); grey gradients on
+the ground, the panel and the rail only; the accent glow on the primary button (and the round
+upload button) only; at most one graphite card per screen for a featured figure; pill segmented
+controls; a white pill inside a tinted pill track for the storage meter; tabular figures for sizes,
+counts and dates.
 
-**Brainstorm record.** Full redesign. Product truth: "it's ours, at home", a private stash shared
-only with invited people. Style: soft UI, readable (moulded surfaces, real fills and edges on
-controls). Dials: variance 3 (centred, calm), motion 4 (standard, soft), density 3 (spacious).
+**Brainstorm record.** 2026-11-14: the first validated direction (soft neumorphism, porcelain and
+charcoal, paired raised/inset shadows, Manrope) was rejected once built. It was replaced the same
+day by this reference-inspired direction: gallery grey and graphite with a single Orchid accent
+(chosen over Violet #6e4ff6 and Iris #5b5bd6), Geist, and everything about one size smaller than
+the first proposal (titles and controls 15–35 % smaller, icons unchanged at 20 px). Dark theme is
+an extrapolation (the reference is light only): graphite ground and panel, #26272b cards, a lighter
+Orchid. Product truth unchanged: "it's ours, at home", a private stash shared only with invited
+people.
 
 ## Color
 
-Contrast is computed against the theme's `--surface`.
+Contrast ratios are computed against the surface each colour actually sits on: the white (or
+#26272b) card, the panel (light #ececee at its darkest, dark #1d1e21), the tinted well composited on
+the panel (light #e2e2e5, dark #222325; on a card: light #f4f4f5, dark #303135), and the rail at its
+lightest (light #4c4d52, dark #303136).
 
-| Token | Light (porcelain) | Dark (charcoal) | Role | Contrast L / D |
+| Token | Light | Dark | Role | Contrast light / dark |
 |---|---|---|---|---|
-| `--surface` | #e3e8ef | #25272b | App ground and every moulded surface | — |
-| `--surface-hi` | #f8fafd | #30333a | Highlight half of the paired shadow | — |
-| `--surface-lo` | #bfc7d3 | #18191c | Shadow half of the paired shadow | — |
-| `--ink` | #29313c | #ebe9e5 | Primary text, icons | 10.7 / 12.3 |
-| `--ink-muted` | #56627a | #a8a49d | Secondary text, captions | 5.0 / 6.0 |
-| `--edge` | #7a8496 | #737781 | 1 px edges of inputs, toggles, outlined buttons | 3.06 / 3.34 |
-| `--accent` | #3f55c4 | #9fb0ff | Primary fill, active nav, progress, focus ring | 5.2 / 7.2 |
-| `--on-accent` | #ffffff | #141a33 | Text on `--accent` | 6.4 / 8.3 (vs accent) |
-| `--danger` | #b3261e | #ff9a8f | Destructive text and fills | 5.3 / 7.3 |
-| `--success` | #1d6b44 | #74d3a3 | Completed states | 5.3 / 8.3 |
-| `--warning` | #7a4f00 | #f0c062 | Quota near full, retries | 5.8 / 8.9 |
+| `--ground` | #e4e4e7 → #cfcfd3 | #17181b → #0b0b0d | Page ground (gradient) | — |
+| `--panel` | #f6f6f7 → #ececee | #1d1e21 → #18191b | The large rounded panel | — |
+| `--card` | #ffffff | #26272b | Cards, row cards, dialogs, menus | — |
+| `--tint` | rgb(20 20 30 / .045) | rgb(255 255 255 / .045) | Wells, secondary buttons, tracks | — |
+| `--tint-strong` | rgb(20 20 30 / .085) | rgb(255 255 255 / .085) | Hover on tinted controls | — |
+| `--ink` | #111214 | #f1f1f2 | Text, icons | card 18.7 / 13.2 · tint 14.5 / 13.9 |
+| `--ink-muted` | #5c5e65 | #9fa1a8 | Metadata, captions | card 6.5 / 5.8 · panel 5.5 / 6.5 · tint 5.0 / 5.0 |
+| `--edge` | #7f8189 | #80838b | 1 px edges of inputs and toggles | card 3.9 / 3.9 · tint 3.5 / 3.4 |
+| `--accent` | #9a3fd0 | #d7a2ff | Primary fill, progress, focus ring, selection ring | card 5.3 / 7.5 · panel 4.5 / 8.3 |
+| `--accent-ink` | #8a3ac0 | #d7a2ff | Accent as text (links, active badge) | card 6.1 / 7.5 · tint 4.7 / 7.9 |
+| `--on-accent` | #ffffff | #1f0b2e | Text on `--accent` | 5.3 / 9.2 |
+| `--danger` | #b3261e | #ff9a8f | Destructive text and fills | card 6.5 / 7.3 · tint 5.1 / — |
+| `--on-danger` | #ffffff | #26272b | Text on `--danger` | 6.5 / 7.3 |
+| `--success` | #1d6b44 | #74d3a3 | Completed states | card 6.5 / 8.2 |
+| `--warning` | #7a4f00 | #f0c062 | Drop notices, quota near full | tint 5.5 / 7.7 |
+| `--rail` | #4c4d52 → #2a2b2f | #303136 → #1d1e21 | Graphite rail (gradient) | — |
+| `--rail-ink` | #f4f4f5 | #f1f1f2 | Rail text, active label, rail focus ring | 7.7 / 11.5 |
+| `--rail-muted` | #c8c9cd | #a3a5ab | Inactive rail labels and icons | 5.1 / 5.3 |
+| `--rail-well` | rgb(255 255 255 / .08) | rgb(255 255 255 / .07) | Round wells on the rail | — |
+| `--rail-active` / `--rail-active-ink` | #ffffff / #8a3ac0 | #f1f1f2 / #8a3ac0 | Active item: white circle, orchid icon | 6.1 / 5.4 |
+| `--track` / `--fill` | rgb(20 20 30 / .07) / #ffffff | rgb(255 255 255 / .07) / #e9e9ec | Meter track and its pill fill | — |
 
-Derived (computed with `color-mix`, never hand-picked): `--accent-soft` (accent 14 % over surface,
-selection backgrounds), `--danger-soft`, `--scrim` (ink 40 %, behind dialogs).
+Derived with `color-mix`, never hand-picked: `--accent-soft` (selection text highlight),
+`--danger-soft` (error alerts, 9 % danger over the card), `--glow` (accent at 45 %),
+`--scrim` (behind dialogs). The storage meter's white fill on its tint track is decorative: the
+same figure is always printed as text next to it.
 
 ## Typography
 
-Manrope (variable, 400–800), self-hosted as woff2 under `web/static/fonts/`, `font-display: swap`,
-fallback stack `"Manrope", ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif`.
-Tabular figures (`font-variant-numeric: tabular-nums`) on every size, count, date column and
-progress figure.
+Geist (variable, 100–900, OFL), self-hosted as woff2 (latin + latin-ext) under `web/static/fonts/`,
+`font-display: swap`, fallback `ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto`.
+Tabular figures on every size, count, date and progress figure. Monospace (`--font-mono`) only for
+text previews and invitation links.
 
-| Token | Size / line height | Weight | Use |
-|---|---|---|---|
-| `--text-xs` | 12 / 16 px | 600 | Badges, upper-case labels (letter-spacing .04em) |
-| `--text-sm` | 13.5 / 20 px | 500 | Metadata, captions, table secondary columns |
-| `--text-md` | 15 / 22 px (16 / 24 on ≥ 768 px) | 450 | Body, inputs, list rows |
-| `--text-lg` | 18 / 26 px | 600 | Card titles, dialog titles |
-| `--text-xl` | 20 / 28 px | 650 | Section headings |
-| `--text-2xl` | 24 / 30 px | 700 | Page titles on phones |
-| `--text-3xl` | 28 / 34 px | 700 | Page titles on ≥ 768 px |
+| Token | Size / line height | Use |
+|---|---|---|
+| `--text-xs` | 12 / 16 px | Badges, rail labels on phones, shortcut labels on phones |
+| `--text-sm` | 13 / 18 px | Metadata, captions, hints, field labels |
+| `--text-md` | 14 / 20 px (15 / 22 from 768 px) | Body, inputs, buttons, row names |
+| `--text-lg` | 16 / 22 px | Card titles, storage heading, empty-state titles |
+| `--text-xl` | 19 / 24 px | Section headings, dialog titles, wordmark |
+| `--text-2xl` | 24 / 28 px | Page titles on phones |
+| `--text-3xl` | 30 / 34 px | Page titles from 768 px |
+| `--text-display` | 28 px (36 px from 768 px), line height 1.05 | The home greeting only |
 
-Headings use `text-wrap: balance` and letter-spacing -0.01em. Body max line length 70ch.
+Weights: body 400, labels 500 (`--weight-label`), headings 500 (`--weight-heading`), emphasis
+600 (primary buttons, active rail label, wordmark). Tracking: page titles and greeting -0.035em,
+section headings -0.02em, labels -0.01em. Headings use `text-wrap: balance`; body max 70ch.
 
 ## Spacing
 
-8 px base, 4 px half-step: `--space-1` 4, `--space-2` 8, `--space-3` 12, `--space-4` 16,
-`--space-5` 24, `--space-6` 32, `--space-7` 48, `--space-8` 64. Page gutter 16 px on phones,
-24 px from 768 px, content max-width 1120 px. Card padding `--space-4` (phone) / `--space-5`.
-Touch targets at least 44 × 44 px.
+8 px base with a 4 px half-step: `--space-1` 4, `--space-2` 8, `--space-3` 12, `--space-4` 16,
+`--space-5` 24, `--space-6` 32, `--space-7` 48, `--space-8` 64. Layout: `--frame` (ground around
+the panel) 12 px, 22 px from 1024 px; `--panel-pad` 18 / 24 (768) / 28 (1024); `--card-pad` 14 / 16;
+`--well-pad` 16. Rail width 210 px. Touch targets at least 44 × 44 px everywhere: 36 px visuals
+(small buttons, icon buttons, segments, breadcrumbs) carry an invisible 44 px hit area.
 
 ## Radii
 
-`--radius-sm` 12 (chips, small buttons, thumbnails), `--radius-md` 16 (buttons, inputs, rows),
-`--radius-lg` 20 (cards), `--radius-xl` 24 (sheets, dialogs, bottom nav), `--radius-full` 999.
+`--radius-sm` 12 (code blocks, focus outlines on text links), `--radius-card` 18 (cards, row cards,
+alerts, menus), `--radius-well` 22 (tinted wells, empty states), `--radius-panel` 26 (the panel,
+dialogs, auth card), `--radius-rail` 28 (the rail), `--radius-full` for every button, field,
+segmented control, badge and icon well.
 
 ## Depth (shadows)
 
-Always a pair: highlight up-left, shadow down-right, from `--surface-hi` / `--surface-lo`.
+One diffuse drop shadow per surface, never a highlight/shadow pair.
 
-| Token | Value (offset / blur) | Use |
+| Token | Light | Use |
 |---|---|---|
-| `--raise-1` | ±3 px / 7 px | Small controls, chips, thumbnails |
-| `--raise-2` | ±6 px / 14 px | Cards, rows, buttons at rest |
-| `--raise-3` | ±10 px / 24 px | Desktop hover on cards, floating upload button |
-| `--inset-1` | inset ±2 px / 5 px | Pressed small controls, toggle track |
-| `--inset-2` | inset ±4 px / 9 px | Search field, storage track, active nav item, pressed buttons |
+| `--shadow-card` | 0 1 2 / 4 %, 0 12 32 / 8 % | Cards, row cards, white icon wells |
+| `--shadow-hover` | 0 1 2 / 5 %, 0 16 40 / 12 % | Hover on interactive cards and rows |
+| `--shadow-pop` | 0 2 6 / 6 %, 0 24 64 / 18 % | Dialogs, menus, the floating phone rail |
+| `--shadow-knob` | 0 2 8 / 8 % | Selected segment, meter fill, toggle knob |
+| `--shadow-active` | 0 4 14 / 25 % black | Active rail item |
+| `--glow` / `--glow-hover` | 0 8 22 accent 45 % / 0 10 28 accent 55 % | Primary button and round upload button only |
+| `--panel-edge` | inset 0 1 0 white 60 % | Top hairline of the panel |
 
-Dialogs and sheets add a `--scrim` behind them; they are raised-3, never glass.
+Dark mode replaces the card shadows with a faint top hairline plus a deeper black drop shadow.
+Selection is a 2 px accent ring (`--select-ring`), stacked on the card shadow.
 
 ## Motion
 
 | Token | Value | Use |
 |---|---|---|
-| `--dur-fast` | 160 ms | Toggles, presses, focus, small state changes |
-| `--dur` | 240 ms | Cards, rows, list arrival, hover depth |
-| `--dur-slow` | 360 ms | Sheets, dialogs, page-level transitions |
+| `--dur-fast` | 160 ms | Presses, colour and background changes, toggles |
+| `--dur` | 240 ms | Card and row shadows, list arrival, menus |
+| `--dur-slow` | 360 ms | Sheets and dialogs |
 | `--ease` | cubic-bezier(.22, 1, .36, 1) | Everything (one curve) |
-| `--rise` | 8 px | Arrival offset for list/grid items |
-| `--rise-sheet` | 16 px | Sheet/dialog arrival offset |
-| `--stagger` | 30 ms | Delay between arriving items, capped at 8 items |
+| `--rise` | 8 px | Arrival offset for rows and sections |
+| `--rise-sheet` | 16 px | Sheet and dialog arrival offset |
+| `--stagger` | 30 ms | Delay between arriving items, capped at 8 |
 
-Animate only `transform`, `opacity`, `box-shadow`, `background-color`, `color`. Arrival runs once per
-view load. Exit: dialogs and sheets reverse their arrival at `--dur-fast`; removed rows fade out at
-`--dur-fast`. `@media (prefers-reduced-motion: reduce)` sets every duration to 0 and removes rises.
+Animate only `transform`, `opacity`, `box-shadow`, `background-color`, `color` (and the meter's
+`clip-path`). Dialogs reverse their arrival at `--dur-fast`. `prefers-reduced-motion: reduce` sets
+every duration to 0 and removes the rises.
 
-## Component metrics
+## Layout
 
-Also in `tokens.css`: `--icon-sm` 20 / `--icon-md` 24 px, `--ring-width` / `--ring-offset` 3 px,
-`--tap` 44 px, `--row-min` 56 px, `--meter-track` 12 px, `--press` 1 px (pressed translateY),
-`--disabled-opacity` .45, and layout widths (`--auth-max`, `--dialog-max`, `--menu-w`, `--name-max`).
+- **Ground**: `--ground` gradient on the body. Auth pages put the wordmark and one white card on it.
+- **Shell (signed in)**: from 1024 px a two-column grid, the rail (210 px, sticky, full height) and
+  the panel. Below 1024 px the panel fills the width and the rail floats at the bottom
+  (`--radius-rail`, `--shadow-pop`, 12 px from the edges, safe-area aware); the panel shows a small
+  top row with the wordmark and the account menu.
+- **Page**: breadcrumbs (inside folders), title (`h1`), muted description, actions on the right
+  (full width under the title on phones).
+
+## Components (states: default, hover, focus-visible, active, disabled)
+
+Focus everywhere: 2 px `--accent` outline, 2 px offset (`--rail-ink` on the rail). Active: 1 px
+press. Disabled: 45 % opacity, no shadow or glow, `cursor: not-allowed`. Hover only on
+`(hover: hover)` devices.
+
+- **Button / primary**: pill, `--accent` fill, `--on-accent` label 600, `--glow`; hover
+  `--glow-hover`. Sizes: sm 36 px (44 px hit area), md 44 px, lg 48 px.
+- **Button / secondary**: `--tint` fill, `--ink` label; hover `--tint-strong`.
+- **Button / quiet**: transparent, `--ink-muted` label; hover `--tint-strong` fill and `--ink`.
+- **Button / danger**: secondary with a `--danger` label; **danger-solid** `--danger` fill and
+  `--on-danger` label, for the final confirmation only.
+- **Icon button**: 36 px circle (44 px hit area), quiet by default (`--ink-muted`, hover
+  `--tint-strong`), `fill="tint"` for dialog headers; always has an accessible name that includes
+  its subject (e.g. "Rename report.pdf").
+- **Text field**: pill, `--card` fill, 1 px `--edge`; hover edge `--ink-muted`; focus ring; invalid
+  `--danger` edge plus an icon and message (never colour alone).
+- **Segmented control** (theme picker): `--tint` pill track; chosen segment is a `--card` pill
+  with `--shadow-knob` and `--ink` label; others `--ink-muted`, hover `--ink`.
+- **Toggle**: `--tint` track with 1 px `--edge`, white knob; checked fills the track with
+  `--accent`.
+- **Card**: `--card`, `--radius-card`, `--shadow-card`; interactive cards hover `--shadow-hover`.
+- **Well**: `--tint`, `--radius-well`, `--well-pad`. Holds row cards, the storage meter, forms.
+- **Row card** (files, trash, invitations, recent): white, `--radius-card`, 54 px min height,
+  36 px round `--tint` icon well with an `--ink` icon, name 500 + muted tabular metadata, quiet
+  round actions on the right; the name is a link or button stretched over the row; hover
+  `--shadow-hover`; selection (the row a dialog acts on) adds `--select-ring`. Phones: one round
+  "Actions for …" button opens an actions sheet; from 768 px the actions are inline.
+- **Rail item**: 36 px round `--rail-well` holding the icon, label beside it (sidebar) or under it
+  (bottom bar); hover `--rail-well-hover` and `--rail-ink`; active white circle
+  (`--rail-active`), orchid icon (`--rail-active-ink`), `--shadow-active`, label 600.
+- **Shortcut** (home): a tinted pill holding a 40 px white round icon well and a label.
+- **Meter** (storage): 38 px `--track` pill with 6 px padding, white pill fill clipped to the value
+  (never narrower than a circle), figures printed as text beside it; warning fill from 90 %.
+- **Progress** (uploads): 6 px `--track` pill, `--accent` fill, named `<progress>`.
+- **Badge**: `--tint` pill, 12 px label 500 in the tone colour.
+- **Alert**: `--danger-soft` (error) or `--tint` (success) with tone text, `--radius-card`.
+- **Empty state**: `--tint` well, 56 px white round icon well with `--shadow-card`, title and muted
+  line.
+- **Dialog / sheet**: bottom sheet on phones, centred from 768 px (`wide` for previews);
+  `--card`, `--radius-panel`, `--shadow-pop`, scrim, native `<dialog>` focus trap, round tint close
+  button; footer buttons full width on phones.
+- **Menu**: `--card`, `--radius-card`, `--shadow-pop`; opens down from the phone top row, up from
+  the rail.
+- **Icons**: inline SVG (Lucide shapes), 1.75 px stroke, `currentColor`, 20 px. Decorative icons are
+  `aria-hidden`. No emoji as icons.
 
 ## Theme
 
-Follows the OS by default; the user menu offers System / Light / Dark, stored in `localStorage`
-(`squirrel-theme`) and applied as `data-theme` on `<html>`. `static/theme-init.js` applies it
-before first paint (a same-origin script, so the hash-mode CSP allows it without an inline script).
-
-## Base components (all five states: default, hover, focus-visible, active, disabled)
-
-- **Button / primary**: `--accent` fill, `--on-accent` label, `--radius-md`, `--raise-2`; hover
-  (pointer devices) `--raise-3`; active `--inset-2` + translateY(1px); focus 3 px `--accent` ring
-  offset 3 px; disabled 45 % opacity, no shadow, `cursor: not-allowed`.
-- **Button / secondary**: `--surface` fill, `--ink` label, `--raise-2`, 1 px transparent edge
-  (becomes `--edge` in forced-colors); same state rules.
-- **Button / quiet**: no fill, `--ink-muted` → `--ink` on hover, inset on active. Used in rows.
-- **Button / danger**: `--danger` label on secondary, or `--danger` fill for the final confirm.
-- **Input / search**: `--inset-2` well, 1 px `--edge`, `--radius-md`, 44 px min height; focus adds
-  the accent ring; invalid uses `--danger` edge plus a message (never colour alone).
-- **Toggle**: 1 px `--edge` track with `--inset-1`; knob raised-1 on surface; checked knob fills
-  `--accent`, track keeps the edge; glides at `--dur-fast`.
-- **Card**: `--surface`, `--radius-lg`, `--raise-2`, padding per spacing; interactive cards get
-  hover `--raise-3` and active `--inset-2`.
-- **List row (file)**: 56 px min height, icon well (`--inset-1`, `--radius-sm`), name + metadata,
-  quiet action buttons; selection uses `--accent-soft`.
-- **Nav**: bottom bar on phones (`--radius-xl`, `--raise-2`, safe-area aware), top bar on ≥ 1024 px;
-  active item `--inset-2` with accent icon and label.
-- **Meter**: `--inset-2` track, accent fill via `transform: scaleX()`, tabular figures.
-- **Dialog / sheet**: bottom sheet on phones, centred dialog ≥ 768 px; `--radius-xl`, `--raise-3`,
-  scrim, focus trap (native `<dialog>`), arrival per motion tokens.
-- **Icons**: inline SVG, 1.75 px stroke, `currentColor`, 20 / 24 px. No emoji as icons.
+Follows the OS by default; the account menu offers System / Light / Dark, stored in
+`localStorage` (`squirrel-theme`) and applied as `data-theme` on `<html>`. `static/theme-init.js`
+applies it before first paint (a same-origin script, so the hash-mode CSP allows it).
 
 ## Rules
 
-1. No literal colours, sizes, radii, shadows or durations outside `tokens.css`.
+1. No literal colours, sizes, radii, shadows or durations outside `tokens.css` (1 px borders and
+   media-query breakpoints excepted).
 2. Every interactive element has all five states and a visible focus ring.
-3. Text and icons meet 4.5:1, control edges and the accent 3:1 against `--surface`.
-4. Phone first: design at 375–412 px, then 768 / 1024 / 1440.
-5. Keep E2E-relied labels, button names, headings and test ids unchanged.
+3. Text and icons meet 4.5:1, control edges and the accent 3:1, against the surface they sit on.
+4. The accent appears only on the main action, progress, the active item, focus and selection.
+5. Phone first: design at 375–412 px, then 768 / 1024 / 1440. Touch targets at least 44 px.
+6. Show only real data: no invented statistics, counts or placeholders posing as content.
+7. Keep E2E-relied labels, button names, headings and test ids unchanged.
