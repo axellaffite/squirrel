@@ -78,16 +78,20 @@ impl BlobStore {
     /// concurrent [`BlobStore::remove_blob`] cannot delete the blob between the
     /// existence check and the database row being recorded.
     pub fn adopt(&self, tmp: &Path, hash: &ContentHash) -> Result<Adopted> {
-        self.adopt_with(tmp, hash, || File::open(tmp)?.sync_all())
+        self.adopt_with(tmp, hash, || File::open(tmp)?.sync_all(), sync_dir)
     }
 
     /// [`BlobStore::adopt`], with `sync` making the temporary file's content
-    /// durable before it is renamed into place.
-    fn adopt_with(
+    /// durable before it is renamed into place and `sync_parent` making the
+    /// rename durable. A failure after the rename is [`StorageError::Moved`]
+    /// and removes the blob again: no catalogue row may point at a file whose
+    /// directory entry might not survive a crash.
+    pub(crate) fn adopt_with(
         &self,
         tmp: &Path,
         hash: &ContentHash,
         sync: impl FnOnce() -> io::Result<()>,
+        sync_parent: impl FnOnce(&Path) -> io::Result<()>,
     ) -> Result<Adopted> {
         let dest = self.blob_path(hash);
         if dest.is_file() {
@@ -99,7 +103,11 @@ impl BlobStore {
         let dir = dest.parent().expect("blob paths have a parent");
         create_dir_all_durable(dir)?;
         fs::rename(tmp, &dest)?;
-        sync_dir(dir)?;
+        if let Err(err) = sync_parent(dir) {
+            // Best effort: a leftover has no row and is swept as an orphan.
+            let _ = remove_if_exists(&dest);
+            return Err(StorageError::Moved(err));
+        }
         Ok(Adopted::Stored)
     }
 
@@ -113,7 +121,7 @@ impl BlobStore {
         let result = (|| {
             let mut file = File::create_new(&tmp)?;
             let (hash, size) = hash_stream(reader, |block| file.write_all(block))?;
-            self.adopt_with(&tmp, &hash, || file.sync_all())?;
+            self.adopt_with(&tmp, &hash, || file.sync_all(), sync_dir)?;
             Ok((hash, size))
         })();
         if result.is_err() {
@@ -225,6 +233,23 @@ mod tests {
         store.remove_blob(&hash).unwrap();
         store.remove_blob(&hash).unwrap();
         assert!(!store.contains(&hash));
+    }
+
+    #[test]
+    fn a_failure_after_the_move_is_reported_as_such_and_leaves_no_blob() {
+        let (dir, store) = store();
+        let hash = ContentHash::parse(HELLO).unwrap();
+        let tmp = dir.path().join("tmp/hello");
+        fs::write(&tmp, b"hello").unwrap();
+        let result = store.adopt_with(
+            &tmp,
+            &hash,
+            || Ok(()),
+            |_| Err(io::Error::other("fsync failed")),
+        );
+        assert!(matches!(result, Err(StorageError::Moved(_))), "{result:?}");
+        assert!(!store.contains(&hash), "an unsynced blob must not stay");
+        assert!(!tmp.exists());
     }
 
     #[test]

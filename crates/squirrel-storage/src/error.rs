@@ -9,6 +9,11 @@ pub enum StorageError {
     NotFound,
     #[error("{0} must be on the same filesystem as the blobs directory")]
     CrossDevice(String),
+    /// The source file was already moved into (or dropped in favour of) the
+    /// blob store when this happened: the operation cannot be retried from
+    /// it. A blob the operation itself stored has been removed again.
+    #[error("storing the blob failed after the file was moved: {0}")]
+    Moved(io::Error),
     #[error(transparent)]
     Io(io::Error),
 }
