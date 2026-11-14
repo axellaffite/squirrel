@@ -52,6 +52,14 @@ describe('upload transport', () => {
 });
 
 describe('upload transport failures', () => {
+	it('reports an abort the server refused', async () => {
+		const { transport } = transportAnswering(() => envelope(409, 'upload_busy'));
+		const error = await transport.abort('u1').catch((e: unknown) => e);
+		expect(error).toBeInstanceOf(UploadError);
+		expect(error).toMatchObject({ status: 409 });
+	});
+
+
 	it('wraps fetch transport failures in a NetworkError', async () => {
 		const fetchMock = vi.fn(async () => {
 			throw new TypeError('Failed to fetch');

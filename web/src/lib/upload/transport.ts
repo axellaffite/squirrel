@@ -53,7 +53,10 @@ export function createTransport(client = api): UploadTransport {
 			return data;
 		},
 		async abort(uploadId) {
-			await client.DELETE('/api/uploads/{id}', { params: { path: { id: uploadId } } });
+			const { error, response } = await client.DELETE('/api/uploads/{id}', {
+				params: { path: { id: uploadId } }
+			});
+			if (!response.ok) throw uploadError(error, response);
 		}
 	};
 }

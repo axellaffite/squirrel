@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { progressPercent, statusLabel, uploadSummary, type QueueEntry } from '#lib/upload/queue-logic.ts';
+import { isCancellable, progressPercent, statusLabel, uploadSummary, type QueueEntry } from '#lib/upload/queue-logic.ts';
 
 const entry = (over: Partial<QueueEntry>): QueueEntry => ({
 	status: 'queued',
@@ -23,8 +23,21 @@ describe('statusLabel', () => {
 		[entry({ status: 'done', finalName: 'a (1).bin' }), 'Saved as a (1).bin'],
 		[entry({ status: 'done', finalName: 'a.bin' }), 'Done'],
 		[entry({ status: 'failed', error: 'this would exceed your storage quota' }), 'this would exceed your storage quota'],
-		[entry({ status: 'cancelled' }), 'Cancelled']
+		[entry({ status: 'cancelled' }), 'Cancelled'],
+		[entry({ status: 'cancelled', error: 'Cancelled too late' }), 'Cancelled too late']
 	])('%o → %s', (item, expected) => expect(statusLabel(item)).toBe(expected));
+});
+
+describe('isCancellable', () => {
+	it.each([
+		['queued', true],
+		['hashing', true],
+		['uploading', true],
+		['finishing', false],
+		['done', false],
+		['failed', false],
+		['cancelled', false]
+	] as const)('%s → %s', (status, expected) => expect(isCancellable(entry({ status }))).toBe(expected));
 });
 
 describe('progressPercent', () => {

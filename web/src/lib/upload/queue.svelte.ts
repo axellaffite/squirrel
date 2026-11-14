@@ -1,5 +1,5 @@
-import type { QueueEntry, UploadStatus } from '#lib/upload/queue-logic.ts';
-import { uploadFile, type UploadDeps } from '#lib/upload/uploader.ts';
+import { isCancellable, type QueueEntry, type UploadStatus } from '#lib/upload/queue-logic.ts';
+import { CancelledTooLate, uploadFile, type UploadDeps } from '#lib/upload/uploader.ts';
 
 export interface UploadItem extends QueueEntry {
 	id: number;
@@ -73,9 +73,11 @@ export class UploadQueue {
 		void this.#pump();
 	}
 
+	/** Ignored once the upload is finishing: the server stores it regardless. */
 	cancel(id: number): void {
 		const item = this.#find(id);
-		if (item?.status === 'queued') item.status = 'cancelled';
+		if (!item || !isCancellable(item)) return;
+		if (item.status === 'queued') item.status = 'cancelled';
 		this.#controllers.get(id)?.abort();
 	}
 
@@ -141,7 +143,12 @@ export class UploadQueue {
 			for (const listener of this.#finishedListeners) listener(item.parentId);
 		} catch (error) {
 			finished = true;
-			if (controller.signal.aborted) {
+			if (error instanceof CancelledTooLate) {
+				item.status = 'cancelled';
+				item.error = error.message;
+				// The file may be there now: let the folder view refresh.
+				this.#changedParents.add(item.parentId);
+			} else if (controller.signal.aborted) {
 				item.status = 'cancelled';
 			} else {
 				item.status = 'failed';

@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import { NetworkError } from '#lib/upload/errors.ts';
-import { UploadError, uploadFile, type UploadDeps, type UploadTransport } from '#lib/upload/uploader.ts';
+import { CancelledTooLate, UploadError, uploadFile, type UploadDeps, type UploadTransport } from '#lib/upload/uploader.ts';
 
 const node = { id: 'n1', name: 'a.bin' } as never;
 
@@ -114,6 +114,51 @@ describe('uploadFile', () => {
 		});
 		await expect(run(d, controller.signal)).rejects.toThrow();
 		expect(d.transport.abort).toHaveBeenCalledWith('u1');
+	});
+
+	it('reports a cancel the server could no longer honour', async () => {
+		const controller = new AbortController();
+		const d = deps({
+			start: vi.fn(async () => session(1)),
+			complete: vi.fn(async () => {
+				controller.abort();
+				throw new DOMException('aborted', 'AbortError');
+			}),
+			abort: vi.fn(async () => {
+				throw new UploadError('being completed', 409, false);
+			})
+		});
+		await expect(run(d, controller.signal)).rejects.toBeInstanceOf(CancelledTooLate);
+	});
+
+	it('treats a session already gone after completing started as possibly saved', async () => {
+		const controller = new AbortController();
+		const d = deps({
+			start: vi.fn(async () => session(1)),
+			complete: vi.fn(async () => {
+				controller.abort();
+				throw new DOMException('aborted', 'AbortError');
+			}),
+			abort: vi.fn(async () => {
+				throw new UploadError('not found', 404, false);
+			})
+		});
+		await expect(run(d, controller.signal)).rejects.toBeInstanceOf(CancelledTooLate);
+	});
+
+	it('keeps a plain cancellation when the session was never completed', async () => {
+		const controller = new AbortController();
+		const d = deps({
+			start: vi.fn(async () => session(1)),
+			putChunk: vi.fn(async () => {
+				controller.abort();
+				throw new DOMException('aborted', 'AbortError');
+			}),
+			abort: vi.fn(async () => {
+				throw new UploadError('not found', 404, false);
+			})
+		});
+		await expect(run(d, controller.signal)).rejects.toMatchObject({ name: 'AbortError' });
 	});
 
 	it('retries a chunk up to six times by default', async () => {
