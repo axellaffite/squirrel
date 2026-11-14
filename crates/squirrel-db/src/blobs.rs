@@ -137,6 +137,13 @@ pub async fn delete_if_unreferenced(
     Ok(result.rows_affected() == 1)
 }
 
+/// Whether the catalogue has any row at all.
+pub async fn any_exist(pool: &PgPool) -> Result<bool, DbError> {
+    Ok(sqlx::query_scalar("SELECT EXISTS (SELECT 1 FROM blobs)")
+        .fetch_one(pool)
+        .await?)
+}
+
 /// Which of `hashes` have a catalogue row.
 pub async fn existing(pool: &PgPool, hashes: &[ContentHash]) -> Result<Vec<String>, DbError> {
     let hashes: Vec<&str> = hashes.iter().map(ContentHash::as_str).collect();
