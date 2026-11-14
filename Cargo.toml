@@ -49,3 +49,4 @@ squirrel-auth = { path = "crates/squirrel-auth" }
 squirrel-db = { path = "crates/squirrel-db" }
 squirrel-api = { path = "crates/squirrel-api" }
 squirrel-storage = { path = "crates/squirrel-storage" }
+squirrel-jobs = { path = "crates/squirrel-jobs" }

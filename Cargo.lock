@@ -2226,6 +2226,23 @@ dependencies = [
 ]
 
 [[package]]
+name = "squirrel-jobs"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "rand 0.8.8",
+ "serde",
+ "serde_json",
+ "sqlx",
+ "squirrel-db",
+ "thiserror 2.0.21",
+ "time",
+ "tokio",
+ "tracing",
+ "uuid",
+]
+
+[[package]]
 name = "squirrel-storage"
 version = "0.1.0"
 dependencies = [

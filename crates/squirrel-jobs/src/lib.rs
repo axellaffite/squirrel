@@ -1,0 +1,8 @@
+//! A Postgres job queue (`jobs` table, see migration 20261114000003) and the
+//! worker runtime that executes it.
+
+mod backoff;
+mod job;
+
+pub use backoff::{jitter, retry_delay};
+pub use job::{JobContext, JobError, NewJob, priority};
