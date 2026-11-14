@@ -14,6 +14,12 @@
 		full?: boolean;
 		/** Renders a link styled as a button. */
 		href?: string;
+		/** Link-only attributes, used with `href`. */
+		target?: string;
+		rel?: string;
+		download?: boolean | string;
+		/** The rendered element, e.g. to move focus to it. */
+		element?: HTMLButtonElement | HTMLAnchorElement;
 		children: Snippet;
 	}
 
@@ -22,6 +28,10 @@
 		size = 'md',
 		full = false,
 		href,
+		target,
+		rel,
+		download,
+		element = $bindable(),
 		type = 'button',
 		class: className = '',
 		children,
@@ -30,47 +40,67 @@
 </script>
 
 {#if href}
-	<a {href} class="btn {variant} {size} {className}" class:full>{@render children()}</a>
+	<a
+		bind:this={element}
+		{href}
+		{target}
+		{rel}
+		download={download === true ? '' : download || undefined}
+		aria-label={rest['aria-label']}
+		class="btn {variant} {size} {className}"
+		class:full>{@render children()}</a
+	>
 {:else}
-	<button {type} class="btn {variant} {size} {className}" class:full {...rest}>{@render children()}</button>
+	<button bind:this={element} {type} class="btn {variant} {size} {className}" class:full {...rest}
+		>{@render children()}</button
+	>
 {/if}
 
 <style>
+	/* Every button is a pill. Hover changes fill or shadow only; presses sink 1 px. */
 	.btn {
+		position: relative;
 		display: inline-flex;
 		align-items: center;
 		justify-content: center;
 		gap: var(--space-2);
-		min-height: var(--tap);
-		padding: var(--space-2) var(--space-5);
-		border: 1px solid transparent;
-		border-radius: var(--radius-md);
+		min-height: var(--control-md);
+		padding: var(--space-2) var(--space-4);
+		border: 0;
+		border-radius: var(--radius-full);
 		font-family: inherit;
 		font-size: var(--text-md);
 		line-height: var(--text-md-lh);
 		font-weight: var(--weight-label);
+		letter-spacing: var(--track-label);
 		text-decoration: none;
+		white-space: nowrap;
 		cursor: pointer;
 		user-select: none;
-		box-shadow: var(--raise-2);
 		transition:
-			box-shadow var(--dur-fast) var(--ease),
+			box-shadow var(--dur) var(--ease),
 			transform var(--dur-fast) var(--ease),
 			background-color var(--dur-fast) var(--ease),
 			color var(--dur-fast) var(--ease);
 	}
 
 	.sm {
-		min-height: var(--tap);
+		min-height: var(--control-sm);
 		padding: var(--space-1) var(--space-3);
 		font-size: var(--text-sm);
-		border-radius: var(--radius-sm);
-		box-shadow: var(--raise-1);
+		line-height: var(--text-sm-lh);
+	}
+
+	/* Small buttons keep a 44 px hit area. */
+	.sm::before {
+		content: '';
+		position: absolute;
+		inset: calc((var(--control-sm) - var(--tap)) / 2) 0;
 	}
 
 	.lg {
-		padding: var(--space-3) var(--space-6);
-		font-size: var(--text-lg);
+		min-height: var(--control-lg);
+		padding: var(--space-3) var(--space-5);
 	}
 
 	.full {
@@ -80,11 +110,13 @@
 	.primary {
 		background: var(--accent);
 		color: var(--on-accent);
+		font-weight: var(--weight-strong);
+		box-shadow: var(--glow);
 	}
 
 	.secondary,
 	.danger {
-		background: var(--surface);
+		background: var(--tint);
 		color: var(--ink);
 	}
 
@@ -94,26 +126,32 @@
 
 	.danger-solid {
 		background: var(--danger);
-		color: var(--surface);
+		color: var(--on-danger);
+		font-weight: var(--weight-strong);
 	}
 
 	.quiet {
 		background: transparent;
 		color: var(--ink-muted);
-		box-shadow: none;
 	}
 
 	@media (hover: hover) {
-		.btn:not(:disabled, .quiet):hover {
-			box-shadow: var(--raise-3);
+		.primary:not(:disabled):hover {
+			box-shadow: var(--glow-hover);
 		}
 
-		.sm:not(:disabled, .quiet):hover {
-			box-shadow: var(--raise-2);
+		.secondary:not(:disabled):hover,
+		.danger:not(:disabled):hover,
+		.quiet:not(:disabled):hover {
+			background: var(--tint-strong);
 		}
 
 		.quiet:not(:disabled):hover {
 			color: var(--ink);
+		}
+
+		.danger-solid:not(:disabled):hover {
+			box-shadow: var(--shadow-card);
 		}
 	}
 
@@ -123,13 +161,7 @@
 	}
 
 	.btn:not(:disabled):active {
-		box-shadow: var(--inset-2);
 		transform: translateY(var(--press));
-	}
-
-	.sm:not(:disabled):active,
-	.quiet:not(:disabled):active {
-		box-shadow: var(--inset-1);
 	}
 
 	.btn:disabled {
@@ -140,7 +172,7 @@
 
 	@media (forced-colors: active) {
 		.btn {
-			border-color: ButtonText;
+			border: 1px solid ButtonText;
 		}
 	}
 </style>

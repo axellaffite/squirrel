@@ -44,27 +44,28 @@
 
 	label {
 		display: block;
+		padding-inline: var(--space-1);
 		font-size: var(--text-sm);
 		line-height: var(--text-sm-lh);
 		font-weight: var(--weight-label);
 		color: var(--ink);
 	}
 
+	/* Pill field: card fill with a 1 px edge of at least 3:1. */
 	input {
 		width: 100%;
-		min-height: var(--tap);
+		min-height: var(--control-md);
 		padding: var(--space-2) var(--space-4);
 		border: 1px solid var(--edge);
-		border-radius: var(--radius-md);
-		background: var(--surface);
-		box-shadow: var(--inset-2);
+		border-radius: var(--radius-full);
+		background: var(--card);
 		color: var(--ink);
 		font-size: var(--text-md);
 		line-height: var(--text-md-lh);
 		font-weight: var(--weight-body);
 		transition:
-			box-shadow var(--dur-fast) var(--ease),
-			border-color var(--dur-fast) var(--ease);
+			border-color var(--dur-fast) var(--ease),
+			background-color var(--dur-fast) var(--ease);
 	}
 
 	input::placeholder {
@@ -80,6 +81,7 @@
 	input:focus-visible {
 		outline: var(--ring-width) solid var(--accent);
 		outline-offset: var(--ring-offset);
+		border-color: var(--ink-muted);
 	}
 
 	input:active:not(:disabled) {
@@ -97,6 +99,7 @@
 
 	.hint,
 	.message {
+		padding-inline: var(--space-1);
 		font-size: var(--text-sm);
 		line-height: var(--text-sm-lh);
 	}

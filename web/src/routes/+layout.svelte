@@ -94,12 +94,26 @@
 			</div>
 		</Card>
 	</main>
-{:else}
-	{#if session.me}
-		<header class="topbar">
-			<a href="/" class="wordmark">Squirrel</a>
-			<AppNav path={page.url.pathname} canInvite={session.me.can_invite} />
-			<div class="account">
+{:else if session.me}
+	<div class="shell">
+		<AppNav path={page.url.pathname} canInvite={session.me.can_invite}>
+			{#snippet footer()}
+				<UserMenu
+					tone="rail"
+					displayName={session.me?.display_name ?? ''}
+					username={session.me?.username ?? ''}
+					{theme}
+					onthemechange={changeTheme}
+					onlogout={handleLogout}
+				/>
+				<button type="button" class="rail-logout" onclick={handleLogout}>
+					<span class="rail-dot"><Icon name="log-out" /></span>Log out
+				</button>
+			{/snippet}
+		</AppNav>
+		<div class="panel">
+			<header class="phone-top">
+				<a href="/" class="wordmark">Squirrel</a>
 				<UserMenu
 					displayName={session.me.display_name}
 					username={session.me.username}
@@ -107,25 +121,22 @@
 					onthemechange={changeTheme}
 					onlogout={handleLogout}
 				/>
-				<span class="desktop-logout">
-					<Button variant="quiet" onclick={handleLogout}><Icon name="log-out" />Log out</Button>
-				</span>
+			</header>
+			{#if logoutError}<Alert>{logoutError}</Alert>{/if}
+			<div class="view">
+				{#if target === null}
+					{@render children()}
+				{:else}
+					<p class="muted">Loading…</p>
+				{/if}
 			</div>
-		</header>
-		{#if logoutError}
-			<div class="logout-error"><Alert>{logoutError}</Alert></div>
-		{/if}
-	{/if}
-	<div class="view" class:with-nav={session.me}>
-		{#if target === null}
-			{@render children()}
-		{:else}
-			<main class="center"><p class="muted">Loading…</p></main>
-		{/if}
-		{#if session.me}
-			<div class="uploads"><UploadPanel /></div>
-		{/if}
+			<UploadPanel />
+		</div>
 	</div>
+{:else if target === null}
+	{@render children()}
+{:else}
+	<main class="center"><p class="muted">Loading…</p></main>
 {/if}
 
 <style>
@@ -145,26 +156,45 @@
 		gap: var(--space-4);
 	}
 
-	.topbar {
-		position: sticky;
-		top: 0;
-		z-index: 10;
+	/* Ground (body gradient) holding the graphite rail and one large rounded panel. */
+	.shell {
+		min-height: 100dvh;
+		padding: calc(var(--frame) + env(safe-area-inset-top)) var(--frame)
+			calc(var(--rail-bar-h) + var(--space-5) + env(safe-area-inset-bottom));
+	}
+
+	.panel {
+		display: grid;
+		gap: var(--space-5);
+		align-content: start;
+		min-width: 0;
+		min-height: calc(100dvh - 2 * var(--frame) - var(--rail-bar-h) - var(--space-3));
+		padding: var(--panel-pad);
+		border-radius: var(--radius-panel);
+		background: var(--panel);
+		box-shadow: var(--panel-edge);
+	}
+
+	.view {
+		display: grid;
+		min-width: 0;
+	}
+
+	.phone-top {
 		display: flex;
 		align-items: center;
 		justify-content: space-between;
-		gap: var(--space-4);
-		padding: calc(var(--space-3) + env(safe-area-inset-top)) var(--gutter) var(--space-3);
-		background: var(--surface);
+		gap: var(--space-3);
 	}
 
 	.wordmark {
+		border-radius: var(--radius-sm);
+		color: var(--ink);
 		font-size: var(--text-xl);
 		line-height: var(--text-xl-lh);
-		font-weight: var(--weight-heading);
-		letter-spacing: -0.02em;
-		color: var(--ink);
+		font-weight: var(--weight-strong);
+		letter-spacing: var(--track-heading);
 		text-decoration: none;
-		border-radius: var(--radius-sm);
 	}
 
 	.wordmark:focus-visible {
@@ -172,51 +202,69 @@
 		outline-offset: var(--ring-offset);
 	}
 
-	.account {
+	.rail-logout {
 		display: flex;
 		align-items: center;
-		gap: var(--space-2);
+		gap: var(--space-3);
+		min-height: var(--tap);
+		padding: var(--space-1);
+		border: 0;
+		border-radius: var(--radius-full);
+		background: transparent;
+		color: var(--rail-muted);
+		font-size: var(--text-md);
+		font-weight: var(--weight-label);
+		text-align: left;
+		cursor: pointer;
+		transition:
+			color var(--dur-fast) var(--ease),
+			transform var(--dur-fast) var(--ease);
 	}
 
-	.desktop-logout {
-		display: none;
+	.rail-dot {
+		display: grid;
+		place-items: center;
+		width: var(--control-sm);
+		height: var(--control-sm);
+		border-radius: var(--radius-full);
+		background: var(--rail-well);
+		transition: background-color var(--dur-fast) var(--ease);
 	}
 
-	.logout-error {
-		padding: 0 var(--gutter) var(--space-3);
+	@media (hover: hover) {
+		.rail-logout:hover {
+			color: var(--rail-ink);
+		}
+
+		.rail-logout:hover .rail-dot {
+			background: var(--rail-well-hover);
+		}
 	}
 
-	.view.with-nav {
-		/* Room for the bottom navigation on phones */
-		padding-bottom: calc(var(--space-8) + var(--space-6) + env(safe-area-inset-bottom));
+	.rail-logout:focus-visible {
+		outline: var(--ring-width) solid var(--rail-ink);
+		outline-offset: var(--ring-offset);
 	}
 
-	.uploads {
-		max-width: var(--content-max);
-		margin: 0 auto;
-		padding: 0 var(--gutter);
+	.rail-logout:active {
+		transform: translateY(var(--press));
 	}
 
 	@media (min-width: 64rem) {
-		.topbar {
-			justify-content: flex-start;
-			gap: var(--space-6);
-			padding-top: calc(var(--space-4) + env(safe-area-inset-top));
-			padding-bottom: var(--space-4);
-			/* Line the bar up with the centred content column */
-			padding-inline: max(var(--gutter), calc((100% - var(--content-max)) / 2 + var(--gutter)));
+		.shell {
+			display: grid;
+			grid-template-columns: var(--rail-w) minmax(0, 1fr);
+			gap: var(--space-4);
+			align-items: start;
+			padding: calc(var(--frame) + env(safe-area-inset-top)) var(--frame) var(--frame);
 		}
 
-		.account {
-			margin-left: auto;
+		.panel {
+			min-height: calc(100dvh - 2 * var(--frame));
 		}
 
-		.desktop-logout {
-			display: contents;
-		}
-
-		.view.with-nav {
-			padding-bottom: var(--space-7);
+		.phone-top {
+			display: none;
 		}
 	}
 </style>

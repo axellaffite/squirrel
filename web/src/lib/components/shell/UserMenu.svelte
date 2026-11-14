@@ -9,9 +9,11 @@
 		theme: ThemeChoice;
 		onthemechange: (choice: ThemeChoice) => void;
 		onlogout: () => void;
+		/** `rail`: full-width trigger on the graphite rail, opening upwards. */
+		tone?: 'panel' | 'rail';
 	}
 
-	let { displayName, username, theme, onthemechange, onlogout }: Props = $props();
+	let { displayName, username, theme, onthemechange, onlogout, tone = 'panel' }: Props = $props();
 
 	let open = $state(false);
 	let root: HTMLDivElement | undefined = $state();
@@ -41,7 +43,7 @@
 
 <svelte:window onkeydown={onKeydown} onpointerdown={onPointerdown} />
 
-<div class="menu" bind:this={root} onfocusout={onFocusout}>
+<div class="menu" class:rail={tone === 'rail'} bind:this={root} onfocusout={onFocusout}>
 	<button
 		bind:this={trigger}
 		type="button"
@@ -53,7 +55,7 @@
 	>
 		<span class="avatar" aria-hidden="true">{initial}</span>
 		<span class="name">{displayName}</span>
-		<Icon name="chevron-down" />
+		<Icon name={tone === 'rail' ? 'more' : 'chevron-down'} />
 	</button>
 
 	{#if open}
@@ -78,26 +80,41 @@
 	}
 
 	.trigger {
+		position: relative;
 		display: inline-flex;
 		align-items: center;
 		gap: var(--space-2);
 		min-height: var(--tap);
-		padding: var(--space-1) var(--space-2) var(--space-1) var(--space-1);
+		padding: var(--space-1) var(--space-3) var(--space-1) var(--space-1);
 		border: 0;
 		border-radius: var(--radius-full);
-		background: var(--surface);
-		box-shadow: var(--raise-1);
+		background: var(--card);
+		box-shadow: var(--shadow-card);
 		color: var(--ink);
+		font-size: var(--text-sm);
 		font-weight: var(--weight-label);
 		cursor: pointer;
 		transition:
-			box-shadow var(--dur-fast) var(--ease),
+			box-shadow var(--dur) var(--ease),
+			background-color var(--dur-fast) var(--ease),
 			transform var(--dur-fast) var(--ease);
+	}
+
+	.rail .trigger {
+		width: 100%;
+		background: var(--rail-well);
+		box-shadow: none;
+		color: var(--rail-ink);
 	}
 
 	@media (hover: hover) {
 		.trigger:hover {
-			box-shadow: var(--raise-2);
+			box-shadow: var(--shadow-hover);
+		}
+
+		.rail .trigger:hover {
+			background: var(--rail-well-hover);
+			box-shadow: none;
 		}
 	}
 
@@ -107,11 +124,6 @@
 		outline-offset: var(--ring-offset);
 	}
 
-	.trigger:active,
-	.trigger[aria-expanded='true'] {
-		box-shadow: var(--inset-1);
-	}
-
 	.trigger:active {
 		transform: translateY(var(--press));
 	}
@@ -119,24 +131,32 @@
 	.avatar {
 		display: grid;
 		place-items: center;
-		width: calc(var(--tap) - var(--space-3));
-		height: calc(var(--tap) - var(--space-3));
+		width: var(--well-sm);
+		height: var(--well-sm);
+		flex: none;
 		border-radius: var(--radius-full);
-		background: var(--accent);
-		color: var(--on-accent);
+		background: var(--rail);
+		color: var(--rail-ink);
 		font-size: var(--text-sm);
-		font-weight: var(--weight-heading);
+		font-weight: var(--weight-strong);
+	}
+
+	.rail .avatar {
+		background: var(--rail-active);
+		color: var(--rail-active-ink);
 	}
 
 	.name {
+		flex: 1;
 		max-width: var(--name-max);
 		overflow: hidden;
 		text-overflow: ellipsis;
 		white-space: nowrap;
+		text-align: left;
 	}
 
 	@media (max-width: 30rem) {
-		.name {
+		.menu:not(.rail) .name {
 			display: none;
 		}
 	}
@@ -144,15 +164,16 @@
 	.panel {
 		position: absolute;
 		z-index: 20;
-		top: calc(100% + var(--space-3));
+		top: calc(100% + var(--space-2));
 		right: 0;
 		display: grid;
 		gap: var(--space-4);
 		width: min(var(--menu-w), calc(100vw - 2 * var(--gutter)));
 		padding: var(--space-4);
-		border-radius: var(--radius-lg);
-		background: var(--surface);
-		box-shadow: var(--raise-3);
+		border-radius: var(--radius-card);
+		background: var(--card);
+		color: var(--ink);
+		box-shadow: var(--shadow-pop);
 		opacity: 1;
 		transform: none;
 		transition:
@@ -160,21 +181,35 @@
 			transform var(--dur) var(--ease);
 	}
 
+	.rail .panel {
+		top: auto;
+		right: auto;
+		bottom: calc(100% + var(--space-2));
+		left: 0;
+	}
+
 	@starting-style {
 		.panel {
 			opacity: 0;
 			transform: translateY(calc(-1 * var(--rise)));
+		}
+
+		.rail .panel {
+			transform: translateY(var(--rise));
 		}
 	}
 
 	.who {
 		display: grid;
 		min-width: 0;
+		padding-inline: var(--space-1);
 		overflow-wrap: anywhere;
+		font-weight: var(--weight-label);
 	}
 
 	.who .muted {
 		font-size: var(--text-sm);
+		font-weight: var(--weight-body);
 	}
 
 	.logout {
@@ -184,31 +219,36 @@
 		min-height: var(--tap);
 		padding: var(--space-2) var(--space-3);
 		border: 0;
-		border-radius: var(--radius-md);
-		background: transparent;
+		border-radius: var(--radius-full);
+		background: var(--tint);
 		color: var(--ink);
 		font-weight: var(--weight-label);
 		cursor: pointer;
 		transition:
-			box-shadow var(--dur-fast) var(--ease),
-			color var(--dur-fast) var(--ease),
+			background-color var(--dur-fast) var(--ease),
 			transform var(--dur-fast) var(--ease);
 	}
 
 	@media (hover: hover) {
 		.logout:hover {
-			box-shadow: var(--raise-1);
+			background: var(--tint-strong);
 		}
 	}
 
 	.logout:active {
-		box-shadow: var(--inset-1);
 		transform: translateY(var(--press));
 	}
 
 	@media (min-width: 64rem) {
 		.logout {
 			display: none;
+		}
+	}
+
+	@media (forced-colors: active) {
+		.trigger,
+		.panel {
+			border: 1px solid CanvasText;
 		}
 	}
 </style>

@@ -1,6 +1,6 @@
 <script lang="ts">
 	import type { Snippet } from 'svelte';
-	import Icon from '#lib/components/icons/Icon.svelte';
+	import IconButton from '#lib/components/ui/IconButton.svelte';
 
 	interface Props {
 		/** Shown with showModal() when true; set false (or Escape, scrim, close button) to close. */
@@ -11,9 +11,13 @@
 		children: Snippet;
 		/** Footer buttons, laid out on the right (full width on phones). */
 		actions?: Snippet;
+		/** Extra buttons next to the close button in the header. */
+		tools?: Snippet;
+		/** `wide` fits previews: up to the content width on larger screens. */
+		size?: 'default' | 'wide';
 	}
 
-	let { open = $bindable(false), title, onclose, children, actions }: Props = $props();
+	let { open = $bindable(false), title, onclose, children, actions, tools, size = 'default' }: Props = $props();
 
 	let dialog: HTMLDialogElement | undefined = $state();
 	const uid = $props.id();
@@ -31,19 +35,31 @@
 		onclose?.();
 	}
 
+	/** Closes through the native dialog, so focus returns and `onclose` runs once. */
+	export function close() {
+		dialog?.close();
+	}
+
 	/** A click on the dialog element itself (not its content) landed on the scrim. */
 	function handleClick(event: MouseEvent) {
 		if (event.target === dialog) dialog?.close();
 	}
 </script>
 
-<dialog bind:this={dialog} aria-labelledby={titleId} onclose={handleClose} onclick={handleClick}>
+<dialog
+	bind:this={dialog}
+	class:wide={size === 'wide'}
+	aria-labelledby={titleId}
+	onclose={handleClose}
+	onclick={handleClick}
+>
 	<div class="panel">
 		<header>
 			<h2 id={titleId}>{title}</h2>
-			<button type="button" class="close" aria-label="Close" onclick={() => dialog?.close()}>
-				<Icon name="x" />
-			</button>
+			<div class="tools">
+				{@render tools?.()}
+				<IconButton icon="x" label="Close" fill="tint" onclick={() => dialog?.close()} />
+			</div>
 		</header>
 		<div class="content">{@render children()}</div>
 		{#if actions}<footer>{@render actions()}</footer>{/if}
@@ -59,10 +75,10 @@
 		margin: auto auto 0;
 		padding: 0;
 		border: 0;
-		border-radius: var(--radius-xl) var(--radius-xl) 0 0;
-		background: var(--surface);
+		border-radius: var(--radius-panel) var(--radius-panel) 0 0;
+		background: var(--card);
 		color: var(--ink);
-		box-shadow: var(--raise-3);
+		box-shadow: var(--shadow-pop);
 		opacity: 0;
 		transform: translateY(var(--rise-sheet));
 		transition:
@@ -109,7 +125,11 @@
 		dialog {
 			width: min(100% - 2 * var(--gutter), var(--dialog-max));
 			margin: auto;
-			border-radius: var(--radius-xl);
+			border-radius: var(--radius-panel);
+		}
+
+		dialog.wide {
+			width: min(100% - 2 * var(--gutter), var(--content-max));
 		}
 	}
 
@@ -133,44 +153,17 @@
 	}
 
 	h2 {
-		font-size: var(--text-lg);
-		line-height: var(--text-lg-lh);
-		font-weight: var(--weight-label);
+		min-width: 0;
+		font-size: var(--text-xl);
+		line-height: var(--text-xl-lh);
 		overflow-wrap: anywhere;
 	}
 
-	.close {
-		display: inline-grid;
-		place-items: center;
-		width: var(--tap);
-		height: var(--tap);
+	.tools {
+		display: flex;
+		align-items: center;
+		gap: var(--space-2);
 		flex: none;
-		padding: 0;
-		border: 0;
-		border-radius: var(--radius-full);
-		background: transparent;
-		color: var(--ink-muted);
-		cursor: pointer;
-		transition:
-			color var(--dur-fast) var(--ease),
-			box-shadow var(--dur-fast) var(--ease);
-	}
-
-	@media (hover: hover) {
-		.close:hover {
-			color: var(--ink);
-			box-shadow: var(--raise-1);
-		}
-	}
-
-	.close:focus-visible {
-		outline: var(--ring-width) solid var(--accent);
-		outline-offset: var(--ring-offset);
-	}
-
-	.close:active {
-		box-shadow: var(--inset-1);
-		transform: translateY(var(--press));
 	}
 
 	.content {
@@ -180,13 +173,19 @@
 	footer {
 		display: flex;
 		flex-direction: column-reverse;
-		gap: var(--space-3);
+		gap: var(--space-2);
 	}
 
 	@media (min-width: 48rem) {
 		footer {
 			flex-direction: row;
 			justify-content: flex-end;
+		}
+	}
+
+	@media (forced-colors: active) {
+		dialog {
+			border: 1px solid CanvasText;
 		}
 	}
 </style>

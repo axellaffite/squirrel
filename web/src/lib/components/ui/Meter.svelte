@@ -24,28 +24,36 @@
 	aria-valuenow={Math.min(value, max)}
 	aria-valuetext={valueText}
 >
-	<span class="fill" class:warn={ratio >= warnAt} style:transform="scaleX({ratio})"></span>
+	<span class="fill" class:warn={ratio >= warnAt} class:empty={ratio === 0} style:--ratio={ratio}></span>
 </div>
 
 <style>
+	/* A pill track (tint) holding a white pill fill, after the storage bar of the reference. */
 	.meter {
 		position: relative;
 		height: var(--meter-track);
-		overflow: hidden;
+		padding: var(--meter-pad);
 		border-radius: var(--radius-full);
-		background: var(--surface);
-		box-shadow: var(--inset-2);
+		background: var(--track);
 	}
 
 	.fill {
-		position: absolute;
-		inset: 0;
-		border-radius: inherit;
-		background: var(--accent);
-		transform-origin: left center;
+		display: block;
+		height: 100%;
+		width: 100%;
+		border-radius: var(--radius-full);
+		background: var(--fill);
+		box-shadow: var(--shadow-knob);
+		/* Clipped rather than scaled, so the pill keeps round ends; never narrower than a circle. */
+		--knob: calc(var(--meter-track) - 2 * var(--meter-pad));
+		clip-path: inset(0 calc((100% - var(--knob)) * (1 - var(--ratio))) 0 0 round var(--radius-full));
 		transition:
-			transform var(--dur) var(--ease),
+			clip-path var(--dur) var(--ease),
 			background-color var(--dur) var(--ease);
+	}
+
+	.empty {
+		visibility: hidden;
 	}
 
 	.warn {

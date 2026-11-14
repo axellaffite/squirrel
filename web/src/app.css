@@ -1,7 +1,6 @@
 /* Base layer. Values come from tokens.css (which implements /MASTER.md). */
 @import './lib/styles/tokens.css';
 @import './lib/styles/fonts.css';
-@import './lib/styles/legacy.css';
 
 *,
 *::before,
@@ -10,7 +9,7 @@
 }
 
 html {
-	background: var(--surface);
+	background: var(--ground-solid);
 	-webkit-text-size-adjust: 100%;
 	text-size-adjust: 100%;
 	-webkit-tap-highlight-color: transparent;
@@ -19,7 +18,8 @@ html {
 body {
 	margin: 0;
 	min-height: 100dvh;
-	background: var(--surface);
+	background: var(--ground) fixed;
+	background-color: var(--ground-solid);
 	color: var(--ink);
 	font-family: var(--font);
 	font-size: var(--text-md);
@@ -29,9 +29,6 @@ body {
 	-moz-osx-font-smoothing: grayscale;
 	padding-left: env(safe-area-inset-left);
 	padding-right: env(safe-area-inset-right);
-	transition:
-		background-color var(--dur) var(--ease),
-		color var(--dur) var(--ease);
 }
 
 h1,
@@ -39,25 +36,25 @@ h2,
 h3 {
 	margin: 0;
 	text-wrap: balance;
-	letter-spacing: -0.01em;
+	font-weight: var(--weight-heading);
 }
 
 h1 {
 	font-size: var(--text-2xl);
 	line-height: var(--text-2xl-lh);
-	font-weight: var(--weight-heading);
+	letter-spacing: var(--track-tight);
 }
 
 h2 {
 	font-size: var(--text-xl);
 	line-height: var(--text-xl-lh);
-	font-weight: var(--weight-strong);
+	letter-spacing: var(--track-heading);
 }
 
 h3 {
 	font-size: var(--text-lg);
 	line-height: var(--text-lg-lh);
-	font-weight: var(--weight-label);
+	letter-spacing: var(--track-label);
 }
 
 @media (min-width: 48rem) {
@@ -73,7 +70,7 @@ p {
 }
 
 a {
-	color: var(--accent);
+	color: var(--accent-ink);
 	text-underline-offset: 0.2em;
 	transition: color var(--dur-fast) var(--ease);
 }
@@ -93,12 +90,18 @@ textarea {
 	color: inherit;
 }
 
+code {
+	font-family: var(--font-mono);
+	font-size: var(--text-sm);
+	overflow-wrap: anywhere;
+}
+
 ::selection {
 	background: var(--accent-soft);
 	color: var(--ink);
 }
 
-/* Focus ring: 3 px accent, offset 3 px, keyboard only */
+/* Focus ring: 2 px accent, offset 2 px, keyboard only */
 :focus-visible {
 	outline: var(--ring-width) solid var(--accent);
 	outline-offset: var(--ring-offset);

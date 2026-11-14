@@ -23,8 +23,7 @@
 		gap: var(--space-3);
 		align-items: flex-start;
 		padding: var(--space-3) var(--space-4);
-		border-radius: var(--radius-md);
-		box-shadow: var(--inset-1);
+		border-radius: var(--radius-card);
 		font-size: var(--text-sm);
 		line-height: var(--text-sm-lh);
 		font-weight: var(--weight-label);
@@ -36,12 +35,18 @@
 	}
 
 	.success {
-		background: var(--surface);
+		background: var(--tint);
 		color: var(--success);
 	}
 
 	.body {
 		min-width: 0;
 		overflow-wrap: anywhere;
+	}
+
+	@media (forced-colors: active) {
+		.alert {
+			border: 1px solid CanvasText;
+		}
 	}
 </style>
