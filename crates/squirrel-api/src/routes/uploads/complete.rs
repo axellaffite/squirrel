@@ -9,7 +9,6 @@ use squirrel_db::quota::{self, Pending};
 use squirrel_db::uploads::{self, UploadRecord};
 use squirrel_db::{DbError, blobs};
 use squirrel_storage::{StorageError, mime};
-use std::time::Duration;
 
 use time::OffsetDateTime;
 use uuid::Uuid;
@@ -37,9 +36,6 @@ fn retry(err: impl Into<ApiError>) -> Failure {
 fn discard(err: impl Into<ApiError>) -> Failure {
     Failure::Discard(err.into())
 }
-
-/// How long a completion waits for in-flight chunk writes of the same upload.
-const LOCK_WAIT: Duration = Duration::from_secs(5);
 
 #[utoipa::path(post, path = "/api/uploads/{id}/complete", tag = "uploads",
     params(("id" = Uuid, Path, description = "Upload id")),
@@ -71,7 +67,7 @@ pub async fn complete_upload(
     let guard = state
         .uploads
         .locks
-        .completion(id, LOCK_WAIT)
+        .completion(id, state.config.upload_limits.lock_wait)
         .await
         .ok_or(DbError::UploadBusy)?;
     // From the claim on, the work runs to the end even if the client

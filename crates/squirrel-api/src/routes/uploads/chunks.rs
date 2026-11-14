@@ -62,7 +62,12 @@ pub async fn put_chunk(
 
     // Completion takes this lock exclusively from its claim until the blob is
     // stored: the session is re-checked and written under it.
-    let _guard = state.uploads.locks.chunk(id).await;
+    let _guard = state
+        .uploads
+        .locks
+        .chunk(id, state.config.upload_limits.lock_wait)
+        .await
+        .ok_or(DbError::UploadBusy)?;
     open_session(&state, owner_id, id).await?;
     let store = state.storage.clone();
     run_storage(move || store.write_chunk(id, slot.offset, &data)).await?;

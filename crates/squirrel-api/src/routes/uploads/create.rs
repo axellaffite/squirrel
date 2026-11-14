@@ -165,7 +165,12 @@ async fn resume(
         return Ok(existing);
     }
     // Under the chunk lock, so a completion cannot start meanwhile.
-    let _guard = state.uploads.locks.chunk(existing.id).await;
+    let _guard = state
+        .uploads
+        .locks
+        .chunk(existing.id, state.config.upload_limits.lock_wait)
+        .await
+        .ok_or(DbError::UploadBusy)?;
     let current = uploads::find(&state.pool, existing.owner_id, existing.id)
         .await?
         .ok_or(ApiError::NotFound)?;

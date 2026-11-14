@@ -48,10 +48,12 @@ impl UploadLocks {
         (self.entry(id), held)
     }
 
-    pub async fn chunk(&self, id: Uuid) -> ChunkGuard {
+    /// `None` if a completion keeps the lock past `wait`.
+    pub async fn chunk(&self, id: Uuid, wait: Duration) -> Option<ChunkGuard> {
         let (lock, mut held) = self.enter(id);
-        held.guard = Some(lock.read_owned().await);
-        ChunkGuard { _held: held }
+        // The timeout future owns (and drops) `lock` before `held` is dropped.
+        held.guard = Some(tokio::time::timeout(wait, lock.read_owned()).await.ok()?);
+        Some(ChunkGuard { _held: held })
     }
 
     /// `None` if chunk writes or another completion keep the lock past `wait`.
@@ -108,32 +110,32 @@ mod tests {
     async fn completion_excludes_chunk_writes() {
         let locks = UploadLocks::default();
         let id = Uuid::now_v7();
-        let chunk = locks.chunk(id).await;
+        let chunk = locks.chunk(id, WAIT).await.unwrap();
         assert!(locks.completion(id, WAIT).await.is_none());
         drop(chunk);
         let done = locks.completion(id, WAIT).await.expect("free");
-        let pending = tokio::time::timeout(WAIT, locks.chunk(id)).await;
-        assert!(pending.is_err(), "a chunk write waits for the completion");
+        assert!(
+            locks.chunk(id, WAIT).await.is_none(),
+            "a chunk write waits for the completion, then gives up"
+        );
         drop(done);
-        drop(locks.chunk(id).await);
+        drop(locks.chunk(id, WAIT).await.expect("free again"));
     }
 
     #[tokio::test]
     async fn chunk_writes_share_the_lock() {
         let locks = UploadLocks::default();
         let id = Uuid::now_v7();
-        let _a = locks.chunk(id).await;
-        let _b = tokio::time::timeout(WAIT, locks.chunk(id))
-            .await
-            .expect("shared");
+        let _a = locks.chunk(id, WAIT).await.unwrap();
+        let _b = locks.chunk(id, WAIT).await.expect("shared");
     }
 
     #[tokio::test]
     async fn entries_are_removed_when_released() {
         let locks = UploadLocks::default();
         let (a, b) = (Uuid::now_v7(), Uuid::now_v7());
-        let first = locks.chunk(a).await;
-        let second = locks.chunk(a).await;
+        let first = locks.chunk(a, WAIT).await.unwrap();
+        let second = locks.chunk(a, WAIT).await.unwrap();
         let other = locks.completion(b, WAIT).await.unwrap();
         assert_eq!(locks.len(), 2);
         drop(first);
@@ -141,9 +143,13 @@ mod tests {
         drop((second, other));
         assert!(locks.is_empty());
         // A timed-out wait leaves nothing behind either.
-        let held = locks.chunk(a).await;
+        let held = locks.chunk(a, WAIT).await.unwrap();
         assert!(locks.completion(a, WAIT).await.is_none());
         drop(held);
+        assert!(locks.is_empty());
+        let completing = locks.completion(a, WAIT).await.unwrap();
+        assert!(locks.chunk(a, WAIT).await.is_none());
+        drop(completing);
         assert!(locks.is_empty());
     }
 }
