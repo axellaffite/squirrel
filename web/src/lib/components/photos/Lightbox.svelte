@@ -98,7 +98,7 @@
 <svelte:window onkeydown={keydown} />
 
 <dialog bind:this={dialog} class="lightbox" class:with-info={infoOpen} aria-label={`Photo taken ${when}`} onclose={onClose}>
-	<div class="stage" onpointerdown={pointerdown} onpointerup={pointerup} role="presentation">
+	<div class="stage" data-testid="lightbox-stage" onpointerdown={pointerdown} onpointerup={pointerup} role="presentation">
 		<LightboxPhoto {asset} />
 		<div class="bar">
 			<StageButton icon="x" label="Close the photo viewer" tooltip="Close" onclick={() => dialog?.close()} />
