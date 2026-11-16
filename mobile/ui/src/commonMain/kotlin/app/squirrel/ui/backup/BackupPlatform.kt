@@ -9,6 +9,9 @@ interface BackupPlatform {
     val source: AssetSource
     val conditions: Conditions
 
+    /** Whether photo locations survive (Android: ACCESS_MEDIA_LOCATION granted). */
+    fun locationsIncluded(): Boolean
+
     /** Albums for the settings screen (name and count). */
     suspend fun albums(): List<Pair<String, Int>>
 
@@ -20,4 +23,19 @@ interface BackupPlatform {
 
     /** Signed out: no more background work. */
     fun cancel()
+}
+
+/** Platform dialogs the backup screens open. */
+interface PhotoAccessActions {
+    /** The system permission dialog (also "Allow all photos"). */
+    fun requestAccess()
+
+    /** Android 14+ / iOS: the picker of selected photos. */
+    fun changeSelection()
+
+    /** No-op default for previews and tests. */
+    object None : PhotoAccessActions {
+        override fun requestAccess() = Unit
+        override fun changeSelection() = Unit
+    }
 }

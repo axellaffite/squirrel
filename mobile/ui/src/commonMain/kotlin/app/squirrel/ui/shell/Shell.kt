@@ -43,12 +43,17 @@ import app.squirrel.ui.AccountInfo
 private enum class Tab(val label: String, val icon: SquirrelIcon, val title: String, val line: String) {
     Photos("Photos", SquirrelIcon.Images, "Photos are not in the app yet", "Your timeline arrives in a later version of the app."),
     Files("Files", SquirrelIcon.Folder, "Files are not in the app yet", "Browsing your folders arrives in a later version."),
-    Backup("Backup", SquirrelIcon.Upload, "Backup is not in the app yet", "Backing up this phone arrives in the next version."),
+    Backup("Backup", SquirrelIcon.Upload, "", ""),
 }
 
 /** MASTER.md phone shell: top row with the wordmark and account menu, the floating bottom rail. */
 @Composable
-fun Shell(account: AccountInfo, onSignOut: () -> Unit, onRefresh: () -> Unit) {
+fun Shell(
+    account: AccountInfo,
+    onSignOut: () -> Unit,
+    onRefresh: () -> Unit,
+    backup: @Composable () -> Unit = {},
+) {
     var tab by rememberSaveable { mutableStateOf(Tab.Photos.name) }
     var menuOpen by rememberSaveable { mutableStateOf(false) }
     LaunchedEffect(Unit) { onRefresh() }
@@ -84,7 +89,7 @@ fun Shell(account: AccountInfo, onSignOut: () -> Unit, onRefresh: () -> Unit) {
                 style = SquirrelTheme.type.pageTitle,
                 modifier = Modifier.padding(vertical = Tokens.space3).semantics { heading() },
             )
-            EmptyState(current.icon, current.title, current.line)
+            if (current == Tab.Backup) backup() else EmptyState(current.icon, current.title, current.line)
         }
         BottomRail(
             items = Tab.entries.map { RailItem(it.name, it.label, it.icon) },
