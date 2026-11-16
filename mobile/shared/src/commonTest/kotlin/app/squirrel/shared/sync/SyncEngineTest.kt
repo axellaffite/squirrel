@@ -209,4 +209,42 @@ class SyncEngineTest {
         assertEquals(QueueState.Done, queue.get("images:2")!!.state)
         assertEquals(1, summary.uploaded)
     }
+
+    @Test
+    fun aBackoffExpiringMidRunDoesNotEndTheRun() = runApiTest {
+        repeat(3) { source.put("images:$it", size = 64L + it, modifiedAt = 10L - it) } // upload order 0, 1, 2
+        var refusals = 0
+        server.onRequest = { request, _ ->
+            // The first upload is refused once; the clock then passes its backoff during the next.
+            if (request.url.encodedPath == "/api/uploads" && refusals++ == 0) {
+                error(HttpStatusCode.ServiceUnavailable, "unavailable")
+            } else {
+                null
+            }
+        }
+        val transport = object : ChunkTransport {
+            override suspend fun put(session: UploadSession, index: Int, reader: AssetReader) {
+                server.transport.put(session, index, reader)
+                clock += 10_000
+            }
+        }
+        val engine = engine(transport = transport)
+
+        val summary = engine.runOnce()
+
+        assertEquals(StopCause.Finished, summary.stoppedBy)
+        assertEquals(2, summary.uploaded)
+        assertEquals(QueueState.Missing, queue.get("images:0")!!.state)
+        assertEquals(clock.toString(), settings.value(LAST_RUN_KEY))
+    }
+
+    @Test
+    fun onlyAFinishedRunStampsTheLastRun() = runApiTest {
+        source.put("images:1", size = 64)
+        conditions.pause = PauseReason.WifiRequired
+
+        engine().runOnce()
+
+        assertEquals(null, settings.value(LAST_RUN_KEY))
+    }
 }
