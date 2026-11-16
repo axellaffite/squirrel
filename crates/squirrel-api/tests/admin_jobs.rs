@@ -108,3 +108,51 @@ async fn anonymous_clients_are_turned_away(pool: PgPool) {
     assert_eq!(retry.json::<Value>()["error"]["code"], "unauthorized");
     assert_eq!(status_of(&pool, failed).await, ("failed".to_owned(), 5));
 }
+
+#[sqlx::test(migrator = "squirrel_db::MIGRATOR")]
+async fn non_admins_can_neither_list_nor_retry_jobs(pool: PgPool) {
+    let instance = common::Instance::new(pool.clone());
+    let (_, (bob, bob_me)) = common::two_users(&instance).await;
+    let failed = insert_job(&pool, "geocode", true).await;
+
+    let listed = bob.get("/api/admin/jobs").await;
+    listed.assert_status(StatusCode::FORBIDDEN);
+    assert_eq!(listed.json::<Value>()["error"]["code"], "forbidden");
+
+    // A valid CSRF token does not make a user an admin.
+    let retried = bob
+        .post(&format!("/api/admin/jobs/{failed}/retry"))
+        .add_header(common::CSRF, common::csrf(&bob_me))
+        .await;
+    retried.assert_status(StatusCode::FORBIDDEN);
+    assert_eq!(retried.json::<Value>()["error"]["code"], "forbidden");
+    assert_eq!(status_of(&pool, failed).await, ("failed".into(), 5));
+
+    let anonymous = instance.browser();
+    anonymous
+        .get("/api/admin/jobs")
+        .await
+        .assert_status(StatusCode::UNAUTHORIZED);
+}
+
+#[sqlx::test(migrator = "squirrel_db::MIGRATOR")]
+async fn retrying_needs_the_session_csrf_token(pool: PgPool) {
+    let instance = common::Instance::new(pool.clone());
+    let ((alice, _), (_, bob_me)) = common::two_users(&instance).await;
+    let failed = insert_job(&pool, "geocode", true).await;
+    let path = format!("/api/admin/jobs/{failed}/retry");
+
+    let missing = alice.post(&path).await;
+    missing.assert_status(StatusCode::FORBIDDEN);
+    assert_eq!(missing.json::<Value>()["error"]["code"], "csrf_invalid");
+
+    // Another session's token is refused too.
+    let foreign = alice
+        .post(&path)
+        .add_header(common::CSRF, common::csrf(&bob_me))
+        .await;
+    foreign.assert_status(StatusCode::FORBIDDEN);
+    assert_eq!(foreign.json::<Value>()["error"]["code"], "csrf_invalid");
+
+    assert_eq!(status_of(&pool, failed).await, ("failed".into(), 5));
+}
