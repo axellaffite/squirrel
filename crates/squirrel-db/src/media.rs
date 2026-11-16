@@ -279,6 +279,22 @@ pub async fn set_thumbnails(
     Ok(updated.rows_affected() == 1)
 }
 
+/// Records how many pages a PDF has.
+pub async fn set_page_count<'e>(
+    executor: impl PgExecutor<'e>,
+    sha256: &str,
+    page_count: u32,
+) -> Result<(), DbError> {
+    let page_count =
+        i32::try_from(page_count).map_err(|_| DbError::InvalidInput("page count is too large"))?;
+    sqlx::query("UPDATE media SET page_count = $2, updated_at = now() WHERE sha256 = $1")
+        .bind(sha256)
+        .bind(page_count)
+        .execute(executor)
+        .await?;
+    Ok(())
+}
+
 /// A place name found for a blob's coordinates.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct PlaceUpdate<'a> {
