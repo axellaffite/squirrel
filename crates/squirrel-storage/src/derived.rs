@@ -110,6 +110,17 @@ impl DerivedStore {
     /// Moves every variant present in `scratch` (`thumb.webp`, `preview.webp`)
     /// into place as `version`, read-only, then removes other versions of the
     /// variants installed.
+    ///
+    /// Races, both harmless:
+    /// - Garbage collection may remove the blob (and its derived directory)
+    ///   while a job renders it; this install then recreates the directory for
+    ///   a blob that no longer exists. The caller removes it again when it finds
+    ///   no media row to record the result in, and failing that the orphan
+    ///   sweep does, after the grace period.
+    /// - [`DerivedStore::remove_all`] of another hash in the same shard may
+    ///   prune the shard directories between their creation here and the
+    ///   rename (`ENOENT`): the directories are then created again and the
+    ///   rename retried once.
     pub fn install(&self, hash: &ContentHash, version: i16, scratch: &Scratch) -> Result<()> {
         let dir = self.dir(hash);
         create_dir_all_durable(&dir)?;
@@ -119,7 +130,7 @@ impl DerivedStore {
                 continue;
             }
             make_read_only(&source)?;
-            fs::rename(&source, self.variant_path(hash, variant, version))?;
+            place(&source, &self.variant_path(hash, variant, version), &dir)?;
             self.remove_other_versions(&dir, variant, version)?;
         }
         sync_dir(&dir)?;
@@ -223,6 +234,18 @@ impl DerivedStore {
             }
         }
         Ok(found)
+    }
+}
+
+/// Renames `source` to `dest` in `dir`, recreating `dir` once if a concurrent
+/// shard prune removed it.
+fn place(source: &Path, dest: &Path, dir: &Path) -> io::Result<()> {
+    match fs::rename(source, dest) {
+        Err(err) if err.kind() == io::ErrorKind::NotFound && source.exists() => {
+            create_dir_all_durable(dir)?;
+            fs::rename(source, dest)
+        }
+        other => other,
     }
 }
 
@@ -363,6 +386,16 @@ mod tests {
         let scratch = store.scratch().unwrap();
         fs::create_dir(scratch.path().join("preview.webp")).unwrap();
         assert!(store.install(&hash, 1, &scratch).is_err());
+    }
+
+    #[test]
+    fn a_pruned_destination_is_recreated() {
+        let (dir, _store) = store();
+        let source = dir.path().join("tmp/thumb.webp");
+        fs::write(&source, b"x").unwrap();
+        let target = dir.path().join("derived/2c/f2").join(HASH);
+        place(&source, &target.join("thumb-v1.webp"), &target).unwrap();
+        assert!(target.join("thumb-v1.webp").is_file());
     }
 
     #[test]

@@ -219,3 +219,54 @@ async fn a_sandbox_planting_a_symlink_gets_nothing_installed(pool: PgPool) {
         "nothing installed"
     );
 }
+
+#[sqlx::test(migrator = "squirrel_db::MIGRATOR")]
+async fn thumbnails_of_a_blob_collected_while_rendering_are_removed(pool: PgPool) {
+    use std::os::unix::fs::PermissionsExt;
+    let bin = tempfile::tempdir().unwrap();
+    let program = bin.path().join("fake-squirrel");
+    // Renders slowly, giving the test time to collect the blob.
+    std::fs::write(
+        &program,
+        "#!/bin/sh\n\
+         dir=$(cat | sed 's/.*\"out_dir\":\"\\([^\"]*\\)\".*/\\1/')\n\
+         sleep 1\n\
+         printf webp > \"$dir/thumb.webp\"\n\
+         echo '{\"status\":\"image\",\"rendered\":{\"width\":1,\"height\":1,\"blurhash\":\"x\"}}'\n",
+    )
+    .unwrap();
+    std::fs::set_permissions(&program, std::fs::Permissions::from_mode(0o755)).unwrap();
+    let fx = Fixture::with_executor(
+        pool,
+        Executor::Subprocess(SubprocessConfig {
+            program,
+            max_memory_mb: 64,
+            max_cpu_secs: 5,
+            timeout: Duration::from_secs(10),
+        }),
+    );
+    let sha = pending(
+        &fx,
+        "a.jpg",
+        &jpeg_sized_with_exif(40, 30, &ExifSpec::default()),
+    )
+    .await;
+    let ctx = fx.ctx.clone();
+    let job_sha = sha.clone();
+    let rendering = tokio::spawn(async move { thumbnails::run(&ctx, thumbs_job(&job_sha)).await });
+    tokio::time::sleep(Duration::from_millis(300)).await;
+    // Garbage collection: the node, then the blob row (media cascades).
+    sqlx::query("DELETE FROM nodes WHERE blob_sha256 = $1")
+        .bind(&sha)
+        .execute(fx.pool())
+        .await
+        .unwrap();
+    sqlx::query("DELETE FROM blobs WHERE sha256 = $1")
+        .bind(&sha)
+        .execute(fx.pool())
+        .await
+        .unwrap();
+    rendering.await.unwrap().unwrap();
+    let hash = ContentHash::parse(&sha).unwrap();
+    assert!(!fx.ctx.storage.derived().dir(&hash).exists());
+}

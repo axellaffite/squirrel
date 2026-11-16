@@ -252,7 +252,8 @@ pub async fn set_metadata<'e>(
 }
 
 /// Thumbnails of `version` are installed: the step is ready and the decoded
-/// size replaces any size read from headers.
+/// size replaces any size read from headers. `false`: the row is gone (the
+/// blob was collected meanwhile).
 pub async fn set_thumbnails(
     pool: &PgPool,
     sha256: &str,
@@ -260,10 +261,10 @@ pub async fn set_thumbnails(
     width: u32,
     height: u32,
     blurhash: &str,
-) -> Result<(), DbError> {
+) -> Result<bool, DbError> {
     let width = i32::try_from(width).map_err(|_| DbError::InvalidInput("width is too large"))?;
     let height = i32::try_from(height).map_err(|_| DbError::InvalidInput("height is too large"))?;
-    sqlx::query(
+    let updated = sqlx::query(
         "UPDATE media SET thumbs_state = 'ready', thumbs_version = $2, width = $3, height = $4, \
                 blurhash = $5, updated_at = now() \
           WHERE sha256 = $1",
@@ -275,7 +276,7 @@ pub async fn set_thumbnails(
     .bind(blurhash)
     .execute(pool)
     .await?;
-    Ok(())
+    Ok(updated.rows_affected() == 1)
 }
 
 /// Sets one step's state, recording `error` (when given) as `last_error`.
