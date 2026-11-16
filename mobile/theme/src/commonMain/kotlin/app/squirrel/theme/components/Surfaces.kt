@@ -1,6 +1,7 @@
 package app.squirrel.theme.components
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
@@ -34,11 +35,17 @@ fun Card(modifier: Modifier = Modifier, content: @Composable ColumnScope.() -> U
 
 /** A tinted well: holds row cards, forms, the storage meter. */
 @Composable
-fun Well(modifier: Modifier = Modifier, content: @Composable ColumnScope.() -> Unit) {
+fun Well(
+    modifier: Modifier = Modifier,
+    verticalArrangement: Arrangement.Vertical = Arrangement.Top,
+    content: @Composable ColumnScope.() -> Unit,
+) {
     Column(
         modifier = modifier
+            .fillMaxWidth()
             .background(SquirrelTheme.scheme.tint, Shapes.well)
             .padding(Tokens.wellPad),
+        verticalArrangement = verticalArrangement,
         content = content,
     )
 }

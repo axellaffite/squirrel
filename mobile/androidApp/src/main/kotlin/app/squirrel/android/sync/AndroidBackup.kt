@@ -16,6 +16,7 @@ class AndroidBackup(context: Context) : BackupPlatform {
     override val source: AssetSource = mediaStore
     override val conditions: Conditions = AndroidConditions(context)
 
+    override fun locationsIncluded(): Boolean = access.locationsIncluded()
     override suspend fun albums(): List<Pair<String, Int>> = mediaStore.albums().map { it.name to it.count }
     override fun schedule(settings: BackupSettings) = scheduler.apply(settings)
     override fun backUpNow(settings: BackupSettings) = scheduler.backUpNow(settings)
