@@ -173,6 +173,24 @@ pub async fn months(pool: &PgPool, owner_id: Uuid) -> Result<Vec<MonthCount>, Db
         .await?)
 }
 
+/// Those of `node_ids` that are `owner_id`'s live photos (album covers).
+pub async fn summaries(
+    pool: &PgPool,
+    owner_id: Uuid,
+    node_ids: &[Uuid],
+) -> Result<Vec<AssetSummaryRecord>, DbError> {
+    if node_ids.is_empty() {
+        return Ok(Vec::new());
+    }
+    let sql =
+        format!("SELECT {SUMMARY_COLUMNS} {FROM} WHERE a.owner_id = $1 AND a.node_id = ANY($2)");
+    Ok(sqlx::query_as::<_, AssetSummaryRecord>(&sql)
+        .bind(owner_id)
+        .bind(node_ids)
+        .fetch_all(pool)
+        .await?)
+}
+
 /// Everything the photo viewer shows about one photo.
 #[derive(Debug, Clone, PartialEq, FromRow)]
 pub struct AssetDetailRecord {
