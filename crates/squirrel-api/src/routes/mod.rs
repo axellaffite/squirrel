@@ -6,6 +6,7 @@ pub mod invitations;
 pub mod jobs;
 pub mod join;
 pub mod nodes;
+pub mod photos;
 pub mod setup;
 pub mod storage;
 pub mod thumbnails;

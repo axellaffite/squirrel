@@ -1,6 +1,7 @@
 #![allow(dead_code)]
 
 pub mod files;
+pub mod photos;
 
 use std::net::SocketAddr;
 use std::path::Path;
