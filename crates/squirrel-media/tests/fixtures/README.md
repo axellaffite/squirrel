@@ -17,3 +17,8 @@ Every other media fixture used by the tests is generated in code
 (`squirrel admin geodata build`), for tests and offline development
 (`SQUIRREL_GEODATA_FILE`). Data: GeoNames (https://www.geonames.org),
 licensed CC BY 4.0.
+
+`rotated-source.jpg` is generated (`cargo run -p squirrel-media --example make_heic_source
+--features test-util`; a test checks it is current): 64 × 32 with EXIF orientation 6.
+`rotated.heic` is not committed: CI's `rust-heic` job encodes it from that JPEG with libheif's
+`heif-enc -q 50` before running the HEIC tests, which fail on CI (and skip elsewhere) without it.

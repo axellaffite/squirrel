@@ -246,19 +246,25 @@ mod tests {
         ));
     }
 
-    /// `tests/fixtures/rotated.heic`: `heif-enc -q 50` of a 64 × 32 JPEG with
-    /// EXIF orientation 6 (`jpeg_sized_with_exif`). Skipped when the fixture
-    /// has not been generated on this machine.
+    /// `tests/fixtures/rotated.heic`: `heif-enc -q 50` of `rotated-source.jpg`
+    /// (64 × 32, EXIF orientation 6). Generated in CI's `rust-heic` job; skipped
+    /// elsewhere when missing, a failure on CI.
     #[cfg(feature = "heic")]
     #[test]
     fn heif_rotation_is_applied_once() {
-        let Ok(bytes) = std::fs::read("tests/fixtures/rotated.heic") else {
-            eprintln!("skipping: tests/fixtures/rotated.heic is missing");
+        let Some(bytes) = crate::testutil::ci_fixture("tests/fixtures/rotated.heic") else {
             return;
         };
-        crate::heic::register();
+        crate::register_decoders();
         let decoded = decode(Cursor::new(bytes), DecodeLimits::default()).unwrap();
         assert_eq!((decoded.width, decoded.height), (32, 64));
+    }
+
+    /// The committed source of `rotated.heic` is exactly what the generator makes.
+    #[test]
+    fn rotated_heic_source_is_current() {
+        let committed = std::fs::read("tests/fixtures/rotated-source.jpg").unwrap();
+        assert_eq!(committed, crate::testutil::rotated_source_jpeg());
     }
 
     #[test]

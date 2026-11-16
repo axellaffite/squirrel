@@ -28,5 +28,9 @@ time.workspace = true
 name = "make_fixtures"
 required-features = ["test-util"]
 
+[[example]]
+name = "make_heic_source"
+required-features = ["test-util"]
+
 [dev-dependencies]
 tempfile.workspace = true

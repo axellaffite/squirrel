@@ -119,3 +119,33 @@ async fn the_memory_limit_stops_a_large_decode() {
         "{outcome:?}"
     );
 }
+
+/// With `heic`: the sandbox child registers the HEIC decoder itself (a real HEIC from
+/// `rotated.heic`, generated in CI; a failure there when missing).
+#[cfg(feature = "heic")]
+#[tokio::test]
+async fn decodes_heic_in_a_child_process() {
+    let Some(heic) =
+        squirrel_media::testutil::ci_fixture("../squirrel-media/tests/fixtures/rotated.heic")
+    else {
+        return;
+    };
+    let dir = tempfile::tempdir().unwrap();
+    let input = dir.path().join("in.heic");
+    std::fs::write(&input, heic).unwrap();
+    let request = ExecRequest::Image {
+        input,
+        out_dir: dir.path().into(),
+        limits: DecodeLimits::default(),
+    };
+    match executor(Duration::from_secs(60))
+        .run(request)
+        .await
+        .unwrap()
+    {
+        ExecResponse::Image { rendered } => {
+            assert_eq!((rendered.width, rendered.height), (32, 64))
+        }
+        other => panic!("unexpected {other:?}"),
+    }
+}

@@ -70,7 +70,12 @@ jobs:
       - name: Install libheif
         run: |
           sudo apt-get update
-          sudo apt-get install -y libheif-dev libheif-plugin-libde265 || sudo apt-get install -y libheif-dev
+          # libde265 decodes HEVC; heif-enc (libheif-examples) with x265 encodes the test fixture.
+          sudo apt-get install -y libheif-dev libheif-plugin-libde265 libheif-examples libheif-plugin-x265
+      - name: Encode the HEIC test fixture
+        run: |
+          heif-enc -q 50 -o crates/squirrel-media/tests/fixtures/rotated.heic \
+            crates/squirrel-media/tests/fixtures/rotated-source.jpg
       - uses: dtolnay/rust-toolchain@1.94
       - uses: Swatinem/rust-cache@v2
         with:
@@ -78,6 +83,8 @@ jobs:
       - name: Fetch pdfium
         run: scripts/fetch-pdfium.sh && echo "SQUIRREL_PDFIUM_DIR=$PWD/target/pdfium/lib" >> "$GITHUB_ENV"
       - run: cargo test -p squirrel-media -p squirrel-worker --features squirrel-media/heic
+      # The sandboxed path: `squirrel media-exec` registers the HEIC decoder in the child.
+      - run: cargo test -p squirrel --features squirrel/heic
 
   web:
     runs-on: ubuntu-latest

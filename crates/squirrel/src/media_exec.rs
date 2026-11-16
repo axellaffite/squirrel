@@ -25,8 +25,7 @@ pub fn run(args: &MediaExecArgs) -> anyhow::Result<()> {
     for (resource, value) in limits(args) {
         apply(resource, value)?;
     }
-    #[cfg(feature = "heic")]
-    squirrel_media::heic::register();
+    squirrel_media::register_decoders();
     let mut raw = Vec::new();
     std::io::stdin()
         .take(MAX_REQUEST_BYTES)
