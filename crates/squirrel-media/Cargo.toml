@@ -15,6 +15,7 @@ blurhash.workspace = true
 fast_image_resize.workspace = true
 libheif-rs = { workspace = true, optional = true }
 serde_json.workspace = true
+sha2.workspace = true
 webp.workspace = true
 kamadak-exif.workspace = true
 image.workspace = true

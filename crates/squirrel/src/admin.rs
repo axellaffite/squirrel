@@ -63,6 +63,8 @@ pub enum GeodataAction {
         #[arg(long)]
         out: PathBuf,
     },
+    /// Print the pinned snapshot as a `shasum -a 256 -c` line: `<sha256>  <file name>`.
+    Pinned,
 }
 
 #[derive(Subcommand)]
