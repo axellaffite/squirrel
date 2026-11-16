@@ -174,3 +174,48 @@ async fn a_sandbox_timeout_leaves_no_scratch_directory(pool: PgPool) {
         .collect();
     assert!(leftovers.is_empty(), "{leftovers:?}");
 }
+
+#[sqlx::test(migrator = "squirrel_db::MIGRATOR")]
+async fn a_sandbox_planting_a_symlink_gets_nothing_installed(pool: PgPool) {
+    use std::os::unix::fs::PermissionsExt;
+    let bin = tempfile::tempdir().unwrap();
+    let program = bin.path().join("fake-squirrel");
+    // Claims success after planting a link to a file it wants served.
+    std::fs::write(
+        &program,
+        "#!/bin/sh\n\
+         dir=$(cat | sed 's/.*\"out_dir\":\"\\([^\"]*\\)\".*/\\1/')\n\
+         ln -s /etc/hosts \"$dir/thumb.webp\"\n\
+         echo '{\"status\":\"image\",\"rendered\":{\"width\":1,\"height\":1,\"blurhash\":\"x\"}}'\n",
+    )
+    .unwrap();
+    std::fs::set_permissions(&program, std::fs::Permissions::from_mode(0o755)).unwrap();
+    let fx = Fixture::with_executor(
+        pool,
+        Executor::Subprocess(SubprocessConfig {
+            program,
+            max_memory_mb: 64,
+            max_cpu_secs: 1,
+            timeout: Duration::from_secs(10),
+        }),
+    );
+    let sha = pending(
+        &fx,
+        "a.jpg",
+        &jpeg_sized_with_exif(40, 30, &ExifSpec::default()),
+    )
+    .await;
+    thumbnails::run(&fx.ctx, thumbs_job(&sha)).await.unwrap();
+    let media = row(&fx, &sha).await;
+    assert_eq!(media.thumbs_state(), MediaState::Failed);
+    let hash = ContentHash::parse(&sha).unwrap();
+    let path = fx
+        .ctx
+        .storage
+        .derived()
+        .variant_path(&hash, Variant::Thumb, THUMBS_VERSION);
+    assert!(
+        std::fs::symlink_metadata(path).is_err(),
+        "nothing installed"
+    );
+}

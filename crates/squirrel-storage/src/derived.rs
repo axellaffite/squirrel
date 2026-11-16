@@ -24,6 +24,8 @@ use crate::fsutil::{create_dir_all_durable, device_of, make_read_only, sync_dir}
 /// Mode of scratch directories: private to the server.
 const SCRATCH_MODE: u32 = 0o700;
 const EXTENSION: &str = "webp";
+/// A variant larger than this is refused (a 1440 px WebP is a few hundred KB).
+pub const MAX_VARIANT_BYTES: u64 = 5 * 1024 * 1024;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Variant {
@@ -113,7 +115,7 @@ impl DerivedStore {
         create_dir_all_durable(&dir)?;
         for variant in Variant::ALL {
             let source = scratch.path().join(variant.scratch_name());
-            if !source.is_file() {
+            if !Self::is_installable(&source)? {
                 continue;
             }
             make_read_only(&source)?;
@@ -122,6 +124,30 @@ impl DerivedStore {
         }
         sync_dir(&dir)?;
         Ok(())
+    }
+
+    /// The renderer (an untrusted child process) wrote the scratch directory:
+    /// only a regular file of a sane size is installed, never a symlink (it
+    /// would be served as a thumbnail, whatever it points at) or a device.
+    fn is_installable(source: &Path) -> Result<bool> {
+        let meta = match fs::symlink_metadata(source) {
+            Ok(meta) => meta,
+            Err(err) if err.kind() == io::ErrorKind::NotFound => return Ok(false),
+            Err(err) => return Err(err.into()),
+        };
+        if !meta.file_type().is_file() {
+            return Err(StorageError::Io(io::Error::new(
+                io::ErrorKind::InvalidData,
+                format!("{} is not a regular file", source.display()),
+            )));
+        }
+        if meta.len() > MAX_VARIANT_BYTES {
+            return Err(StorageError::Io(io::Error::new(
+                io::ErrorKind::InvalidData,
+                format!("{} is {} bytes", source.display(), meta.len()),
+            )));
+        }
+        Ok(true)
     }
 
     fn remove_other_versions(&self, dir: &Path, variant: Variant, keep: i16) -> io::Result<()> {
@@ -313,6 +339,30 @@ mod tests {
             "empty shards pruned"
         );
         assert!(dir.path().join("derived").is_dir());
+    }
+
+    #[test]
+    fn only_regular_files_of_a_sane_size_are_installed() {
+        let (dir, store) = store();
+        let hash = ContentHash::parse(HASH).unwrap();
+        let secret = dir.path().join("secret");
+        fs::write(&secret, b"not a thumbnail").unwrap();
+        let scratch = store.scratch().unwrap();
+        std::os::unix::fs::symlink(&secret, scratch.path().join("thumb.webp")).unwrap();
+        assert!(store.install(&hash, 1, &scratch).is_err());
+        assert!(matches!(
+            store.read(&hash, Variant::Thumb, 1),
+            Err(StorageError::NotFound)
+        ));
+
+        let scratch = store.scratch().unwrap();
+        let big = fs::File::create(scratch.path().join("thumb.webp")).unwrap();
+        big.set_len(MAX_VARIANT_BYTES + 1).unwrap();
+        assert!(store.install(&hash, 1, &scratch).is_err());
+
+        let scratch = store.scratch().unwrap();
+        fs::create_dir(scratch.path().join("preview.webp")).unwrap();
+        assert!(store.install(&hash, 1, &scratch).is_err());
     }
 
     #[test]
