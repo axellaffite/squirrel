@@ -71,6 +71,7 @@ class SyncEngine(
             hash(run)
             check(run)
             upload(run)
+            settings.setValue(LAST_RUN_KEY, now().toString())
             _state.value = SyncState.Idle
             return run.summary
         } catch (e: Stop) {
