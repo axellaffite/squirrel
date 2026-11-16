@@ -90,6 +90,7 @@
 		fetch: mediaStatus,
 		onCount: () => {},
 		onSettled: () => void loadRecent(),
+		onProgress: () => void loadRecent(),
 		visible: () => document.visibilityState === 'visible'
 	});
 
@@ -101,9 +102,13 @@
 			void loadRecent();
 			poller.start({ assumePending: true });
 		});
+		// Coming back to the tab: catch up on what finished meanwhile.
+		const visible = () => poller.start();
+		document.addEventListener('visibilitychange', visible);
 		return () => {
 			unsubscribe();
 			poller.stop();
+			document.removeEventListener('visibilitychange', visible);
 		};
 	});
 </script>

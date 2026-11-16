@@ -49,6 +49,7 @@
 			preparing = count;
 		},
 		onSettled: () => void data.reload(),
+		onProgress: () => void data.reload(),
 		visible: () => document.visibilityState === 'visible'
 	});
 
