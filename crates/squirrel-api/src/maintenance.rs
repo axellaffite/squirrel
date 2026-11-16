@@ -1,5 +1,5 @@
 //! Periodic housekeeping, run by the `squirrel` binary (see its `tasks.rs`):
-//! expired uploads, old trash, unreferenced blobs (with their derived files),
+//! expired uploads, device tokens and old devices, old trash, unreferenced blobs (with their derived files),
 //! and blob files or derived directories without a row.
 
 use std::collections::HashSet;
@@ -8,7 +8,7 @@ use std::time::SystemTime;
 use sqlx::pool::PoolConnection;
 use sqlx::{PgConnection, Postgres};
 use squirrel_core::ContentHash;
-use squirrel_db::{DbError, blobs, trash, uploads};
+use squirrel_db::{DbError, blobs, devices, trash, uploads};
 use squirrel_storage::BlobStore;
 use time::OffsetDateTime;
 use uuid::Uuid;
@@ -90,6 +90,37 @@ fn discard_each(store: &BlobStore, orphans: &[Uuid]) -> Discarded {
         removed: orphans.len() - failed,
         failed,
     }
+}
+
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct DeviceCleanup {
+    pub expired_access_tokens: u64,
+    /// Devices revoked, or idle past their refresh lifetime, for longer than the retention.
+    pub stale_devices: u64,
+    pub retired_refresh_tokens: u64,
+}
+
+impl DeviceCleanup {
+    pub fn is_empty(&self) -> bool {
+        *self == Self::default()
+    }
+}
+
+/// Deletes expired access tokens, devices revoked or expired for longer than
+/// [`crate::ApiConfig::device_retention`] (with their sync records), and
+/// retired refresh tokens older than the refresh lifetime.
+pub async fn purge_devices(state: &AppState) -> Result<DeviceCleanup, ApiError> {
+    let now = OffsetDateTime::now_utc();
+    Ok(DeviceCleanup {
+        expired_access_tokens: devices::delete_expired_tokens(&state.pool).await?,
+        stale_devices: devices::delete_stale(&state.pool, now - state.config.device_retention)
+            .await?,
+        retired_refresh_tokens: devices::prune_retired(
+            &state.pool,
+            now - state.config.device_refresh_ttl,
+        )
+        .await?,
+    })
 }
 
 /// Deletes trash entries older than the retention period (30 days).

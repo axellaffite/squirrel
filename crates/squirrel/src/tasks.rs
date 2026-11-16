@@ -1,4 +1,5 @@
-//! Periodic maintenance: expired login sessions, abandoned uploads, old trash,
+//! Periodic maintenance: expired login sessions and device tokens, old devices,
+//! abandoned uploads, old trash,
 //! unreferenced blobs, blob files and derived files without a catalogue row
 //! and old failed jobs.
 
@@ -69,6 +70,17 @@ pub fn spawn_all(state: &AppState) {
                 Ok(cleanup) if cleanup.is_empty() => {}
                 Ok(cleanup) => tracing::info!(?cleanup, "removed expired uploads"),
                 Err(err) => tracing::error!(error = %err, "failed to remove expired uploads"),
+            }
+        }
+    });
+    let devices_state = state.clone();
+    spawn_periodic(HOURLY, move || {
+        let state = devices_state.clone();
+        async move {
+            match maintenance::purge_devices(&state).await {
+                Ok(cleanup) if cleanup.is_empty() => {}
+                Ok(cleanup) => tracing::info!(?cleanup, "removed expired device tokens"),
+                Err(err) => tracing::error!(error = %err, "failed to remove expired device tokens"),
             }
         }
     });

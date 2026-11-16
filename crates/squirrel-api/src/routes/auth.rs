@@ -5,7 +5,7 @@ use axum_extra::extract::CookieJar;
 use squirrel_auth::{burn_verification_time, verify_password};
 use squirrel_core::{Password, Username};
 use squirrel_db::users::UserRecord;
-use squirrel_db::{sessions, settings, users};
+use squirrel_db::{devices, sessions, settings, users};
 use time::OffsetDateTime;
 
 use crate::blocking::run_hashing;
@@ -55,7 +55,7 @@ pub async fn logout(
 }
 
 #[utoipa::path(post, path = "/api/auth/logout-all", security(("session_cookie" = [], "csrf_token" = [])), tag = "auth",
-    responses((status = 204, description = "Every session revoked; `Clear-Site-Data: \"cache\"`"),
+    responses((status = 204, description = "Every session and device revoked; `Clear-Site-Data: \"cache\"`"),
               (status = 401, body = ErrorBody), (status = 403, body = ErrorBody)))]
 pub async fn logout_all(
     State(state): State<AppState>,
@@ -64,12 +64,15 @@ pub async fn logout_all(
     jar: CookieJar,
 ) -> Result<(StatusCode, [(HeaderName, HeaderValue); 1], CookieJar), ApiError> {
     let revoked = sessions::delete_all_for_user(&state.pool, current.user.id).await?;
+    let devices_revoked = devices::revoke_all_for_user(&state.pool, current.user.id).await?;
     tracing::info!(
         user_id = %current.user.id,
         username = %current.user.username,
         %client_ip,
         revoked,
-        "logged out of all sessions"
+        devices_revoked,
+        revoked_by = "logout-all",
+        "logged out of all sessions and devices"
     );
     Ok((
         StatusCode::NO_CONTENT,

@@ -3,6 +3,7 @@ pub mod albums;
 pub mod auth;
 pub mod content;
 pub mod device_auth;
+pub mod devices;
 pub mod health;
 pub mod invitations;
 pub mod jobs;

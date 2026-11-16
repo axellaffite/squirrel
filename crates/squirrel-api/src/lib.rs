@@ -156,6 +156,13 @@ fn json_routes() -> OpenApiRouter<AppState> {
         .routes(routes!(routes::auth::me))
         .routes(routes!(routes::auth::logout))
         .routes(routes!(routes::auth::logout_all))
+        .routes(routes!(routes::devices::device_logout))
+        .routes(routes!(
+            routes::devices::get_current_device,
+            routes::devices::rename_current_device
+        ))
+        .routes(routes!(routes::devices::list_devices))
+        .routes(routes!(routes::devices::revoke_device))
         .routes(routes!(
             routes::invitations::create_invitation,
             routes::invitations::list_invitations
