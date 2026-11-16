@@ -4,6 +4,7 @@
 pub mod admin;
 mod backoff;
 mod job;
+pub mod kinds;
 pub mod queue;
 mod worker;
 
