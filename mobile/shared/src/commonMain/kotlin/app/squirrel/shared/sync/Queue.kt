@@ -40,6 +40,8 @@ data class QueuedAsset(
     val attempts: Int,
     val nextAttemptAt: Long,
     val lastError: String?,
+    val hashedSize: Long? = null,
+    val hashedModifiedAt: Long? = null,
 )
 
 private fun Local_asset.toQueued() = QueuedAsset(
@@ -57,6 +59,8 @@ private fun Local_asset.toQueued() = QueuedAsset(
     attempts = attempts.toInt(),
     nextAttemptAt = next_attempt_at,
     lastError = last_error,
+    hashedSize = hashed_size,
+    hashedModifiedAt = hashed_modified_at,
 )
 
 /** The backup queue in `local_asset`: what is known, hashed, missing, uploaded. */
@@ -67,8 +71,9 @@ class Queue(private val db: SquirrelDatabase) {
 
     fun nextToHash(limit: Long): List<QueuedAsset> = q.nextToHash(limit).executeAsList().map { it.toQueued() }
 
-    fun setHash(id: String, sha256: String) {
-        q.setHash(sha256, id)
+    /** Records the hash of what was read: [size] and [modifiedAt] as hashed (null: the scanned values). */
+    fun setHash(id: String, sha256: String, size: Long? = null, modifiedAt: Long? = null) {
+        q.setHash(sha256, size, modifiedAt, id)
     }
 
     fun hashedBatch(limit: Long): List<QueuedAsset> = q.hashedBatch(limit).executeAsList().map { it.toQueued() }

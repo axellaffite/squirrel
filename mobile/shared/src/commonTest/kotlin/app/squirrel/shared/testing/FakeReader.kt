@@ -3,7 +3,11 @@ package app.squirrel.shared.testing
 import app.squirrel.shared.sync.AssetReader
 
 /** Deterministic bytes: byte i is (i * 31 + seed) mod 256. */
-class FakeReader(override val size: Long, private val seed: Int = 7) : AssetReader {
+class FakeReader(
+    override val size: Long,
+    private val seed: Int = 7,
+    override val modifiedAt: Long? = null,
+) : AssetReader {
     var reads = 0
         private set
     var closed = false

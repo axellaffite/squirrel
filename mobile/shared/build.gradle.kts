@@ -99,6 +99,7 @@ sqldelight {
             packageName.set("app.squirrel.shared.db")
             // Default dialect (SQLite 3.18): Android 10, the minimum, ships 3.22 (no UPSERT).
             // Every schema version is snapshotted (N.db) and each N.sqm is verified against them.
+            // After a schema change, run :shared:generateCommonMainSquirrelDatabaseSchema on its own.
             schemaOutputDirectory.set(file("src/commonMain/sqldelight/databases"))
             verifyMigrations.set(true)
         }

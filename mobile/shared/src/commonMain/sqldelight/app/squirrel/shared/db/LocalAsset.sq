@@ -14,7 +14,9 @@ CREATE TABLE local_asset (
     attempts INTEGER NOT NULL DEFAULT 0,
     next_attempt_at INTEGER NOT NULL DEFAULT 0,
     last_error TEXT,
-    scan_generation INTEGER NOT NULL DEFAULT 0  -- the full scan that last saw it
+    scan_generation INTEGER NOT NULL DEFAULT 0, -- the full scan that last saw it
+    hashed_size INTEGER,                   -- what was actually hashed (the file may change after)
+    hashed_modified_at INTEGER
 );
 CREATE INDEX local_asset_state ON local_asset (state, next_attempt_at);
 
@@ -36,6 +38,8 @@ UPDATE local_asset SET
         WHEN state = 'skipped' THEN 'hashed'
         ELSE state END,
     sha256 = CASE WHEN size = :size AND modified_at = :modifiedAt THEN sha256 ELSE NULL END,
+    hashed_size = CASE WHEN size = :size AND modified_at = :modifiedAt THEN hashed_size ELSE NULL END,
+    hashed_modified_at = CASE WHEN size = :size AND modified_at = :modifiedAt THEN hashed_modified_at ELSE NULL END,
     size = :size, modified_at = :modifiedAt
 WHERE device_asset_id = :id;
 
@@ -54,7 +58,10 @@ nextToHash:
 SELECT * FROM local_asset WHERE state = 'new' ORDER BY modified_at DESC LIMIT ?;
 
 setHash:
-UPDATE local_asset SET sha256 = ?, state = 'hashed' WHERE device_asset_id = ? AND state = 'new';
+UPDATE local_asset
+SET sha256 = :sha256, state = 'hashed',
+    hashed_size = coalesce(:hashedSize, size), hashed_modified_at = coalesce(:hashedModifiedAt, modified_at)
+WHERE device_asset_id = :id AND state = 'new';
 
 hashedBatch:
 SELECT * FROM local_asset WHERE state = 'hashed' ORDER BY modified_at DESC LIMIT ?;
@@ -93,7 +100,8 @@ markSkipped:
 UPDATE local_asset SET state = 'skipped', upload_id = NULL WHERE device_asset_id = ?;
 
 resetHash:
-UPDATE local_asset SET sha256 = NULL, state = 'new', upload_id = NULL WHERE device_asset_id = ?;
+UPDATE local_asset SET sha256 = NULL, hashed_size = NULL, hashed_modified_at = NULL, state = 'new', upload_id = NULL
+WHERE device_asset_id = ?;
 
 forgetUpload:
 UPDATE local_asset SET upload_id = NULL, state = 'missing' WHERE device_asset_id = ?;

@@ -257,4 +257,26 @@ class UploaderTest {
         }
         assertEquals(UploadResult.RetryLater(now + 5_000), uploader().upload(missing()))
     }
+
+    @Test
+    fun aFileEditedAfterHashingGoesBackToHashing() = runApiTest {
+        val asset = missing()
+        source.put(asset.deviceAssetId, size = asset.size + 10, modifiedAt = 2) // edited on the phone
+
+        assertEquals(UploadResult.Changed, uploader().upload(queue.get(asset.deviceAssetId)!!))
+
+        assertEquals(QueueState.New, queue.get(asset.deviceAssetId)!!.state)
+        assertTrue(server.requests.none { it.url.encodedPath == "/api/uploads" })
+    }
+
+    @Test
+    fun aNewerModificationTimeAloneCountsAsAChange() = runApiTest {
+        val asset = missing()
+        db.localAssetQueries.resetHash(asset.deviceAssetId)
+        queue.setHash(asset.deviceAssetId, "f".repeat(64), size = asset.size, modifiedAt = 1)
+        queue.applyCheck(listOf(asset.deviceAssetId), missing = listOf(asset.deviceAssetId))
+        source.put(asset.deviceAssetId, size = asset.size, modifiedAt = 7) // same size, rewritten
+
+        assertEquals(UploadResult.Changed, uploader().upload(queue.get(asset.deviceAssetId)!!))
+    }
 }

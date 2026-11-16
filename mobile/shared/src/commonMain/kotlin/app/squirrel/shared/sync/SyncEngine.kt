@@ -131,8 +131,11 @@ class SyncEngine(
                 if (reader == null) {
                     queue.markSkipped(asset.deviceAssetId)
                 } else {
-                    val sha = reader.use { hashAsset(it) }
-                    queue.setHash(asset.deviceAssetId, sha)
+                    reader.use {
+                        val size = it.size
+                        val modifiedAt = it.modifiedAt
+                        queue.setHash(asset.deviceAssetId, hashAsset(it), size, modifiedAt)
+                    }
                     run.summary = run.summary.copy(hashed = run.summary.hashed + 1)
                 }
                 done++

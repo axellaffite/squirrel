@@ -1,0 +1,3 @@
+-- v1 → v2: remember the size and modification time that were actually hashed.
+ALTER TABLE local_asset ADD COLUMN hashed_size INTEGER;
+ALTER TABLE local_asset ADD COLUMN hashed_modified_at INTEGER;
