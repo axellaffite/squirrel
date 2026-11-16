@@ -92,25 +92,34 @@ pub fn process(pdfium: &Pdfium, input: &Path, work: PdfWork) -> Result<PdfOutput
     } else {
         None
     };
-    let text = work.text.then(|| {
-        let mut text = String::new();
-        for page in pages.iter().take(MAX_TEXT_PAGES) {
-            if text.len() >= MAX_TEXT_BYTES {
-                break;
-            }
-            if let Ok(page_text) = page.text() {
-                text.push_str(&page_text.all());
-                text.push('\n');
-            }
-        }
-        text.truncate(text.floor_char_boundary(MAX_TEXT_BYTES));
-        text.replace('\0', "")
-    });
+    let text = work
+        .text
+        .then(|| page_texts(pages.iter().map(|page| page.text().map(|t| t.all()).ok())));
     Ok(PdfOutput {
         page_count,
         first_page,
         text,
     })
+}
+
+/// The pages' texts in order, each followed by a line break, while they fit
+/// in [`MAX_TEXT_BYTES`] (at most [`MAX_TEXT_PAGES`]). Only a first page
+/// larger than the cap is cut; otherwise reading stops before the page that
+/// would not fit. Unreadable pages (`None`) are skipped.
+fn page_texts(pages: impl Iterator<Item = Option<String>>) -> String {
+    let mut text = String::new();
+    for page in pages.take(MAX_TEXT_PAGES).flatten() {
+        let page = page.replace('\0', "");
+        if text.len() + page.len() + 1 > MAX_TEXT_BYTES {
+            if text.is_empty() {
+                text.push_str(&page[..page.floor_char_boundary(MAX_TEXT_BYTES)]);
+            }
+            break;
+        }
+        text.push_str(&page);
+        text.push('\n');
+    }
+    text
 }
 
 /// A page of `width` × `height` points scaled (up or down) so that its
@@ -187,6 +196,24 @@ mod tests {
             process(pdfium, &input, work),
             Err(PdfError::Unreadable(_))
         ));
+    }
+
+    #[test]
+    fn page_text_stops_before_the_page_that_would_not_fit() {
+        let big = "x".repeat(MAX_TEXT_BYTES / 2);
+        let pages = vec![Some("a".to_owned()), None, Some(big.clone()), Some(big)];
+        let text = page_texts(pages.into_iter());
+        assert_eq!(text.len(), 2 + MAX_TEXT_BYTES / 2 + 1);
+        let huge = "é".repeat(MAX_TEXT_BYTES);
+        let text = page_texts([Some(huge), Some("b".to_owned())].into_iter());
+        assert_eq!(
+            text.len(),
+            MAX_TEXT_BYTES,
+            "a first page is cut, not dropped"
+        );
+        assert_eq!(page_texts([Some("a\0b".to_owned())].into_iter()), "ab\n");
+        let many = (0..500).map(|_| Some("p".to_owned()));
+        assert_eq!(page_texts(many).len(), 2 * MAX_TEXT_PAGES);
     }
 
     #[test]
