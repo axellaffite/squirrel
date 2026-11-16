@@ -58,6 +58,48 @@ describe('createPoller', () => {
 	});
 });
 
+describe('createPoller after uploads', () => {
+	it('refreshes once even when processing finished before the first poll', async () => {
+		const h = harness([status(0)]);
+		h.poller.start({ assumePending: true });
+		await flush();
+		expect(h.onSettled).toHaveBeenCalledOnce();
+		expect(h.timers).toHaveLength(0);
+	});
+
+	it('keeps a single timer when started again while waiting', async () => {
+		const h = harness([status(2), status(2), status(0)]);
+		h.poller.start();
+		await flush();
+		h.poller.start();
+		await flush();
+		expect(h.timers).toHaveLength(1);
+	});
+
+	it('pauses while the page is hidden', async () => {
+		let shown = false;
+		const fetch = vi.fn(async () => status(0));
+		const timers: (() => void)[] = [];
+		const poller = createPoller({
+			fetch,
+			onCount: () => {},
+			onSettled: () => {},
+			visible: () => shown,
+			schedule: (run) => {
+				timers.push(run);
+				return () => {};
+			}
+		});
+		poller.start();
+		await flush();
+		expect(fetch).not.toHaveBeenCalled();
+		shown = true;
+		timers.shift()?.();
+		await flush();
+		expect(fetch).toHaveBeenCalledOnce();
+	});
+});
+
 describe('preparingText', () => {
 	it('counts files', () => {
 		expect(preparingText(1)).toBe('Preparing 1 photo or document…');

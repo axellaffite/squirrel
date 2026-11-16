@@ -27,6 +27,8 @@
 		type PathSegment
 	} from '#lib/files/api.ts';
 	import { latestOnly } from '#lib/files/latest.ts';
+	import { mediaStatus } from '#lib/photos/api.ts';
+	import { createPoller } from '#lib/photos/status.ts';
 	import { enqueue, onUploadsSettled } from '#lib/upload/uploads.svelte.ts';
 
 	let { folderId }: { folderId: string | null } = $props();
@@ -104,12 +106,26 @@
 		return load();
 	}
 
+	// Once uploaded files are processed, one more refresh shows their thumbnails.
+	const poller = createPoller({
+		fetch: mediaStatus,
+		onCount: () => {},
+		onSettled: () => void load(),
+		visible: () => document.visibilityState === 'visible'
+	});
+
 	onMount(() => {
 		void load();
 		// One refresh per settled batch of uploads, not one per file.
-		return onUploadsSettled((parentIds) => {
-			if (folderId !== null && parentIds.has(folderId)) void changed();
+		const unsubscribe = onUploadsSettled((parentIds) => {
+			if (folderId === null || !parentIds.has(folderId)) return;
+			void changed();
+			poller.start({ assumePending: true });
 		});
+		return () => {
+			unsubscribe();
+			poller.stop();
+		};
 	});
 
 	function open(node: FileNode) {
