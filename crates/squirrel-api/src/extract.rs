@@ -87,7 +87,8 @@ pub enum Principal {
 /// invitation, admin and device-management routes keep [`CurrentUser`]
 /// (session only). When an `Authorization` header is present the cookie is
 /// ignored entirely, and no CSRF token is needed: a bearer is never sent
-/// ambiently by a browser.
+/// ambiently by a browser. Other `Authorization` schemes (a proxy's HTTP
+/// authentication) are left to the proxy: the cookie path applies.
 pub struct Caller {
     pub user: UserRecord,
     pub principal: Principal,
@@ -110,9 +111,11 @@ impl FromRequestParts<AppState> for Caller {
         state: &AppState,
     ) -> Result<Self, Self::Rejection> {
         match parts.headers.get(AUTHORIZATION) {
-            // Never falls back to the cookie.
-            Some(value) => bearer(value, state).await,
-            None => {
+            // A Bearer header never falls back to the cookie, even when malformed.
+            Some(value) if is_bearer_scheme(value) => bearer(value, state).await,
+            // No header, or another scheme (e.g. `Basic` from a reverse proxy's
+            // HTTP authentication): the browser session, CSRF-checked.
+            _ => {
                 let CurrentUser { user, .. } =
                     CurrentUser::from_request_parts(parts, state).await?;
                 Ok(Self {
@@ -122,6 +125,15 @@ impl FromRequestParts<AppState> for Caller {
             }
         }
     }
+}
+
+/// Whether an `Authorization` header uses the `Bearer` scheme (case-insensitive).
+fn is_bearer_scheme(value: &HeaderValue) -> bool {
+    value
+        .to_str()
+        .ok()
+        .and_then(|text| text.split_whitespace().next())
+        .is_some_and(|scheme| scheme.eq_ignore_ascii_case("bearer"))
 }
 
 /// The `sqa_…` token of an `Authorization: Bearer` header, if well formed.
@@ -195,6 +207,10 @@ mod tests {
         );
         assert_eq!(bearer_token(&header(format!("Basic {token}"))), None);
         assert_eq!(bearer_token(&header(token.clone())), None);
+        assert!(is_bearer_scheme(&header("BEARER garbage".into())));
+        assert!(is_bearer_scheme(&header("Bearer".into())));
+        assert!(!is_bearer_scheme(&header("Basic YWxpY2U6eA==".into())));
+        assert!(!is_bearer_scheme(&header("Bearerx token".into())));
         let refresh = squirrel_auth::DeviceToken::refresh();
         assert_eq!(bearer_token(&header(format!("Bearer {refresh}"))), None);
     }

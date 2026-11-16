@@ -76,26 +76,61 @@ async fn a_bearer_needs_no_csrf_token(pool: PgPool) {
 }
 
 #[sqlx::test(migrator = "squirrel_db::MIGRATOR")]
-async fn an_authorization_header_overrides_the_cookie(pool: PgPool) {
+async fn a_bearer_header_overrides_the_cookie(pool: PgPool) {
     let (instance, _) = setup(&pool).await;
     let browser = instance.browser();
     common::login(&browser, "alice").await;
     browser.get("/api/nodes").await.assert_status_ok();
 
-    let (name, value) = bearer(&format!("sqa_{}", "a".repeat(43)));
-    browser
+    for token in [
+        format!("sqa_{}", "a".repeat(43)),
+        "garbage".into(),
+        String::new(),
+    ] {
+        let (name, value) = bearer(&token);
+        browser
+            .get("/api/nodes")
+            .add_header(name, value)
+            .await
+            .assert_status(StatusCode::UNAUTHORIZED);
+    }
+}
+
+#[sqlx::test(migrator = "squirrel_db::MIGRATOR")]
+async fn another_scheme_leaves_the_session_in_charge(pool: PgPool) {
+    let (instance, _) = setup(&pool).await;
+    let basic = HeaderValue::from_static("Basic YWxpY2U6eA==");
+    // Basic alone (a proxy's HTTP authentication, no session): 401.
+    instance
+        .browser()
         .get("/api/nodes")
-        .add_header(name, value)
+        .add_header(AUTHORIZATION, basic.clone())
         .await
         .assert_status(StatusCode::UNAUTHORIZED);
+
+    let browser = instance.browser();
+    let me = common::login(&browser, "alice").await;
     browser
         .get("/api/nodes")
-        .add_header(
-            AUTHORIZATION,
-            HeaderValue::from_static("Basic YWxpY2U6eA=="),
-        )
+        .add_header(AUTHORIZATION, basic.clone())
         .await
-        .assert_status(StatusCode::UNAUTHORIZED);
+        .assert_status_ok();
+    let files = root_id(&instance, &me, "Files").await;
+    let body = json!({ "parent_id": files, "name": "Behind a proxy" });
+    // The session path still enforces CSRF.
+    browser
+        .post("/api/folders")
+        .add_header(AUTHORIZATION, basic.clone())
+        .json(&body)
+        .await
+        .assert_status(StatusCode::FORBIDDEN);
+    browser
+        .post("/api/folders")
+        .add_header(AUTHORIZATION, basic)
+        .add_header(common::CSRF, common::csrf(&me))
+        .json(&body)
+        .await
+        .assert_status(StatusCode::CREATED);
 }
 
 #[sqlx::test(migrator = "squirrel_db::MIGRATOR")]
