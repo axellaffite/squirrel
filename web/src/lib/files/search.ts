@@ -32,11 +32,19 @@ export const isSearchable = (query: string): boolean => {
 	return q.length >= MIN_QUERY && q.length <= MAX_QUERY;
 };
 
-/** Words of one or two letters only match whole words (prefixes start at three). */
-export const hasShortWord = (query: string): boolean =>
-	normalizeQuery(query)
-		.split(' ')
-		.some((word) => word.length > 0 && word.length <= 2);
+/**
+ * A hint about short words, as the server treats them: one-letter words are ignored, two-letter
+ * words only match whole words (prefix matching starts at three letters). Null when none.
+ */
+export function shortWordHint(query: string): string | null {
+	const words = normalizeQuery(query).split(' ').filter((word) => word.length > 0);
+	const one = words.some((word) => [...word].length === 1);
+	const two = words.some((word) => [...word].length === 2);
+	if (one && two) return 'One-letter words are ignored, and two-letter words only match whole words.';
+	if (one) return 'One-letter words are ignored.';
+	if (two) return 'Two-letter words only match whole words.';
+	return null;
+}
 
 /** How many results the next page may ask for, 0 when the server's cap is reached. */
 export const nextLimit = (offset: number): number => Math.max(0, Math.min(PAGE_SIZE, MAX_RESULTS - offset));

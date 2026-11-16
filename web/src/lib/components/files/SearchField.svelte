@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { goto } from '$app/navigation';
 	import Icon from '#lib/components/icons/Icon.svelte';
+	import IconButton from '#lib/components/ui/IconButton.svelte';
 	import { MAX_QUERY, normalizeQuery } from '#lib/files/search.ts';
 
 	interface Props {
@@ -16,6 +17,14 @@
 
 	const uid = $props.id();
 	const inputId = `search-${uid}`;
+	let input: HTMLInputElement | undefined = $state();
+
+	/** The native clear button is hidden (it cannot take the tokens), and Firefox has none. */
+	function clear() {
+		value = '';
+		oninput?.('');
+		input?.focus();
+	}
 
 	function submit(event: SubmitEvent) {
 		event.preventDefault();
@@ -30,6 +39,7 @@
 	<Icon name="search" />
 	<!-- svelte-ignore a11y_autofocus -->
 	<input
+		bind:this={input}
 		id={inputId}
 		type="search"
 		bind:value
@@ -41,6 +51,9 @@
 		{autofocus}
 		oninput={() => oninput?.(value)}
 	/>
+	{#if value}
+		<span class="clear"><IconButton icon="x" label="Clear the search" tooltip="Clear" onclick={clear} /></span>
+	{/if}
 </form>
 
 <style>
@@ -79,9 +92,20 @@
 		transition: border-color var(--dur-fast) var(--ease);
 	}
 
-	/* The browser's own clear button cannot take the tokens; Escape clears the field anyway. */
+	/* The browser's own clear button cannot take the tokens: ours replaces it. */
 	input::-webkit-search-cancel-button {
 		appearance: none;
+	}
+
+	.clear {
+		position: absolute;
+		right: var(--space-1);
+		display: grid;
+	}
+
+	/* Room for the clear button so text never runs under it. */
+	input {
+		padding-right: calc(var(--control-sm) + var(--space-2));
 	}
 
 	input::placeholder {
