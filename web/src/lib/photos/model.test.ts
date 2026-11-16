@@ -96,7 +96,7 @@ describe('the load window', () => {
 		expect(monthsToLoad(boxes, 0, 2000, new Set(['2024-07', '2024-06']), none)).toEqual([]);
 	});
 
-	it('skips loaded months', () => {
+	it('skips settled months (loaded, or failed until a reload)', () => {
 		expect(monthsToLoad(boxes, 0, 200, none, new Set(['2024-07']))).toEqual(['2024-06']);
 	});
 });

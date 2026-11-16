@@ -44,6 +44,8 @@
 	let layouts: ReadonlyMap<string, MonthLayout<AssetSummary>> = $state.raw(new Map());
 	let viewTop = $state(0);
 	let viewHeight = $state(0);
+	/** Set on unmount: late month answers must not scroll whatever page is shown by then. */
+	let destroyed = false;
 
 	const overscan = $derived(viewHeight);
 	const shown = $derived(
@@ -83,28 +85,33 @@
 	}
 
 	async function fetchMonth(month: string) {
-		const items = await data.loadMonth(month);
-		if (items && metrics && width > 0) {
-			const layout = layoutMonth(items, width, metrics);
+		const outcome = await data.loadMonth(month);
+		if (destroyed) return;
+		if (outcome.status === 'loaded' && metrics && width > 0) {
+			const layout = layoutMonth(outcome.items, width, metrics);
 			layouts = new Map(layouts).set(month, layout);
 			const result = replaceEstimate(boxes, month, layout.height, viewTop);
 			boxes = result.boxes;
 			total = result.height;
 			scrollByPx(result.delta);
 		}
-		if (items) pump();
+		// A stale answer (a reload overtook it) still frees a slot for the month it left unloaded.
+		// A failed month is skipped until the next reload, so this cannot loop on errors.
+		pump();
 	}
 
 	function pump() {
-		for (const month of monthsToLoad(boxes, viewTop, viewTop + viewHeight, data.loading, data.loaded)) {
+		if (destroyed) return;
+		for (const month of monthsToLoad(boxes, viewTop, viewTop + viewHeight, data.loading, data.settled)) {
 			void fetchMonth(month);
 		}
 	}
 
 	function scrollByPx(delta: number) {
-		if (Math.abs(delta) < 1) return;
+		if (destroyed || Math.abs(delta) < 1) return;
 		window.scrollBy({ top: delta, behavior: 'instant' });
-		viewTop += delta;
+		// The browser clamps near the bottom: read where it actually went.
+		measure();
 	}
 
 	function measure() {
@@ -175,6 +182,7 @@
 		window.addEventListener('scroll', schedule, { passive: true });
 		window.addEventListener('resize', schedule, { passive: true });
 		return () => {
+			destroyed = true;
 			cancelAnimationFrame(frame);
 			observer.disconnect();
 			window.removeEventListener('scroll', schedule);
