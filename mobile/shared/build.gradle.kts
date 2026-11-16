@@ -17,6 +17,10 @@ val openapiSpec: File = providers.gradleProperty("openapiSpec")
     .getOrElse(rootProject.file("../openapi.json"))
 val generatedApiDir = layout.buildDirectory.dir("generated/openapi")
 
+openApiValidate {
+    inputSpec.set(openapiSpec.path)
+}
+
 openApiGenerate {
     generatorName.set("kotlin")
     library.set("multiplatform")
@@ -36,9 +40,7 @@ openApiGenerate {
     generateModelTests.set(false)
     generateApiDocumentation.set(false)
     generateModelDocumentation.set(false)
-    // openapi.json has `info.license: {name: ""}` (utoipa), which the 3.1 validator rejects;
-    // everything else validates, and generation parses the whole contract anyway.
-    skipValidateSpec.set(true)
+    validateSpec.set(true)
 }
 
 kotlin {
@@ -126,5 +128,5 @@ tasks.named("openApiGenerate") { mustRunAfter(cleanApiClient) }
 tasks.register("checkApiClient") {
     group = "verification"
     description = "Regenerates the API client from openapi.json, then compiles and tests against it."
-    dependsOn(cleanApiClient, "openApiGenerate", "compileKotlinJvm", "compileAndroidMain", "jvmTest")
+    dependsOn(cleanApiClient, "openApiValidate", "openApiGenerate", "compileKotlinJvm", "compileAndroidMain", "jvmTest")
 }
