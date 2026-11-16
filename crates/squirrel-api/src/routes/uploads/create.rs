@@ -1,17 +1,23 @@
 //! Opening an upload: dedup against the caller's library, resume, or a new session.
 
+use sqlx::PgConnection;
 use squirrel_core::{ContentHash, NodeName, UploadPlan};
-use squirrel_db::nodes::{self, NewFile, NodeRecord};
+use squirrel_db::nodes::{self, ClientTaken, NewFile, NodeRecord};
 use squirrel_db::quota::{self, Pending};
 use squirrel_db::uploads::{self, NewUpload, UploadRecord};
-use squirrel_db::{DbError, blobs};
-use time::OffsetDateTime;
+use squirrel_db::{DbError, blobs, device_assets};
+use time::format_description::well_known::Rfc3339;
+use time::{OffsetDateTime, PrimitiveDateTime};
 use uuid::Uuid;
 
 use crate::blocking::run_storage;
 use crate::error::ApiError;
 use crate::files_dto::CreateUploadRequest;
 use crate::state::AppState;
+use crate::sync_dto::device_asset_id;
+
+/// UTC offsets beyond ±18 h do not exist (and the database refuses them).
+const MAX_OFFSET_MINUTES: i16 = 18 * 60;
 
 /// A validated `CreateUploadRequest`.
 pub struct UploadInput {
@@ -20,24 +26,79 @@ pub struct UploadInput {
     pub hash: ContentHash,
     /// Fits in `i64` (checked by `parse`).
     pub size: u64,
+    /// The client's capture time (a phone's photo date).
+    pub client_taken: Option<ClientTaken>,
+    /// The uploading device and its id for the asset.
+    pub device_asset: Option<(Uuid, String)>,
 }
 
 impl UploadInput {
-    pub fn parse(request: CreateUploadRequest) -> Result<Self, ApiError> {
+    /// `device`: the calling device, if the caller is one. Only a device may
+    /// send `device_asset_id`.
+    pub fn parse(request: CreateUploadRequest, device: Option<Uuid>) -> Result<Self, ApiError> {
         if i64::try_from(request.size).is_err() {
             return Err(ApiError::Validation("the file is too large".into()));
         }
+        let device_asset = match (request.device_asset_id, device) {
+            (None, _) => None,
+            (Some(id), Some(device)) => Some((device, device_asset_id(&id)?.to_owned())),
+            (Some(_), None) => {
+                return Err(ApiError::Validation(
+                    "device_asset_id is only accepted from a signed-in device".into(),
+                ));
+            }
+        };
         Ok(Self {
             parent_id: request.parent_id,
             name: NodeName::parse(&request.name)?,
             hash: ContentHash::parse(&request.sha256)?,
             size: request.size,
+            client_taken: request.taken_at.as_deref().map(client_taken).transpose()?,
+            device_asset,
         })
     }
 
     fn db_size(&self) -> i64 {
         i64::try_from(self.size).expect("checked in parse")
     }
+
+    fn device_asset(&self) -> Option<(Uuid, &str)> {
+        self.device_asset
+            .as_ref()
+            .map(|(device, id)| (*device, id.as_str()))
+    }
+}
+
+/// An RFC 3339 time with its UTC offset (`2024-07-14T18:30:05+02:00`) as a
+/// wall clock and an offset in minutes.
+fn client_taken(raw: &str) -> Result<ClientTaken, ApiError> {
+    let invalid = || {
+        ApiError::Validation(
+            "taken_at must be an RFC 3339 date and time with a UTC offset of at most 18 hours"
+                .into(),
+        )
+    };
+    let parsed = OffsetDateTime::parse(raw, &Rfc3339).map_err(|_| invalid())?;
+    let offset_min = parsed.offset().whole_minutes();
+    if offset_min.abs() > MAX_OFFSET_MINUTES {
+        return Err(invalid());
+    }
+    Ok(ClientTaken {
+        local: PrimitiveDateTime::new(parsed.date(), parsed.time()),
+        offset_min: Some(offset_min),
+    })
+}
+
+/// Records which content the device's asset became, in the caller's transaction.
+pub(crate) async fn record_device_asset(
+    conn: &mut PgConnection,
+    device_asset: Option<(Uuid, &str)>,
+    node: &NodeRecord,
+) -> Result<(), DbError> {
+    let (Some((device, asset)), Some(sha256)) = (device_asset, node.blob_sha256.as_deref()) else {
+        return Ok(());
+    };
+    device_assets::record(conn, device, asset, sha256, Some(node.id)).await
 }
 
 /// Dedup within the caller's own library: if one of their nodes already
@@ -73,6 +134,8 @@ pub async fn link_existing(
     )
     .await?
     {
+        record_device_asset(&mut tx, input.device_asset(), &node).await?;
+        tx.commit().await.map_err(DbError::from)?;
         tracing::info!(user_id = %owner_id, node_id = %node.id, "upload already present");
         return Ok(Some(node));
     }
@@ -87,10 +150,11 @@ pub async fn link_existing(
             blob: &input.hash,
             size: blob.size,
             mime: &blob.mime,
-            client_taken: None,
+            client_taken: input.client_taken,
         },
     )
     .await?;
+    record_device_asset(&mut tx, input.device_asset(), &node).await?;
     super::enqueue_media(&mut tx, &node).await?;
     tx.commit().await.map_err(DbError::from)?;
     tracing::info!(user_id = %owner_id, node_id = %node.id, "upload deduplicated");
@@ -151,8 +215,8 @@ async fn create_session(
         chunk_count,
         expires_at: OffsetDateTime::now_utc() + state.config.upload_ttl,
         max_open: state.config.upload_limits.max_open_per_user,
-        client_taken: None,
-        device_asset: None,
+        client_taken: input.client_taken,
+        device_asset: input.device_asset(),
     };
     Ok(uploads::create(&state.pool, &new).await?)
 }

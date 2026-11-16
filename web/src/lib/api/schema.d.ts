@@ -801,6 +801,11 @@ export interface components {
             email_hint?: string | null;
         };
         CreateUploadRequest: {
+            /**
+             * @description The phone's id for this asset (devices only): recorded so the sync
+             *     check knows it is backed up.
+             */
+            device_asset_id?: string | null;
             name: string;
             /**
              * Format: uuid
@@ -814,6 +819,13 @@ export interface components {
              * @description Total size in bytes.
              */
             size: number;
+            /**
+             * Format: date-time
+             * @description When the photo or video was taken, by the client's clock: RFC 3339
+             *     with its UTC offset (`2024-07-14T18:30:05+02:00`). Used for the
+             *     timeline when the file itself (EXIF, name) has no date.
+             */
+            taken_at?: string | null;
         };
         CreatedInvitation: {
             invitation: components["schemas"]["InvitationDto"];
