@@ -30,6 +30,8 @@ impl AssetKind {
 pub enum TakenSource {
     Exif,
     Filename,
+    /// The uploading phone's capture time (Phase 6).
+    Device,
     Upload,
 }
 
@@ -38,6 +40,7 @@ impl TakenSource {
         match self {
             Self::Exif => "exif",
             Self::Filename => "filename",
+            Self::Device => "device",
             Self::Upload => "upload",
         }
     }

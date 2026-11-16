@@ -30,6 +30,8 @@ async fn open(
             chunk_count: i32::try_from(u64::try_from(size).unwrap().div_ceil(4)).unwrap(),
             expires_at: OffsetDateTime::now_utc() + Duration::hours(24),
             max_open: 100,
+            client_taken: None,
+            device_asset: None,
         },
     )
     .await

@@ -5,7 +5,7 @@ mod insert;
 mod read;
 mod tree;
 
-pub use insert::{NewFile, free_name, insert_file};
+pub use insert::{ClientTaken, NewFile, free_name, insert_file};
 pub use read::{
     ListCursor, PathSegment, find_any, find_live, find_live_file, find_live_folder, list_children,
     path_to,

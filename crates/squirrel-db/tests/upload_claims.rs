@@ -35,6 +35,8 @@ async fn open_named(
             chunk_count: i32::try_from(u64::try_from(size).unwrap().div_ceil(4)).unwrap(),
             expires_at: later(),
             max_open,
+            client_taken: None,
+            device_asset: None,
         },
     )
     .await
