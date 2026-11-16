@@ -16,7 +16,7 @@ import io.ktor.http.HttpMethod
 import io.ktor.http.HttpStatusCode
 import io.ktor.http.content.OutgoingContent
 import io.ktor.utils.io.ByteChannel
-import io.ktor.utils.io.readRemaining
+import io.ktor.utils.io.readBuffer
 import kotlinx.coroutines.launch
 import kotlinx.io.readByteArray
 import kotlin.test.Test
@@ -36,7 +36,7 @@ class ChunkUploaderTest {
                 content.writeTo(channel)
                 channel.flushAndClose()
             }
-            channel.readRemaining().readByteArray()
+            channel.readBuffer().readByteArray()
         }
     }
 
@@ -64,7 +64,7 @@ class ChunkUploaderTest {
         assertEquals(HttpMethod.Put, request.method)
         assertEquals("/api/uploads/u1/chunks/2", request.url.encodedPath)
         assertEquals("Bearer sqa_a", request.headers[HttpHeaders.Authorization])
-        val content = request.body as OutgoingContent
+        val content = request.body
         assertEquals(ContentType.Application.OctetStream, content.contentType)
         val last = reader.size - 2 * chunkSize
         assertEquals(last, content.contentLength)
@@ -79,7 +79,7 @@ class ChunkUploaderTest {
 
         val (request, bytes) = seen.single()
         assertEquals("Upload squ_t", request.headers[HttpHeaders.Authorization])
-        assertEquals(chunkSize, (request.body as OutgoingContent).contentLength)
+        assertEquals(chunkSize, request.body.contentLength)
         assertContentEquals(reader.bytes(0, chunkSize.toInt()), bytes)
     }
 

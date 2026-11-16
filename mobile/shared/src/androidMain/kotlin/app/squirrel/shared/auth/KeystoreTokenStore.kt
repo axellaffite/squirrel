@@ -30,17 +30,17 @@ class KeystoreTokenStore(private val db: SquirrelDatabase) : TokenStore {
         }
     }
 
-    override suspend fun save(refreshToken: String): Unit = withContext(Dispatchers.IO) {
-        val cipher = Cipher.getInstance(TRANSFORMATION)
-        cipher.init(Cipher.ENCRYPT_MODE, key())
-        val ciphertext = cipher.doFinal(refreshToken.encodeToByteArray())
-        db.secretQueries.put(SECRET_NAME, cipher.iv, ciphertext)
-        Unit
+    override suspend fun save(refreshToken: String) {
+        withContext(Dispatchers.IO) {
+            val cipher = Cipher.getInstance(TRANSFORMATION)
+            cipher.init(Cipher.ENCRYPT_MODE, key())
+            val ciphertext = cipher.doFinal(refreshToken.encodeToByteArray())
+            db.secretQueries.put(SECRET_NAME, cipher.iv, ciphertext)
+        }
     }
 
-    override suspend fun clear(): Unit = withContext(Dispatchers.IO) {
-        db.secretQueries.remove(SECRET_NAME)
-        Unit
+    override suspend fun clear() {
+        withContext(Dispatchers.IO) { db.secretQueries.remove(SECRET_NAME) }
     }
 
     private fun key(): SecretKey {
