@@ -11,6 +11,10 @@ import app.squirrel.shared.settings.BackupSettings
 import app.squirrel.shared.settings.SettingsStore
 import io.ktor.serialization.ContentConvertException
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CoroutineDispatcher
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.IO
+import kotlinx.coroutines.withContext
 import kotlinx.io.IOException
 import kotlinx.serialization.SerializationException
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -38,6 +42,8 @@ class SyncEngine(
     private val settings: SettingsStore,
     private val now: () -> Long,
     private val random: () -> Double = { Random.nextDouble() },
+    /** Where runs execute: database, file and network work never runs on the main thread. */
+    private val io: CoroutineDispatcher = Dispatchers.IO,
 ) {
     private val mutex = Mutex()
     private val _state = MutableStateFlow<SyncState>(SyncState.Idle)
@@ -71,7 +77,7 @@ class SyncEngine(
     suspend fun runOnce(deadline: Long? = null): RunSummary {
         if (!mutex.tryLock()) return RunSummary(stoppedBy = StopCause.AlreadyRunning)
         try {
-            return runLocked(deadline)
+            return withContext(io) { runLocked(deadline) }
         } finally {
             mutex.unlock()
         }

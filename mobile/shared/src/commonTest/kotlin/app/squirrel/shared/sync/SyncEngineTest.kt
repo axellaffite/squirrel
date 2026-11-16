@@ -21,6 +21,12 @@ import io.ktor.http.HttpStatusCode
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.async
 import kotlin.test.Test
+import kotlinx.coroutines.CoroutineDispatcher
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Runnable
+import kotlinx.coroutines.currentCoroutineContext
+import kotlin.coroutines.ContinuationInterceptor
+import kotlin.coroutines.CoroutineContext
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
 import kotlin.test.assertTrue
@@ -38,6 +44,11 @@ class SyncEngineTest {
         override fun check(settings: BackupSettings): PauseReason? = pause
     }
 
+    /** Stands for Dispatchers.IO: counts that work was dispatched to it. */
+    private val io = object : CoroutineDispatcher() {
+        override fun dispatch(context: CoroutineContext, block: Runnable) = Dispatchers.Default.dispatch(context, block)
+    }
+
     private suspend fun engine(api: SquirrelApi? = null, transport: ChunkTransport = server.transport) = SyncEngine(
         source = source,
         api = api ?: server.api(),
@@ -48,6 +59,7 @@ class SyncEngineTest {
         settings = settings,
         now = { clock },
         random = { 0.5 },
+        io = io,
     )
 
     private fun hashOf(id: String): String {
@@ -272,5 +284,21 @@ class SyncEngineTest {
 
         assertEquals(StopCause.Error, summary.stoppedBy)
         assertEquals(SyncState.Error(ErrorReason.Unreachable), engine.state.value)
+    }
+
+    @Test
+    fun runsExecuteOnTheIoDispatcher() = runApiTest {
+        source.put("images:1", size = 64)
+        val dispatchers = mutableSetOf<Any?>()
+        val transport = object : ChunkTransport {
+            override suspend fun put(session: UploadSession, index: Int, reader: AssetReader) {
+                dispatchers += currentCoroutineContext()[ContinuationInterceptor]
+                server.transport.put(session, index, reader)
+            }
+        }
+
+        engine(transport = transport).runOnce()
+
+        assertEquals(setOf<Any?>(io), dispatchers)
     }
 }
