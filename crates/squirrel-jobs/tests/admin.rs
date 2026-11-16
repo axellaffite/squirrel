@@ -144,3 +144,21 @@ async fn purging_removes_only_old_failures(pool: PgPool) {
     assert!(status_of(&pool, recent).await.is_some());
     assert!(status_of(&pool, queued).await.is_some());
 }
+
+#[sqlx::test(migrator = "squirrel_db::MIGRATOR")]
+async fn retrying_wakes_idle_workers(pool: PgPool) {
+    let id = add(&pool, NewJob::new("a", json!({}))).await;
+    fail(&pool, id, "boom", Duration::ZERO).await;
+    let mut listener = sqlx::postgres::PgListener::connect_with(&pool)
+        .await
+        .unwrap();
+    listener
+        .listen(squirrel_jobs::queue::CHANNEL)
+        .await
+        .unwrap();
+    admin::retry_failed(&pool, id).await.unwrap();
+    tokio::time::timeout(std::time::Duration::from_secs(5), listener.recv())
+        .await
+        .expect("a notification")
+        .unwrap();
+}

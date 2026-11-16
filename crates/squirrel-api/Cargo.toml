@@ -21,6 +21,7 @@ sqlx.workspace = true
 squirrel-auth.workspace = true
 squirrel-core.workspace = true
 squirrel-db.workspace = true
+squirrel-jobs.workspace = true
 squirrel-storage.workspace = true
 subtle.workspace = true
 thiserror.workspace = true

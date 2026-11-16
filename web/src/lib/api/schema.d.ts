@@ -4,6 +4,38 @@
  */
 
 export interface paths {
+    "/api/admin/jobs": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["jobs_overview"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/admin/jobs/{id}/retry": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["retry_job"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/admin/settings": {
         parameters: {
             query?: never;
@@ -433,6 +465,16 @@ export interface components {
             /** @description Human-readable message, safe to display. */
             message: string;
         };
+        FailedJobDto: {
+            /** Format: int32 */
+            attempts: number;
+            /** Format: int64 */
+            id: number;
+            kind: string;
+            last_error?: string | null;
+            /** Format: date-time */
+            updated_at: string;
+        };
         Health: {
             status: string;
         };
@@ -455,6 +497,21 @@ export interface components {
         };
         /** @enum {string} */
         InvitationStatusDto: "active" | "used" | "expired" | "revoked";
+        JobSummaryDto: {
+            /** Format: int64 */
+            failed: number;
+            kind: string;
+            /** Format: int64 */
+            queued: number;
+            /** Format: int64 */
+            running: number;
+        };
+        JobsOverview: {
+            /** @description The 50 most recent failures, newest first (kept 30 days). */
+            failures: components["schemas"]["FailedJobDto"][];
+            /** @description Queued, running and failed counts per job kind, kinds sorted. */
+            kinds: components["schemas"]["JobSummaryDto"][];
+        };
         JoinStatus: {
             valid: boolean;
         };
@@ -591,6 +648,71 @@ export interface components {
 }
 export type $defs = Record<string, never>;
 export interface operations {
+    jobs_overview: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["JobsOverview"];
+                };
+            };
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    retry_job: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Failed job id */
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Queued again with fresh attempts (or an equivalent job already was) */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description No failed job with this id */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
     get_settings: {
         parameters: {
             query?: never;

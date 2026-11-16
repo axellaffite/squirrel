@@ -5,6 +5,8 @@ use std::path::PathBuf;
 use clap::Subcommand;
 use sqlx::PgPool;
 use squirrel_core::Username;
+use squirrel_jobs::admin::{self, FailedJob, KindSummary, RetryOutcome};
+use time::format_description::well_known::Rfc3339;
 
 #[derive(Subcommand)]
 pub enum AdminCommand {
@@ -24,7 +26,23 @@ pub enum AdminCommand {
         #[arg(long)]
         force: bool,
     },
+    /// The background job queue: counts per kind and the 20 most recent failures.
+    Jobs {
+        #[command(subcommand)]
+        action: Option<JobsAction>,
+    },
 }
+
+#[derive(Subcommand)]
+pub enum JobsAction {
+    /// Queue a failed job again with fresh attempts.
+    Retry { id: i64 },
+    /// Queue a job that does nothing: it disappears once a worker is running.
+    Ping,
+}
+
+/// Failures printed by `squirrel admin jobs`.
+const SHOWN_FAILURES: i64 = 20;
 
 /// `None` is unlimited.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -58,5 +76,94 @@ pub async fn run(pool: &PgPool, command: AdminCommand) -> anyhow::Result<()> {
             println!("{}", crate::data_dir::adopt(pool, &data_dir, force).await?);
             Ok(())
         }
+        AdminCommand::Jobs { action } => jobs(pool, action).await,
+    }
+}
+
+async fn jobs(pool: &PgPool, action: Option<JobsAction>) -> anyhow::Result<()> {
+    match action {
+        None => {
+            let kinds = admin::summary(pool).await?;
+            let failures = admin::failed(pool, SHOWN_FAILURES).await?;
+            print!("{}", format_jobs(&kinds, &failures));
+        }
+        Some(JobsAction::Retry { id }) => match admin::retry_failed(pool, id).await? {
+            RetryOutcome::Requeued => println!("job {id} queued again"),
+            RetryOutcome::AlreadyQueued => {
+                println!("an equivalent job is already queued; removed failed job {id}")
+            }
+            RetryOutcome::NotFound => anyhow::bail!("no failed job with id {id}"),
+        },
+        Some(JobsAction::Ping) => {
+            let mut conn = pool.acquire().await?;
+            squirrel_jobs::enqueue(&mut conn, &crate::worker::noop_job()).await?;
+            println!(
+                "queued a noop job; it disappears from `squirrel admin jobs` once a worker runs it"
+            );
+        }
+    }
+    Ok(())
+}
+
+fn format_jobs(kinds: &[KindSummary], failures: &[FailedJob]) -> String {
+    let mut out = String::new();
+    if kinds.is_empty() {
+        out.push_str("no jobs\n");
+    } else {
+        out.push_str(&format!(
+            "{:<24} {:>8} {:>8} {:>8}\n",
+            "KIND", "QUEUED", "RUNNING", "FAILED"
+        ));
+        for k in kinds {
+            out.push_str(&format!(
+                "{:<24} {:>8} {:>8} {:>8}\n",
+                k.kind, k.queued, k.running, k.failed
+            ));
+        }
+    }
+    if !failures.is_empty() {
+        out.push_str("\nrecent failures (`squirrel admin jobs retry <id>`):\n");
+        for f in failures {
+            let when = f.updated_at.format(&Rfc3339).unwrap_or_default();
+            let error = f.last_error.as_deref().unwrap_or("-").replace('\n', " ");
+            out.push_str(&format!(
+                "{:>8}  {}  {}  attempts {}  {}\n",
+                f.id, when, f.kind, f.attempts, error
+            ));
+        }
+    }
+    out
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use time::macros::datetime;
+
+    #[test]
+    fn job_listings_show_counts_then_failures_on_one_line_each() {
+        let kinds = [KindSummary {
+            kind: "thumbnails".into(),
+            queued: 3,
+            running: 1,
+            failed: 2,
+        }];
+        let failures = [FailedJob {
+            id: 42,
+            kind: "thumbnails".into(),
+            attempts: 5,
+            last_error: Some("decode\nfailed".into()),
+            updated_at: datetime!(2026-11-14 10:00 UTC),
+        }];
+        let out = format_jobs(&kinds, &failures);
+        assert!(
+            out.contains("thumbnails                      3        1        2"),
+            "{out}"
+        );
+        assert!(
+            out.contains("      42  2026-11-14T10:00:00Z  thumbnails  attempts 5  decode failed"),
+            "{out}"
+        );
+        assert_eq!(format_jobs(&[], &[]), "no jobs\n");
     }
 }
