@@ -63,4 +63,50 @@ class SessionTest {
         }
         assertEquals(SessionState.SignedIn, Session(flaky).restore())
     }
+
+    @Test
+    fun aFailedSaveAfterRotationNeverFallsBackToTheOldToken() = runTest {
+        val disk = InMemoryTokenStore("sqr_1")
+        var failSaves = 1
+        val flaky = object : TokenStore by disk {
+            override suspend fun save(refreshToken: String) {
+                if (failSaves-- > 0) error("disk full")
+                disk.save(refreshToken)
+            }
+        }
+        val session = Session(flaky)
+        session.restore()
+        val presented = mutableListOf<String>()
+        var next = 1
+        val call: suspend (String) -> RefreshOutcome = { token ->
+            presented += token
+            next++
+            RefreshOutcome.Refreshed(Tokens("sqa_$next", "sqr_$next"))
+        }
+
+        assertEquals("sqa_2", session.refresh(null, call)) // rotated, but the save failed
+        assertEquals("sqr_1", disk.load())
+        assertEquals("sqa_3", session.refresh("sqa_2", call)) // the next refresh presents sqr_2
+
+        assertEquals(listOf("sqr_1", "sqr_2"), presented)
+        assertEquals("sqr_3", disk.load())
+    }
+
+    @Test
+    fun aPendingTokenIsSavedOnTheNextRequest() = runTest {
+        val disk = InMemoryTokenStore("sqr_1")
+        var failSaves = 1
+        val flaky = object : TokenStore by disk {
+            override suspend fun save(refreshToken: String) {
+                if (failSaves-- > 0) error("disk full")
+                disk.save(refreshToken)
+            }
+        }
+        val session = Session(flaky)
+        session.refresh(null) { RefreshOutcome.Refreshed(Tokens("sqa_2", "sqr_2")) }
+
+        assertEquals("sqa_2", session.accessToken())
+
+        assertEquals("sqr_2", disk.load())
+    }
 }

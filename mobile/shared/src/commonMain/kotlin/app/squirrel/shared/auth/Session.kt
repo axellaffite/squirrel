@@ -1,5 +1,6 @@
 package app.squirrel.shared.auth
 
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -30,6 +31,8 @@ sealed interface RefreshOutcome {
 class Session(private val store: TokenStore) {
     private val mutex = Mutex()
     private var access: String? = null
+    /** A rotated refresh token the store failed to save; it replaces whatever the store holds. */
+    private var pendingRefresh: String? = null
     private val _state = MutableStateFlow<SessionState>(SessionState.Unknown)
     val state: StateFlow<SessionState> = _state.asStateFlow()
 
@@ -46,13 +49,16 @@ class Session(private val store: TokenStore) {
     }
 
     suspend fun signedIn(tokens: Tokens) = mutex.withLock {
-        store.save(tokens.refreshToken)
         access = tokens.accessToken
+        persist(tokens.refreshToken)
         _state.value = SessionState.SignedIn
     }
 
-    /** The access token in memory, if any. */
-    suspend fun accessToken(): String? = mutex.withLock { access }
+    /** The access token in memory, if any; also retries saving a pending refresh token. */
+    suspend fun accessToken(): String? = mutex.withLock {
+        pendingRefresh?.let { persist(it) }
+        access
+    }
 
     /**
      * Gets a new access token after [stale] was refused. If another caller already replaced
@@ -63,11 +69,12 @@ class Session(private val store: TokenStore) {
         mutex.withLock {
             val current = access
             if (current != null && current != stale) return@withLock current
-            val refreshToken = store.load() ?: return@withLock signOutLocked()
+            // Never the store's copy while a newer token waits to be saved: the old one was rotated out.
+            val refreshToken = pendingRefresh ?: store.load() ?: return@withLock signOutLocked()
             when (val outcome = call(refreshToken)) {
                 is RefreshOutcome.Refreshed -> {
-                    store.save(outcome.tokens.refreshToken)
                     access = outcome.tokens.accessToken
+                    persist(outcome.tokens.refreshToken)
                     _state.value = SessionState.SignedIn
                     outcome.tokens.accessToken
                 }
@@ -80,9 +87,23 @@ class Session(private val store: TokenStore) {
         mutex.withLock { signOutLocked() }
     }
 
+    /** Saves [refreshToken]; on failure keeps it pending in memory and retries on the next request. */
+    private suspend fun persist(refreshToken: String) {
+        pendingRefresh = refreshToken
+        try {
+            store.save(refreshToken)
+            pendingRefresh = null
+        } catch (e: CancellationException) {
+            throw e
+        } catch (_: Exception) {
+            // Kept in pendingRefresh: used for the next refresh and saved again before then.
+        }
+    }
+
     private suspend fun signOutLocked(): String? {
-        store.clear()
+        pendingRefresh = null
         access = null
+        store.clear()
         _state.value = SessionState.SignedOut
         return null
     }
