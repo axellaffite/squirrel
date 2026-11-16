@@ -122,6 +122,19 @@ fn config(options: &WorkerOptions) -> WorkerConfig {
     }
 }
 
+/// Runs the embedded worker on its own task and logs its failure as soon as
+/// it happens: the server keeps serving, so nothing else would report it.
+pub fn spawn_logged<F>(worker: F) -> tokio::task::JoinHandle<()>
+where
+    F: std::future::Future<Output = anyhow::Result<()>> + Send + 'static,
+{
+    tokio::spawn(async move {
+        if let Err(err) = worker.await {
+            tracing::error!(error = %format!("{err:#}"), "the job worker stopped with an error");
+        }
+    })
+}
+
 /// The worker never migrates: it waits for the server (or `squirrel migrate`)
 /// to bring the schema up to this binary's version, then gives up after 10 minutes.
 pub async fn wait_for_migrations(pool: &PgPool) -> anyhow::Result<()> {
@@ -193,6 +206,39 @@ mod tests {
         let name = name_for(&"h".repeat(500), 42);
         assert_eq!(name.chars().count(), MAX_NAME_CHARS);
         assert_eq!(name_for("  ", 42), "worker:42");
+    }
+
+    /// Collects what a subscriber writes, to check what was logged.
+    #[derive(Clone, Default)]
+    struct Captured(std::sync::Arc<std::sync::Mutex<Vec<u8>>>);
+
+    impl std::io::Write for Captured {
+        fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
+            self.0.lock().unwrap().extend_from_slice(buf);
+            Ok(buf.len())
+        }
+
+        fn flush(&mut self) -> std::io::Result<()> {
+            Ok(())
+        }
+    }
+
+    #[tokio::test]
+    async fn a_failing_embedded_worker_is_logged_when_it_ends() {
+        let captured = Captured::default();
+        let writer = captured.clone();
+        let subscriber = tracing_subscriber::fmt()
+            .with_writer(move || writer.clone())
+            .with_ansi(false)
+            .finish();
+        let _guard = tracing::subscriber::set_default(subscriber);
+        // Current-thread test runtime: the spawned task sees this subscriber.
+        spawn_logged(async { Err(anyhow::anyhow!("listener gone")) })
+            .await
+            .unwrap();
+        let logged = String::from_utf8(captured.0.lock().unwrap().clone()).unwrap();
+        assert!(logged.contains("ERROR"), "{logged}");
+        assert!(logged.contains("listener gone"), "{logged}");
     }
 
     #[sqlx::test(migrator = "squirrel_db::MIGRATOR")]
