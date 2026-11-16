@@ -33,6 +33,8 @@ class Session(private val store: TokenStore) {
     private var access: String? = null
     /** A rotated refresh token the store failed to save; it replaces whatever the store holds. */
     private var pendingRefresh: String? = null
+    /** The last refresh failed for a transient reason (network, proxy), not a refusal. */
+    private var refreshFailedTransiently = false
     private val _state = MutableStateFlow<SessionState>(SessionState.Unknown)
     val state: StateFlow<SessionState> = _state.asStateFlow()
 
@@ -71,7 +73,16 @@ class Session(private val store: TokenStore) {
             if (current != null && current != stale) return@withLock current
             // Never the store's copy while a newer token waits to be saved: the old one was rotated out.
             val refreshToken = pendingRefresh ?: store.load() ?: return@withLock signOutLocked()
-            when (val outcome = call(refreshToken)) {
+            val outcome = try {
+                call(refreshToken)
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                refreshFailedTransiently = true
+                throw e
+            }
+            refreshFailedTransiently = false
+            when (outcome) {
                 is RefreshOutcome.Refreshed -> {
                     access = outcome.tokens.accessToken
                     persist(outcome.tokens.refreshToken)
@@ -81,6 +92,21 @@ class Session(private val store: TokenStore) {
                 RefreshOutcome.Rejected -> signOutLocked()
             }
         }
+
+    /**
+     * The server refused this device after the refresh and retry. Signs out and returns true,
+     * unless that refresh failed transiently (the refusal may only be an expired access token).
+     */
+    suspend fun refused(): Boolean = mutex.withLock {
+        when {
+            _state.value == SessionState.SignedOut -> true
+            refreshFailedTransiently -> false
+            else -> {
+                signOutLocked()
+                true
+            }
+        }
+    }
 
     /** Forgets every credential. */
     suspend fun signOut() {

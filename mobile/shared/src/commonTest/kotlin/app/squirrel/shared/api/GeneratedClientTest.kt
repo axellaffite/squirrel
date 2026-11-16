@@ -122,6 +122,76 @@ class GeneratedClientTest {
         const val CONCURRENT = 8
     }
 
+    private fun refusingRefresh(status: HttpStatusCode, refreshBody: (MockRequestHandleScope) -> HttpResponseData) =
+        Harness { request ->
+            when (request.url.encodedPath) {
+                "/api/auth/device/login" -> json(loginJson(), HttpStatusCode.Created)
+                "/api/auth/device/refresh" -> refreshBody(this)
+                else -> error(HttpStatusCode.Unauthorized, "unauthorized")
+            }
+        }
+
+    @Test
+    fun refreshRefusalsInTheServersEnvelopeSignOut() = runApiTest {
+        for (status in listOf(HttpStatusCode.BadRequest, HttpStatusCode.Unauthorized, HttpStatusCode.Forbidden)) {
+            val h = refusingRefresh(status) { it.error(status, "validation_error") }
+            h.api.signIn("ada", "secret", device)
+            assertFailsWith<SignedOut>(status.toString()) {
+                h.api.sync.syncFolder(app.squirrel.api.models.SyncFolderRequest(2024)).bodyOrThrow()
+            }
+            assertEquals(SessionState.SignedOut, h.session.state.value, status.toString())
+        }
+    }
+
+    @Test
+    fun aProxyPageOnRefreshIsTransient() = runApiTest {
+        val h = refusingRefresh(HttpStatusCode.Unauthorized) {
+            it.respond("<html>Login to the hotel Wi-Fi</html>", HttpStatusCode.Unauthorized,
+                io.ktor.http.headersOf(HttpHeaders.ContentType, "text/html"))
+        }
+        h.api.signIn("ada", "secret", device)
+
+        val failure = assertFailsWith<ApiError> {
+            h.api.sync.syncFolder(app.squirrel.api.models.SyncFolderRequest(2024)).bodyOrThrow()
+        }
+
+        assertEquals(false, failure.fromServer)
+        assertEquals(SessionState.SignedIn, h.session.state.value)
+        assertEquals("sqr_first", h.store.load())
+    }
+
+    @Test
+    fun anyServer401AfterARefreshSignsOut() = runApiTest {
+        val h = Harness { request ->
+            when (request.url.encodedPath) {
+                "/api/auth/device/login" -> json(loginJson(), HttpStatusCode.Created)
+                "/api/auth/device/refresh" -> json("""{"tokens":${tokensJson("sqa_second", "sqr_second")}}""")
+                else -> error(HttpStatusCode.Unauthorized, "account_disabled")
+            }
+        }
+        h.api.signIn("ada", "secret", device)
+
+        assertFailsWith<SignedOut> { h.api.sync.syncFolder(app.squirrel.api.models.SyncFolderRequest(2024)).bodyOrThrow() }
+        assertEquals(SessionState.SignedOut, h.session.state.value)
+    }
+
+    @Test
+    fun aProxy401OnADataCallIsRetryable() = runApiTest {
+        val h = Harness { request ->
+            when (request.url.encodedPath) {
+                "/api/auth/device/login" -> json(loginJson(), HttpStatusCode.Created)
+                "/api/auth/device/refresh" -> json("""{"tokens":${tokensJson("sqa_second", "sqr_second")}}""")
+                else -> respond("<html>proxy</html>", HttpStatusCode.Unauthorized, io.ktor.http.headersOf(HttpHeaders.ContentType, "text/html"))
+            }
+        }
+        h.api.signIn("ada", "secret", device)
+
+        val failure = assertFailsWith<ApiError> { h.api.sync.syncFolder(app.squirrel.api.models.SyncFolderRequest(2024)).bodyOrThrow() }
+
+        assertTrue(failure !is SignedOut)
+        assertEquals(SessionState.SignedIn, h.session.state.value)
+    }
+
     @Test
     fun concurrent401sShareOneRefresh() = runApiTest {
         val refreshes = AtomicInt(0)
