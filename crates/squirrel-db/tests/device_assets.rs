@@ -322,3 +322,51 @@ async fn emptying_the_trash_and_the_purge_tombstone_too(pool: PgPool) {
         .unwrap();
     assert_eq!(tombstones(&pool, alice.id).await, [sha('a'), sha('b')]);
 }
+
+#[sqlx::test(migrator = "squirrel_db::MIGRATOR")]
+async fn overlapping_checks_of_one_device_do_not_deadlock(pool: PgPool) {
+    let alice = common::admin(&pool).await;
+    let files = common::root(&pool, alice.id, "Files").await;
+    let ids: Vec<String> = (0..200).map(|i| format!("images:{i:03}")).collect();
+    let hashes: Vec<String> = (0..200).map(|i| format!("{i:064x}")).collect();
+    for (i, sha) in hashes.iter().enumerate() {
+        sqlx::query("INSERT INTO blobs (sha256, size, mime) VALUES ($1, 1, 'image/jpeg')")
+            .bind(sha)
+            .execute(&pool)
+            .await
+            .unwrap();
+        sqlx::query(
+            "INSERT INTO nodes (id, owner_id, parent_id, name, kind, blob_sha256, size, mime) \
+             VALUES (gen_random_uuid(), $1, $2, $3, 'file', $4, 1, 'image/jpeg')",
+        )
+        .bind(alice.id)
+        .bind(files.id)
+        .bind(format!("{i}.jpg"))
+        .bind(sha)
+        .execute(&pool)
+        .await
+        .unwrap();
+    }
+    let phone = device(&pool, alice.id).await;
+    let forward: Vec<SyncItem<'_>> = ids.iter().zip(&hashes).map(|(i, s)| item(i, s)).collect();
+    let backward: Vec<SyncItem<'_>> = forward.iter().rev().copied().collect();
+    for _ in 0..5 {
+        sqlx::query("DELETE FROM device_assets")
+            .execute(&pool)
+            .await
+            .unwrap();
+        let (a, b) = tokio::join!(
+            device_assets::missing(&pool, phone, alice.id, &forward),
+            device_assets::missing(&pool, phone, alice.id, &backward),
+        );
+        assert!(a.unwrap().is_empty());
+        assert!(b.unwrap().is_empty());
+    }
+    assert_eq!(
+        device_assets::list_for_device(&pool, phone)
+            .await
+            .unwrap()
+            .len(),
+        200
+    );
+}

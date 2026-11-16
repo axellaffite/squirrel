@@ -64,34 +64,51 @@ pub async fn missing(
         .fetch_all(&mut *tx)
         .await?;
     let mut missing = Vec::new();
+    let mut found = Vec::new();
     for item in checked {
         match (item.recorded, item.library_node, item.deleted) {
             (true, _, _) => {}
             (false, Some(node_id), _) => {
-                record(
-                    &mut tx,
-                    device_id,
-                    &item.device_asset_id,
-                    &item.sha256,
-                    Some(node_id),
-                )
-                .await?;
+                found.push((item.device_asset_id, item.sha256, Some(node_id)))
             }
-            (false, None, true) => {
-                record(
-                    &mut tx,
-                    device_id,
-                    &item.device_asset_id,
-                    &item.sha256,
-                    None,
-                )
-                .await?;
-            }
+            (false, None, true) => found.push((item.device_asset_id, item.sha256, None)),
             (false, None, false) => missing.push(item.device_asset_id),
         }
     }
+    record_many(&mut tx, device_id, &found).await?;
     tx.commit().await?;
     Ok(missing)
+}
+
+/// Records `(device_asset_id, sha256, node_id)` rows in one statement, in
+/// `device_asset_id` order: overlapping checks of one device lock the same
+/// rows in the same order, so they cannot deadlock.
+async fn record_many(
+    conn: &mut PgConnection,
+    device_id: Uuid,
+    rows: &[(String, String, Option<Uuid>)],
+) -> Result<(), DbError> {
+    if rows.is_empty() {
+        return Ok(());
+    }
+    let ids: Vec<&str> = rows.iter().map(|(id, _, _)| id.as_str()).collect();
+    let hashes: Vec<&str> = rows.iter().map(|(_, sha, _)| sha.as_str()).collect();
+    let nodes: Vec<Option<Uuid>> = rows.iter().map(|(_, _, node)| *node).collect();
+    sqlx::query(
+        "INSERT INTO device_assets (device_id, device_asset_id, sha256, node_id) \
+         SELECT $1, r.device_asset_id, r.sha256, r.node_id \
+           FROM unnest($2::text[], $3::text[], $4::uuid[]) AS r (device_asset_id, sha256, node_id) \
+          ORDER BY r.device_asset_id COLLATE \"C\" \
+         ON CONFLICT (device_id, device_asset_id) DO UPDATE \
+            SET sha256 = EXCLUDED.sha256, node_id = EXCLUDED.node_id, synced_at = now()",
+    )
+    .bind(device_id)
+    .bind(&ids)
+    .bind(&hashes)
+    .bind(&nodes)
+    .execute(conn)
+    .await?;
+    Ok(())
 }
 
 /// Records (or updates) that the device's asset is this content, held by `node_id`.
