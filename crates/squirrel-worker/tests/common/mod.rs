@@ -1,7 +1,7 @@
 #![allow(dead_code)]
 
 use std::io::Cursor;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use serde_json::Value;
@@ -31,22 +31,45 @@ impl Fixture {
     }
 
     pub fn with_executor(pool: PgPool, executor: Executor) -> Self {
-        Self::build(pool, executor, |_| GeoSource::Disabled)
+        Self::build(pool, executor, None, |_| GeoSource::Disabled)
     }
 
     /// A fixture whose geocoder reads `source(data_dir)`.
     pub fn with_geo(pool: PgPool, source: impl FnOnce(&Path) -> GeoSource) -> Self {
-        Self::build(pool, Executor::InProcess, source)
+        Self::build(pool, Executor::InProcess, None, source)
     }
 
-    fn build(pool: PgPool, executor: Executor, source: impl FnOnce(&Path) -> GeoSource) -> Self {
+    /// A fixture with PDFs handled by the pdfium in `pdfium_dir`.
+    pub fn with_pdfium(pool: PgPool, executor: Executor, pdfium_dir: PathBuf) -> Self {
+        Self::build(pool, executor, Some(pdfium_dir), |_| GeoSource::Disabled)
+    }
+
+    /// Another fixture over the same database and data directory, with pdfium.
+    pub fn reopened_with_pdfium(&self, pdfium_dir: PathBuf) -> Arc<MediaContext> {
+        let storage = BlobStore::open(self._dir.path()).unwrap();
+        Arc::new(MediaContext {
+            pool: self.ctx.pool.clone(),
+            storage,
+            executor: Executor::InProcess,
+            pdfium_dir: Some(pdfium_dir),
+            decode_limits: DecodeLimits::default(),
+            geo: GeoCache::disabled(),
+        })
+    }
+
+    fn build(
+        pool: PgPool,
+        executor: Executor,
+        pdfium_dir: Option<PathBuf>,
+        source: impl FnOnce(&Path) -> GeoSource,
+    ) -> Self {
         let dir = tempfile::tempdir().unwrap();
         let storage = BlobStore::open(dir.path()).unwrap();
         let ctx = MediaContext {
             pool,
             storage,
             executor,
-            pdfium_dir: None,
+            pdfium_dir,
             decode_limits: DecodeLimits::default(),
             geo: GeoCache::new(source(dir.path())),
         };
@@ -164,4 +187,13 @@ pub async fn queued_kinds(pool: &PgPool) -> Vec<(String, i16)> {
 
 pub fn zip_bytes() -> Vec<u8> {
     b"PK\x03\x04\x14\x00\x00\x00\x00\x00rest of a zip".to_vec()
+}
+
+/// The pdfium of `scripts/fetch-pdfium.sh`, or `None` (the caller skips).
+pub fn pdfium_dir() -> Option<PathBuf> {
+    let dir = std::env::var_os("SQUIRREL_PDFIUM_DIR").map(PathBuf::from);
+    if dir.is_none() {
+        eprintln!("skipped: SQUIRREL_PDFIUM_DIR is not set");
+    }
+    dir
 }

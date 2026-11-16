@@ -243,6 +243,10 @@ async fn serve(args: ServeArgs) -> anyhow::Result<()> {
     let storage = BlobStore::open(&args.data_dir)
         .with_context(|| format!("opening data directory {}", args.data_dir.display()))?;
     data_dir::bind(&pool, &storage, &args.data_dir).await?;
+    if args.embedded_worker {
+        // Refuse a wrong pdfium directory now rather than in the background.
+        worker::pdfium_dir(args.worker_options.pdfium_dir.as_deref())?;
+    }
     let setup_token = resolve_setup_token(&pool, args.setup_token.clone()).await?;
     let config = ApiConfig {
         cookie_secure: args.cookie_secure,
@@ -445,6 +449,12 @@ mod tests {
         assert_eq!(
             serve_args(&[]).worker_options.media_exec,
             worker::MediaExecMode::Subprocess
+        );
+        assert_eq!(
+            serve_args(&["--pdfium-dir", "/opt/pdfium/lib"])
+                .worker_options
+                .pdfium_dir,
+            Some("/opt/pdfium/lib".into())
         );
     }
 

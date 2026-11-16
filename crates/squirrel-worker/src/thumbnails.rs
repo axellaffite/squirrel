@@ -1,8 +1,6 @@
 //! `thumbnails`: render a blob's grid thumbnail and lightbox preview in the
 //! sandbox, install them under `derived/`, then record them.
 
-use std::sync::atomic::{AtomicBool, Ordering};
-
 use squirrel_core::{ContentHash, MediaKind};
 use squirrel_db::blobs::{self, BlobRecord};
 use squirrel_db::media::{self, MediaRecord, MediaState, Step};
@@ -13,12 +11,12 @@ use squirrel_storage::{Scratch, StorageError};
 
 use crate::context::MediaContext;
 use crate::jobs::ShaPayload;
+use crate::outcome;
 
 pub const NO_HEIC: &str = "built without HEIC support";
-const NO_PDFIUM: &str = "pdfium is not configured";
-
-/// "pdfium is not configured" is worth one warning per process, not one per PDF.
-static WARNED_NO_PDFIUM: AtomicBool = AtomicBool::new(false);
+/// Blobs over the sandbox's input cap are never decoded.
+pub const TOO_LARGE: &str = "too large to decode";
+pub use crate::context::NO_PDFIUM;
 
 pub async fn run(ctx: &MediaContext, job: JobContext) -> Result<(), JobError> {
     let ShaPayload { sha256 } = job.payload()?;
@@ -38,7 +36,7 @@ pub async fn run(ctx: &MediaContext, job: JobContext) -> Result<(), JobError> {
     else {
         return Ok(());
     };
-    if let Some(reason) = unsupported_reason(&media, &blob, ctx.pdfium_dir.is_some()) {
+    if let Some(reason) = unsupported_reason(ctx, &media, &blob) {
         return mark(ctx, &sha256, MediaState::Unsupported, reason).await;
     }
     let derived = ctx.storage.derived().clone();
@@ -46,20 +44,39 @@ pub async fn run(ctx: &MediaContext, job: JobContext) -> Result<(), JobError> {
         .await
         .map_err(JobError::retry)?
         .map_err(JobError::retry)?;
-    let request = ExecRequest::Image {
-        input: ctx.storage.blob_path(&hash),
-        out_dir: scratch.path().to_owned(),
-        limits: ctx.decode_limits,
+    let input = ctx.storage.blob_path(&hash);
+    let out_dir = scratch.path().to_owned();
+    let request = match (media.kind(), &ctx.pdfium_dir) {
+        (MediaKind::Pdf, Some(pdfium_dir)) => ExecRequest::Pdf {
+            input,
+            out_dir,
+            pdfium_dir: pdfium_dir.clone(),
+            render: true,
+            text: false,
+        },
+        _ => ExecRequest::Image {
+            input,
+            out_dir,
+            limits: ctx.decode_limits,
+        },
     };
     match ctx.executor.run(request).await {
         Ok(ExecResponse::Image { rendered }) => install(ctx, &hash, scratch, &rendered).await,
-        // Only asked of PDFs, which are rendered from Milestone E's next task on.
-        Ok(ExecResponse::Pdf { .. }) => {
+        Ok(ExecResponse::Pdf {
+            rendered: Some(rendered),
+            page_count,
+        }) => {
+            media::set_page_count(&ctx.pool, &sha256, page_count)
+                .await
+                .map_err(JobError::retry)?;
+            install(ctx, &hash, scratch, &rendered).await
+        }
+        Ok(ExecResponse::Pdf { rendered: None, .. }) => {
             mark(
                 ctx,
                 &sha256,
                 MediaState::Failed,
-                "unexpected sandbox response",
+                "the sandbox rendered no page",
             )
             .await
         }
@@ -73,19 +90,21 @@ pub async fn run(ctx: &MediaContext, job: JobContext) -> Result<(), JobError> {
         Ok(ExecResponse::Failed {
             reason,
             retryable: true,
-        }) => give_up_or_retry(ctx, &job, &sha256, reason).await,
-        Err(err) => give_up_or_retry(ctx, &job, &sha256, err.to_string()).await,
+        }) => outcome::give_up_or_retry(ctx, &job, &sha256, Step::Thumbs, reason).await,
+        Err(err) => {
+            outcome::give_up_or_retry(ctx, &job, &sha256, Step::Thumbs, err.to_string()).await
+        }
     }
 }
 
 /// Why no thumbnail can be made for this blob, decided without decoding.
 fn unsupported_reason(
+    ctx: &MediaContext,
     media: &MediaRecord,
     blob: &BlobRecord,
-    has_pdfium: bool,
 ) -> Option<&'static str> {
     if u64::try_from(blob.size).unwrap_or(u64::MAX) > MAX_INPUT_BYTES {
-        return Some("too large to decode");
+        return Some(TOO_LARGE);
     }
     match media.kind() {
         MediaKind::Image
@@ -94,13 +113,7 @@ fn unsupported_reason(
             Some(NO_HEIC)
         }
         MediaKind::Image => None,
-        MediaKind::Pdf => {
-            if !has_pdfium && !WARNED_NO_PDFIUM.swap(true, Ordering::Relaxed) {
-                tracing::warn!("PDF thumbnails are disabled: set SQUIRREL_PDFIUM_DIR");
-            }
-            // PDF rendering through pdfium arrives with Milestone E.
-            Some(NO_PDFIUM)
-        }
+        MediaKind::Pdf => ctx.pdfium().err(),
         MediaKind::Text => Some("no preview for text"),
     }
 }
@@ -148,37 +161,11 @@ async fn install(
     Ok(())
 }
 
-/// A terminal state for this blob's thumbnails: the job itself succeeded.
 async fn mark(
     ctx: &MediaContext,
     sha256: &str,
     state: MediaState,
     reason: &str,
 ) -> Result<(), JobError> {
-    tracing::info!(sha256, state = state.as_str(), reason, "no thumbnails");
-    media::set_state(&ctx.pool, sha256, Step::Thumbs, state, Some(reason))
-        .await
-        .map_err(JobError::retry)
-}
-
-/// Retries a transient failure; on the last attempt records `failed` first so
-/// the UI does not show "Preparing…" forever.
-async fn give_up_or_retry(
-    ctx: &MediaContext,
-    job: &JobContext,
-    sha256: &str,
-    reason: String,
-) -> Result<(), JobError> {
-    if job.is_last_attempt() {
-        media::set_state(
-            &ctx.pool,
-            sha256,
-            Step::Thumbs,
-            MediaState::Failed,
-            Some(&reason),
-        )
-        .await
-        .map_err(JobError::retry)?;
-    }
-    Err(JobError::retry(anyhow::anyhow!(reason)))
+    outcome::mark(ctx, sha256, Step::Thumbs, state, reason).await
 }
