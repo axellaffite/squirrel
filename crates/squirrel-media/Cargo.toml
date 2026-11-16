@@ -1,0 +1,16 @@
+[package]
+name = "squirrel-media"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+
+[features]
+# Exposes `testutil` (fixture generators) to other crates' tests and the fixtures example.
+test-util = []
+
+[dependencies]
+kamadak-exif.workspace = true
+image.workspace = true
+serde.workspace = true
+thiserror.workspace = true
+time.workspace = true
