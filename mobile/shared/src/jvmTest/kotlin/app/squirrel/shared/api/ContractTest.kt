@@ -29,7 +29,11 @@ class ContractTest {
 
     @Test
     fun theChunkPutTakesAnOctetStreamUnderTheDeviceBearer() {
-        val op = operation("/api/uploads/{id}/chunks/{index}", "put")
+        val op = operation(CHUNK_PATH, "put")
+        val success = op["responses"]!!.jsonObject.keys.filter { it.startsWith("2") }
+        assertEquals(listOf(CHUNK_SUCCESS.toString()), success)
+        val index = op["parameters"]!!.jsonArray.map { it.jsonObject }.single { it["name"]!!.jsonPrimitive.content == "index" }
+        assertEquals("integer", index["schema"]!!.jsonObject["type"]!!.jsonPrimitive.content)
         val content = op["requestBody"]!!.jsonObject["content"]!!.jsonObject
         assertEquals(setOf("application/octet-stream"), content.keys)
         assertTrue("device_bearer" in schemes(op))

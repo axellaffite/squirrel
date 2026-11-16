@@ -8,6 +8,7 @@ import io.ktor.client.request.put
 import io.ktor.client.request.setBody
 import io.ktor.http.ContentType
 import io.ktor.http.HttpHeaders
+import io.ktor.http.encodeURLPathPart
 import io.ktor.http.content.OutgoingContent
 import io.ktor.utils.io.ByteWriteChannel
 import io.ktor.utils.io.writeFully
@@ -20,6 +21,10 @@ sealed interface ChunkAuth {
     /** `Authorization: Upload <token>`, scoped to one upload (iOS background transfers, Milestone H). */
     data class UploadToken(val token: String) : ChunkAuth
 }
+
+/** The operation in openapi.json this call implements (ContractTest checks it). */
+internal const val CHUNK_PATH = "/api/uploads/{id}/chunks/{index}"
+internal const val CHUNK_SUCCESS = 204
 
 /** The server's `CHUNK_TIMEOUT`: one 8 MiB chunk on a slow uplink. */
 internal const val CHUNK_TIMEOUT_MS = 5 * 60_000L
@@ -40,7 +45,8 @@ class ChunkUploader internal constructor(
         require(start < reader.size) { "Chunk $index starts past the end of the file" }
         val length = minOf(chunkSize, reader.size - start)
         val client = if (auth is ChunkAuth.Bearer) authed else public
-        client.put("$baseUrl/api/uploads/$uploadId/chunks/$index") {
+        val path = CHUNK_PATH.replace("{id}", uploadId.encodeURLPathPart()).replace("{index}", index.toString())
+        client.put(baseUrl + path) {
             timeout { requestTimeoutMillis = CHUNK_TIMEOUT_MS }
             if (auth is ChunkAuth.UploadToken) header(HttpHeaders.Authorization, "Upload ${auth.token}")
             setBody(SliceContent(reader, start, length))
