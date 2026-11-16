@@ -1,5 +1,6 @@
 mod admin;
 mod data_dir;
+mod geodata;
 mod media_exec;
 mod tasks;
 mod worker;
@@ -65,8 +66,9 @@ enum Command {
 
 #[derive(Args)]
 struct AdminArgs {
-    #[command(flatten)]
-    database: DatabaseArgs,
+    /// Required by every command except `geodata`.
+    #[arg(long, env = "SQUIRREL_DATABASE_URL")]
+    database_url: Option<String>,
     #[command(subcommand)]
     command: admin::AdminCommand,
 }
@@ -160,8 +162,16 @@ async fn run(command: Command) -> anyhow::Result<()> {
         }
         Command::Admin(args) => {
             init_tracing(false);
-            let pool = connect_migrated(&args.database).await?;
-            admin::run(&pool, args.command).await
+            // Offline tools first: they need no database.
+            let command = match admin::run_offline(args.command)? {
+                Some(command) => command,
+                None => return Ok(()),
+            };
+            let database_url = args
+                .database_url
+                .context("--database-url (or SQUIRREL_DATABASE_URL) is required")?;
+            let pool = connect_migrated(&DatabaseArgs { database_url }).await?;
+            admin::run(&pool, command).await
         }
     }
 }

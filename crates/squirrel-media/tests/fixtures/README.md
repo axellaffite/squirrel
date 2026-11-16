@@ -12,3 +12,8 @@ that crate's BSD-2-Clause licence:
 
 Every other media fixture used by the tests is generated in code
 (`squirrel_media::testutil`).
+
+`geo-sample.tsv` is ten places from Squirrel's GeoNames cities500 extract
+(`squirrel admin geodata build`), for tests and offline development
+(`SQUIRREL_GEODATA_FILE`). Data: GeoNames (https://www.geonames.org),
+licensed CC BY 4.0.

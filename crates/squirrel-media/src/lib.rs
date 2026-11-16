@@ -4,6 +4,8 @@
 
 pub mod capture;
 pub mod exec;
+pub mod geo;
+pub mod geo_build;
 #[cfg(feature = "heic")]
 pub mod heic;
 pub mod metadata;

@@ -1,0 +1,13 @@
+# GeoNames cities500 extract for Squirrel, source date 2026-11-16.
+# Data: GeoNames (https://www.geonames.org), licensed CC BY 4.0. Columns:
+# latitude	longitude	name	admin1	country_code	country	timezone
+48.85341	2.3488	Paris	Île-de-France	FR	France	Europe/Paris
+48.80359	2.13424	Versailles	Île-de-France	FR	France	Europe/Paris
+45.74906	4.84789	Lyon	Auvergne-Rhône-Alpes	FR	France	Europe/Paris
+51.50853	-0.12574	London	England	GB	United Kingdom	Europe/London
+40.71427	-74.00597	New York City	New York	US	United States	America/New_York
+-33.86785	151.20732	Sydney	New South Wales	AU	Australia	Australia/Sydney
+35.6895	139.69171	Tokyo	Tokyo	JP	Japan	Asia/Tokyo
+-16.4332	179.36451	Labasa	Northern	FJ	Fiji	Pacific/Fiji
+64.13548	-21.89541	Reykjavík	Capital Region	IS	Iceland	Atlantic/Reykjavik
+-33.92584	18.42322	Cape Town	Western Cape	ZA	South Africa	Africa/Johannesburg
