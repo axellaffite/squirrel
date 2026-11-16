@@ -1,3 +1,4 @@
+import org.jetbrains.kotlin.gradle.tasks.KotlinCompilationTask
 import org.openapitools.generator.gradle.plugin.tasks.GenerateTask
 
 plugins {
@@ -83,11 +84,24 @@ kotlin {
     }
 }
 
-tasks.matching { it.name.startsWith("compile") && it.name.contains("Kotlin") || it.name.endsWith("SourcesJar") }
-    .configureEach { dependsOn(tasks.named<GenerateTask>("openApiGenerate")) }
+tasks.withType<KotlinCompilationTask<*>>().configureEach { dependsOn(tasks.named<GenerateTask>("openApiGenerate")) }
+tasks.matching { it.name.endsWith("SourcesJar") }.configureEach { dependsOn(tasks.named<GenerateTask>("openApiGenerate")) }
 
 tasks.named<Test>("jvmTest") {
     // ContractTest reads the same contract the client is generated from.
     systemProperty("openapi.spec", openapiSpec.absolutePath)
     inputs.file(openapiSpec).withPropertyName("openapiSpec")
+}
+
+// Drift check (the web's `pnpm gen:api && git diff --exit-code`): the client is not committed,
+// so drift shows as the app or its API tests no longer compiling or passing against a client
+// generated afresh from openapi.json (or -PopenapiSpec=<path>).
+val cleanApiClient by tasks.registering(Delete::class) {
+    delete(generatedApiDir)
+}
+tasks.named("openApiGenerate") { mustRunAfter(cleanApiClient) }
+tasks.register("checkApiClient") {
+    group = "verification"
+    description = "Regenerates the API client from openapi.json, then compiles and tests against it."
+    dependsOn(cleanApiClient, "openApiGenerate", "compileKotlinJvm", "compileAndroidMain", "jvmTest")
 }
