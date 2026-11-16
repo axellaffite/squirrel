@@ -56,6 +56,21 @@ pub fn decode_folder(raw: &str) -> Result<ListCursor, ApiError> {
     Ok(ListCursor { kind, name })
 }
 
+/// Years a cursor time may have: Postgres cannot store most of what `time`
+/// can (years before 4713 BC fail as "timestamp out of range", a 500), and
+/// no real row is dated outside these.
+const CURSOR_YEARS: std::ops::RangeInclusive<i32> = 1..=9999;
+
+/// The instant `nanos` after the epoch, within [`CURSOR_YEARS`].
+fn cursor_time(nanos: &str) -> Result<OffsetDateTime, ApiError> {
+    let nanos: i128 = nanos.parse().map_err(|_| invalid())?;
+    let at = OffsetDateTime::from_unix_timestamp_nanos(nanos).map_err(|_| invalid())?;
+    if !CURSOR_YEARS.contains(&at.year()) {
+        return Err(invalid());
+    }
+    Ok(at)
+}
+
 pub fn encode_trash(cursor: &TrashCursor) -> String {
     encode(
         &cursor.deleted_at.unix_timestamp_nanos().to_string(),
@@ -65,9 +80,8 @@ pub fn encode_trash(cursor: &TrashCursor) -> String {
 
 pub fn decode_trash(raw: &str) -> Result<TrashCursor, ApiError> {
     let (nanos, id) = decode(raw)?;
-    let nanos: i128 = nanos.parse().map_err(|_| invalid())?;
     Ok(TrashCursor {
-        deleted_at: OffsetDateTime::from_unix_timestamp_nanos(nanos).map_err(|_| invalid())?,
+        deleted_at: cursor_time(&nanos)?,
         id: id.parse::<Uuid>().map_err(|_| invalid())?,
     })
 }
@@ -86,8 +100,7 @@ pub fn encode_timeline(cursor: &TimelineCursor) -> String {
 
 pub fn decode_timeline(raw: &str) -> Result<TimelineCursor, ApiError> {
     let (nanos, id) = decode(raw)?;
-    let nanos: i128 = nanos.parse().map_err(|_| invalid())?;
-    let at = OffsetDateTime::from_unix_timestamp_nanos(nanos).map_err(|_| invalid())?;
+    let at = cursor_time(&nanos)?;
     Ok(TimelineCursor {
         taken_at: PrimitiveDateTime::new(at.date(), at.time()),
         node_id: id.parse::<Uuid>().map_err(|_| invalid())?,
@@ -157,6 +170,30 @@ y",
                 matches!(decode_timeline(&raw), Err(ApiError::BadRequest(_))),
                 "{raw}"
             );
+        }
+    }
+
+    #[test]
+    fn times_postgres_cannot_store_are_a_bad_request() {
+        let id = Uuid::now_v7();
+        for at in [
+            datetime!(-5000-01-01 00:00 UTC),
+            datetime!(0000-12-31 23:59:59 UTC),
+        ] {
+            let raw = URL_SAFE_NO_PAD.encode(format!("{}\n{id}", at.unix_timestamp_nanos()));
+            assert!(matches!(
+                decode_timeline(&raw),
+                Err(ApiError::BadRequest(_))
+            ));
+            assert!(matches!(decode_trash(&raw), Err(ApiError::BadRequest(_))));
+        }
+        for at in [
+            datetime!(0001-01-01 00:00 UTC),
+            datetime!(9999-12-31 23:59 UTC),
+        ] {
+            let raw = URL_SAFE_NO_PAD.encode(format!("{}\n{id}", at.unix_timestamp_nanos()));
+            assert!(decode_timeline(&raw).is_ok());
+            assert!(decode_trash(&raw).is_ok());
         }
     }
 
