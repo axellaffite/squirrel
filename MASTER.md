@@ -249,6 +249,33 @@ press. Disabled: 45 % opacity, no shadow or glow, `cursor: not-allowed`. Hover o
   40 px round white well with the cover, name, count), "New album…" first; the list scrolls past
   `--picker-max`.
 
+### Phone app (validated 2026-11-16)
+
+The Android and iOS app (Compose Multiplatform, `mobile/`) implements this file once for both
+platforms. It adds no value: every token comes from `tokens.css` through the generated
+`mobile/theme/.../Tokens.kt` (`web/scripts/native-tokens.mjs`, drift-checked), never typed in.
+
+- **Which values**: the phone column of `tokens.css` (below 768 px): `--text-md` 14 / 20, the phone
+  `--shadow-card` / `--shadow-pop`, `--photo-row` 112. `1rem` is 16 dp; text sizes are `sp`.
+  Gradients become two-stop vertical brushes; `color-mix` tokens are resolved by the generator.
+- **Font**: Geist, the same variable font as the web, bundled as TTF (the platforms cannot load
+  woff2), weights 400 / 500 / 600 and the tracking above.
+- **Shell**: the phone shell of "Layout": ground gradient, the floating graphite bottom rail
+  (Photos, Files, Backup) with `--radius-rail` and `--shadow-pop`, safe-area aware; the top row holds
+  the wordmark and the account menu (server, device name, "Sign out"). Sign-in screens are the auth
+  pages: wordmark and one white card on the ground.
+- **Backup status card**: the Backup screen's one graphite card (allowed pattern "at most one
+  graphite card per screen"): `--rail` gradient, `--rail-ink` featured figure ("1 204 left"),
+  `--rail-muted` secondary line ("3.2 GB"), tabular figures, `--radius-card`. Progress inside it is
+  the **Progress** component.
+- **Permission notice**: an information **Alert** (`--tint`, `--ink`) with two buttons, secondary
+  "Allow all photos" and quiet "Change selection", shown whenever photo access is partial.
+- **Gallery**: the photo tokens unchanged: rows `--photo-row` (112), tiles `--radius-tile` (6), gaps
+  `--space-1`, month and day headings as on the web.
+- **Motion**: list and section arrival is skipped (touch devices, see "Motion"); presses, sheets and
+  dialogs animate with the same durations and ease. The system's reduced-motion setting (Android
+  animator scale 0, iOS Reduce Motion) makes every duration 0.
+
 ## Theme
 
 Follows the OS by default; the account menu offers System / Light / Dark, stored in
