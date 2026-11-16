@@ -370,3 +370,30 @@ async fn overlapping_checks_of_one_device_do_not_deadlock(pool: PgPool) {
         200
     );
 }
+
+#[sqlx::test(migrator = "squirrel_db::MIGRATOR")]
+async fn recording_for_a_deleted_device_records_nothing_and_keeps_the_transaction(pool: PgPool) {
+    let alice = common::admin(&pool).await;
+    let phone = device(&pool, alice.id).await;
+    sqlx::query("DELETE FROM devices WHERE id = $1")
+        .bind(phone)
+        .execute(&pool)
+        .await
+        .unwrap();
+    let mut tx = pool.begin().await.unwrap();
+    device_assets::record(&mut tx, phone, "images:1", &sha('a'), None)
+        .await
+        .unwrap();
+    // The transaction is still usable (the completion goes on and commits).
+    let alive: i32 = sqlx::query_scalar("SELECT 1")
+        .fetch_one(&mut *tx)
+        .await
+        .unwrap();
+    assert_eq!(alive, 1);
+    tx.commit().await.unwrap();
+    let rows: i64 = sqlx::query_scalar("SELECT count(*) FROM device_assets")
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+    assert_eq!(rows, 0);
+}
