@@ -1,11 +1,11 @@
 import { describe, expect, it } from 'vitest';
 import {
-	hasShortWord,
 	isSearchable,
 	kindLabel,
 	nextLimit,
 	normalizeQuery,
 	pagesLabel,
+	shortWordHint,
 	retryDelay,
 	searchError,
 	snippetParts
@@ -19,10 +19,12 @@ describe('queries', () => {
 		expect(isSearchable('x'.repeat(201))).toBe(false);
 	});
 
-	it('notices words too short for prefix matching', () => {
-		expect(hasShortWord('le bail')).toBe(true);
-		expect(hasShortWord('bail 2024')).toBe(false);
-		expect(hasShortWord('')).toBe(false);
+	it('explains how short words are matched', () => {
+		expect(shortWordHint('le bail')).toBe('Two-letter words only match whole words.');
+		expect(shortWordHint('a bail')).toBe('One-letter words are ignored.');
+		expect(shortWordHint('a le bail')).toBe('One-letter words are ignored, and two-letter words only match whole words.');
+		expect(shortWordHint('bail 2024')).toBeNull();
+		expect(shortWordHint('')).toBeNull();
 	});
 
 	it('never asks past the 200th result', () => {

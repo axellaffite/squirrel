@@ -10,13 +10,13 @@
 	import EmptyState from '#lib/components/ui/EmptyState.svelte';
 	import ListRow from '#lib/components/ui/ListRow.svelte';
 	import {
-		hasShortWord,
 		isSearchable,
 		kindLabel,
 		normalizeQuery,
 		pagesLabel,
 		resultHref,
 		shortDate,
+		shortWordHint,
 		snippetParts,
 		type SearchHit
 	} from '#lib/files/search.ts';
@@ -26,7 +26,7 @@
 	let value = $state(untrack(() => page.url.searchParams.get('q') ?? ''));
 
 	const typed = $derived(normalizeQuery(value));
-	const showShortHint = $derived(isSearchable(typed) && hasShortWord(typed));
+	const hint = $derived(isSearchable(typed) ? shortWordHint(typed) : null);
 	const settled = $derived(searcher.query !== '' && searcher.query === typed && !searcher.loading);
 
 	/** Keeps `?q=` in the address, so reloading or going back shows the same search. */
@@ -61,7 +61,7 @@
 
 	<div class="field">
 		<SearchField bind:value oninput={typing} onsubmit={(query) => searcher.now(query)} autofocus />
-		{#if showShortHint}<p class="hint">Words of one or two letters only match whole words.</p>{/if}
+		{#if hint}<p class="hint">{hint}</p>{/if}
 	</div>
 
 	{#if searcher.error}<Alert>{searcher.error}</Alert>{/if}
