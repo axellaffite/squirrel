@@ -71,7 +71,7 @@ fn internal(err: sqlx::Error) -> ApiError {
     ApiError::Internal(err.into())
 }
 
-#[utoipa::path(get, path = "/api/admin/jobs", tag = "jobs",
+#[utoipa::path(get, path = "/api/admin/jobs", security(("session_cookie" = [])), tag = "jobs",
     responses((status = 200, body = JobsOverview), (status = 403, body = ErrorBody)))]
 pub async fn jobs_overview(
     State(state): State<AppState>,
@@ -88,7 +88,7 @@ pub async fn jobs_overview(
     }))
 }
 
-#[utoipa::path(post, path = "/api/admin/jobs/{id}/retry", tag = "jobs",
+#[utoipa::path(post, path = "/api/admin/jobs/{id}/retry", security(("session_cookie" = [], "csrf_token" = [])), tag = "jobs",
     params(("id" = i64, Path, description = "Failed job id")),
     responses(
         (status = 204, description = "Queued again with fresh attempts (or an equivalent job already was)"),

@@ -17,7 +17,7 @@ use crate::input::ApiJson;
 use crate::session;
 use crate::state::AppState;
 
-#[utoipa::path(get, path = "/api/auth/me", tag = "auth",
+#[utoipa::path(get, path = "/api/auth/me", security(("session_cookie" = [])), tag = "auth",
     responses((status = 200, body = MeResponse), (status = 401, body = ErrorBody)))]
 pub async fn me(
     State(state): State<AppState>,
@@ -38,7 +38,7 @@ const CLEAR_SITE_DATA: (HeaderName, HeaderValue) = (
     HeaderValue::from_static("\"cache\""),
 );
 
-#[utoipa::path(post, path = "/api/auth/logout", tag = "auth",
+#[utoipa::path(post, path = "/api/auth/logout", security(("session_cookie" = [], "csrf_token" = [])), tag = "auth",
     responses((status = 204, description = "Logged out; `Clear-Site-Data: \"cache\"`"),
               (status = 401, body = ErrorBody), (status = 403, body = ErrorBody)))]
 pub async fn logout(
@@ -54,7 +54,7 @@ pub async fn logout(
     ))
 }
 
-#[utoipa::path(post, path = "/api/auth/logout-all", tag = "auth",
+#[utoipa::path(post, path = "/api/auth/logout-all", security(("session_cookie" = [], "csrf_token" = [])), tag = "auth",
     responses((status = 204, description = "Every session revoked; `Clear-Site-Data: \"cache\"`"),
               (status = 401, body = ErrorBody), (status = 403, body = ErrorBody)))]
 pub async fn logout_all(
@@ -81,7 +81,7 @@ pub async fn logout_all(
 /// Inputs longer than this are rejected before hashing (protects the CPU).
 const MAX_PASSWORD_BYTES: usize = Password::MAX_LEN * 4;
 
-#[utoipa::path(post, path = "/api/auth/login", tag = "auth",
+#[utoipa::path(post, path = "/api/auth/login", security(()), tag = "auth",
     request_body = LoginRequest,
     responses((status = 200, body = MeResponse), (status = 401, body = ErrorBody), (status = 429)))]
 pub async fn login(

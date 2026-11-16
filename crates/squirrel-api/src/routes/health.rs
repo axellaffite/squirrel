@@ -13,7 +13,7 @@ pub struct Health {
 }
 
 /// Healthy when the database answers and the data directory is reachable.
-#[utoipa::path(get, path = "/api/healthz", tag = "system", responses((status = 200, body = Health)))]
+#[utoipa::path(get, path = "/api/healthz", security(()), tag = "system", responses((status = 200, body = Health)))]
 pub async fn healthz(State(state): State<AppState>) -> Result<Json<Health>, ApiError> {
     sqlx::query("SELECT 1")
         .execute(&state.pool)

@@ -20,7 +20,7 @@ use crate::content::{
     CROSS_ORIGIN_RESOURCE_POLICY, SANDBOX_CSP, blob_hash, etag_matches, header_str, to_header_map,
 };
 use crate::error::{ApiError, ErrorBody};
-use crate::extract::CurrentUser;
+use crate::extract::Caller;
 use crate::input::{ApiPath, ApiQuery};
 use crate::state::AppState;
 
@@ -65,7 +65,7 @@ fn cache_policy(requested: Option<i16>, current: i16) -> &'static str {
     }
 }
 
-#[utoipa::path(get, path = "/api/files/{id}/thumbnail", tag = "files",
+#[utoipa::path(get, path = "/api/files/{id}/thumbnail", security(("device_bearer" = []), ("session_cookie" = [])), tag = "files",
     params(("id" = Uuid, Path, description = "File id"), ThumbnailQuery),
     responses(
         (status = 200, body = Vec<u8>, content_type = "image/webp"),
@@ -75,14 +75,14 @@ fn cache_policy(requested: Option<i16>, current: i16) -> &'static str {
     ))]
 pub async fn thumbnail(
     State(state): State<AppState>,
-    current: CurrentUser,
+    caller: Caller,
     ApiPath(id): ApiPath<Uuid>,
     ApiQuery(query): ApiQuery<ThumbnailQuery>,
     headers: HeaderMap,
 ) -> Result<Response, ApiError> {
     // Owner-scoped first: another user's node is exactly `not_found`, even when
     // the same bytes (and so the same derived files) exist.
-    let node = nodes::find_live(&state.pool, current.user.id, id)
+    let node = nodes::find_live(&state.pool, caller.user.id, id)
         .await?
         .filter(|node| node.kind() == NodeKind::File)
         .ok_or(ApiError::NotFound)?;

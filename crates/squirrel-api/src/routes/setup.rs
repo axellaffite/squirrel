@@ -14,14 +14,14 @@ use crate::input::ApiJson;
 use crate::session;
 use crate::state::AppState;
 
-#[utoipa::path(get, path = "/api/setup/status", tag = "setup", responses((status = 200, body = SetupStatus)))]
+#[utoipa::path(get, path = "/api/setup/status", security(()), tag = "setup", responses((status = 200, body = SetupStatus)))]
 pub async fn setup_status(State(state): State<AppState>) -> Result<Json<SetupStatus>, ApiError> {
     let needs_setup = !users::any_exists(&state.pool).await?;
     Ok(Json(SetupStatus { needs_setup }))
 }
 
 #[utoipa::path(
-    post, path = "/api/setup/admin", tag = "setup",
+    post, path = "/api/setup/admin", tag = "setup", security(()),
     request_body = SetupRequest,
     responses(
         (status = 201, body = MeResponse, description = "Admin created and logged in"),

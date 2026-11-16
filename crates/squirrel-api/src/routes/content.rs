@@ -26,7 +26,7 @@ use crate::content::{
 };
 use crate::downloads::HeldReader;
 use crate::error::{ApiError, ErrorBody};
-use crate::extract::CurrentUser;
+use crate::extract::Caller;
 use crate::input::{ApiPath, ApiQuery};
 use crate::state::AppState;
 use crate::upload_runtime::Slot;
@@ -51,7 +51,7 @@ struct Selection {
     content_range: Option<String>,
 }
 
-#[utoipa::path(get, path = "/api/files/{id}/content", tag = "files",
+#[utoipa::path(get, path = "/api/files/{id}/content", security(("device_bearer" = []), ("session_cookie" = [])), tag = "files",
     params(("id" = Uuid, Path, description = "File id"), ContentQuery),
     responses(
         (status = 200, body = Vec<u8>, description = "The file; active content types are served as application/octet-stream"),
@@ -64,12 +64,12 @@ struct Selection {
     ))]
 pub async fn file_content(
     State(state): State<AppState>,
-    current: CurrentUser,
+    caller: Caller,
     ApiPath(id): ApiPath<Uuid>,
     ApiQuery(query): ApiQuery<ContentQuery>,
     headers: HeaderMap,
 ) -> Result<Response, ApiError> {
-    let owner_id = current.user.id;
+    let owner_id = caller.user.id;
     let node = nodes::find_live(&state.pool, owner_id, id)
         .await?
         .filter(|node| node.kind() == NodeKind::File)
