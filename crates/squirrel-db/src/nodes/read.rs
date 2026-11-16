@@ -39,6 +39,20 @@ pub async fn find_live<'e>(
         .await?)
 }
 
+/// Internal (worker only): the node whatever its owner, live or trashed.
+/// Never answer a user request with it; use [`find_live`].
+#[doc(hidden)]
+pub async fn find_any<'e>(
+    executor: impl PgExecutor<'e>,
+    id: Uuid,
+) -> Result<Option<NodeRecord>, DbError> {
+    let sql = format!("SELECT {NODE_COLUMNS} FROM nodes WHERE id = $1");
+    Ok(sqlx::query_as::<_, NodeRecord>(&sql)
+        .bind(id)
+        .fetch_optional(executor)
+        .await?)
+}
+
 pub async fn find_live_folder<'e>(
     executor: impl PgExecutor<'e>,
     owner_id: Uuid,
