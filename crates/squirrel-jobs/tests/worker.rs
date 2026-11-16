@@ -226,3 +226,67 @@ async fn a_timed_out_handler_is_stopped_not_left_running(pool: PgPool) {
     assert_eq!(finished.load(Ordering::SeqCst), 0);
     worker.stop().await;
 }
+
+fn noop_registry() -> Registry {
+    let mut registry = Registry::new();
+    registry.register("noop", Duration::from_secs(5), |_ctx| async { Ok(()) });
+    registry
+}
+
+#[sqlx::test(migrator = "squirrel_db::MIGRATOR")]
+async fn a_worker_that_cannot_listen_at_start_polls_instead(pool: PgPool) {
+    // Two connections, both held by the test while the worker starts: its
+    // LISTEN connection cannot be acquired.
+    let tight = tight_pool(&pool).await;
+    let held = (
+        tight.acquire().await.unwrap(),
+        tight.acquire().await.unwrap(),
+    );
+    let mut cfg = config();
+    cfg.poll_interval = Duration::from_millis(200);
+    let worker = start(&tight, noop_registry(), cfg);
+    tokio::time::sleep(Duration::from_millis(300)).await;
+    assert!(!worker.handle.is_finished(), "the worker must not give up");
+    drop(held);
+
+    add(&pool, NewJob::new("noop", json!({}))).await;
+    wait_until(&pool, "SELECT count(*) FROM jobs", 0).await;
+    worker.stop().await;
+}
+
+/// A pool of two connections that gives up acquiring after 100 ms.
+async fn tight_pool(pool: &PgPool) -> PgPool {
+    sqlx::postgres::PgPoolOptions::new()
+        .max_connections(2)
+        .acquire_timeout(Duration::from_millis(100))
+        .connect_with((*pool.connect_options()).clone())
+        .await
+        .unwrap()
+}
+
+#[sqlx::test(migrator = "squirrel_db::MIGRATOR")]
+async fn a_failing_listener_does_not_delay_stopping(pool: PgPool) {
+    let own = tight_pool(&pool).await;
+    let mut cfg = config();
+    cfg.poll_interval = Duration::from_secs(5);
+    let worker = start(&own, noop_registry(), cfg);
+    let listening = "SELECT count(*) FROM pg_stat_activity \
+          WHERE datname = current_database() AND query LIKE 'LISTEN%'";
+    wait_until(&pool, listening, 1).await;
+    // Closing the worker's pool makes its listener's `recv` fail (`PoolClosed`).
+    // `close` waits for the listener's connection, so it is not awaited.
+    let closing = tokio::spawn({
+        let own = own.clone();
+        async move { own.close().await }
+    });
+    tokio::time::sleep(Duration::from_millis(200)).await;
+
+    let started = std::time::Instant::now();
+    worker.stop().await;
+    assert!(
+        started.elapsed() < Duration::from_secs(2),
+        "stopping took {:?}",
+        started.elapsed()
+    );
+    closing.await.unwrap();
+}
