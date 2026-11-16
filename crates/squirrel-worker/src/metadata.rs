@@ -86,22 +86,12 @@ async fn recompute_assets(ctx: &MediaContext, sha256: &str) -> Result<(), JobErr
         .filter(|n| n.mime.as_deref().and_then(MediaKind::for_mime) == Some(MediaKind::Image))
     {
         let asset = facts::asset_for(node, &media, now);
-        // A node deleted for good meanwhile fails the foreign key: skip it.
-        match assets::upsert(&mut tx, &asset).await {
-            Ok(()) => {}
-            Err(err) if is_missing_node(&err) => {}
-            Err(err) => return Err(JobError::retry(err)),
-        }
+        // `false`: deleted for good meanwhile, skipped without failing the transaction.
+        assets::upsert(&mut tx, &asset)
+            .await
+            .map_err(JobError::retry)?;
     }
     tx.commit().await.map_err(JobError::retry)
-}
-
-fn is_missing_node(err: &squirrel_db::DbError) -> bool {
-    matches!(
-        err,
-        squirrel_db::DbError::Sqlx(sqlx::Error::Database(db))
-            if db.constraint() == Some("assets_node_fkey")
-    )
 }
 
 struct Extracted {

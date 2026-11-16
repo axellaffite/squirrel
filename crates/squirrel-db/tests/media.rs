@@ -164,14 +164,29 @@ async fn assets_follow_their_node_and_owner(pool: PgPool) {
     let bob = invited(&pool, &alice, "bob").await;
     let id = image_with_media(&pool, alice.id, "a.jpg", 'a').await;
     let mut conn = pool.acquire().await.unwrap();
-    let err = assets::upsert(&mut conn, &asset(id, bob.id, 'a'))
-        .await
-        .unwrap_err();
+    // Another owner's node: nothing is written, and the database refuses it too.
+    assert!(
+        !assets::upsert(&mut conn, &asset(id, bob.id, 'a'))
+            .await
+            .unwrap()
+    );
+    let err = sqlx::query(
+        "INSERT INTO assets (node_id, owner_id, sha256, kind, taken_at, taken_source) \
+         VALUES ($1, $2, $3, 'photo', now(), 'upload')",
+    )
+    .bind(id)
+    .bind(bob.id)
+    .bind(hash('a').as_str())
+    .execute(&pool)
+    .await
+    .unwrap_err();
     assert!(err.to_string().contains("assets_node_fkey"), "{err}");
 
-    assets::upsert(&mut conn, &asset(id, alice.id, 'a'))
-        .await
-        .unwrap();
+    assert!(
+        assets::upsert(&mut conn, &asset(id, alice.id, 'a'))
+            .await
+            .unwrap()
+    );
     sqlx::query("UPDATE nodes SET deleted_at = now(), trash_root = id WHERE id = $1")
         .bind(id)
         .execute(&pool)
@@ -245,4 +260,34 @@ async fn worker_lookups_span_owners_and_the_trash(pool: PgPool) {
             .unwrap()
             .is_none()
     );
+}
+
+#[sqlx::test(migrator = "squirrel_db::MIGRATOR")]
+async fn a_missing_node_does_not_spoil_the_transaction(pool: PgPool) {
+    let alice = admin(&pool).await;
+    let gone = image_with_media(&pool, alice.id, "gone.jpg", 'a').await;
+    let kept = {
+        let files = root(&pool, alice.id, "Files").await.id;
+        raw_file(&pool, alice.id, files, "kept.jpg", 'a', 3).await
+    };
+    sqlx::query("DELETE FROM nodes WHERE id = $1")
+        .bind(gone)
+        .execute(&pool)
+        .await
+        .unwrap();
+
+    // As `extract_metadata` does with a node list read before the deletion.
+    let mut tx = pool.begin().await.unwrap();
+    assert!(
+        !assets::upsert(&mut tx, &asset(gone, alice.id, 'a'))
+            .await
+            .unwrap()
+    );
+    assert!(
+        assets::upsert(&mut tx, &asset(kept, alice.id, 'a'))
+            .await
+            .unwrap()
+    );
+    tx.commit().await.unwrap();
+    assert!(assets::find(&pool, kept).await.unwrap().is_some());
 }

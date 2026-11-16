@@ -66,12 +66,16 @@ pub struct AssetRecord {
     pub created_at: OffsetDateTime,
 }
 
-/// Creates the node's entry or updates its capture time and kind.
-pub async fn upsert(conn: &mut PgConnection, asset: &NewAsset) -> Result<(), DbError> {
-    sqlx::query(
+/// Creates the node's entry or updates its capture time and kind. `false`: the
+/// node (with this owner) no longer exists, and nothing was written. The node
+/// row is locked (`FOR KEY SHARE`) instead of relying on the foreign key, whose
+/// violation would abort the caller's whole transaction.
+pub async fn upsert(conn: &mut PgConnection, asset: &NewAsset) -> Result<bool, DbError> {
+    let written = sqlx::query(
         "INSERT INTO assets (node_id, owner_id, sha256, kind, taken_at, taken_offset_min, \
                              taken_source) \
-         VALUES ($1, $2, $3, $4, $5, $6, $7) \
+         SELECT n.id, n.owner_id, $3, $4, $5, $6, $7 FROM nodes n \
+          WHERE n.id = $1 AND n.owner_id = $2 FOR KEY SHARE \
          ON CONFLICT (node_id) DO UPDATE SET kind = EXCLUDED.kind, \
                 taken_at = EXCLUDED.taken_at, taken_offset_min = EXCLUDED.taken_offset_min, \
                 taken_source = EXCLUDED.taken_source",
@@ -85,7 +89,7 @@ pub async fn upsert(conn: &mut PgConnection, asset: &NewAsset) -> Result<(), DbE
     .bind(asset.taken_source.as_str())
     .execute(conn)
     .await?;
-    Ok(())
+    Ok(written.rows_affected() == 1)
 }
 
 /// Internal (no owner check): the entry of a node, for tests and the worker.
