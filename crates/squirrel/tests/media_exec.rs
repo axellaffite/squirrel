@@ -41,8 +41,7 @@ async fn renders_in_a_child_process() {
 /// With pdfium (`scripts/fetch-pdfium.sh`); skipped otherwise.
 #[tokio::test]
 async fn renders_a_pdf_in_a_child_process() {
-    let Some(pdfium_dir) = std::env::var_os("SQUIRREL_PDFIUM_DIR") else {
-        eprintln!("skipped: SQUIRREL_PDFIUM_DIR is not set");
+    let Some(pdfium_dir) = squirrel_media::testutil::test_pdfium_dir() else {
         return;
     };
     let dir = tempfile::tempdir().unwrap();
@@ -52,7 +51,7 @@ async fn renders_a_pdf_in_a_child_process() {
     let request = ExecRequest::Pdf {
         input,
         out_dir: out.path().into(),
-        pdfium_dir: pdfium_dir.into(),
+        pdfium_dir,
         render: true,
         text: true,
     };

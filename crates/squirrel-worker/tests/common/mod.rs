@@ -191,9 +191,5 @@ pub fn zip_bytes() -> Vec<u8> {
 
 /// The pdfium of `scripts/fetch-pdfium.sh`, or `None` (the caller skips).
 pub fn pdfium_dir() -> Option<PathBuf> {
-    let dir = std::env::var_os("SQUIRREL_PDFIUM_DIR").map(PathBuf::from);
-    if dir.is_none() {
-        eprintln!("skipped: SQUIRREL_PDFIUM_DIR is not set");
-    }
-    dir
+    squirrel_media::testutil::test_pdfium_dir()
 }
