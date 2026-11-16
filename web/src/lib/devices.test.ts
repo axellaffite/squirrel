@@ -1,15 +1,15 @@
 import { describe, expect, it } from 'vitest';
-import { deviceLabel, lastSeen, sortDevices } from '#lib/devices.ts';
+import { type Device, deviceLabel, lastSeen, sortDevices } from '#lib/devices.ts';
 
-const device = (overrides: Partial<Parameters<typeof deviceLabel>[0]> = {}) => ({
+const device = (overrides: Partial<Device> = {}): Device => ({
 	id: 'a',
 	name: 'Pixel',
 	platform: 'android' as const,
-	model: 'Pixel 8' as string | null,
+	model: 'Pixel 8',
 	app_version: '0.1.0',
 	created_at: '2026-11-01T10:00:00Z',
 	last_seen_at: '2026-11-16T10:00:00Z',
-	revoked_at: null as string | null,
+	revoked_at: null,
 	current: false,
 	...overrides
 });
