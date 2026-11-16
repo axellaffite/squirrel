@@ -22,6 +22,7 @@ mod session;
 mod setup_token;
 mod spa;
 mod state;
+mod sync_dto;
 mod upload_runtime;
 
 pub use client_ip::{TrustedProxies, TrustedProxiesError};
@@ -47,6 +48,8 @@ use utoipa_axum::routes;
 /// Credential bodies (setup, login, join) are tiny; keep them so.
 const CREDENTIAL_BODY_LIMIT: usize = 16 * 1024;
 const API_BODY_LIMIT: usize = 64 * 1024;
+/// A full sync check: 500 items of at most ~350 bytes each.
+const SYNC_BODY_LIMIT: usize = 256 * 1024;
 const API_TIMEOUT: Duration = Duration::from_secs(30);
 /// Room for framing beyond one chunk in a chunk upload body.
 const CHUNK_BODY_MARGIN: usize = 64 * 1024;
@@ -129,6 +132,7 @@ pub fn openapi() -> utoipa::openapi::OpenApi {
 /// new route in the group whose limits fit it:
 ///
 /// - [`json_routes`]: ordinary JSON endpoints (64 KiB body, 30 s timeout). The default.
+/// - [`sync_routes`]: the sync check (256 KiB body, 30 s timeout, per-device rate limit).
 /// - [`credential_routes`]: endpoints that receive passwords or one-time secrets
 ///   (16 KiB body, 30 s timeout, per-route rate limits).
 /// - [`transfer_routes`]: upload chunks, upload completion and file downloads. No
@@ -139,6 +143,7 @@ fn api_router(config: &ApiConfig) -> OpenApiRouter<AppState> {
     let timed = json_routes()
         .merge(credential_routes(config))
         .merge(search_routes(config))
+        .merge(sync_routes())
         .layer(TimeoutLayer::with_status_code(
             StatusCode::REQUEST_TIMEOUT,
             API_TIMEOUT,
@@ -227,6 +232,14 @@ fn search_routes(config: &ApiConfig) -> OpenApiRouter<AppState> {
         Method::GET,
         &config.trusted_proxies,
     )
+}
+
+/// The phone's sync check: larger bodies (a 500-item batch), rate limited per
+/// device by the handler (the limit needs the authenticated device).
+fn sync_routes() -> OpenApiRouter<AppState> {
+    OpenApiRouter::new()
+        .routes(routes!(routes::sync::sync_check))
+        .layer(DefaultBodyLimit::max(SYNC_BODY_LIMIT))
 }
 
 /// Endpoints that take credentials or one-time secrets: tiny bodies and rate

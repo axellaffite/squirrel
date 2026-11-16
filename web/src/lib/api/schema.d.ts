@@ -549,6 +549,22 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/sync/check": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["sync_check"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/trash": {
         parameters: {
             query?: never;
@@ -1097,6 +1113,21 @@ export interface components {
              * @description Logical bytes of live files: what the quota limits.
              */
             used_bytes: number;
+        };
+        SyncCheckItem: {
+            /** @description The phone's stable id for the asset, 1–256 bytes. */
+            device_asset_id: string;
+            /** @description SHA-256 of the asset's original bytes, 64 lowercase hex characters. */
+            sha256: string;
+        };
+        /** @description Which of these assets does the server miss? */
+        SyncCheckRequest: {
+            /** @description 1–500 items, ids unique within the batch. */
+            items: components["schemas"]["SyncCheckItem"][];
+        };
+        SyncCheckResponse: {
+            /** @description The ids to upload, in request order. Everything else is already backed up. */
+            missing: string[];
         };
         /** @description A ready thumbnail of a file. */
         ThumbnailRef: {
@@ -2775,6 +2806,63 @@ export interface operations {
                 };
             };
             401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    sync_check: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SyncCheckRequest"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SyncCheckResponse"];
+                };
+            };
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not a device */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description The whole batch was refused */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            429: {
                 headers: {
                     [name: string]: unknown;
                 };

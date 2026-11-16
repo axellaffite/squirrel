@@ -82,3 +82,18 @@ pub async fn access_is_live(pool: &sqlx::PgPool, token: &str) -> bool {
         .expect("lookup")
         .is_some()
 }
+
+/// `POST /api/sync/check` with `items` as `(device_asset_id, sha256)` pairs.
+pub async fn sync_check(instance: &Instance, token: &str, items: &[(&str, &str)]) -> TestResponse {
+    let items: Vec<Value> = items
+        .iter()
+        .map(|(id, sha)| json!({ "device_asset_id": id, "sha256": sha }))
+        .collect();
+    let (name, value) = bearer(token);
+    instance
+        .browser()
+        .post("/api/sync/check")
+        .add_header(name, value)
+        .json(&json!({ "items": items }))
+        .await
+}

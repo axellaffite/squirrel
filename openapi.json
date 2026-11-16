@@ -2342,6 +2342,81 @@
         ]
       }
     },
+    "/api/sync/check": {
+      "post": {
+        "tags": [
+          "sync"
+        ],
+        "operationId": "sync_check",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SyncCheckRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SyncCheckResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Not a device",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "The whole batch was refused",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "device_bearer": []
+          }
+        ]
+      }
+    },
     "/api/trash": {
       "get": {
         "tags": [
@@ -4149,6 +4224,54 @@
             "type": "integer",
             "format": "int64",
             "description": "Logical bytes of live files: what the quota limits."
+          }
+        }
+      },
+      "SyncCheckItem": {
+        "type": "object",
+        "required": [
+          "device_asset_id",
+          "sha256"
+        ],
+        "properties": {
+          "device_asset_id": {
+            "type": "string",
+            "description": "The phone's stable id for the asset, 1–256 bytes."
+          },
+          "sha256": {
+            "type": "string",
+            "description": "SHA-256 of the asset's original bytes, 64 lowercase hex characters."
+          }
+        }
+      },
+      "SyncCheckRequest": {
+        "type": "object",
+        "description": "Which of these assets does the server miss?",
+        "required": [
+          "items"
+        ],
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/SyncCheckItem"
+            },
+            "description": "1–500 items, ids unique within the batch."
+          }
+        }
+      },
+      "SyncCheckResponse": {
+        "type": "object",
+        "required": [
+          "missing"
+        ],
+        "properties": {
+          "missing": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "The ids to upload, in request order. Everything else is already backed up."
           }
         }
       },
