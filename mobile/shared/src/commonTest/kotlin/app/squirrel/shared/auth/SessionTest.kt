@@ -53,4 +53,14 @@ class SessionTest {
         assertNull(session.refresh(null) { error("must not be called") })
         assertEquals(SessionState.SignedOut, session.state.value)
     }
+
+    @Test
+    fun anUnavailableStoreKeepsTheDeviceSignedIn() = runTest {
+        val flaky = object : TokenStore {
+            override suspend fun load(): String? = throw TokenStoreUnavailable(IllegalStateException("keystore busy"))
+            override suspend fun save(refreshToken: String) = Unit
+            override suspend fun clear() = error("must not clear")
+        }
+        assertEquals(SessionState.SignedIn, Session(flaky).restore())
+    }
 }

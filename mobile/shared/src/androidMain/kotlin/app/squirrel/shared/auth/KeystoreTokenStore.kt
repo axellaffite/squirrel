@@ -3,6 +3,7 @@ package app.squirrel.shared.auth
 import android.security.keystore.KeyGenParameterSpec
 import android.security.keystore.KeyProperties
 import app.squirrel.shared.db.SquirrelDatabase
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.security.KeyStore
@@ -17,14 +18,24 @@ import javax.crypto.spec.GCMParameterSpec
  * The key never leaves the device, so a restored copy of the database is useless.
  */
 class KeystoreTokenStore(private val db: SquirrelDatabase) : TokenStore {
+    /**
+     * The stored token, or null when there is none. A ciphertext that can never be decrypted again
+     * is deleted ([isUnrecoverableSecretFailure]); any other failure throws [TokenStoreUnavailable]
+     * and keeps the row, so a later attempt can succeed.
+     */
     override suspend fun load(): String? = withContext(Dispatchers.IO) {
         val row = db.secretQueries.get(SECRET_NAME).executeAsOneOrNull() ?: return@withContext null
-        val cipher = Cipher.getInstance(TRANSFORMATION)
+        var keyLoaded = false
         try {
-            cipher.init(Cipher.DECRYPT_MODE, key(), GCMParameterSpec(TAG_BITS, row.iv))
+            val key = key()
+            keyLoaded = true
+            val cipher = Cipher.getInstance(TRANSFORMATION)
+            cipher.init(Cipher.DECRYPT_MODE, key, GCMParameterSpec(TAG_BITS, row.iv))
             cipher.doFinal(row.ciphertext).decodeToString()
-        } catch (_: java.security.GeneralSecurityException) {
-            // The key is gone (app data restored elsewhere, keystore reset): sign in again.
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            if (!isUnrecoverableSecretFailure(e, keyLoaded)) throw TokenStoreUnavailable(e)
             db.secretQueries.remove(SECRET_NAME)
             null
         }
