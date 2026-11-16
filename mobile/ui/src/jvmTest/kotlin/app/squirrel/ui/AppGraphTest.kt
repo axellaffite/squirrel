@@ -34,7 +34,7 @@ class AppGraphTest {
         AppGraph(
             driver = createJvmDriver(),
             tokenStore = { store },
-            engine = {
+            httpEngine = {
                 MockEngine {
                     respond(unauthorized, HttpStatusCode.Unauthorized, headersOf(HttpHeaders.ContentType, ContentType.Application.Json.toString()))
                 }
@@ -61,7 +61,7 @@ class AppGraphTest {
         val graph = AppGraph(
             driver = driver,
             tokenStore = { InMemoryTokenStore("sqr_old") },
-            engine = {
+            httpEngine = {
                 MockEngine {
                     respond(unauthorized, HttpStatusCode.Unauthorized, headersOf(HttpHeaders.ContentType, ContentType.Application.Json.toString()))
                 }

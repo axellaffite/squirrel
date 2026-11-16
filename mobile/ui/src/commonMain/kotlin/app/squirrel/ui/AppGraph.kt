@@ -19,7 +19,21 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.IO
 import kotlinx.coroutines.withContext
+import app.squirrel.shared.sync.BackupStatus
+import app.squirrel.shared.sync.KtorChunkTransport
+import app.squirrel.shared.sync.MediaAccess
+import app.squirrel.shared.sync.Queue
+import app.squirrel.shared.sync.Scanner
+import app.squirrel.shared.sync.SyncEngine
+import app.squirrel.shared.sync.SyncState
+import app.squirrel.shared.sync.backupStatus
+import app.squirrel.ui.backup.BackupPlatform
+import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.flatMapLatest
+import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
@@ -45,11 +59,14 @@ private object AccountKeys {
 class AppGraph(
     driver: SqlDriver,
     tokenStore: (SquirrelDatabase) -> TokenStore,
-    private val engine: () -> HttpClientEngine,
+    private val httpEngine: () -> HttpClientEngine,
     val device: DeviceDetails,
     private val scope: CoroutineScope,
     /** Database and keystore work runs here, never on the main thread. */
     private val io: CoroutineDispatcher = Dispatchers.IO,
+    /** The platform's photo library and scheduler; null where backup is not wired (tests). */
+    val backup: BackupPlatform? = null,
+    private val clock: () -> Long = { kotlin.time.Clock.System.now().toEpochMilliseconds() },
 ) {
     val database: SquirrelDatabase = createDatabase(driver)
     val settings = SettingsStore(database)
@@ -59,6 +76,11 @@ class AppGraph(
     private var attempts = 0
     var api: SquirrelApi? = null
         private set
+    val queue = Queue(database)
+    private val _syncEngine = MutableStateFlow<SyncEngine?>(null)
+
+    /** The backup engine of the signed-in device (null when signed out or not wired). */
+    val syncEngine: StateFlow<SyncEngine?> = _syncEngine.asStateFlow()
 
     init {
         scope.launch { start() }
@@ -67,7 +89,50 @@ class AppGraph(
         }
     }
 
-    fun newApi(serverUrl: String): SquirrelApi = SquirrelApi(serverUrl, engine(), session)
+    fun newApi(serverUrl: String): SquirrelApi = SquirrelApi(serverUrl, httpEngine(), session)
+
+    /** Waits until start-up decided between signed in and sign-in. */
+    suspend fun awaitReady(): AppState = state.first { it != AppState.Loading }
+
+    /** The live backup status for the screens. */
+    @OptIn(ExperimentalCoroutinesApi::class)
+    fun backupStatus(): Flow<BackupStatus> = syncEngine.flatMapLatest { engine ->
+        backupStatus(queue, engine?.state ?: MutableStateFlow(SyncState.Idle), settings) {
+            backup?.source?.access() ?: MediaAccess.Full
+        }
+    }.flowOn(io)
+
+    /** Re-applies the background schedule after a settings change. */
+    fun applySchedule() {
+        val platform = backup ?: return
+        if (_syncEngine.value == null) return
+        scope.launch(io) { platform.schedule(settings.backup()) }
+    }
+
+    fun backUpNow() {
+        val platform = backup ?: return
+        scope.launch(io) {
+            queue.retryFailed()
+            platform.backUpNow(settings.backup())
+        }
+    }
+
+    private fun use(api: SquirrelApi) {
+        this.api = api
+        val platform = backup ?: return
+        _syncEngine.value = SyncEngine(
+            source = platform.source,
+            api = api,
+            queue = queue,
+            scanner = Scanner(platform.source, database, queue, settings, now = clock),
+            transport = KtorChunkTransport(api.chunks),
+            conditions = platform.conditions,
+            settings = settings,
+            now = clock,
+            io = io,
+        )
+        applySchedule()
+    }
 
     private suspend fun start() {
         val restored = withContext(io) {
@@ -85,7 +150,7 @@ class AppGraph(
                 )
             }
         } ?: return toSignIn()
-        api = newApi(restored.serverUrl)
+        use(newApi(restored.serverUrl))
         _state.value = AppState.SignedIn(restored)
         refreshAccount()
     }
@@ -96,7 +161,7 @@ class AppGraph(
             settings.setServerUrl(serverUrl)
             remember(result)
         }
-        this.api = api
+        use(api)
         _state.value = AppState.SignedIn(info(serverUrl, result))
     }
 
@@ -132,6 +197,8 @@ class AppGraph(
     }
 
     private suspend fun toSignIn() {
+        backup?.cancel()
+        _syncEngine.value = null
         api?.close()
         api = null
         val lastServer = withContext(io) {
