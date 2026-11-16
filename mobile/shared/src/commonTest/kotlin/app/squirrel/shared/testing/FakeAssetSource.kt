@@ -31,7 +31,7 @@ class FakeAssetSource : AssetSource {
         clock++
         val asset = ScannedAsset(id, kind, "$id.jpg", if (kind == "video") "video/mp4" else "image/jpeg", size, modifiedAt, takenAt, album)
         assets[id] = asset
-        readers[id] = FakeReader(size, seed = id.hashCode())
+        readers[id] = FakeReader(size, seed = id.hashCode(), modifiedAt = modifiedAt)
         changedAt[id] = clock
         removedAt.remove(id)
         return asset

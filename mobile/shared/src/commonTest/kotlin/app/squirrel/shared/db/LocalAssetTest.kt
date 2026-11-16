@@ -30,7 +30,7 @@ class LocalAssetTest {
     @Test
     fun anUnchangedFileKeepsItsHashAndState() {
         scan("images:1")
-        q.setHash("h1", "images:1")
+        q.setHash("h1", null, null, "images:1")
         q.markPresent(listOf("images:1"))
 
         scan("images:1", generation = 2)
@@ -43,7 +43,7 @@ class LocalAssetTest {
     @Test
     fun aChangedFileIsHashedAndCheckedAgain() {
         scan("images:1")
-        q.setHash("h1", "images:1")
+        q.setHash("h1", null, null, "images:1")
         q.markMissing(listOf("images:1"))
         q.markUploading("u1", "images:1")
 
@@ -59,7 +59,7 @@ class LocalAssetTest {
     fun aSkippedAssetSelectedAgainResumes() {
         scan("images:1")
         scan("images:2")
-        q.setHash("h1", "images:1")
+        q.setHash("h1", null, null, "images:1")
         q.skipUnseen(2)
 
         scan("images:1", generation = 3)
@@ -74,10 +74,22 @@ class LocalAssetTest {
         scan("images:1")
         scan("images:2")
         scan("images:3", size = 50)
-        q.setHash("h", "images:1")
+        q.setHash("h", null, null, "images:1")
         q.markPresent(listOf("images:1"))
 
         assertEquals(mapOf("new" to 2L, "done" to 1L), db.counts())
         assertEquals(150L, q.bytesLeft().executeAsOne())
+    }
+
+    @Test
+    fun aChangedFileForgetsWhatWasHashed() {
+        scan("images:1", size = 100)
+        q.setHash("h1", 99, 5, "images:1")
+        assertEquals(99, row("images:1").hashed_size)
+
+        scan("images:1", size = 200)
+
+        assertNull(row("images:1").hashed_size)
+        assertNull(row("images:1").hashed_modified_at)
     }
 }

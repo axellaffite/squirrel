@@ -301,4 +301,16 @@ class SyncEngineTest {
 
         assertEquals(setOf<Any?>(io), dispatchers)
     }
+
+    @Test
+    fun hashingRecordsWhatWasActuallyRead() = runApiTest {
+        source.put("images:1", size = 64, modifiedAt = 42)
+        server.known += hashOf("images:1")
+
+        engine().runOnce()
+
+        val asset = queue.get("images:1")!!
+        assertEquals(64L, asset.hashedSize)
+        assertEquals(42L, asset.hashedModifiedAt)
+    }
 }

@@ -93,6 +93,10 @@ class Uploader(
     }
 
     private suspend fun transfer(asset: QueuedAsset, reader: AssetReader, shouldContinue: () -> Boolean): UploadResult {
+        if (changedSinceHashing(asset, reader)) {
+            queue.resetHash(asset.deviceAssetId)
+            return UploadResult.Changed
+        }
         var uploadId = asset.uploadId
         repeat(MAX_RESTARTS) {
             val session = uploadId?.let { status(it) } ?: when (val created = create(asset)) {
@@ -161,6 +165,14 @@ class Uploader(
         return completed
     }
 
+    /** The file on the phone is no longer the one that was hashed (edited between hash and upload). */
+    private fun changedSinceHashing(asset: QueuedAsset, reader: AssetReader): Boolean {
+        val hashedSize = asset.hashedSize ?: asset.size
+        val hashedModified = asset.hashedModifiedAt
+        val modified = reader.modifiedAt
+        return reader.size != hashedSize || (modified != null && hashedModified != null && modified != hashedModified)
+    }
+
     private suspend fun status(uploadId: String): UploadSession? {
         val response = api.uploadsApi.uploadStatus(uploadId)
         if (response.status == NOT_FOUND) return null
@@ -171,7 +183,7 @@ class Uploader(
         NewUpload(
             parentId = folder(year(asset)),
             name = asset.name,
-            size = asset.size,
+            size = asset.hashedSize ?: asset.size,
             sha256 = checkNotNull(asset.sha256) { "Upload before hashing" },
             takenAt = asset.takenAt,
             deviceAssetId = asset.deviceAssetId,
