@@ -96,9 +96,12 @@ async fn record_many(
     let nodes: Vec<Option<Uuid>> = rows.iter().map(|(_, _, node)| *node).collect();
     sqlx::query(
         "INSERT INTO device_assets (device_id, device_asset_id, sha256, node_id) \
-         SELECT $1, r.device_asset_id, r.sha256, r.node_id \
-           FROM unnest($2::text[], $3::text[], $4::uuid[]) AS r (device_asset_id, sha256, node_id) \
+         SELECT d.id, r.device_asset_id, r.sha256, r.node_id \
+           FROM devices d, \
+                unnest($2::text[], $3::text[], $4::uuid[]) AS r (device_asset_id, sha256, node_id) \
+          WHERE d.id = $1 \
           ORDER BY r.device_asset_id COLLATE \"C\" \
+            FOR KEY SHARE OF d \
          ON CONFLICT (device_id, device_asset_id) DO UPDATE \
             SET sha256 = EXCLUDED.sha256, node_id = EXCLUDED.node_id, synced_at = now()",
     )
@@ -111,7 +114,10 @@ async fn record_many(
     Ok(())
 }
 
-/// Records (or updates) that the device's asset is this content, held by `node_id`.
+/// Records (or updates) that the device's asset is this content, held by
+/// `node_id`. A device deleted meanwhile records nothing: the device row is
+/// locked (`FOR KEY SHARE`) instead of relying on the foreign key, whose
+/// violation would abort the caller's whole transaction.
 pub async fn record(
     conn: &mut PgConnection,
     device_id: Uuid,
@@ -121,7 +127,7 @@ pub async fn record(
 ) -> Result<(), DbError> {
     sqlx::query(
         "INSERT INTO device_assets (device_id, device_asset_id, sha256, node_id) \
-         VALUES ($1, $2, $3, $4) \
+         SELECT d.id, $2, $3, $4 FROM devices d WHERE d.id = $1 FOR KEY SHARE \
          ON CONFLICT (device_id, device_asset_id) DO UPDATE \
             SET sha256 = EXCLUDED.sha256, node_id = EXCLUDED.node_id, synced_at = now()",
     )
