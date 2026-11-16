@@ -16,8 +16,9 @@ pub struct SyncItem<'a> {
 }
 
 /// The check, over the batch unnested from `$3` (ids) and `$4` (hashes): is
-/// the id recorded for this device (`$1`) with this hash, and which node of
-/// the owner (`$2`), live or trashed, holds this content.
+/// the id recorded for this device (`$1`) with this hash, which node of the
+/// owner (`$2`), live or trashed, holds this content, and did the owner delete
+/// this content for good after a phone backed it up (`deleted_hashes`).
 #[doc(hidden)]
 pub const CHECK_SQL: &str = "\
     SELECT i.device_asset_id, i.sha256, \
@@ -25,7 +26,9 @@ pub const CHECK_SQL: &str = "\
                     WHERE d.device_id = $1 AND d.device_asset_id = i.device_asset_id \
                       AND d.sha256 = i.sha256) AS recorded, \
            (SELECT n.id FROM nodes n \
-             WHERE n.owner_id = $2 AND n.blob_sha256 = i.sha256 LIMIT 1) AS library_node \
+             WHERE n.owner_id = $2 AND n.blob_sha256 = i.sha256 LIMIT 1) AS library_node, \
+           EXISTS (SELECT 1 FROM deleted_hashes t \
+                    WHERE t.owner_id = $2 AND t.sha256 = i.sha256) AS deleted \
       FROM unnest($3::text[], $4::text[]) AS i (device_asset_id, sha256)";
 
 #[derive(Debug, FromRow)]
@@ -34,12 +37,15 @@ struct Checked {
     sha256: String,
     recorded: bool,
     library_node: Option<Uuid>,
+    deleted: bool,
 }
 
 /// The ids of `items` the server does not have: neither recorded for this
 /// device with this hash, nor content the owner already holds (live or in
-/// the trash). Items found in the library are recorded for the device in the
-/// same transaction, so the next check answers from `device_assets`. An id
+/// the trash), nor content the owner deleted for good after a phone backed it
+/// up (never uploaded again, whichever device asks). Items found in the
+/// library or among the deleted are recorded for the device in the same
+/// transaction, so the next check answers from `device_assets`. An id
 /// recorded with another hash (an edited photo) is missing again.
 pub async fn missing(
     pool: &PgPool,
@@ -59,9 +65,9 @@ pub async fn missing(
         .await?;
     let mut missing = Vec::new();
     for item in checked {
-        match (item.recorded, item.library_node) {
-            (true, _) => {}
-            (false, Some(node_id)) => {
+        match (item.recorded, item.library_node, item.deleted) {
+            (true, _, _) => {}
+            (false, Some(node_id), _) => {
                 record(
                     &mut tx,
                     device_id,
@@ -71,7 +77,17 @@ pub async fn missing(
                 )
                 .await?;
             }
-            (false, None) => missing.push(item.device_asset_id),
+            (false, None, true) => {
+                record(
+                    &mut tx,
+                    device_id,
+                    &item.device_asset_id,
+                    &item.sha256,
+                    None,
+                )
+                .await?;
+            }
+            (false, None, false) => missing.push(item.device_asset_id),
         }
     }
     tx.commit().await?;

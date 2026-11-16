@@ -303,3 +303,102 @@ async fn the_folder_route_validates_and_wants_a_device(pool: PgPool) {
         .await
         .assert_status(StatusCode::FORBIDDEN);
 }
+
+/// Uploads `content` from the phone as `asset` into `Photos/<device>/2024`; returns the node id.
+async fn phone_upload(
+    instance: &common::Instance,
+    token: &str,
+    asset: &str,
+    content: &[u8],
+) -> String {
+    let folder = folder_of(instance, token, 2024).await;
+    let (name, value) = common::devices::bearer(token);
+    let browser = instance.browser();
+    let started = browser
+        .post("/api/uploads")
+        .add_header(name.clone(), value.clone())
+        .json(&json!({
+            "parent_id": folder, "name": format!("{asset}.jpg"), "size": content.len(),
+            "sha256": sha256_hex(content), "device_asset_id": asset,
+        }))
+        .await;
+    started.assert_status(StatusCode::CREATED);
+    let id = started.json::<Value>()["upload_id"]
+        .as_str()
+        .unwrap()
+        .to_owned();
+    browser
+        .put(&format!("/api/uploads/{id}/chunks/0"))
+        .add_header(name.clone(), value.clone())
+        .bytes(axum::body::Bytes::copy_from_slice(content))
+        .await
+        .assert_status(StatusCode::NO_CONTENT);
+    let done = browser
+        .post(&format!("/api/uploads/{id}/complete"))
+        .add_header(name, value)
+        .await;
+    done.assert_status(StatusCode::CREATED);
+    done.json::<Value>()["id"].as_str().unwrap().to_owned()
+}
+
+async fn device_logout(instance: &common::Instance, token: &str) {
+    let (name, value) = common::devices::bearer(token);
+    instance
+        .browser()
+        .post("/api/auth/device/logout")
+        .add_header(name, value)
+        .await
+        .assert_status(StatusCode::NO_CONTENT);
+}
+
+#[sqlx::test(migrator = "squirrel_db::MIGRATOR")]
+async fn content_deleted_for_good_is_never_asked_for_again(pool: PgPool) {
+    let instance = common::Instance::new(pool);
+    let browser = instance.browser();
+    let me = common::setup_admin(&browser, "alice").await;
+    let phone = device_login(&instance, "alice", "Pixel 8").await;
+    let node = phone_upload(&instance, &access(&phone), "images:1", b"a holiday photo").await;
+
+    for request in [
+        browser.delete(&format!("/api/nodes/{node}")),
+        browser.delete(&format!("/api/trash/{node}")),
+    ] {
+        request
+            .add_header(common::CSRF, common::csrf(&me))
+            .await
+            .assert_status(StatusCode::NO_CONTENT);
+    }
+    device_logout(&instance, &access(&phone)).await;
+
+    // Signed in again (a reinstall): a new device asks by hash.
+    let again = device_login(&instance, "alice", "Pixel 8").await;
+    let sha = sha256_hex(b"a holiday photo");
+    let other = sha256_hex(b"a new photo");
+    let items = [("images:1", sha.as_str()), ("images:2", other.as_str())];
+    assert_eq!(
+        missing(sync_check(&instance, &access(&again), &items).await),
+        ["images:2"]
+    );
+}
+
+#[sqlx::test(migrator = "squirrel_db::MIGRATOR")]
+async fn trashed_content_is_not_asked_for_again(pool: PgPool) {
+    let instance = common::Instance::new(pool);
+    let browser = instance.browser();
+    let me = common::setup_admin(&browser, "alice").await;
+    let phone = device_login(&instance, "alice", "Pixel 8").await;
+    let node = phone_upload(&instance, &access(&phone), "images:1", b"trashed photo").await;
+    browser
+        .delete(&format!("/api/nodes/{node}"))
+        .add_header(common::CSRF, common::csrf(&me))
+        .await
+        .assert_status(StatusCode::NO_CONTENT);
+    device_logout(&instance, &access(&phone)).await;
+
+    let again = device_login(&instance, "alice", "Pixel 8").await;
+    let sha = sha256_hex(b"trashed photo");
+    assert!(
+        missing(sync_check(&instance, &access(&again), &[("images:1", sha.as_str())]).await)
+            .is_empty()
+    );
+}

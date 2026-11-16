@@ -177,6 +177,7 @@ async fn the_check_probes_indexes(pool: PgPool) {
     let plan = plan.join("\n");
     assert!(plan.contains("device_assets_pkey"), "{plan}");
     assert!(plan.contains("nodes_owner_blob_idx"), "{plan}");
+    assert!(plan.contains("deleted_hashes_pkey"), "{plan}");
     assert!(!plan.contains("Seq Scan on nodes"), "{plan}");
     assert!(plan.contains("Index Cond"), "{plan}");
 }
@@ -215,4 +216,109 @@ async fn the_schema_accepts_device_times_and_rejects_bad_shapes(pool: PgPool) {
     .execute(&pool)
     .await
     .unwrap();
+}
+
+async fn tombstones(pool: &PgPool, owner: Uuid) -> Vec<String> {
+    sqlx::query_scalar("SELECT sha256 FROM deleted_hashes WHERE owner_id = $1 ORDER BY sha256")
+        .bind(owner)
+        .fetch_all(pool)
+        .await
+        .unwrap()
+}
+
+/// A file of `fill` content, recorded as `asset` by `phone`, then trashed.
+async fn backed_up_and_trashed(
+    pool: &PgPool,
+    owner: Uuid,
+    phone: Uuid,
+    asset: &str,
+    fill: char,
+) -> Uuid {
+    let files = common::root(pool, owner, "Files").await;
+    let node = common::raw_file(pool, owner, files.id, &format!("{asset}.jpg"), fill, 1).await;
+    let mut tx = pool.begin().await.unwrap();
+    device_assets::record(&mut tx, phone, asset, &sha(fill), Some(node))
+        .await
+        .unwrap();
+    tx.commit().await.unwrap();
+    common::raw_trash(pool, node).await;
+    node
+}
+
+#[sqlx::test(migrator = "squirrel_db::MIGRATOR")]
+async fn deleting_backed_up_content_for_good_leaves_a_tombstone(pool: PgPool) {
+    let alice = common::admin(&pool).await;
+    let bob = common::invited(&pool, &alice, "bob").await;
+    let phone = device(&pool, alice.id).await;
+    let backed_up = backed_up_and_trashed(&pool, alice.id, phone, "images:1", 'a').await;
+    let files = common::root(&pool, alice.id, "Files").await;
+    let web_only = common::raw_file(&pool, alice.id, files.id, "web.jpg", 'b', 1).await;
+    common::raw_trash(&pool, web_only).await;
+    // Bob's phone backing up the same content does not tombstone it for Alice.
+    let bobs_phone = device(&pool, bob.id).await;
+    let mut tx = pool.begin().await.unwrap();
+    device_assets::record(&mut tx, bobs_phone, "images:9", &sha('b'), None)
+        .await
+        .unwrap();
+    tx.commit().await.unwrap();
+
+    squirrel_db::trash::delete_forever(&pool, alice.id, backed_up)
+        .await
+        .unwrap();
+    squirrel_db::trash::delete_forever(&pool, alice.id, web_only)
+        .await
+        .unwrap();
+    assert_eq!(tombstones(&pool, alice.id).await, [sha('a')]);
+
+    // The phone's own records go with the device; the tombstone stays.
+    sqlx::query("DELETE FROM devices WHERE id = $1")
+        .bind(phone)
+        .execute(&pool)
+        .await
+        .unwrap();
+    assert_eq!(tombstones(&pool, alice.id).await, [sha('a')]);
+
+    // A new install asks by hash: the deleted content is not missing, and is recorded.
+    let reinstalled = device(&pool, alice.id).await;
+    let (a, b) = (sha('a'), sha('b'));
+    let missing = device_assets::missing(
+        &pool,
+        reinstalled,
+        alice.id,
+        &[item("images:1", &a), item("images:2", &b)],
+    )
+    .await
+    .unwrap();
+    assert_eq!(missing, ["images:2"]);
+    let recorded = device_assets::list_for_device(&pool, reinstalled)
+        .await
+        .unwrap();
+    assert_eq!(recorded.len(), 1);
+    assert_eq!(recorded[0].device_asset_id, "images:1");
+    assert_eq!(recorded[0].node_id, None);
+    // Bob is unaffected by Alice's tombstone.
+    let bobs_check = device_assets::missing(&pool, bobs_phone, bob.id, &[item("images:1", &a)])
+        .await
+        .unwrap();
+    assert_eq!(bobs_check, ["images:1"]);
+}
+
+#[sqlx::test(migrator = "squirrel_db::MIGRATOR")]
+async fn emptying_the_trash_and_the_purge_tombstone_too(pool: PgPool) {
+    let alice = common::admin(&pool).await;
+    let phone = device(&pool, alice.id).await;
+    backed_up_and_trashed(&pool, alice.id, phone, "images:1", 'a').await;
+    squirrel_db::trash::empty(&pool, alice.id).await.unwrap();
+    assert_eq!(tombstones(&pool, alice.id).await, [sha('a')]);
+
+    backed_up_and_trashed(&pool, alice.id, phone, "images:2", 'b').await;
+    sqlx::query("UPDATE nodes SET deleted_at = now() - interval '40 days' WHERE trash_root = id")
+        .execute(&pool)
+        .await
+        .unwrap();
+    let cutoff = OffsetDateTime::now_utc() - Duration::days(30);
+    squirrel_db::trash::purge_older_than(&pool, cutoff, 10)
+        .await
+        .unwrap();
+    assert_eq!(tombstones(&pool, alice.id).await, [sha('a'), sha('b')]);
 }
