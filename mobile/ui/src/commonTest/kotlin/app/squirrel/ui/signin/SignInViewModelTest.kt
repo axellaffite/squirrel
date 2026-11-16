@@ -68,6 +68,12 @@ class SignInViewModelTest {
     private fun runVm(block: suspend () -> Unit) = runTest { withContext(Dispatchers.Default) { block() } }
 
     @Test
+    fun theLastAddressIsPrefilled() {
+        val vm = SignInViewModel(apiFor = { error("unused") }, device = device, lastServer = "http://192.168.11.218:8080")
+        assertEquals("http://192.168.11.218:8080", vm.state.value.server)
+    }
+
+    @Test
     fun anInvalidAddressIsAFieldError() = runVm {
         val vm = viewModel { error("no request expected") }
         vm.onServerChange("not a url")

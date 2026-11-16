@@ -56,6 +56,8 @@ class AppGraphTest {
         val seeded = app.squirrel.shared.settings.SettingsStore(app.squirrel.shared.db.createDatabase(driver))
         seeded.setServerUrl("https://home.example")
         seeded.setValue("account.display_name", "Ada")
+        app.squirrel.shared.db.createDatabase(driver).localAssetQueries
+            .insertScanned("images:1", "photo", "a.jpg", null, 1, 1, null, null, 1)
         val graph = AppGraph(
             driver = driver,
             tokenStore = { InMemoryTokenStore("sqr_old") },
@@ -70,7 +72,8 @@ class AppGraphTest {
 
         val final = withTimeout(5_000) { graph.state.first { it is AppState.NeedsSignIn } }
 
-        assertIs<AppState.NeedsSignIn>(final)
+        assertEquals("https://home.example", assertIs<AppState.NeedsSignIn>(final).serverUrl)
         assertEquals(null, graph.settings.value("account.display_name"))
+        assertEquals(emptyMap(), graph.database.localAssetQueries.counts().executeAsList().associate { it.state to it.n })
     }
 }

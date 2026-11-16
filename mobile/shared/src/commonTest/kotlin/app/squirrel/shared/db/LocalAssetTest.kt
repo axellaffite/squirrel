@@ -92,4 +92,18 @@ class LocalAssetTest {
         assertNull(row("images:1").hashed_size)
         assertNull(row("images:1").hashed_modified_at)
     }
+
+    @Test
+    fun forgettingTheDeviceKeepsOnlyTheAddressAndPreferences() {
+        scan("images:1")
+        db.scanStateQueries.put("phone", "token", 1, 0)
+        listOf("server.url", "backup.wifi_only", "backup.last_run", "account.display_name", "scan.filter")
+            .forEach { db.settingQueries.put(it, "x") }
+
+        db.forgetDevice()
+
+        assertEquals(emptyMap(), db.counts())
+        assertNull(db.scanStateQueries.get("phone").executeAsOneOrNull())
+        assertEquals(listOf("backup.wifi_only", "server.url"), db.settingQueries.all().executeAsList().map { it.key }.sorted())
+    }
 }

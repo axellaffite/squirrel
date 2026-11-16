@@ -10,6 +10,7 @@ import app.squirrel.shared.auth.SessionState
 import app.squirrel.shared.auth.TokenStore
 import app.squirrel.shared.db.SquirrelDatabase
 import app.squirrel.shared.db.createDatabase
+import app.squirrel.shared.db.forgetDevice
 import app.squirrel.shared.settings.SettingsStore
 import io.ktor.client.engine.HttpClientEngine
 import kotlinx.coroutines.CancellationException
@@ -29,8 +30,8 @@ data class AccountInfo(val serverUrl: String, val displayName: String, val usern
 
 sealed interface AppState {
     data object Loading : AppState
-    /** [attempt] changes on every sign-out so the sign-in screens start fresh. */
-    data class NeedsSignIn(val attempt: Int) : AppState
+    /** [attempt] changes on every sign-out so the sign-in screens start fresh, at [serverUrl]. */
+    data class NeedsSignIn(val attempt: Int, val serverUrl: String? = null) : AppState
     data class SignedIn(val account: AccountInfo) : AppState
 }
 
@@ -133,10 +134,11 @@ class AppGraph(
     private suspend fun toSignIn() {
         api?.close()
         api = null
-        withContext(io) {
-            listOf(AccountKeys.DISPLAY_NAME, AccountKeys.USERNAME, AccountKeys.DEVICE_NAME).forEach { settings.setValue(it, null) }
+        val lastServer = withContext(io) {
+            database.forgetDevice()
+            settings.serverUrl()
         }
-        _state.value = AppState.NeedsSignIn(++attempts)
+        _state.value = AppState.NeedsSignIn(++attempts, lastServer)
     }
 
     private fun remember(result: SignedIn) {
