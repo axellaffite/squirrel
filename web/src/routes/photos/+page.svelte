@@ -2,6 +2,7 @@
 	import { onMount } from 'svelte';
 	import { replaceState } from '$app/navigation';
 	import { page } from '$app/state';
+	import ConfirmDialog from '#lib/components/ConfirmDialog.svelte';
 	import Icon from '#lib/components/icons/Icon.svelte';
 	import AlbumPicker from '#lib/components/photos/AlbumPicker.svelte';
 	import Lightbox from '#lib/components/photos/Lightbox.svelte';
@@ -12,14 +13,13 @@
 	import Page from '#lib/components/shell/Page.svelte';
 	import Alert from '#lib/components/ui/Alert.svelte';
 	import Button from '#lib/components/ui/Button.svelte';
-	import Dialog from '#lib/components/ui/Dialog.svelte';
 	import EmptyState from '#lib/components/ui/EmptyState.svelte';
 	import { listFolder, type FileNode } from '#lib/files/api.ts';
 	import { mediaStatus, photoDetails, type AssetSummary } from '#lib/photos/api.ts';
 	import { Selection } from '#lib/photos/selection.svelte.ts';
 	import { createPoller, preparingText } from '#lib/photos/status.ts';
 	import { TimelineData } from '#lib/photos/timeline.svelte.ts';
-	import { trashPhotos } from '#lib/photos/trash.ts';
+	import { neighbourAfterRemoval, trashPhotos } from '#lib/photos/trash.ts';
 	import { enqueue, onUploadsSettled } from '#lib/upload/uploads.svelte.ts';
 
 	const data = new TimelineData();
@@ -32,8 +32,6 @@
 	const selection = new Selection();
 	let viewing: AssetSummary | null = $state(null);
 	let confirmingDelete = $state(false);
-	let deleting = $state(false);
-	let deleteError: string | null = $state(null);
 	/** Photos the album picker is open for. */
 	let picking: readonly string[] | null = $state(null);
 	let notice: string | null = $state(null);
@@ -93,27 +91,23 @@
 	}
 
 	async function deleteViewed(asset: AssetSummary): Promise<string | null> {
-		const order = data.ordered;
-		const index = order.findIndex((item) => item.id === asset.id);
+		const after = neighbourAfterRemoval(data.ordered, asset.id);
 		const result = await trashPhotos([asset.id]);
 		if (result.error) return result.error;
-		const after = order[index + 1] ?? order[index - 1] ?? null;
+		data.remove(result.moved);
 		if (after) open(after);
 		else closeViewer();
 		void data.reload();
 		return null;
 	}
 
-	async function deleteSelected() {
-		deleting = true;
-		deleteError = null;
+	async function deleteSelected(): Promise<string | null> {
 		const result = await trashPhotos([...selection.ids]);
-		deleting = false;
 		const moved = new Set(result.moved);
+		data.remove(moved);
 		selection.keepOnly(new Set([...selection.ids].filter((id) => !moved.has(id))));
-		deleteError = result.error;
-		if (!result.error) confirmingDelete = false;
 		void data.reload();
+		return result.error;
 	}
 
 	function added(message: string) {
@@ -190,30 +184,21 @@
 		<Button variant="secondary" size="sm" aria-label="Add the selected photos to an album" onclick={() => (picking = [...selection.ids])}>
 			<Icon name="library" /><span class="label">Add to album</span>
 		</Button>
-		<Button variant="danger" size="sm" aria-label="Delete the selected photos" disabled={deleting} onclick={() => (confirmingDelete = true)}>
+		<Button variant="danger" size="sm" aria-label="Delete the selected photos" onclick={() => (confirmingDelete = true)}>
 			<Icon name="trash" /><span class="label">Delete</span>
 		</Button>
 	</SelectionBar>
 {/if}
 
 {#if confirmingDelete}
-	<Dialog
-		open
+	<ConfirmDialog
 		title={`Move ${selection.size} ${selection.size === 1 ? 'photo' : 'photos'} to the trash?`}
-		onclose={() => {
-			confirmingDelete = false;
-			deleteError = null;
-		}}
+		confirmLabel="Move to trash"
+		onConfirm={deleteSelected}
+		onClose={() => (confirmingDelete = false)}
 	>
-		<div class="confirm">
-			<p class="muted">They stay in the trash for 30 days before they are deleted for good.</p>
-			{#if deleteError}<Alert>{deleteError}</Alert>{/if}
-		</div>
-		{#snippet actions()}
-			<Button variant="secondary" onclick={() => (confirmingDelete = false)}>Cancel</Button>
-			<Button variant="danger-solid" onclick={deleteSelected} disabled={deleting || selection.size === 0}>Move to trash</Button>
-		{/snippet}
-	</Dialog>
+		They stay in the trash for 30 days before they are deleted for good.
+	</ConfirmDialog>
 {/if}
 
 {#if viewing}
@@ -234,11 +219,6 @@
 <style>
 	.live {
 		display: contents;
-	}
-
-	.confirm {
-		display: grid;
-		gap: var(--space-3);
 	}
 
 	.library {
