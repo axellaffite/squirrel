@@ -5,6 +5,7 @@ mod blocking;
 mod client_ip;
 mod content;
 mod cursor;
+mod devices_dto;
 mod downloads;
 mod dto;
 mod error;
@@ -59,7 +60,7 @@ const CHUNK_TIMEOUT: Duration = Duration::from_secs(5 * 60);
         (name = "system"), (name = "setup"), (name = "auth"), (name = "invitations"),
         (name = "admin"), (name = "files"), (name = "uploads"), (name = "trash"),
         (name = "storage"), (name = "jobs"), (name = "photos"), (name = "albums"),
-        (name = "search")
+        (name = "search"), (name = "devices"), (name = "sync")
     )
 )]
 struct ApiDoc;
@@ -181,7 +182,8 @@ fn search_routes(config: &ApiConfig) -> OpenApiRouter<AppState> {
 }
 
 /// Endpoints that take credentials or one-time secrets: tiny bodies and rate
-/// limits (login/setup/join POSTs share one bucket, invitation checks another).
+/// limits (login/setup/join and device login POSTs share one bucket, invitation
+/// checks and device token refreshes have their own).
 fn credential_routes(config: &ApiConfig) -> OpenApiRouter<AppState> {
     let trusted = &config.trusted_proxies;
     let join_routes = OpenApiRouter::new().routes(routes!(
@@ -194,11 +196,20 @@ fn credential_routes(config: &ApiConfig) -> OpenApiRouter<AppState> {
         Method::GET,
         trusted,
     );
+    let refresh_routes = OpenApiRouter::new().routes(routes!(routes::device_auth::device_refresh));
+    let refresh_routes = rate_limit::apply(
+        refresh_routes,
+        config.device_refresh_rate_limit,
+        Method::POST,
+        trusted,
+    );
     let routes = OpenApiRouter::new()
         .routes(routes!(routes::setup::create_first_admin))
         .routes(routes!(routes::auth::login))
+        .routes(routes!(routes::device_auth::device_login))
         .merge(join_routes);
     rate_limit::apply(routes, config.login_rate_limit, Method::POST, trusted)
+        .merge(refresh_routes)
         .layer(DefaultBodyLimit::max(CREDENTIAL_BODY_LIMIT))
 }
 

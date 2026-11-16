@@ -1,5 +1,6 @@
 #![allow(dead_code)]
 
+pub mod devices;
 pub mod files;
 pub mod photos;
 
@@ -30,6 +31,7 @@ pub fn test_config() -> ApiConfig {
         login_rate_limit: None,
         join_check_rate_limit: None,
         search_rate_limit: None,
+        device_refresh_rate_limit: None,
         setup_token: Some(SetupToken::new(SETUP_TOKEN)),
         upload_chunk_size: TEST_CHUNK_SIZE,
         min_free_bytes: 0,

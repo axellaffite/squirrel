@@ -116,6 +116,38 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/auth/device/login": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["device_login"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/auth/device/refresh": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["refresh_device_token"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/auth/login": {
         parameters: {
             query?: never;
@@ -573,6 +605,14 @@ export interface paths {
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
+        /** @description The signed-in user, as a device sees it. */
+        AccountDto: {
+            display_name: string;
+            /** Format: uuid */
+            id: string;
+            role: components["schemas"]["Role"];
+            username: string;
+        };
         AccountRequest: {
             display_name: string;
             password: string;
@@ -709,6 +749,47 @@ export interface components {
             deduplicated: boolean;
             node: components["schemas"]["NodeDto"];
         };
+        DeviceDto: {
+            app_version: string;
+            /** Format: date-time */
+            created_at: string;
+            /** @description Whether this is the calling device. */
+            current: boolean;
+            /** Format: uuid */
+            id: string;
+            /** Format: date-time */
+            last_seen_at: string;
+            model?: string | null;
+            name: string;
+            platform: components["schemas"]["DevicePlatform"];
+            /**
+             * Format: date-time
+             * @description Set once the device was signed out; its tokens no longer work.
+             */
+            revoked_at?: string | null;
+        };
+        /** @description The phone signing in. */
+        DeviceInfo: {
+            /** @description The app's version, 1–32 characters. */
+            app_version: string;
+            /** @description Hardware model, e.g. "Pixel 8". At most 64 characters. */
+            model?: string | null;
+            /** @description Shown in Settings › Devices and used as the backup folder's name. 1–64 characters. */
+            name: string;
+            platform: components["schemas"]["DevicePlatform"];
+        };
+        DeviceLoginRequest: {
+            device: components["schemas"]["DeviceInfo"];
+            password: string;
+            username: string;
+        };
+        DeviceLoginResponse: {
+            account: components["schemas"]["AccountDto"];
+            device: components["schemas"]["DeviceDto"];
+            tokens: components["schemas"]["TokenPair"];
+        };
+        /** @enum {string} */
+        DevicePlatform: "android" | "ios";
         DocumentHit: {
             node: components["schemas"]["NodeDto"];
             /**
@@ -894,6 +975,13 @@ export interface components {
             country_code?: string | null;
             name: string;
         };
+        RefreshRequest: {
+            /** @description The current (or, after a lost response, the previous) `sqr_…` token. */
+            refresh_token: string;
+        };
+        RefreshResponse: {
+            tokens: components["schemas"]["TokenPair"];
+        };
         /** @enum {string} */
         Role: "admin" | "user";
         /**
@@ -957,6 +1045,24 @@ export interface components {
             items: components["schemas"]["AssetSummary"][];
             /** @description Pass back as `cursor` for the next page; `null` on the last page. */
             next_cursor?: string | null;
+        };
+        /**
+         * @description Tokens of one device. Send the access token as `Authorization: Bearer
+         *     <access_token>`; before it expires, trade the refresh token for a new pair
+         *     (`POST /api/auth/device/refresh`). Every refresh rotates the refresh token.
+         */
+        TokenPair: {
+            /** Format: date-time */
+            access_expires_at: string;
+            /** @description `sqa_…`, valid 15 minutes. */
+            access_token: string;
+            /**
+             * Format: date-time
+             * @description Pushed back on every refresh.
+             */
+            refresh_expires_at: string;
+            /** @description `sqr_…`. Store it securely; it is shown once. */
+            refresh_token: string;
         };
         TrashEntryDto: {
             /** Format: date-time */
@@ -1404,6 +1510,96 @@ export interface operations {
                 };
             };
             422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    device_login: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DeviceLoginRequest"];
+            };
+        };
+        responses: {
+            /** @description Signed in: a new device and its tokens */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DeviceLoginResponse"];
+                };
+            };
+            /** @description invalid_credentials */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    refresh_device_token: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RefreshRequest"];
+            };
+        };
+        responses: {
+            /** @description New tokens; the refresh token was rotated */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RefreshResponse"];
+                };
+            };
+            /** @description unauthorized: sign in again */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            429: {
                 headers: {
                     [name: string]: unknown;
                 };

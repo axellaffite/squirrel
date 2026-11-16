@@ -2,6 +2,7 @@ pub mod admin;
 pub mod albums;
 pub mod auth;
 pub mod content;
+pub mod device_auth;
 pub mod health;
 pub mod invitations;
 pub mod jobs;
