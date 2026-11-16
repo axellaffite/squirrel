@@ -71,6 +71,9 @@ class SettingsStore(private val db: SquirrelDatabase) {
     /** A plain stored value (the signed-in account's names, cached for offline start-up). */
     fun value(key: String): String? = q.get(key).executeAsOneOrNull()
 
+    fun valueFlow(key: String): Flow<String?> =
+        q.get(key).asFlow().map { it.executeAsOneOrNull() }.distinctUntilChanged()
+
     fun setValue(key: String, value: String?) {
         if (value == null) q.remove(key) else q.put(key, value)
     }
