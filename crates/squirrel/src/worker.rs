@@ -17,8 +17,11 @@ use tokio::sync::watch;
 const LEASE: Duration = Duration::from_secs(5 * 60);
 /// Catches delayed retries, expired leases and notifications missed while reconnecting.
 const POLL_INTERVAL: Duration = Duration::from_secs(10);
-/// Running jobs get this long to finish after a stop; the rest are released.
-pub const SHUTDOWN_GRACE: Duration = Duration::from_secs(30);
+/// Running jobs get this long to finish after a stop; the rest are released
+/// (back to the queue, no attempt used). Below Docker's default 10 s stop
+/// timeout, so releasing happens before SIGKILL instead of leaving leases to
+/// expire 5 minutes later.
+pub const SHUTDOWN_GRACE: Duration = Duration::from_secs(8);
 const MIGRATION_POLL: Duration = Duration::from_secs(5);
 const MIGRATION_LOG_EVERY: Duration = Duration::from_secs(60);
 const MIGRATION_GIVE_UP: Duration = Duration::from_secs(10 * 60);
