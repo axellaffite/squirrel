@@ -89,3 +89,22 @@ async fn admins_retry_failed_jobs(pool: PgPool) {
         .await
         .assert_status(StatusCode::NOT_FOUND);
 }
+
+#[sqlx::test(migrator = "squirrel_db::MIGRATOR")]
+async fn anonymous_clients_are_turned_away(pool: PgPool) {
+    let instance = common::Instance::new(pool.clone());
+    let browser = instance.browser();
+    common::setup_admin(&browser, "alice").await;
+    let failed = insert_job(&pool, "geocode", true).await;
+    let anonymous = instance.browser();
+
+    let overview = anonymous.get("/api/admin/jobs").await;
+    overview.assert_status(StatusCode::UNAUTHORIZED);
+    assert_eq!(overview.json::<Value>()["error"]["code"], "unauthorized");
+    let retry = anonymous
+        .post(&format!("/api/admin/jobs/{failed}/retry"))
+        .await;
+    retry.assert_status(StatusCode::UNAUTHORIZED);
+    assert_eq!(retry.json::<Value>()["error"]["code"], "unauthorized");
+    assert_eq!(status_of(&pool, failed).await, ("failed".to_owned(), 5));
+}
