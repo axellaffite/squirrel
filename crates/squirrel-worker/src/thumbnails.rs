@@ -53,6 +53,16 @@ pub async fn run(ctx: &MediaContext, job: JobContext) -> Result<(), JobError> {
     };
     match ctx.executor.run(request).await {
         Ok(ExecResponse::Image { rendered }) => install(ctx, &hash, scratch, &rendered).await,
+        // Only asked of PDFs, which are rendered from Milestone E's next task on.
+        Ok(ExecResponse::Pdf { .. }) => {
+            mark(
+                ctx,
+                &sha256,
+                MediaState::Failed,
+                "unexpected sandbox response",
+            )
+            .await
+        }
         Ok(ExecResponse::Unsupported { reason }) => {
             mark(ctx, &sha256, MediaState::Unsupported, &reason).await
         }
