@@ -22,6 +22,7 @@ class BackupSettingsTest {
     @Test
     fun settingsRoundTrip() {
         val custom = BackupSettings(
+            autoBackup = false,
             wifiOnly = false,
             chargingOnly = true,
             includeVideos = false,
