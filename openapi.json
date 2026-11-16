@@ -1012,6 +1012,100 @@
         }
       }
     },
+    "/api/photos": {
+      "get": {
+        "tags": [
+          "photos"
+        ],
+        "operationId": "list_photos",
+        "parameters": [
+          {
+            "name": "month",
+            "in": "query",
+            "description": "Only this month (`YYYY-MM`, wall-clock capture time).",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "cursor",
+            "in": "query",
+            "description": "`next_cursor` of the previous page.",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "description": "Default 200, at most 500.",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "format": "int32",
+              "minimum": 0
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TimelinePage"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid cursor",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Invalid month",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/photos/months": {
+      "get": {
+        "tags": [
+          "photos"
+        ],
+        "operationId": "photo_months",
+        "responses": {
+          "200": {
+            "description": "Newest month first",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/MonthCountDto"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/setup/admin": {
       "post": {
         "tags": [
@@ -1653,6 +1747,81 @@
           }
         }
       },
+      "AssetKindDto": {
+        "type": "string",
+        "enum": [
+          "photo",
+          "screenshot"
+        ]
+      },
+      "AssetSummary": {
+        "type": "object",
+        "description": "One photo of the timeline.",
+        "required": [
+          "id",
+          "name",
+          "kind",
+          "taken_at",
+          "thumbnail"
+        ],
+        "properties": {
+          "blurhash": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "height": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32",
+            "minimum": 0
+          },
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "description": "The file node's id (also used by `/api/files/{id}/…`)."
+          },
+          "kind": {
+            "$ref": "#/components/schemas/AssetKindDto"
+          },
+          "mime": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "name": {
+            "type": "string"
+          },
+          "taken_at": {
+            "type": "string",
+            "description": "Wall-clock capture time, no offset: `2024-07-14T18:30:05`.",
+            "example": "2024-07-14T18:30:05"
+          },
+          "taken_offset": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "`+02:00` when the camera recorded it."
+          },
+          "thumbnail": {
+            "$ref": "#/components/schemas/ThumbnailState"
+          },
+          "width": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32",
+            "description": "Displayed size, once known. The grid treats unknown as square.",
+            "minimum": 0
+          }
+        }
+      },
       "CreateFolderRequest": {
         "type": "object",
         "required": [
@@ -1985,6 +2154,23 @@
           }
         }
       },
+      "MonthCountDto": {
+        "type": "object",
+        "required": [
+          "month",
+          "count"
+        ],
+        "properties": {
+          "count": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "month": {
+            "type": "string",
+            "description": "`YYYY-MM`."
+          }
+        }
+      },
       "NodeDetails": {
         "type": "object",
         "required": [
@@ -2207,6 +2393,54 @@
           }
         }
       },
+      "ThumbnailState": {
+        "type": "object",
+        "required": [
+          "state",
+          "version"
+        ],
+        "properties": {
+          "state": {
+            "$ref": "#/components/schemas/ThumbnailStatus"
+          },
+          "version": {
+            "type": "integer",
+            "format": "int32",
+            "description": "Pass as `v` to `GET /api/files/{id}/thumbnail` once `ready`."
+          }
+        }
+      },
+      "ThumbnailStatus": {
+        "type": "string",
+        "enum": [
+          "pending",
+          "ready",
+          "failed",
+          "unsupported"
+        ]
+      },
+      "TimelinePage": {
+        "type": "object",
+        "required": [
+          "items"
+        ],
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/AssetSummary"
+            },
+            "description": "Newest capture first."
+          },
+          "next_cursor": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Pass back as `cursor` for the next page; `null` on the last page."
+          }
+        }
+      },
       "TrashEntryDto": {
         "type": "object",
         "required": [
@@ -2338,6 +2572,9 @@
     },
     {
       "name": "jobs"
+    },
+    {
+      "name": "photos"
     }
   ]
 }

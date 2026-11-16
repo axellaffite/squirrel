@@ -261,6 +261,38 @@ export interface paths {
         patch: operations["update_node"];
         trace?: never;
     };
+    "/api/photos": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["list_photos"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/photos/months": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["photo_months"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/setup/admin": {
         parameters: {
             query?: never;
@@ -434,6 +466,35 @@ export interface components {
             password: string;
             username: string;
         };
+        /** @enum {string} */
+        AssetKindDto: "photo" | "screenshot";
+        /** @description One photo of the timeline. */
+        AssetSummary: {
+            blurhash?: string | null;
+            /** Format: int32 */
+            height?: number | null;
+            /**
+             * Format: uuid
+             * @description The file node's id (also used by `/api/files/{id}/…`).
+             */
+            id: string;
+            kind: components["schemas"]["AssetKindDto"];
+            mime?: string | null;
+            name: string;
+            /**
+             * @description Wall-clock capture time, no offset: `2024-07-14T18:30:05`.
+             * @example 2024-07-14T18:30:05
+             */
+            taken_at: string;
+            /** @description `+02:00` when the camera recorded it. */
+            taken_offset?: string | null;
+            thumbnail: components["schemas"]["ThumbnailState"];
+            /**
+             * Format: int32
+             * @description Displayed size, once known. The grid treats unknown as square.
+             */
+            width?: number | null;
+        };
         CreateFolderRequest: {
             name: string;
             /** Format: uuid */
@@ -546,6 +607,12 @@ export interface components {
             role: components["schemas"]["Role"];
             username: string;
         };
+        MonthCountDto: {
+            /** Format: int64 */
+            count: number;
+            /** @description `YYYY-MM`. */
+            month: string;
+        };
         NodeDetails: {
             node: components["schemas"]["NodeDto"];
             /** @description Ancestors from the top-level folder down, excluding the node itself. */
@@ -631,6 +698,22 @@ export interface components {
              * @description Pass as `v` to the thumbnail URL: a new version is a new URL.
              */
             version: number;
+        };
+        ThumbnailState: {
+            state: components["schemas"]["ThumbnailStatus"];
+            /**
+             * Format: int32
+             * @description Pass as `v` to `GET /api/files/{id}/thumbnail` once `ready`.
+             */
+            version: number;
+        };
+        /** @enum {string} */
+        ThumbnailStatus: "pending" | "ready" | "failed" | "unsupported";
+        TimelinePage: {
+            /** @description Newest capture first. */
+            items: components["schemas"]["AssetSummary"][];
+            /** @description Pass back as `cursor` for the next page; `null` on the last page. */
+            next_cursor?: string | null;
         };
         TrashEntryDto: {
             /** Format: date-time */
@@ -1454,6 +1537,70 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    list_photos: {
+        parameters: {
+            query?: {
+                /** @description Only this month (`YYYY-MM`, wall-clock capture time). */
+                month?: string;
+                /** @description `next_cursor` of the previous page. */
+                cursor?: string;
+                /** @description Default 200, at most 500. */
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TimelinePage"];
+                };
+            };
+            /** @description Invalid cursor */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Invalid month */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    photo_months: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Newest month first */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MonthCountDto"][];
                 };
             };
         };

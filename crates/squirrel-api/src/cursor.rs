@@ -5,8 +5,9 @@ use base64::Engine;
 use base64::engine::general_purpose::URL_SAFE_NO_PAD;
 use squirrel_core::NodeKind;
 use squirrel_db::nodes::ListCursor;
+use squirrel_db::timeline::TimelineCursor;
 use squirrel_db::trash::TrashCursor;
-use time::OffsetDateTime;
+use time::{OffsetDateTime, PrimitiveDateTime};
 use uuid::Uuid;
 
 use crate::error::ApiError;
@@ -71,6 +72,28 @@ pub fn decode_trash(raw: &str) -> Result<TrashCursor, ApiError> {
     })
 }
 
+/// The wall-clock `taken_at` is encoded as if it were UTC (it only orders).
+pub fn encode_timeline(cursor: &TimelineCursor) -> String {
+    encode(
+        &cursor
+            .taken_at
+            .assume_utc()
+            .unix_timestamp_nanos()
+            .to_string(),
+        &cursor.node_id.to_string(),
+    )
+}
+
+pub fn decode_timeline(raw: &str) -> Result<TimelineCursor, ApiError> {
+    let (nanos, id) = decode(raw)?;
+    let nanos: i128 = nanos.parse().map_err(|_| invalid())?;
+    let at = OffsetDateTime::from_unix_timestamp_nanos(nanos).map_err(|_| invalid())?;
+    Ok(TimelineCursor {
+        taken_at: PrimitiveDateTime::new(at.date(), at.time()),
+        node_id: id.parse::<Uuid>().map_err(|_| invalid())?,
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -92,6 +115,49 @@ mod tests {
             id: Uuid::now_v7(),
         };
         assert_eq!(decode_trash(&encode_trash(&cursor)).unwrap(), cursor);
+    }
+
+    #[test]
+    fn timeline_cursors_round_trip_wall_clock_times() {
+        for taken_at in [
+            datetime!(2024-07-14 18:30:05.123456),
+            datetime!(1900-01-01 00:00),
+            datetime!(2099-12-31 23:59:59),
+        ] {
+            let cursor = TimelineCursor {
+                taken_at,
+                node_id: Uuid::now_v7(),
+            };
+            assert_eq!(decode_timeline(&encode_timeline(&cursor)).unwrap(), cursor);
+        }
+    }
+
+    #[test]
+    fn garbage_timeline_cursors_are_a_bad_request() {
+        for raw in [
+            "".to_owned(),
+            "!!!".to_owned(),
+            URL_SAFE_NO_PAD.encode(
+                "x
+y",
+            ),
+            URL_SAFE_NO_PAD.encode(format!(
+                "1
+{}x",
+                Uuid::now_v7()
+            )),
+            URL_SAFE_NO_PAD.encode(format!(
+                "{}
+{}",
+                i128::MAX,
+                Uuid::now_v7()
+            )),
+        ] {
+            assert!(
+                matches!(decode_timeline(&raw), Err(ApiError::BadRequest(_))),
+                "{raw}"
+            );
+        }
     }
 
     #[test]
