@@ -16,8 +16,8 @@
 		"check": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json",
 		"check:watch": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json --watch",
 		"gen:api": "openapi-typescript ../openapi.json -o src/lib/api/schema.d.ts",
-		"gen:native-tokens": "node scripts/native-tokens.mjs",
-		"check:native-tokens": "node --test scripts/ && node scripts/native-tokens.mjs --check",
+		"gen:native-tokens": "node scripts/native-tokens.mjs && node --experimental-strip-types --no-warnings scripts/native-icons.mjs",
+		"check:native-tokens": "node --test scripts/*.test.mjs && node scripts/native-tokens.mjs --check && node --experimental-strip-types --no-warnings scripts/native-icons.mjs --check",
 		"test:unit": "vitest run",
 		"test:e2e": "playwright test"
 	},

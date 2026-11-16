@@ -31,9 +31,17 @@ kotlin {
         commonMain.dependencies {
             api(project(":shared"))
             api(project(":theme"))
+            implementation(libs.jb.lifecycle.viewmodel.compose)
+            implementation(libs.jb.lifecycle.runtime.compose)
         }
         commonTest.dependencies {
             implementation(libs.kotlin.test)
+            implementation(libs.coroutines.test)
+            implementation(libs.ktor.client.mock)
+            implementation(libs.turbine)
+        }
+        jvmTest.dependencies {
+            implementation(libs.sqldelight.jvm)
         }
     }
 }
