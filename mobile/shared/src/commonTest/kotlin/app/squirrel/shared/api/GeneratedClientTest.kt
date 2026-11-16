@@ -118,6 +118,10 @@ class GeneratedClientTest {
         assertEquals("sqr_second", h.store.load())
     }
 
+    private companion object {
+        const val CONCURRENT = 8
+    }
+
     @Test
     fun concurrent401sShareOneRefresh() = runApiTest {
         val refreshes = AtomicInt(0)
@@ -136,12 +140,16 @@ class GeneratedClientTest {
         }
         h.api.signIn("ada", "secret", device)
 
-        val results = List(2) { year ->
+        val results = List(CONCURRENT) { year ->
             async { h.api.sync.syncFolder(app.squirrel.api.models.SyncFolderRequest(2024 + year)).bodyOrThrow() }
         }.awaitAll()
 
-        assertEquals(listOf("f", "f"), results.map { it.folderId })
+        assertEquals(List(CONCURRENT) { "f" }, results.map { it.folderId })
+        // One refresh: reusing a rotated refresh token would get the device revoked.
         assertEquals(1, refreshes.load())
+        assertEquals("sqr_second", h.store.load())
+        val refresh = h.requests.single { it.url.encodedPath == "/api/auth/device/refresh" }
+        assertTrue(bodyText(refresh).contains("sqr_first"))
     }
 
     @Test
