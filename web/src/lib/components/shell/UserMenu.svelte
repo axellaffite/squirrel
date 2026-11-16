@@ -65,6 +65,10 @@
 				<span class="muted">@{username}</span>
 			</div>
 			<ThemePicker value={theme} onchange={onthemechange} />
+			<a class="item" href="/settings/devices" onclick={() => close(false)}>
+				<Icon name="smartphone" />
+				<span>Devices</span>
+			</a>
 			<!-- On ≥ 1024 px "Log out" sits in the top bar instead, so only one is ever visible. -->
 			<button type="button" class="logout" onclick={onlogout}>
 				<Icon name="log-out" />
@@ -119,6 +123,7 @@
 	}
 
 	.trigger:focus-visible,
+	.item:focus-visible,
 	.logout:focus-visible {
 		outline: var(--ring-width) solid var(--accent);
 		outline-offset: var(--ring-offset);
@@ -212,6 +217,7 @@
 		font-weight: var(--weight-body);
 	}
 
+	.item,
 	.logout {
 		display: flex;
 		align-items: center;
@@ -223,6 +229,7 @@
 		background: var(--tint);
 		color: var(--ink);
 		font-weight: var(--weight-label);
+		text-decoration: none;
 		cursor: pointer;
 		transition:
 			background-color var(--dur-fast) var(--ease),
@@ -230,11 +237,13 @@
 	}
 
 	@media (hover: hover) {
+		.item:hover,
 		.logout:hover {
 			background: var(--tint-strong);
 		}
 	}
 
+	.item:active,
 	.logout:active {
 		transform: translateY(var(--press));
 	}

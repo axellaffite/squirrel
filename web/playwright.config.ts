@@ -22,7 +22,8 @@ export default defineConfig({
 		{ name: 'files-phone', testMatch: 'files-phone.spec.ts', dependencies: ['onboarding'], use: phone },
 		{ name: 'photos', testMatch: 'photos.spec.ts', dependencies: ['onboarding'], use: { ...desktop, ...dates } },
 		{ name: 'photos-phone', testMatch: 'photos-phone.spec.ts', dependencies: ['onboarding'], use: { ...phone, ...dates } },
-		{ name: 'documents', testMatch: 'documents.spec.ts', dependencies: ['onboarding'], use: { ...desktop, ...dates } }
+		{ name: 'documents', testMatch: 'documents.spec.ts', dependencies: ['onboarding'], use: { ...desktop, ...dates } },
+		{ name: 'devices', testMatch: 'devices.spec.ts', dependencies: ['onboarding'], use: desktop }
 	],
 	webServer: {
 		command: 'bash ../scripts/e2e-server.sh',
