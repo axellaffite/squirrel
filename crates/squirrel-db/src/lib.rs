@@ -3,6 +3,7 @@
 pub mod albums;
 pub mod assets;
 pub mod blobs;
+pub mod documents;
 mod error;
 pub mod instance;
 pub mod invitations;
