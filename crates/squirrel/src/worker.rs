@@ -1,5 +1,6 @@
 //! `squirrel worker` and `squirrel serve --worker`: the job queue's executor.
 
+use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -7,10 +8,12 @@ use anyhow::Context;
 use clap::{Args, ValueEnum};
 use sqlx::PgPool;
 use squirrel_jobs::{NewJob, Registry, Worker, WorkerConfig};
+use squirrel_media::geo_data::GeoSource;
 use squirrel_media::thumbs::DecodeLimits;
 use squirrel_storage::BlobStore;
 use squirrel_worker::MediaContext;
 use squirrel_worker::exec::{Executor, SubprocessConfig};
+use squirrel_worker::geocode::GeoCache;
 use tokio::sync::watch;
 
 /// A claimed job is someone else's after this long without a heartbeat.
@@ -55,6 +58,10 @@ pub struct WorkerOptions {
     /// or `in-process`.
     #[arg(long, env = "SQUIRREL_MEDIA_EXEC", value_enum, default_value_t = MediaExecMode::Subprocess)]
     pub media_exec: MediaExecMode,
+    /// Reverse-geocoding dataset to use instead of the pinned snapshot
+    /// installed in `<data_dir>/geo/` (trusted as is: no checksum).
+    #[arg(long, env = "SQUIRREL_GEODATA_FILE")]
+    pub geodata_file: Option<PathBuf>,
 }
 
 /// `(min(cores, 4) / 2).max(1)`: the mini PC also serves HTTP.
@@ -166,15 +173,18 @@ pub async fn wait_for_migrations(pool: &PgPool) -> anyhow::Result<()> {
 pub async fn run(
     pool: PgPool,
     storage: BlobStore,
+    data_dir: PathBuf,
     options: WorkerOptions,
     stop: watch::Receiver<bool>,
 ) -> anyhow::Result<()> {
+    let geo = GeoSource::resolve(options.geodata_file.clone(), &data_dir);
     let media = Arc::new(MediaContext {
         pool: pool.clone(),
         storage,
         executor: executor(options.media_exec)?,
         pdfium_dir: None,
         decode_limits: DecodeLimits::default(),
+        geo: GeoCache::new(geo),
     });
     if let Err(err) = enqueue_backfill(&pool).await {
         tracing::warn!(error = %format!("{err:#}"), "could not queue the media backfill");
@@ -259,10 +269,17 @@ mod tests {
         let options = WorkerOptions {
             concurrency: None,
             media_exec: MediaExecMode::InProcess,
+            geodata_file: None,
         };
         let dir = tempfile::tempdir().unwrap();
         let storage = BlobStore::open(dir.path()).unwrap();
-        let worker = tokio::spawn(run(pool.clone(), storage, options, stop_rx));
+        let worker = tokio::spawn(run(
+            pool.clone(),
+            storage,
+            dir.path().to_owned(),
+            options,
+            stop_rx,
+        ));
         let mut conn = pool.acquire().await.unwrap();
         squirrel_jobs::enqueue(&mut conn, &noop_job())
             .await

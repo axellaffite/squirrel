@@ -229,7 +229,7 @@ async fn run_worker(args: WorkerArgs) -> anyhow::Result<()> {
         shutdown_signal().await;
         let _ = stop_tx.send(true);
     });
-    worker::run(pool, storage, args.options, stop_rx).await
+    worker::run(pool, storage, args.data_dir, args.options, stop_rx).await
 }
 
 async fn migrate(args: &DatabaseArgs) -> anyhow::Result<()> {
@@ -269,6 +269,7 @@ async fn serve(args: ServeArgs) -> anyhow::Result<()> {
         worker::spawn_logged(worker::run(
             pool.clone(),
             storage,
+            args.data_dir.clone(),
             args.worker_options.clone(),
             stopping_rx.clone(),
         ))

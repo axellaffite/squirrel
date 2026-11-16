@@ -5,6 +5,7 @@ pub mod backfill;
 pub mod context;
 pub mod exec;
 mod facts;
+pub mod geocode;
 pub mod jobs;
 pub mod metadata;
 pub mod process;
@@ -21,6 +22,8 @@ pub use context::MediaContext;
 const PROCESS_TIMEOUT: Duration = Duration::from_secs(60);
 const METADATA_TIMEOUT: Duration = Duration::from_secs(60);
 const BACKFILL_TIMEOUT: Duration = Duration::from_secs(60);
+/// Includes loading the dataset (~16 MB) on first use.
+const GEOCODE_TIMEOUT: Duration = Duration::from_secs(60);
 /// The sandbox's wall clock is 150 s and the lease 300 s: the sandbox gives up first.
 const THUMBNAILS_TIMEOUT: Duration = Duration::from_secs(180);
 
@@ -61,6 +64,13 @@ pub fn register_all(registry: &mut Registry, ctx: Arc<MediaContext>) {
         jobs::THUMBNAILS,
         THUMBNAILS_TIMEOUT,
         |ctx, job| async move { thumbnails::run(&ctx, job).await },
+    );
+    register(
+        registry,
+        &ctx,
+        jobs::GEOCODE,
+        GEOCODE_TIMEOUT,
+        |ctx, job| async move { geocode::run(&ctx, job).await },
     );
     register(
         registry,

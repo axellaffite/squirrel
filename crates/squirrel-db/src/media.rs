@@ -279,6 +279,49 @@ pub async fn set_thumbnails(
     Ok(updated.rows_affected() == 1)
 }
 
+/// A place name found for a blob's coordinates.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct PlaceUpdate<'a> {
+    pub name: &'a str,
+    pub admin1: &'a str,
+    pub country: &'a str,
+    /// ISO 3166-1 alpha-2; anything else is stored as unknown.
+    pub country_code: &'a str,
+}
+
+fn non_empty(text: &str) -> Option<&str> {
+    Some(text.trim()).filter(|t| !t.is_empty())
+}
+
+fn country_code(code: &str) -> Option<&str> {
+    Some(code).filter(|c| c.len() == 2 && c.bytes().all(|b| b.is_ascii_uppercase()))
+}
+
+/// Records the result of reverse geocoding with `dataset` (`None`: no place
+/// near the coordinates). Either way `geocoded_with` is set, so the same
+/// dataset is not tried again.
+pub async fn set_place(
+    pool: &PgPool,
+    sha256: &str,
+    place: Option<&PlaceUpdate<'_>>,
+    dataset: &str,
+) -> Result<(), DbError> {
+    sqlx::query(
+        "UPDATE media SET place_name = $2, place_admin1 = $3, place_country = $4, \
+                place_country_code = $5, geocoded_with = $6, updated_at = now() \
+          WHERE sha256 = $1",
+    )
+    .bind(sha256)
+    .bind(place.and_then(|p| non_empty(p.name)))
+    .bind(place.and_then(|p| non_empty(p.admin1)))
+    .bind(place.and_then(|p| non_empty(p.country)))
+    .bind(place.and_then(|p| country_code(p.country_code)))
+    .bind(dataset)
+    .execute(pool)
+    .await?;
+    Ok(())
+}
+
 /// Sets one step's state, recording `error` (when given) as `last_error`.
 pub async fn set_state(
     pool: &PgPool,
@@ -367,6 +410,14 @@ mod tests {
         ] {
             assert_eq!(MediaState::parse(state.as_str()), state);
         }
+    }
+
+    #[test]
+    fn only_iso_country_codes_are_kept() {
+        assert_eq!(country_code("FR"), Some("FR"));
+        assert_eq!(country_code("fr"), None);
+        assert_eq!(country_code("FRA"), None);
+        assert_eq!(non_empty("  "), None);
     }
 
     #[test]
