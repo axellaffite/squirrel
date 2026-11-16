@@ -2,9 +2,9 @@
 	import { onMount, tick, untrack } from 'svelte';
 	import MonthSection from '#lib/components/photos/MonthSection.svelte';
 	import type { AssetSummary, MonthCount } from '#lib/photos/api.ts';
-	import { isArrowKey, neighbour } from '#lib/photos/keyboard.ts';
+	import { moveTileFocus } from '#lib/photos/keyboard.ts';
+	import { readMetrics, sameMetrics } from '#lib/photos/metrics.ts';
 	import {
-		cssLength,
 		layoutMonth,
 		monthAt,
 		monthPlaceholders,
@@ -62,20 +62,6 @@
 		if (!months || !m || w <= 0) return;
 		untrack(() => rebuild(months, w, m));
 	});
-
-	function readMetrics(element: HTMLElement): Metrics {
-		const style = getComputedStyle(element);
-		const rootPx = parseFloat(getComputedStyle(document.documentElement).fontSize) || 16;
-		const length = (name: string) => cssLength(style.getPropertyValue(name), rootPx);
-		return {
-			rowHeight: length('--photo-row'),
-			gap: length('--space-1'),
-			monthHead: length('--photo-month-head'),
-			dayHead: length('--photo-day-head'),
-			dayGap: length('--space-3'),
-			monthGap: length('--space-6')
-		};
-	}
 
 	function rebuild(months: readonly MonthCount[], w: number, m: Metrics) {
 		const before = boxes;
@@ -165,19 +151,7 @@
 	}
 
 	function keydown(event: KeyboardEvent) {
-		if (!root || !isArrowKey(event.key)) return;
-		const from = (event.target as Element).closest<HTMLElement>('[data-tile]');
-		if (!from) return;
-		const tiles = Array.from(root.querySelectorAll<HTMLElement>('[data-tile]'));
-		const to = neighbour(
-			tiles.map((tile) => tile.getBoundingClientRect()),
-			tiles.indexOf(from),
-			event.key
-		);
-		if (to < 0) return;
-		event.preventDefault();
-		tiles[to].focus({ preventScroll: true });
-		tiles[to].scrollIntoView({ block: 'nearest' });
+		if (root) moveTileFocus(root, event);
 	}
 
 	onMount(() => {
@@ -193,7 +167,7 @@
 		};
 		const observer = new ResizeObserver(([entry]) => {
 			const nextMetrics = readMetrics(element);
-			if (JSON.stringify(nextMetrics) !== JSON.stringify(metrics)) metrics = nextMetrics;
+			if (!sameMetrics(metrics, nextMetrics)) metrics = nextMetrics;
 			width = Math.floor(entry.contentRect.width);
 			schedule();
 		});

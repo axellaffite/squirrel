@@ -234,7 +234,14 @@ press. Disabled: 45 % opacity, no shadow or glow, `cursor: not-allowed`. Hover o
   (bottom sheet on phones, right-side panel `--info-w` wide from 1024 px). The place locator is a
   `--tint` well with `--tint-strong` land and a `--locator-dot` `--accent` dot.
 - **Selection bar**: a `--card` pill with `--shadow-pop` floating above the phone rail (top of the
-  panel from 1024 px): count (tabular), then actions.
+  panel from 1024 px): count (tabular), then small actions (icon only below 480 px, named for
+  assistive tech).
+- **Album card**: a white card (`--radius-card`, `--shadow-card`, hover `--shadow-hover`) holding a
+  4:3 cover with `--radius-tile` (the cover's blurhash colour while loading; an empty album shows
+  `--tint` with the `library` icon), the name 500 and the count `--ink-muted` tabular. Two columns on
+  phones, `auto-fill` of `--album-min` from 768 px.
+- **Album picker**: a dialog / bottom sheet listing albums by name as rows in a `--tint` well (a
+  40 px round white well with the cover, name, count), "New album…" first.
 
 ## Theme
 

@@ -22,9 +22,11 @@
 		onClose: () => void;
 		/** Moves the photo to the trash; resolves an error message, or null on success. */
 		onDelete: (asset: AssetSummary) => Promise<string | null>;
+		/** Offers "Add to album" when given. */
+		onAddToAlbum?: (asset: AssetSummary) => void;
 	}
 
-	let { asset, items, onNavigate, onClose, onDelete }: Props = $props();
+	let { asset, items, onNavigate, onClose, onDelete, onAddToAlbum }: Props = $props();
 
 	let dialog: HTMLDialogElement | undefined = $state();
 	let infoOpen = $state(false);
@@ -113,6 +115,9 @@
 					aria-controls="photo-info"
 					onclick={() => (infoOpen = !infoOpen)}
 				/>
+				{#if onAddToAlbum}
+					<StageButton icon="library" label={`Add the photo taken ${when} to an album`} tooltip="Add to album" onclick={() => onAddToAlbum(asset)} />
+				{/if}
 				<StageButton icon="download" label={`Download the photo taken ${when}`} tooltip="Download" href={contentUrl(asset.id, true)} download />
 				<StageButton icon="trash" label={`Move the photo taken ${when} to the trash`} tooltip="Move to trash" onclick={() => (confirming = true)} />
 			</div>

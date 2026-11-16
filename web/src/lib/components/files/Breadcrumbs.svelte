@@ -2,14 +2,22 @@
 	import Icon from '#lib/components/icons/Icon.svelte';
 	import type { PathSegment } from '#lib/files/api.ts';
 
-	/** `path` holds the ancestors of the current folder, whose name is the page heading. */
-	let { path, current }: { path: PathSegment[]; current: string | null } = $props();
+	interface Props {
+		/** Ancestors of the current folder, whose name is the page heading. */
+		path: PathSegment[];
+		current: string | null;
+		/** The first crumb (the drive by default; "Albums" for album pages). */
+		rootLabel?: string;
+		rootHref?: string;
+	}
+
+	let { path, current, rootLabel = 'My drive', rootHref = '/files' }: Props = $props();
 </script>
 
 <nav aria-label="Breadcrumb" class="breadcrumbs">
 	<ol>
 		<li>
-			{#if current === null}<span aria-current="page">My drive</span>{:else}<a href="/files">My drive</a>{/if}
+			{#if current === null}<span aria-current="page">{rootLabel}</span>{:else}<a href={rootHref}>{rootLabel}</a>{/if}
 		</li>
 		{#each path as segment (segment.id)}
 			<li><Icon name="chevron-right" /><a href={`/files/${segment.id}`}>{segment.name}</a></li>
