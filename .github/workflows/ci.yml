@@ -42,7 +42,42 @@ jobs:
       - uses: Swatinem/rust-cache@v2
       - run: cargo fmt --all --check
       - run: cargo clippy --workspace --all-targets -- -D warnings
+      # PDF tests need pdfium; with CI set they fail rather than skip when it is missing.
+      - name: Fetch pdfium
+        run: scripts/fetch-pdfium.sh && echo "SQUIRREL_PDFIUM_DIR=$PWD/target/pdfium/lib" >> "$GITHUB_ENV"
       - run: cargo test --workspace
+      - name: The Linux-only sandbox memory limit test is part of the suite
+        run: |
+          cargo test -p squirrel --test media_exec -- --list 2>/dev/null \
+            | grep -q '^the_memory_limit_stops_a_large_decode: test$' \
+            || { echo "::error::the RLIMIT_AS test did not compile into the suite"; exit 1; }
+
+  rust-heic:
+    # HEIC/HEIF decoding through the system libheif (>= 1.17, with the libde265 HEVC plugin).
+    runs-on: ubuntu-24.04
+    services:
+      postgres:
+        image: pgvector/pgvector:pg17
+        env:
+          POSTGRES_USER: squirrel
+          POSTGRES_PASSWORD: squirrel
+          POSTGRES_DB: squirrel
+        ports: ["55432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U squirrel" --health-interval 2s --health-timeout 3s --health-retries 20
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install libheif
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libheif-dev libheif-plugin-libde265 || sudo apt-get install -y libheif-dev
+      - uses: dtolnay/rust-toolchain@1.94
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: heic
+      - name: Fetch pdfium
+        run: scripts/fetch-pdfium.sh && echo "SQUIRREL_PDFIUM_DIR=$PWD/target/pdfium/lib" >> "$GITHUB_ENV"
+      - run: cargo test -p squirrel-media -p squirrel-worker --features squirrel-media/heic
 
   web:
     runs-on: ubuntu-latest
@@ -97,6 +132,9 @@ jobs:
         working-directory: web
       - name: Build the server before Playwright starts it
         run: cargo build -p squirrel
+      # The documents scenario checks PDF thumbnails and text (it skips them without pdfium).
+      - name: Fetch pdfium
+        run: scripts/fetch-pdfium.sh && echo "SQUIRREL_PDFIUM_DIR=$PWD/target/pdfium/lib" >> "$GITHUB_ENV"
       - run: pnpm exec playwright install --with-deps chromium
         working-directory: web
       - run: pnpm test:e2e
