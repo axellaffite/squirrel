@@ -8,6 +8,7 @@ use squirrel_core::ContentHash;
 #[cfg(any(test, feature = "test-util"))]
 use uuid::Uuid;
 
+use crate::derived::DerivedStore;
 use crate::error::{Result, StorageError};
 #[cfg(any(test, feature = "test-util"))]
 use crate::fsutil::hash_stream;
@@ -21,6 +22,7 @@ use crate::fsutil::{
 /// <data_dir>/blobs/ab/cd/<sha256>   immutable, read-only blobs
 /// <data_dir>/tmp/                   in-progress writes (same filesystem, so renames are atomic)
 /// <data_dir>/tmp/uploads/<id>       chunked upload sessions
+/// <data_dir>/derived/ab/cd/<sha256>/ thumbnails and other derived files (see `DerivedStore`)
 /// ```
 ///
 /// Directories are created with mode 0700 and blobs are 0400.
@@ -32,6 +34,7 @@ pub struct BlobStore {
     blobs: PathBuf,
     tmp: PathBuf,
     uploads: PathBuf,
+    derived: DerivedStore,
 }
 
 /// Whether [`BlobStore::adopt`] stored new content or found it already there.
@@ -45,19 +48,30 @@ impl BlobStore {
     /// Creates the directory layout if needed (durably) and checks that `tmp/`
     /// and `blobs/` share a filesystem (otherwise `rename` would not be atomic).
     pub fn open(data_dir: &Path) -> Result<Self> {
-        let store = Self {
-            root: data_dir.to_path_buf(),
-            blobs: data_dir.join("blobs"),
-            tmp: data_dir.join("tmp"),
-            uploads: data_dir.join("tmp").join("uploads"),
-        };
-        for dir in [&store.blobs, &store.tmp, &store.uploads] {
+        let (blobs, tmp, uploads) = (
+            data_dir.join("blobs"),
+            data_dir.join("tmp"),
+            data_dir.join("tmp").join("uploads"),
+        );
+        for dir in [&blobs, &tmp, &uploads] {
             create_dir_all_durable(dir)?;
         }
+        let store = Self {
+            root: data_dir.to_path_buf(),
+            blobs,
+            tmp,
+            uploads,
+            derived: DerivedStore::open(data_dir)?,
+        };
         if device_of(&store.tmp)? != device_of(&store.blobs)? {
             return Err(StorageError::CrossDevice(store.tmp.display().to_string()));
         }
         Ok(store)
+    }
+
+    /// Files computed from blobs (thumbnails), under `<data_dir>/derived/`.
+    pub fn derived(&self) -> &DerivedStore {
+        &self.derived
     }
 
     pub fn blob_path(&self, hash: &ContentHash) -> PathBuf {
@@ -180,7 +194,7 @@ mod tests {
     #[test]
     fn open_creates_the_layout() {
         let (dir, _store) = store();
-        for sub in ["blobs", "tmp", "tmp/uploads"] {
+        for sub in ["blobs", "tmp", "tmp/uploads", "derived"] {
             assert!(dir.path().join(sub).is_dir(), "{sub}");
         }
     }
