@@ -28,6 +28,11 @@ pub fn image_metadata(media: &MediaRecord) -> ImageMetadata {
     }
 }
 
+/// Offsets the schema accepts (±18 h), in minutes.
+pub fn offset_minutes(offset: UtcOffset) -> Option<i16> {
+    Some(offset.whole_minutes()).filter(|m| (-1080..=1080).contains(m))
+}
+
 fn dimension(value: Option<i32>) -> Option<u32> {
     value.and_then(|v| u32::try_from(v).ok())
 }
@@ -62,7 +67,7 @@ pub fn asset_for(node: &BlobNode, media: &MediaRecord, now: OffsetDateTime) -> N
             AssetKind::Photo
         },
         taken_at: taken.local,
-        taken_offset_min: taken.offset.map(UtcOffset::whole_minutes),
+        taken_offset_min: taken.offset.and_then(offset_minutes),
         taken_source: source(taken.source),
     }
 }
