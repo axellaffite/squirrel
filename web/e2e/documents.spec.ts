@@ -1,14 +1,15 @@
-import { expect, test } from '@playwright/test';
+import { expect, test, type Page } from '@playwright/test';
 import { openTopFolder, row, upload, uploadItem } from './helpers/files.ts';
 import { fixture, newUser, serverHasPdfium, WORKER_TIMEOUT } from './helpers/photos.ts';
 
-interface Hit {
-	node: { name: string };
-}
+// One reader uploads both documents once; the text test always runs, the PDF one needs pdfium.
+test.describe.configure({ mode: 'serial' });
 
-test('searches file names and document text', async ({ browser }) => {
+let page: Page;
+
+test.beforeAll(async ({ browser }) => {
 	test.setTimeout(120_000);
-	const { page } = await newUser(browser, 'reader');
+	({ page } = await newUser(browser, 'reader'));
 	await openTopFolder(page, 'Documents');
 	await upload(page, fixture('notes.txt'), fixture('invoice.pdf'));
 	for (const name of ['notes.txt', 'invoice.pdf']) await expect(uploadItem(page, name)).toContainText('Done');
@@ -18,22 +19,37 @@ test('searches file names and document text', async ({ browser }) => {
 	await expect
 		.poll(
 			async () => {
-				const status = (await (await page.request.get('/api/media/status')).json()) as { queued: number; processing: number };
+				const status = (await (await page.request.get('/api/media/status')).json()) as {
+					queued: number;
+					processing: number;
+				};
 				return status.queued + status.processing;
 			},
 			{ timeout: WORKER_TIMEOUT }
 		)
 		.toBe(0);
+});
 
-	// From the Files page: the search field leads to the results page.
+test.afterAll(async () => {
+	await page?.context().close();
+});
+
+function results(query: RegExp) {
+	return page.getByRole('list', { name: 'Search results' }).getByRole('listitem').filter({ hasText: query });
+}
+
+test('finds a text file by words of its content, from the Files page', async () => {
+	await openTopFolder(page, 'Documents');
 	const field = page.getByRole('searchbox', { name: 'Search files' });
 	await field.fill('squir budg');
 	await field.press('Enter');
 	await expect(page).toHaveURL(/\/files\/search\?q=squir/);
-	const result = page.getByRole('list', { name: 'Search results' }).getByRole('listitem').filter({ hasText: 'notes.txt' });
+	const result = results(/notes\.txt/);
 	await expect(result).toBeVisible();
 	await expect(result.locator('mark').filter({ hasText: /^squirrel$/i })).toBeVisible();
+});
 
+test('finds a PDF by its text and shows its first page as a thumbnail', async () => {
 	test.skip(!serverHasPdfium(), 'pdfium is not installed (scripts/fetch-pdfium.sh): PDFs are unsupported');
 	const listing = (await (await page.request.get('/api/nodes')).json()) as { items: { id: string; name: string }[] };
 	const documents = listing.items.find((node) => node.name === 'Documents')!;
@@ -49,16 +65,11 @@ test('searches file names and document text', async ({ browser }) => {
 		)
 		.toBe(true);
 
-	const found = (await (await page.request.get('/api/search/documents?q=acorn%20stor')).json()) as { items: Hit[] };
-	expect(found.items.map((hit) => hit.node.name)).toContain('invoice.pdf');
-	const search = page.getByRole('searchbox', { name: 'Search files' });
-	await search.fill('acorn stor');
-	const pdf = page.getByRole('list', { name: 'Search results' }).getByRole('listitem').filter({ hasText: 'invoice.pdf' });
+	await page.goto('/files/search?q=acorn%20stor');
+	const pdf = results(/invoice\.pdf/);
 	await expect(pdf).toBeVisible();
 	await expect(pdf.locator('img')).toBeVisible();
 
-	// And the Documents folder shows the PDF's first page as its thumbnail.
 	await openTopFolder(page, 'Documents');
 	await expect(row(page, 'invoice.pdf').locator('img')).toBeVisible();
-	await page.context().close();
 });
