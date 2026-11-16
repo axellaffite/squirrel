@@ -193,8 +193,7 @@ async fn resume(
 /// most [`MAX_PENDING_SHARE_PERCENT`] of the usable space, except for their
 /// only open upload: a single large file must stay possible.
 async fn ensure_disk_space(state: &AppState, owner_id: Uuid, size: u64) -> Result<(), ApiError> {
-    let store = state.storage.clone();
-    let available = run_storage(move || store.available_space()).await?;
+    let available = state.available_space().await?;
     let pending = u64::try_from(uploads::pending_bytes(&state.pool).await?).unwrap_or_default();
     let room = available.saturating_sub(state.config.min_free_bytes);
     if room.saturating_sub(pending) < size {

@@ -165,8 +165,7 @@ async fn read_chunk(body: Body, index: u32, expected: u64) -> Result<Bytes, ApiE
 
 /// Refuses a chunk that would take the disk below `min_free_bytes`.
 async fn ensure_free_space(state: &AppState, len: u64) -> Result<(), ApiError> {
-    let store = state.storage.clone();
-    let available = run_storage(move || store.available_space()).await?;
+    let available = state.available_space().await?;
     if available.saturating_sub(len) < state.config.min_free_bytes {
         tracing::warn!(available, len, "refusing chunk: not enough free disk space");
         return Err(ApiError::StorageFull);
