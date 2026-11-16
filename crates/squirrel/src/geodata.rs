@@ -6,6 +6,7 @@ use std::path::Path;
 
 use anyhow::Context;
 use squirrel_media::geo_build;
+use squirrel_media::geo_data::PINNED;
 
 use crate::admin::GeodataAction;
 
@@ -22,7 +23,16 @@ pub fn run(action: GeodataAction) -> anyhow::Result<()> {
             println!("wrote {count} places to {}", out.display());
             Ok(())
         }
+        GeodataAction::Pinned => {
+            println!("{}", pinned_line());
+            Ok(())
+        }
     }
+}
+
+/// One source of truth for `scripts/install-geodata.sh`.
+fn pinned_line() -> String {
+    format!("{}  {}", PINNED.sha256, PINNED.file_name)
 }
 
 fn open(path: &Path) -> anyhow::Result<BufReader<File>> {
@@ -60,6 +70,14 @@ fn build(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn the_pinned_line_is_a_shasum_check_line() {
+        let line = pinned_line();
+        let (hash, name) = line.split_once("  ").unwrap();
+        assert_eq!(hash.len(), 64);
+        assert!(name.starts_with("geonames-cities500-") && name.ends_with(".tsv"));
+    }
 
     #[test]
     fn builds_a_file_and_refuses_to_overwrite_it() {
