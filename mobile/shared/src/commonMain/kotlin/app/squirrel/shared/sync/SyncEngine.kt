@@ -132,16 +132,15 @@ class SyncEngine(
     }
 
     private suspend fun upload(run: Run) {
-        val counts = queue.counts()
-        val total = ((counts[QueueState.Missing] ?: 0L) + (counts[QueueState.Uploading] ?: 0L)).toInt()
+        // A snapshot: an asset whose backoff expires during this run waits for the next one,
+        // and nothing ends the run early except a stop.
+        val candidates = queue.uploadCandidates(now())
         val uploader = Uploader(api, transport, source, queue, now, random)
-        var done = 0
-        val attempted = mutableSetOf<String>()
-        while (true) {
-            val asset = queue.nextToUpload(now()) ?: return
-            if (!attempted.add(asset.deviceAssetId)) return // retried later, not in this run
+        candidates.forEachIndexed { done, id ->
+            val asset = queue.get(id)?.takeIf { it.state == QueueState.Missing || it.state == QueueState.Uploading }
+                ?: return@forEachIndexed
             run.checkpoint()
-            _state.value = SyncState.Uploading(asset.name, done, total)
+            _state.value = SyncState.Uploading(asset.name, done, candidates.size)
             when (uploader.upload(asset, shouldContinue = run::mayContinue)) {
                 UploadResult.Uploaded -> run.summary = run.summary.copy(uploaded = run.summary.uploaded + 1)
                 UploadResult.Deduplicated -> run.summary = run.summary.copy(deduplicated = run.summary.deduplicated + 1)
@@ -149,7 +148,6 @@ class SyncEngine(
                 UploadResult.Interrupted -> throw run.stop()
                 UploadResult.Skipped, UploadResult.Changed, is UploadResult.RetryLater -> Unit
             }
-            done++
         }
     }
 }

@@ -85,6 +85,9 @@ class Queue(private val db: SquirrelDatabase) {
 
     fun nextToUpload(now: Long): QueuedAsset? = q.nextToUpload(now).executeAsOneOrNull()?.toQueued()
 
+    /** The ids due for upload at [now], in upload order (resumed sessions first). */
+    fun uploadCandidates(now: Long): List<String> = q.uploadCandidates(now).executeAsList()
+
     fun markUploading(id: String, uploadId: String) {
         q.markUploading(uploadId, id)
     }

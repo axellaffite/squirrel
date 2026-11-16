@@ -72,6 +72,11 @@ SELECT * FROM local_asset
 WHERE state IN ('missing', 'uploading') AND next_attempt_at <= ?
 ORDER BY state DESC, modified_at DESC LIMIT 1;
 
+uploadCandidates:
+SELECT device_asset_id FROM local_asset
+WHERE state IN ('missing', 'uploading') AND next_attempt_at <= ?
+ORDER BY state DESC, modified_at DESC;
+
 markUploading:
 UPDATE local_asset SET state = 'uploading', upload_id = ? WHERE device_asset_id = ?;
 
