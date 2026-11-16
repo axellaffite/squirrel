@@ -1,19 +1,20 @@
 <script lang="ts">
-	import { onMount } from 'svelte';
+	import { onMount, untrack } from 'svelte';
 	import NameDialog from '#lib/components/files/NameDialog.svelte';
 	import Icon from '#lib/components/icons/Icon.svelte';
 	import AlbumCover from '#lib/components/photos/AlbumCover.svelte';
 	import Alert from '#lib/components/ui/Alert.svelte';
 	import Dialog from '#lib/components/ui/Dialog.svelte';
-	import { addedMessage, batches, photoCount, sortByName } from '#lib/photos/albums.ts';
-	import { addToAlbum, createAlbum, listAlbums, type Album } from '#lib/photos/api.ts';
+	import { AlbumAdder } from '#lib/photos/albumAdd.ts';
+	import { photoCount, sortByName } from '#lib/photos/albums.ts';
+	import { listAlbums, type Album } from '#lib/photos/api.ts';
 
 	interface Props {
 		/** The photos to add. */
 		ids: readonly string[];
 		/** Called with what happened ("Added 3 photos to Holidays."), once the photos are in. */
 		onDone: (message: string) => void;
-		/** Runs once the picker closed, however it closed. */
+		/** Runs once the picker (and its name dialog) closed, however it closed. */
 		onClose: () => void;
 	}
 
@@ -25,6 +26,10 @@
 	let error: string | null = $state(null);
 	let busy = $state(false);
 	let naming = $state(false);
+	/** "New album…" was chosen: the name dialog opens once the picker has closed. */
+	let wantsName = false;
+	// Kept across retries: a retried "New album…" fills the album already created.
+	const adder = new AlbumAdder(untrack(() => ids));
 
 	onMount(async () => {
 		const result = await listAlbums();
@@ -35,53 +40,36 @@
 	async function add(album: Album) {
 		busy = true;
 		error = null;
-		let changed = 0;
-		for (const batch of batches(ids)) {
-			const result = await addToAlbum(album.id, batch);
-			if (!result.ok) {
-				error = result.error;
-				busy = false;
-				return;
-			}
-			changed += result.data.changed;
-		}
+		const result = await adder.into(album);
 		busy = false;
-		onDone(addedMessage(changed, ids.length, album.name));
+		if (!result.ok) {
+			error = result.error;
+			return;
+		}
+		onDone(result.message);
 		dialog?.close();
 	}
 
-	/** "New album…": the picker closes and the name dialog takes over. */
 	function startNaming() {
-		naming = true;
-		open = false;
+		wantsName = true;
+		dialog?.close();
 	}
 
 	function pickerClosed() {
-		if (!naming) onClose();
+		if (wantsName) naming = true;
+		else onClose();
 	}
 
-	function namingClosed() {
-		naming = false;
-		onClose();
-	}
-
-	/** A new album created with the first batch, then the rest added to it. */
 	async function create(name: string): Promise<string | null> {
-		const [first = [], ...rest] = batches(ids);
-		const created = await createAlbum(name, first);
-		if (!created.ok) return created.error;
-		const album = created.data;
-		for (const batch of rest) {
-			const result = await addToAlbum(album.id, batch);
-			if (!result.ok) return result.error;
-		}
-		onDone(`Added ${photoCount(ids.length)} to ${album.name}.`);
+		const result = await adder.intoNew(name);
+		if (!result.ok) return result.error;
+		onDone(result.message);
 		return null;
 	}
 </script>
 
 {#if naming}
-	<NameDialog title="New album" submitLabel="Create album" onSubmit={create} onClose={namingClosed} />
+	<NameDialog title="New album" submitLabel="Create album" onSubmit={create} onClose={onClose} />
 {/if}
 
 <Dialog bind:this={dialog} bind:open title="Add to album" onclose={pickerClosed}>
