@@ -6,6 +6,7 @@ plugins {
     alias(libs.plugins.kotlin.serialization)
     alias(libs.plugins.android.kmp.library)
     alias(libs.plugins.openapi.generator)
+    alias(libs.plugins.sqldelight)
 }
 
 val iosEnabled = providers.gradleProperty("squirrel.ios").map(String::toBoolean).getOrElse(false)
@@ -65,6 +66,7 @@ kotlin {
                 implementation(libs.ktor.client.content.negotiation)
                 implementation(libs.ktor.serialization.json)
                 implementation(libs.serialization.json)
+                implementation(libs.sqldelight.coroutines)
             }
         }
         commonTest.dependencies {
@@ -73,13 +75,27 @@ kotlin {
             implementation(libs.ktor.client.mock)
             implementation(libs.turbine)
         }
+        jvmMain.dependencies {
+            implementation(libs.sqldelight.jvm)
+        }
         androidMain.dependencies {
             implementation(libs.ktor.client.okhttp)
+            implementation(libs.sqldelight.android)
         }
         if (iosEnabled) {
             iosMain.dependencies {
                 implementation(libs.ktor.client.darwin)
+                implementation(libs.sqldelight.native)
             }
+        }
+    }
+}
+
+sqldelight {
+    databases {
+        create("SquirrelDatabase") {
+            packageName.set("app.squirrel.shared.db")
+            // Default dialect (SQLite 3.18): Android 10, the minimum, ships 3.22 (no UPSERT).
         }
     }
 }

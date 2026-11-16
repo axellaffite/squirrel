@@ -1,0 +1,16 @@
+-- Where the last scan of a source stopped (MediaStore generation, PhotoKit change token).
+CREATE TABLE scan_state (
+    source TEXT NOT NULL PRIMARY KEY,
+    token TEXT,
+    generation INTEGER NOT NULL DEFAULT 0,
+    scanned_at INTEGER NOT NULL DEFAULT 0
+);
+
+get:
+SELECT * FROM scan_state WHERE source = ?;
+
+put:
+INSERT OR REPLACE INTO scan_state (source, token, generation, scanned_at) VALUES (?, ?, ?, ?);
+
+clear:
+DELETE FROM scan_state;
