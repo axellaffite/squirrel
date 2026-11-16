@@ -20,7 +20,12 @@ async fn admin(pool: &PgPool) -> UserRecord {
         .unwrap()
 }
 
-async fn invite(pool: &PgPool, by: &UserRecord, hash: &[u8], ttl: Duration) {
+async fn invite(
+    pool: &PgPool,
+    by: &UserRecord,
+    hash: &[u8],
+    ttl: Duration,
+) -> invitations::InvitationRecord {
     invitations::create(
         pool,
         &NewInvitation {
@@ -31,7 +36,7 @@ async fn invite(pool: &PgPool, by: &UserRecord, hash: &[u8], ttl: Duration) {
         },
     )
     .await
-    .unwrap();
+    .unwrap()
 }
 
 #[sqlx::test(migrator = "squirrel_db::MIGRATOR")]
@@ -65,8 +70,10 @@ async fn invitation_is_single_use(pool: PgPool) {
 async fn expired_and_revoked_invitations_are_rejected(pool: PgPool) {
     let alice = admin(&pool).await;
     invite(&pool, &alice, b"expired", Duration::seconds(-1)).await;
-    invite(&pool, &alice, b"revoked", Duration::days(7)).await;
-    let revoked_id = invitations::list_created_by(&pool, alice.id).await.unwrap()[0].id;
+    // Revoke by id: both invitations can share `created_at`, so list order is no guide.
+    let revoked_id = invite(&pool, &alice, b"revoked", Duration::days(7))
+        .await
+        .id;
     assert!(
         invitations::revoke(&pool, revoked_id, alice.id)
             .await
