@@ -1,5 +1,6 @@
 //! HTTP API for Squirrel.
 
+mod albums_dto;
 mod blocking;
 mod client_ip;
 mod content;
@@ -56,7 +57,7 @@ const CHUNK_TIMEOUT: Duration = Duration::from_secs(5 * 60);
     tags(
         (name = "system"), (name = "setup"), (name = "auth"), (name = "invitations"),
         (name = "admin"), (name = "files"), (name = "uploads"), (name = "trash"),
-        (name = "storage"), (name = "jobs"), (name = "photos")
+        (name = "storage"), (name = "jobs"), (name = "photos"), (name = "albums")
     )
 )]
 struct ApiDoc;
@@ -140,6 +141,20 @@ fn json_routes() -> OpenApiRouter<AppState> {
         .routes(routes!(routes::photos::photo_months))
         .routes(routes!(routes::photos::get_photo))
         .routes(routes!(routes::photos::media_status))
+        .routes(routes!(
+            routes::albums::list_albums,
+            routes::albums::create_album
+        ))
+        .routes(routes!(
+            routes::albums::get_album,
+            routes::albums::update_album,
+            routes::albums::delete_album
+        ))
+        .routes(routes!(
+            routes::albums::list_album_items,
+            routes::albums::add_album_items
+        ))
+        .routes(routes!(routes::albums::remove_album_items))
         .routes(routes!(routes::storage::storage_usage))
         .routes(routes!(routes::uploads::create_upload))
         .routes(routes!(
