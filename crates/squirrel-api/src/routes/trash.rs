@@ -8,7 +8,7 @@ use uuid::Uuid;
 
 use crate::cursor;
 use crate::error::{ApiError, ErrorBody};
-use crate::extract::Caller;
+use crate::extract::{Caller, CurrentUser};
 use crate::files_dto::{NodeDto, TrashEntryDto, TrashListing, TrashQuery};
 use crate::input::{ApiPath, ApiQuery};
 use crate::state::AppState;
@@ -73,26 +73,26 @@ pub async fn restore(
     Ok(Json((&node).into()))
 }
 
-#[utoipa::path(delete, path = "/api/trash/{id}", security(("device_bearer" = []), ("session_cookie" = [], "csrf_token" = [])), tag = "trash",
+#[utoipa::path(delete, path = "/api/trash/{id}", security(("session_cookie" = [], "csrf_token" = [])), tag = "trash",
     params(("id" = Uuid, Path, description = "Trash entry (node) id")),
     responses((status = 204, description = "Deleted for good"), (status = 404, body = ErrorBody)))]
 pub async fn delete_forever(
     State(state): State<AppState>,
-    caller: Caller,
+    current: CurrentUser,
     ApiPath(id): ApiPath<Uuid>,
 ) -> Result<StatusCode, ApiError> {
-    trash::delete_forever(&state.pool, caller.user.id, id).await?;
-    tracing::info!(user_id = %caller.user.id, node_id = %id, "trash entry deleted forever");
+    trash::delete_forever(&state.pool, current.user.id, id).await?;
+    tracing::info!(user_id = %current.user.id, node_id = %id, "trash entry deleted forever");
     Ok(StatusCode::NO_CONTENT)
 }
 
-#[utoipa::path(delete, path = "/api/trash", security(("device_bearer" = []), ("session_cookie" = [], "csrf_token" = [])), tag = "trash",
+#[utoipa::path(delete, path = "/api/trash", security(("session_cookie" = [], "csrf_token" = [])), tag = "trash",
     responses((status = 204, description = "Trash emptied")))]
 pub async fn empty_trash(
     State(state): State<AppState>,
-    caller: Caller,
+    current: CurrentUser,
 ) -> Result<StatusCode, ApiError> {
-    let entries = trash::empty(&state.pool, caller.user.id).await?;
-    tracing::info!(user_id = %caller.user.id, entries, "trash emptied");
+    let entries = trash::empty(&state.pool, current.user.id).await?;
+    tracing::info!(user_id = %current.user.id, entries, "trash emptied");
     Ok(StatusCode::NO_CONTENT)
 }
