@@ -161,7 +161,8 @@ Presses, sheets and dialogs still animate there.
 - **Photo tokens** (validated 2026-11-14): `--photo-row` (justified row height: 112 px on phones,
   168 px from 768 px, 208 px from 1440 px), `--photo-month-head` 48 px and `--photo-day-head` 32 px
   (heading blocks of the timeline), `--select-check` 24 px (selection circle), `--album-min` 160 px
-  (album card minimum width), `--scrubber-w` 56 px, `--scrub-tick` 2 px, `--info-w` 360 px (lightbox
+  (album card minimum width), `--album-ratio` 4 / 3 (album covers), `--picker-max` 352 px (tallest
+  the album picker's list grows before it scrolls), `--scrubber-w` 56 px, `--scrub-tick` 2 px, `--info-w` 360 px (lightbox
   info panel from 1024 px), `--locator-dot` 6 px. Grid gaps are `--space-1` (4 px).
 
 ## Components (states: default, hover, focus-visible, active, disabled)
@@ -241,11 +242,12 @@ press. Disabled: 45 % opacity, no shadow or glow, `cursor: not-allowed`. Hover o
   panel from 1024 px): count (tabular), then small actions (icon only below 480 px, named for
   assistive tech).
 - **Album card**: a white card (`--radius-card`, `--shadow-card`, hover `--shadow-hover`) holding a
-  4:3 cover with `--radius-tile` (the cover's blurhash colour while loading; an empty album shows
+  `--album-ratio` (4:3) cover with `--radius-tile` (the cover's blurhash colour while loading; an empty album shows
   `--tint` with the `library` icon), the name 500 and the count `--ink-muted` tabular. Two columns on
   phones, `auto-fill` of `--album-min` from 768 px.
 - **Album picker**: a dialog / bottom sheet listing albums by name as rows in a `--tint` well (a
-  40 px round white well with the cover, name, count), "New album…" first.
+  40 px round white well with the cover, name, count), "New album…" first; the list scrolls past
+  `--picker-max`.
 
 ## Theme
 

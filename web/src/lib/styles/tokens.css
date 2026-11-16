@@ -138,6 +138,8 @@
 	--photo-day-head: 2rem;
 	--select-check: 1.5rem;
 	--album-min: 10rem;
+	--album-ratio: 4 / 3;
+	--picker-max: 22rem;
 	--scrubber-w: 3.5rem;
 	--scrub-tick: 0.125rem;
 	--info-w: 22.5rem;

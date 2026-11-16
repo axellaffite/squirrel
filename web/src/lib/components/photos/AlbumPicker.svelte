@@ -107,7 +107,7 @@
 	.albums {
 		display: grid;
 		gap: var(--space-1);
-		max-height: var(--center-min);
+		max-height: var(--picker-max);
 		margin: 0;
 		padding: var(--space-2);
 		overflow-y: auto;
