@@ -132,6 +132,22 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/files/{id}/thumbnail": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["thumbnail"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/folders": {
         parameters: {
             query?: never;
@@ -558,6 +574,7 @@ export interface components {
              * @description Bytes; 0 for folders.
              */
             size: number;
+            thumbnail?: null | components["schemas"]["ThumbnailRef"];
         };
         /** @enum {string} */
         NodeKind: "folder" | "file";
@@ -604,6 +621,16 @@ export interface components {
              * @description Logical bytes of live files: what the quota limits.
              */
             used_bytes: number;
+        };
+        /** @description A ready thumbnail of a file. */
+        ThumbnailRef: {
+            /** @description A compact blurred placeholder (blurha.sh) to show while it loads. */
+            blurhash?: string | null;
+            /**
+             * Format: int32
+             * @description Pass as `v` to the thumbnail URL: a new version is a new URL.
+             */
+            version: number;
         };
         TrashEntryDto: {
             /** Format: date-time */
@@ -817,6 +844,7 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
+            /** @description Logged out; `Clear-Site-Data: "cache"` */
             204: {
                 headers: {
                     [name: string]: unknown;
@@ -850,6 +878,7 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
+            /** @description Every session revoked; `Clear-Site-Data: "cache"` */
             204: {
                 headers: {
                     [name: string]: unknown;
@@ -967,6 +996,57 @@ export interface operations {
             };
             /** @description Too many downloads in progress */
             503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    thumbnail: {
+        parameters: {
+            query: {
+                /** @description `thumb` (grid, 360 px tall) or `preview` (lightbox, 1440 px). */
+                size: "thumb" | "preview";
+                /** @description The `thumbnail.version` from the listing; only busts caches. */
+                v?: number;
+            };
+            header?: never;
+            path: {
+                /** @description File id */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "image/webp": number[];
+                };
+            };
+            /** @description Unchanged (If-None-Match) */
+            304: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description not_found, or not_ready while the worker has not produced it */
+            404: {
                 headers: {
                     [name: string]: unknown;
                 };

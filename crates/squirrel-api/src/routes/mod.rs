@@ -8,5 +8,6 @@ pub mod join;
 pub mod nodes;
 pub mod setup;
 pub mod storage;
+pub mod thumbnails;
 pub mod trash;
 pub mod uploads;

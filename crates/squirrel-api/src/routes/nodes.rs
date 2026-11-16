@@ -4,7 +4,10 @@ use axum::Json;
 use axum::extract::State;
 use axum::http::StatusCode;
 use squirrel_core::NodeName;
-use squirrel_db::nodes::{self, ListCursor, NodeChange};
+use std::collections::HashMap;
+
+use squirrel_db::media::{self, ThumbRef};
+use squirrel_db::nodes::{self, ListCursor, NodeChange, NodeRecord};
 use uuid::Uuid;
 
 use crate::cursor;
@@ -51,8 +54,13 @@ pub async fn list_nodes(
             name: last.name.clone(),
         })
     });
+    let thumbnails = thumbnails_of(&state, &page.items).await?;
     Ok(Json(NodeListing {
-        items: page.items.iter().map(NodeDto::from).collect(),
+        items: page
+            .items
+            .iter()
+            .map(|node| NodeDto::with_thumbnails(node, &thumbnails))
+            .collect(),
         next_cursor,
     }))
 }
@@ -70,8 +78,9 @@ pub async fn get_node(
         .await?
         .ok_or(ApiError::NotFound)?;
     let path = nodes::path_to(&state.pool, owner_id, id).await?;
+    let thumbnails = thumbnails_of(&state, std::slice::from_ref(&node)).await?;
     Ok(Json(NodeDetails {
-        node: (&node).into(),
+        node: NodeDto::with_thumbnails(&node, &thumbnails),
         path: path
             .into_iter()
             .map(|s| PathSegmentDto {
@@ -80,6 +89,18 @@ pub async fn get_node(
             })
             .collect(),
     }))
+}
+
+/// Ready thumbnails of `nodes` (the caller's own), by blob hash: one query per page.
+async fn thumbnails_of(
+    state: &AppState,
+    nodes: &[NodeRecord],
+) -> Result<HashMap<String, ThumbRef>, ApiError> {
+    let hashes: Vec<String> = nodes
+        .iter()
+        .filter_map(|node| node.blob_sha256.clone())
+        .collect();
+    Ok(media::thumbnails_for(&state.pool, &hashes).await?)
 }
 
 #[utoipa::path(post, path = "/api/folders", tag = "files", request_body = CreateFolderRequest,

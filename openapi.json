@@ -203,7 +203,7 @@
         "operationId": "logout",
         "responses": {
           "204": {
-            "description": ""
+            "description": "Logged out; `Clear-Site-Data: \"cache\"`"
           },
           "401": {
             "description": "",
@@ -236,7 +236,7 @@
         "operationId": "logout_all",
         "responses": {
           "204": {
-            "description": ""
+            "description": "Every session revoked; `Clear-Site-Data: \"cache\"`"
           },
           "401": {
             "description": "",
@@ -384,6 +384,89 @@
           },
           "503": {
             "description": "Too many downloads in progress",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/files/{id}/thumbnail": {
+      "get": {
+        "tags": [
+          "files"
+        ],
+        "operationId": "thumbnail",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "File id",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "size",
+            "in": "query",
+            "description": "`thumb` (grid, 360 px tall) or `preview` (lightbox, 1440 px).",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "thumb",
+                "preview"
+              ]
+            }
+          },
+          {
+            "name": "v",
+            "in": "query",
+            "description": "The `thumbnail.version` from the listing; only busts caches.",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "format": "int32"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "image/webp": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "type": "integer",
+                    "format": "int32",
+                    "minimum": 0
+                  }
+                }
+              }
+            }
+          },
+          "304": {
+            "description": "Unchanged (If-None-Match)"
+          },
+          "400": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "not_found, or not_ready while the worker has not produced it",
             "content": {
               "application/json": {
                 "schema": {
@@ -1974,6 +2057,17 @@
             "type": "integer",
             "format": "int64",
             "description": "Bytes; 0 for folders."
+          },
+          "thumbnail": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/ThumbnailRef",
+                "description": "Set when a thumbnail is ready (`GET /api/files/{id}/thumbnail`); `null`\notherwise, and in listings that do not look thumbnails up."
+              }
+            ]
           }
         }
       },
@@ -2089,6 +2183,27 @@
             "type": "integer",
             "format": "int64",
             "description": "Logical bytes of live files: what the quota limits."
+          }
+        }
+      },
+      "ThumbnailRef": {
+        "type": "object",
+        "description": "A ready thumbnail of a file.",
+        "required": [
+          "version"
+        ],
+        "properties": {
+          "blurhash": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "A compact blurred placeholder (blurha.sh) to show while it loads."
+          },
+          "version": {
+            "type": "integer",
+            "format": "int32",
+            "description": "Pass as `v` to the thumbnail URL: a new version is a new URL."
           }
         }
       },

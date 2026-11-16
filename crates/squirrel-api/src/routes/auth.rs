@@ -1,6 +1,6 @@
 use axum::Json;
 use axum::extract::State;
-use axum::http::{HeaderMap, StatusCode};
+use axum::http::{HeaderMap, HeaderName, HeaderValue, StatusCode};
 use axum_extra::extract::CookieJar;
 use squirrel_auth::{burn_verification_time, verify_password};
 use squirrel_core::{Password, Username};
@@ -30,25 +30,38 @@ pub async fn me(
     )))
 }
 
+/// Logging out drops the browser's cached private responses (thumbnails are
+/// cached for a year) so they do not outlive the session on a shared device.
+const CLEAR_SITE_DATA: (HeaderName, HeaderValue) = (
+    HeaderName::from_static("clear-site-data"),
+    HeaderValue::from_static("\"cache\""),
+);
+
 #[utoipa::path(post, path = "/api/auth/logout", tag = "auth",
-    responses((status = 204), (status = 401, body = ErrorBody), (status = 403, body = ErrorBody)))]
+    responses((status = 204, description = "Logged out; `Clear-Site-Data: \"cache\"`"),
+              (status = 401, body = ErrorBody), (status = 403, body = ErrorBody)))]
 pub async fn logout(
     State(state): State<AppState>,
     current: CurrentUser,
     jar: CookieJar,
-) -> Result<(StatusCode, CookieJar), ApiError> {
+) -> Result<(StatusCode, [(HeaderName, HeaderValue); 1], CookieJar), ApiError> {
     sessions::delete_by_id(&state.pool, current.session.id).await?;
-    Ok((StatusCode::NO_CONTENT, jar.remove(session::removal())))
+    Ok((
+        StatusCode::NO_CONTENT,
+        [CLEAR_SITE_DATA],
+        jar.remove(session::removal()),
+    ))
 }
 
 #[utoipa::path(post, path = "/api/auth/logout-all", tag = "auth",
-    responses((status = 204), (status = 401, body = ErrorBody), (status = 403, body = ErrorBody)))]
+    responses((status = 204, description = "Every session revoked; `Clear-Site-Data: \"cache\"`"),
+              (status = 401, body = ErrorBody), (status = 403, body = ErrorBody)))]
 pub async fn logout_all(
     State(state): State<AppState>,
     current: CurrentUser,
     client_ip: ClientIp,
     jar: CookieJar,
-) -> Result<(StatusCode, CookieJar), ApiError> {
+) -> Result<(StatusCode, [(HeaderName, HeaderValue); 1], CookieJar), ApiError> {
     let revoked = sessions::delete_all_for_user(&state.pool, current.user.id).await?;
     tracing::info!(
         user_id = %current.user.id,
@@ -57,7 +70,11 @@ pub async fn logout_all(
         revoked,
         "logged out of all sessions"
     );
-    Ok((StatusCode::NO_CONTENT, jar.remove(session::removal())))
+    Ok((
+        StatusCode::NO_CONTENT,
+        [CLEAR_SITE_DATA],
+        jar.remove(session::removal()),
+    ))
 }
 
 /// Inputs longer than this are rejected before hashing (protects the CPU).
