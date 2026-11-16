@@ -1010,7 +1010,10 @@ export interface operations {
             query: {
                 /** @description `thumb` (grid, 360 px tall) or `preview` (lightbox, 1440 px). */
                 size: "thumb" | "preview";
-                /** @description The `thumbnail.version` from the listing; only busts caches. */
+                /**
+                 * @description The `thumbnail.version` from the listing. Only a URL with the current
+                 *     version is cached as immutable.
+                 */
                 v?: number;
             };
             header?: never;

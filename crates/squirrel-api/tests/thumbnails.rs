@@ -192,3 +192,32 @@ async fn logging_out_clears_the_browser_cache(pool: PgPool) {
     all.assert_status(StatusCode::NO_CONTENT);
     assert_eq!(all.header("clear-site-data"), "\"cache\"");
 }
+
+#[sqlx::test(migrator = "squirrel_db::MIGRATOR")]
+async fn only_the_current_version_is_cached_for_good(pool: PgPool) {
+    let instance = common::Instance::new(pool);
+    let browser = instance.browser();
+    let me = common::setup_admin(&browser, "alice").await;
+    let photos = files::root_id(&instance, &me, "Photos").await;
+    let node = files::upload(&browser, &me, photos, "a.jpg", JPEG).await;
+    let id = node["id"].as_str().unwrap();
+    with_media(&instance, JPEG, true).await;
+
+    for query in ["size=thumb&v=0", "size=thumb"] {
+        let response = browser
+            .get(&format!("/api/files/{id}/thumbnail?{query}"))
+            .await;
+        response.assert_status_ok();
+        assert_eq!(
+            response.header("cache-control"),
+            "private, no-cache",
+            "{query}"
+        );
+        assert!(response.maybe_header("etag").is_some());
+    }
+    let current = get(&browser, id, "thumb").await;
+    assert_eq!(
+        current.header("cache-control"),
+        "private, max-age=31536000, immutable"
+    );
+}
