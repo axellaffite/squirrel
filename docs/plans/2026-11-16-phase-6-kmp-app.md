@@ -37,7 +37,8 @@ tested up to Gradle 9.7.0 and AGP 9.3.1; the latest Gradle 9.9.1 and AGP 9.5.1 a
 Open question 14), Compose Multiplatform 1.12.2 (Jetpack Compose UI 1.12.1 underneath),
 JetBrains `navigation-compose` 2.10.0 and `lifecycle-viewmodel-compose` 2.11.0, Ktor client 3.6.1
 (OkHttp engine on Android, Darwin on iOS, `ktor-client-mock` for tests), kotlinx.serialization
-1.13.0, kotlinx.coroutines 1.11.0, kotlinx-datetime 0.8.0, SQLDelight 2.4.1, AndroidX WorkManager
+1.13.0, kotlinx.coroutines 1.11.0, kotlinx-datetime 0.8.0, openapi-generator Gradle plugin 7.27.0
+(`kotlin` generator, `multiplatform` library), SQLDelight 2.4.1, AndroidX WorkManager
 2.12.0, `activity-compose` 1.13.0, `core-ktx` 1.19.1, Coil 3.6.3 (`coil-compose`,
 `coil-network-ktor3`); tests: kotlin.test, Turbine 1.2.1, Robolectric 4.18, AndroidX Test core 1.7.0
 / runner 1.7.0 / ext-junit 1.3.0. No new Rust crate. Web: no new npm dependency.
@@ -64,8 +65,8 @@ Open question 8). Phone-specific additions go into MASTER.md first and need the 
   `web/`. E2E: `SQUIRREL_E2E_PORT=8199 pnpm test:e2e` (8099 is taken on this machine).
 - Every API change regenerates the contract in the same task, or `tests/openapi.rs` fails:
   `cargo run -q -p squirrel -- openapi > openapi.json && (cd web && source ~/.nvm/nvm.sh && nvm use 22 >/dev/null && pnpm gen:api)`.
-  From Milestone D on, the mobile contract test (`./gradlew :shared:jvmTest`, Task 17) also reads
-  `openapi.json`.
+  From Milestone D on, the phone's API client is generated from `openapi.json` too: run
+  `(cd mobile && ./gradlew :shared:checkApiClient)` (Task 17) after regenerating it.
 - Existing migrations are **frozen** (CI refuses edits). Phase 6 adds new files only:
   `20261116000001_devices.sql` (A), `20261116000002_device_sync.sql` (B),
   `20261116000003_upload_tokens.sql` (H). If the calendar moved on, use the current date for the
@@ -167,7 +168,7 @@ Open question 8). Phone-specific additions go into MASTER.md first and need the 
 |---|---|---|
 | UI toolkit (decided 2026-11-16) | **Compose Multiplatform for every screen on both platforms**: module `ui` (screens, view models, navigation) on top of module `theme` (tokens, theme, components derived from MASTER.md). Same code, same look on Android and iOS. On iOS, `ComposeUIViewController` is hosted by a Swift entry point; no SwiftUI screens. | The user's direction: one UI and one theme, MASTER.md implemented once. Trade-offs (iOS feel, accessibility, size, stability) are listed under "Risks of Compose Multiplatform on iOS". |
 | iOS through Kotlin/Native | PhotoKit (`platform.Photos`), `BGTaskScheduler` (`platform.BackgroundTasks`), the background `URLSession` and its delegate (`platform.Foundation`), Keychain (`platform.Security`), CommonCrypto, sharing and opening files (`platform.UIKit`) are written in Kotlin in `shared/src/iosMain` and `ui/src/iosMain`. **Swift only where Kotlin cannot reach cleanly:** (1) `SquirrelApp.swift`, the `@main` entry point hosting `ComposeUIViewController` (an iOS app's entry point and its `UIApplicationDelegate` adaptor are declared in Swift; a Kotlin `main` calling `UIApplicationMain` is possible but unsupported by the Xcode templates and CMP docs); (2) `AppDelegate.swift`, ~30 lines forwarding `application(_:didFinishLaunchingWithOptions:)` (BGTask handlers must be **registered before launch finishes**) and `application(_:handleEventsForBackgroundURLSession:completionHandler:)` (only delivered to the app delegate) to Kotlin; (3) XCTest code, because PhotoKit needs a host app with an `Info.plist` and photo permission, which the Kotlin/Native test runner does not have. | The user's direction: Swift kept to the minimum. Kotlin/Native exposes these frameworks directly; delegates are Kotlin classes extending `NSObject` and implementing the `…Protocol` interfaces. |
-| API client | **Hand-written** Ktor client for the ~20 endpoints the app uses, with `@Serializable` DTOs, plus a **contract test** that reads `openapi.json` and fails if a DTO's fields, types or required-ness drift from the schema. | `openapi-generator`'s Kotlin multiplatform output is heavy and lags Ktor 3; the contract test gives the same drift guarantee as the web's `pnpm gen:api` diff (**Open question 10**). |
+| API client (answered 2026-11-16) | **Generated** with openapi-generator 7.27.0 (`kotlin` generator, `library=multiplatform`: Ktor client + kotlinx.serialization) from the committed `openapi.json` into `shared/build/generated/openapi/` at build time, not committed. Hand-written on top: the auth/refresh layer (Ktor `Auth` bearer provider), the streaming chunk PUT (also used with the `Upload` token scheme and on iOS through `NSURLSession`), and a facade for `POST /api/uploads`'s two success bodies (Task 16). Drift check: `checkApiClient` in CI (Task 17). | The design's "KMP clients generated from it"; the user chose it (Open question 10). |
 | Local database | SQLDelight 2.4.1, one database `squirrel.db`: `local_asset` (the queue), `scan_state`, `settings` (backup options; avoids DataStore), `secret` (the Android-encrypted refresh token). | One storage mechanism, transactional queue updates, in-memory driver in tests. |
 | Hashing | `expect class Sha256` with `update(bytes, offset, length)` / `digest()`: Android/JVM `java.security.MessageDigest`, iOS CommonCrypto (`CC_SHA256_Init/Update/Final`) via `platform.CommonCrypto`. Files are streamed in 1 MiB buffers; the hash is cached per `(device_asset_id, size, modified_at)` so a file is hashed once. | No dependency, hardware-accelerated on both; constant memory for 4 GB videos. |
 | Reading bytes | `AssetSource` interface (shared): `scan(since)`, `open(asset): AssetReader` with `read(offset, buffer)` and `size`. Android: `ContentResolver.openFileDescriptor` + `FileChannel` positional reads on `MediaStore.setRequireOriginal(uri)` (needs `ACCESS_MEDIA_LOCATION`, or GPS is redacted from the bytes and the hash differs from the original). iOS (Kotlin, `iosMain`): exports the asset's current resource with `PHAssetResourceManager.writeDataForAssetResource(…, toFile:)` into the app's caches directory, then reads that file with `NSFileHandle`. | Chunks need random access to resume; iOS gives only a stream, and background uploads need files anyway. |
@@ -194,6 +195,16 @@ Open question 8). Phone-specific additions go into MASTER.md first and need the 
 
 ## Open questions for the user
 
+**Answered 2026-11-16: every recommendation below was accepted except question 10:** the API
+client is **generated** with openapi-generator (Task 16), not hand-written. The answers, in short:
+1 JDK 25 daemon + JDK 21 toolchain · 2 opaque tokens · 3 90-day sliding refresh with rotation ·
+4 phone tokens on data routes only · 5 invitations joined on the web · 6 no re-upload after a
+server-side delete · 7 `Photos/<device>/<year>/` · 8 tokens generated from `tokens.css` · 9 MASTER.md
+phone additions accepted (Task 15 writes them) · **10 generated client** · 11 per-upload tokens for
+iOS · 12 read-only gallery and files · 13 minSdk 29 / target 36, iOS 17 · 14 the dependency list
+(with openapi-generator 7.27.0) · 15 `app.squirrel.android` / `app.squirrel.ios` · 16 sideloaded
+builds · 17 Kotlin 2.4.21 now, Kotlin 2.5 or an Xcode fallback at Milestone H.
+
 | # | Question | Recommendation |
 |---|---|---|
 | 1 | **JDK:** the Gradle daemon on the default JDK 25, compiling with a JDK 21 toolchain (Temurin 21.0.9 is already installed, nothing to download). If AGP or Kotlin misbehave on 25, pin the daemon to 21 in `~/.gradle/gradle.properties`. CI uses Temurin 21 via `actions/setup-java`. | **Accept** (no installation needed). |
@@ -205,11 +216,11 @@ Open question 8). Phone-specific additions go into MASTER.md first and need the 
 | 7 | **Folder layout:** `Photos/<device name>/<year>/` vs. one flat `Photos/<device name>/` vs. `Photos/<year>/<month>/` shared by all devices. | **`Photos/<device name>/<year>/`.** |
 | 8 | **Native tokens generated from `tokens.css`** by a dependency-free Node script with a CI drift check, vs. a hand-written `Theme.kt`. | **Generate.** |
 | 9 | **Phone design additions to MASTER.md** (needs re-validation): the backup status card is the screen's one graphite card ("1 204 left · 3.2 GB"); the permission notice is an `info` Alert with two buttons; the phone gallery uses the web's photo tokens (`--photo-row` 112 px, `--radius-tile` 6 px, gaps `--space-1`). No new values. | **Accept** (Task 15 writes the paragraph into MASTER.md before any screen). |
-| 10 | **API client:** hand-written Ktor client + `openapi.json` contract test vs. `openapi-generator` (`kotlin`, `library=multiplatform`) output committed. | **Hand-written + contract test** (deviates from the design's "generated"; same drift guarantee). |
+| 10 | **API client:** hand-written Ktor client + `openapi.json` contract test vs. `openapi-generator` (`kotlin`, `library=multiplatform`) output. | Recommended hand-written; **answered: generated** (Task 16). |
 | 11 | **iOS upload tokens:** `POST /api/uploads` from a bearer caller also returns an `upload_token` (scoped to that one upload, chunk PUTs and status only, expires with the session) so background `URLSession` chunk uploads keep working after the access token expires. Alternative: no token; chunks failing with 401 are re-queued when the app next wakes (slower, more wakeups). | **Upload tokens** (Milestone H, server task first). |
 | 12 | **Gallery scope in v1:** timeline by month, preview, swipe, open original, read-only albums, read-only file browser. No selection, deletion, album editing, scrubber, search or map. | **Accept.** |
 | 13 | **Minimum OS:** Android 10 (minSdk 29), target/compile 36; iOS 17. Android 8–9 would need a different original-bytes path; iOS 16 lacks parts of the Observation stack the shell uses. | **Accept.** |
-| 14 | **Dependencies** (all Apache-2.0 except where noted): Kotlin 2.4.21, **AGP 9.3.3 and Gradle 9.7.1** (the newest patches of the lines Kotlin 2.4.21 is tested with; the latest AGP 9.5.1 and Gradle 9.9.1 are untested with it and gain this app nothing, so move up together with Kotlin 2.5), Compose Multiplatform 1.12.2, JetBrains navigation-compose 2.10.0 and lifecycle-viewmodel-compose 2.11.0, Ktor 3.6.1, kotlinx.serialization 1.13.0, kotlinx.coroutines 1.11.0, kotlinx-datetime 0.8.0, SQLDelight 2.4.1, WorkManager 2.12.0, activity-compose 1.13.0, core-ktx 1.19.1, Coil 3.6.3; test: Turbine 1.2.1, Robolectric 4.18 (MIT), AndroidX Test 1.7.0 / ext-junit 1.3.0. Geist font (OFL-1.1). Not used: Koin 4.2.2, DataStore 1.3.0 (now KMP), KotlinCrypto sha2 0.8.0 / Okio 3.18.2 `HashingSink` (common SHA-256), OpenAPI Generator 7.27.0. | **Accept.** |
+| 14 | **Dependencies** (all Apache-2.0 except where noted): Kotlin 2.4.21, **AGP 9.3.3 and Gradle 9.7.1** (the newest patches of the lines Kotlin 2.4.21 is tested with; the latest AGP 9.5.1 and Gradle 9.9.1 are untested with it and gain this app nothing, so move up together with Kotlin 2.5), Compose Multiplatform 1.12.2, JetBrains navigation-compose 2.10.0 and lifecycle-viewmodel-compose 2.11.0, Ktor 3.6.1, kotlinx.serialization 1.13.0, kotlinx.coroutines 1.11.0, kotlinx-datetime 0.8.0, SQLDelight 2.4.1, WorkManager 2.12.0, activity-compose 1.13.0, core-ktx 1.19.1, Coil 3.6.3; test: Turbine 1.2.1, Robolectric 4.18 (MIT), AndroidX Test 1.7.0 / ext-junit 1.3.0. openapi-generator Gradle plugin 7.27.0 (Apache-2.0; build-time only, nothing of it ships). Geist font (OFL-1.1). Not used: Koin 4.2.2, DataStore 1.3.0 (now KMP), KotlinCrypto sha2 0.8.0 / Okio 3.18.2 `HashingSink` (common SHA-256). | **Accept.** |
 | 15 | **App identity:** application id / bundle id `app.squirrel.android` / `app.squirrel.ios`, display name "Squirrel". Signing for real devices needs your Apple team and an Android keystore (not in the repository). | **Accept the ids**; you provide signing when installing on your own phones. |
 | 16 | **Distribution:** sideloaded debug/release builds (Android APK, iOS via Xcode to your own devices) in Phase 6; no store listing. | **Accept**; store publishing is out of scope for v1. |
 | 17 | **Kotlin vs. Xcode:** Kotlin 2.4.20–2.4.21's compatibility guide lists **Xcode 26.4** only; this machine has Xcode 27.0 (latest is 27.2); Kotlin 2.5.0, announced as the first with the 27 SDK, is a release candidate today. Options at Milestone H: (a) Kotlin 2.5.0 if stable by then (with the Gradle/AGP lines it is tested with); (b) Kotlin 2.4.21 with Xcode 27, unsupported (a community report says it works); (c) install Xcode 26.4 beside 27 (needs your approval, ~10 GB). | **Start on 2.4.21** (Milestones A–G are server and Android only); at Milestone H take **(a)**, else try **(b)** and fall back to **(c)** with your approval. Record the outcome. |
@@ -226,6 +237,10 @@ Open question 8). Phone-specific additions go into MASTER.md first and need the 
 | `DELETE /api/devices/{id}` | session + CSRF | json | Revoke one device → 204 (idempotent; another user's id → 404) |
 | `POST /api/sync/check` | bearer | sync (256 KiB) | `{items: [{device_asset_id, sha256}]}` (≤ 500) → `{missing: [..]}` |
 | `POST /api/sync/folder` | bearer | json | `{year}` → `{folder_id}` (`Photos/<device>/<year>`, created if needed) |
+
+Security schemes in `openapi.json` (so the generated phone client authenticates correctly):
+`session_cookie` + `csrf_token`, `device_bearer` (HTTP bearer), and from Milestone H
+`upload_token` (HTTP scheme `Upload`); every operation lists the ones it accepts.
 
 Changed: `POST /api/uploads` accepts optional `taken_at` and `device_asset_id`, and (Milestone H) a
 bearer caller's 201 response carries `upload_token`; `PUT /api/uploads/{id}/chunks/{n}` and
@@ -471,7 +486,13 @@ impl FromRequestParts<AppState> for Caller {
 `last_seen_at`. Also add `DeviceCaller` (bearer only: `Caller` + `require_device`) for the
 `/api/devices/current`, `/api/sync/*` and device-logout routes.
 
-**Step 4: Run** → PASS. **Step 5: Commit** — `feat(api): accept device bearer tokens beside sessions`.
+**Step 4: Describe the schemes in `openapi.json`** (the phone's client is generated from it,
+Task 16): a `utoipa::Modify` on `ApiDoc` registers `session_cookie` (`apiKey`, in cookie
+`squirrel_session`), `csrf_token` (`apiKey`, header `X-CSRF-Token`) and `device_bearer`
+(`http`, scheme `bearer`, description "Device access token, `sqa_…`"). This task only adds the
+schemes; Task 5 attaches them to every route. Regenerate the contract.
+
+**Step 5: Run** → PASS. **Step 6: Commit** — `feat(api): accept device bearer tokens beside sessions`.
 
 ---
 
@@ -490,10 +511,16 @@ for the session-only list (`/api/auth/me`, `/api/auth/logout`, `/api/auth/logout
 reverse with only a session cookie + CSRF for the bearer-only list (`/api/devices/current`,
 `/api/auth/device/logout`, `/api/sync/*`: 403 `forbidden`). Unauthenticated routes (`healthz`,
 `setup/*`, `join/*`, `auth/login`, `auth/device/*` login and refresh) are listed explicitly. A path
-missing from all lists fails the test, so a future route must choose.
+missing from all lists fails the test, so a future route must choose. A second test checks the
+**document matches the behaviour**: every operation's `security` in `openapi.json` lists exactly
+the schemes the matrix found accepted (`[]` for the unauthenticated ones; session routes
+`session_cookie` + `csrf_token` for non-GET; data routes `device_bearer` or the session pair;
+bearer-only routes `device_bearer`), so the generated phone client sends the right credentials.
 
 **Step 2: Run** → FAIL. **Step 3: Implement:** replace `current: CurrentUser` by `caller: Caller`
-in the data handlers (`current.user.id` → `caller.user.id`; nothing else uses the session there).
+in the data handlers (`current.user.id` → `caller.user.id`; nothing else uses the session there),
+and add `security(("device_bearer" = []), ("session_cookie" = [], "csrf_token" = []))` (or the
+session-only / bearer-only / empty variant) to every `#[utoipa::path]`. Regenerate the contract.
 Keep upload rate limits and slots keyed by user id (a phone and a browser of the same user share
 them, as two browsers do today).
 
@@ -781,7 +808,8 @@ mobile/
   gradlew, gradlew.bat
   shared/                      KMP library, no UI: targets jvm() (tests), android, iosArm64, iosSimulatorArm64
     src/commonMain/kotlin/app/squirrel/shared/
-      api/        SquirrelApi.kt, Dto.kt, ApiError.kt, AuthPlugin.kt
+      api/        ApiFactory.kt (auth + refresh), ChunkUploader.kt, UploadsFacade.kt, ApiError.kt
+                  (the generated client, package app.squirrel.api, lives in build/generated/openapi)
       auth/       TokenStore.kt (interface), Session.kt (refresh single-flight)
       db/         (SQLDelight generated) + Database.kt
       hash/       Sha256.kt (expect), Hashing.kt
@@ -844,6 +872,7 @@ turbine = "1.2.1"
 robolectric = "4.18"
 androidx-test = "1.7.0"
 androidx-test-ext = "1.3.0"
+openapi-generator = "7.27.0"
 
 [plugins]
 kotlin-multiplatform = { id = "org.jetbrains.kotlin.multiplatform", version.ref = "kotlin" }
@@ -854,6 +883,7 @@ compose-multiplatform = { id = "org.jetbrains.compose", version.ref = "compose-m
 android-application = { id = "com.android.application", version.ref = "agp" }
 android-kmp-library = { id = "com.android.kotlin.multiplatform.library", version.ref = "agp" }
 sqldelight = { id = "app.cash.sqldelight", version.ref = "sqldelight" }
+openapi-generator = { id = "org.openapi.generator", version.ref = "openapi-generator" }
 
 [libraries]
 ktor-client-core = { module = "io.ktor:ktor-client-core", version.ref = "ktor" }
@@ -929,47 +959,109 @@ reduced motion is on; `Shadow.kt` `Modifier.cardShadow()` / `popShadow()` over `
 
 ---
 
-### Task 16: Shared DTOs and the API client
+### Task 16: Generated API client (openapi-generator)
 
 **Files:**
-- Create: `mobile/shared/src/commonMain/kotlin/app/squirrel/shared/api/{Dto.kt,SquirrelApi.kt,ApiError.kt,AuthPlugin.kt}`,
-  `mobile/shared/src/commonTest/kotlin/app/squirrel/shared/api/SquirrelApiTest.kt`
+- Modify: `mobile/gradle/libs.versions.toml` (plugin `openapi-generator`), `mobile/shared/build.gradle.kts`
+- Create: `mobile/shared/openapi/config.yaml` (generator options), `mobile/shared/openapi/.openapi-generator-ignore`,
+  `mobile/shared/src/commonTest/kotlin/app/squirrel/shared/api/GeneratedClientTest.kt`
 
-**Endpoints wrapped:** healthz, setup status, device login/refresh/logout, devices/current (get,
-patch), sync check, sync folder, uploads (create, status, chunk PUT, complete, abort), photos
-(months, page, detail), thumbnail URL builder, nodes (list, get), content URL builder, albums
-(list, items), storage.
+**Generation** (Gradle plugin `org.openapi.generator` **7.27.0**, from the Gradle Plugin Portal,
+checked 2026-11-16; Maven Central's copy stops at 7.14.0):
 
-**Step 1: Failing tests** (`MockEngine`): each call sends the right method, path, JSON body and
-`Authorization: Bearer`; a 201 vs 200 on `createUpload` decodes to `UploadOutcome.Session` vs
-`UploadOutcome.Deduplicated`; the error envelope `{error:{code,message}}` maps to
-`ApiError(status, code, message)`; a 401 triggers **one** refresh through the token provider and a
-retry; two concurrent 401s cause **one** refresh (single-flight `Mutex`); a failed refresh surfaces
-`SignedOut`; `putChunk` sends `application/octet-stream` with an exact `Content-Length`.
-**Step 2: Implement.** DTO fields use `@SerialName` snake_case; `Json { ignoreUnknownKeys = true }`
-(the server may add fields), timestamps as `kotlinx.datetime.Instant`. The bearer is added by a
-small Ktor plugin reading `TokenProvider.accessToken()`; refresh calls go through a **separate**
-`HttpClient` without that plugin. `HttpTimeout`: 30 s for JSON, 5 min per chunk (the server's
-`CHUNK_TIMEOUT`).
-**Step 3: Run** `(cd mobile && ./gradlew :shared:jvmTest)` → PASS.
-**Commit** — `feat(mobile): Squirrel API client`.
+```kotlin
+// mobile/shared/build.gradle.kts
+openApiGenerate {
+    generatorName.set("kotlin")
+    library.set("multiplatform")                    // Ktor client + kotlinx.serialization
+    inputSpec.set(rootProject.file("../openapi.json").path)   // the committed contract
+    outputDir.set(layout.buildDirectory.dir("generated/openapi").get().asFile.path)
+    packageName.set("app.squirrel.api")
+    configOptions.set(mapOf(
+        "dateLibrary" to "kotlinx-datetime",
+        "enumUnknownDefaultCase" to "true",          // a newer server can add enum values
+        "omitGradleWrapper" to "true",
+        "omitGradlePluginVersions" to "true",
+    ))
+    generateApiTests.set(false); generateModelTests.set(false)
+    generateApiDocumentation.set(false); generateModelDocumentation.set(false)
+    validateSpec.set(true)
+}
+kotlin.sourceSets.commonMain {
+    kotlin.srcDir(layout.buildDirectory.dir("generated/openapi/src/commonMain/kotlin"))
+}
+tasks.matching { it.name.startsWith("compileKotlin") || it.name.endsWith("SourcesJar") }
+    .configureEach { dependsOn("openApiGenerate") }
+```
+
+- **Not committed:** the output lives in `shared/build/generated/openapi/` and is regenerated on
+  every build from the committed `openapi.json`, which is already the reviewed contract (the server
+  commits it, and `tests/openapi.rs` refuses a stale one). Committing ~100 generated files would
+  only duplicate that diff.
+- **Only the sources are used.** The generator's own `build.gradle.kts` (which pins Ktor 3.5.1,
+  kotlinx.serialization 1.11.0, Kotlin 2.4.0 and adds `js` and `iosX64` targets) is ignored
+  (`.openapi-generator-ignore`); the generated code compiles inside `shared` against **our**
+  catalogue: Ktor 3.6.1, kotlinx.serialization 1.13.0, Kotlin 2.4.21. Ktor keeps source
+  compatibility within 3.x, so this is expected to compile; **verified in this task** by compiling
+  and by the MockEngine tests below. If 3.6 breaks a generated call, first fix it with a minimal
+  template override (`templateDir`, only the file concerned); pinning the whole app to Ktor 3.5.x
+  is the last resort and needs recording here.
+
+**What is hand-written, and why** (`mobile/shared/src/commonMain/kotlin/app/squirrel/shared/api/`):
+1. `ApiFactory.kt`, **auth and refresh.** The generated `ApiClient` only holds a static token
+   (`setBearerToken`); it cannot refresh on 401 or deduplicate concurrent refreshes. The factory
+   builds the generated API classes with our own `HttpClient` configuration
+   (`httpClientEngine` + `httpClientConfig` constructor parameters): Ktor's `Auth` plugin with a
+   `bearer { loadTokens; refreshTokens; sendWithoutRequest { true } }` provider reading the
+   `Session`/`TokenStore` (Task 18). Ktor's provider already serialises refreshes; the refresh call
+   itself uses the generated `DevicesApi.refreshDeviceToken` on a **second** client without the
+   plugin (no recursion). `HttpTimeout` 30 s; `Json { ignoreUnknownKeys = true }`.
+2. `ChunkUploader.kt`, **chunk PUTs.** The generated method takes the whole body as a value and
+   only knows the bearer scheme. The app must stream an 8 MiB slice straight from an
+   `AssetReader` with an exact `Content-Length`, authenticate with either the bearer (Android) or
+   `Authorization: Upload <token>` (iOS background transfers), and on iOS hand the request to
+   `NSURLSession` instead of Ktor (Task 41). So `PUT /api/uploads/{id}/chunks/{n}` is one hand-written
+   Ktor call (`setBody(object : OutgoingContent.WriteChannelContent() { … })`) with a 5-minute timeout
+   (the server's `CHUNK_TIMEOUT`). The path and headers come from the same `openapi.json`
+   operation, checked by test 4 below.
+3. `UploadsFacade.kt`, **one status-dependent response.** `POST /api/uploads` answers 200
+   `DeduplicatedUpload` or 201 `UploadSessionDto`; the generator types an operation by one success
+   schema. The facade calls the generated method, reads the raw status from its `HttpResponse`
+   wrapper, and decodes the body with the generated serializer for that status into
+   `UploadOutcome.Deduplicated` / `UploadOutcome.Session`.
+4. `ApiError.kt`: maps non-2xx responses' `{error:{code,message}}` envelope (the generated
+   `ErrorBody`) to `ApiError(status, code, message)`.
+
+Everything else (health, setup status, device login/refresh/logout, devices/current, sync check
+and folder, upload status/complete/abort, photos, albums, nodes, storage, thumbnails and content
+URLs) is the generated code.
+
+**Step 1: Failing tests** (`MockEngine`): device login sends the generated request and decodes
+`DeviceLoginResponse`; a data call carries `Authorization: Bearer sqa_…`; a 401 triggers **one**
+refresh and a retry, and two concurrent 401s cause one refresh; a failed refresh surfaces
+`SignedOut`; `createUpload` maps 200/201 to the two outcomes; the error envelope maps to `ApiError`;
+`ChunkUploader` sends `PUT /api/uploads/{id}/chunks/2` with `application/octet-stream`, the exact
+`Content-Length` and the bytes of slice 2, under either auth scheme (test 4 also asserts that
+`openapi.json` declares that operation with an `application/octet-stream` body and both security
+schemes).
+**Step 2: Implement.** **Step 3: Run** `(cd mobile && ./gradlew :shared:openApiGenerate :shared:jvmTest)` → PASS.
+**Commit** — `feat(mobile): generate the API client from openapi.json`.
 
 ---
 
-### Task 17: Contract test against `openapi.json`
+### Task 17: API drift check
 
-**Files:**
-- Create: `mobile/shared/src/jvmTest/kotlin/app/squirrel/shared/api/ContractTest.kt`
+**Files:** `mobile/shared/build.gradle.kts` (task `checkApiClient`), `.github/workflows/ci.yml` (Task 46 adds it to CI)
 
-**Test:** read `../../openapi.json` (path from a Gradle `systemProperty("squirrel.openapi", rootDir.parentFile.resolve("openapi.json"))`),
-and for every DTO in a `contract` table (`"DeviceDto" to DeviceDto.serializer().descriptor`, …)
-assert: every schema property the DTO declares exists in the schema with a compatible type
-(`string`/`integer`/`boolean`/`array`/`object`, `format: uuid|date-time|int64`), every property
-**required** by the schema of a **response** DTO is non-nullable in Kotlin and present, and every
-required property of a **request** schema is set by the Kotlin request class. Schemas the app does
-not use are ignored. This uses the serialization descriptors, no reflection library.
-**Run** → PASS; change one `@SerialName` to prove it fails, revert.
-**Commit** — `test(mobile): check the API client against openapi.json`.
+The equivalent of the web's `pnpm gen:api && git diff --exit-code`: since the output is not
+committed, drift shows up as **the app no longer compiling or its API tests failing against a
+freshly generated client**. `checkApiClient` = `openApiValidate` (the spec is valid OpenAPI) →
+`openApiGenerate` from a clean output directory → `compileKotlinJvm` → the API tests of Task 16.
+A server change that renames a field the app uses, drops an operation, or changes a security scheme
+breaks this task in the same pull request that changes `openapi.json`. Run it locally after every
+`openapi.json` regeneration (the conventions line above). Prove it once: rename a property in a
+scratch copy of `openapi.json` passed with `-PopenapiSpec=…`, see it fail, discard the copy.
+**Commit** — `build(mobile): check the generated client against openapi.json`.
 
 ---
 
@@ -1431,6 +1523,11 @@ ALTER TABLE upload_sessions ADD COLUMN upload_token_hash BYTEA UNIQUE;
    on another upload's id (404), after completion/abort/expiry (404), and once the device is
    revoked (401).
 4. Completion still needs the bearer (it creates the node).
+5. `openapi.json` declares an `upload_token` scheme (`http`, scheme `Upload`, description
+   "Per-upload token `squ_…` from `POST /api/uploads`, for this upload's chunks and status only"),
+   and those two operations list it besides `device_bearer` and the session pair; the Task 5
+   document-matches-behaviour test covers it. (The generated client ignores a non-bearer HTTP
+   scheme; the hand-written `ChunkUploader` sends it, Task 16.)
 **Implement** an `UploadCaller` extractor for those two routes (session, bearer, or upload token
 bound to the path's upload id; the device must be live). **Commit** — `feat(api): per-upload tokens for background chunk transfers`.
 
@@ -1636,8 +1733,9 @@ originals on Wi-Fi; revoke on the web. **No commit unless fixes.**
 - `mobile-android` (`ubuntu-latest`): `actions/setup-java@v4` (Temurin 21),
   `gradle/actions/setup-gradle@v4` (wrapper validation included), then
   `./gradlew :shared:jvmTest :theme:jvmTest :ui:jvmTest :androidApp:testDebugUnitTest :androidApp:lintDebug :androidApp:assembleDebug`
-  in `mobile/`; upload the debug APK as an artifact. The contract test reads the committed
-  `openapi.json`, so API drift fails here too.
+  in `mobile/`, preceded by `./gradlew :shared:checkApiClient` (the generated-client drift check,
+  Task 17; the mobile jobs' path filter includes `openapi.json`, so a server API change runs it);
+  upload the debug APK as an artifact.
 - `mobile-ios` (`macos-latest`, or the newest image with Xcode ≥ the version Kotlin supports;
   select it with `sudo xcode-select -s /Applications/Xcode_<ver>.app`): Temurin 21, then
   `./gradlew :shared:iosSimulatorArm64Test` and `xcodebuild build -project mobile/iosApp/iosApp.xcodeproj -scheme iosApp -destination 'generic/platform=iOS Simulator' CODE_SIGNING_ALLOWED=NO`.
@@ -1669,7 +1767,7 @@ final gate, deferred manual checks). **Commit** — `docs: record Phase 6 as bui
 |---|---|---|
 | Server unit/integration | `cargo test` + `sqlx::test` on 55432 | Token rotation and reuse, extractor, route matrix, sync check scoping and limits, uploads with `taken_at`/`device_asset_id`, capture chain step 3, sync folders, upload tokens, maintenance |
 | Web | Vitest, Playwright | Device helpers; Settings › Devices list and revoke |
-| Shared (KMP) | kotlin.test on `jvm()` (every task) and `iosSimulatorArm64` (from H), Ktor `MockEngine`, SQLDelight in-memory drivers, Turbine | API client and refresh single-flight, contract vs `openapi.json`, queue SQL, hashing vectors, uploader error branches, engine batching/pausing/deadlines, status formatting |
+| Shared (KMP) | kotlin.test on `jvm()` (every task) and `iosSimulatorArm64` (from H), Ktor `MockEngine`, SQLDelight in-memory drivers, Turbine | Generated client wiring, refresh single-flight, chunk streaming under both schemes, drift check (`checkApiClient`), queue SQL, hashing vectors, uploader error branches, engine batching/pausing/deadlines, status formatting |
 | UI view models | kotlin.test on `jvm()` | Sign-in, backup, settings, photos and files state machines |
 | Android | Robolectric (permissions, scheduler, worker), instrumented on the AVD (MediaStore source, Keystore, end to end against the dev server) | — |
 | iOS | Kotlin/Native `iosTest` on the simulator (hashing, database, mappings, transport store); XCTest as test code only where a host app is needed (the Kotlin PhotoKit source with `simctl addmedia`, the Kotlin transport with a `URLProtocol` stub, end to end) | — |
