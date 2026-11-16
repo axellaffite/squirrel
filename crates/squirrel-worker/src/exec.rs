@@ -88,6 +88,8 @@ async fn run_child(
             command.env(name, value);
         }
     }
+    // Its own process group: whatever it starts is killed with it.
+    command.process_group(0);
     let mut child = command
         .arg("media-exec")
         .arg("--max-memory-mb")
@@ -100,6 +102,8 @@ async fn run_child(
         .kill_on_drop(true)
         .spawn()
         .map_err(ExecError::Spawn)?;
+    // Kills the group however this function ends, dropped mid-way included.
+    let _group = child.id().map(GroupGuard);
     let outcome = tokio::time::timeout(config.timeout, exchange(&mut child, body)).await;
     let exchange = match outcome {
         Ok(Ok(exchange)) => Ok(exchange),
@@ -133,6 +137,23 @@ async fn run_child(
         });
     }
     serde_json::from_slice(&exchange.stdout).map_err(|err| ExecError::Protocol(err.to_string()))
+}
+
+/// Kills a sandbox's whole process group when dropped: the child (led by
+/// `pid`) and anything it spawned. The child itself is also reaped by
+/// [`run_child`] or `kill_on_drop`.
+struct GroupGuard(u32);
+
+impl Drop for GroupGuard {
+    fn drop(&mut self) {
+        let pid = i32::try_from(self.0)
+            .ok()
+            .and_then(rustix::process::Pid::from_raw);
+        if let Some(pid) = pid {
+            // Already gone (ESRCH) is the usual, fine outcome.
+            let _ = rustix::process::kill_process_group(pid, rustix::process::Signal::KILL);
+        }
+    }
 }
 
 /// Sends the request, reads stdout and stderr concurrently (each capped),
@@ -279,6 +300,45 @@ mod tests {
             matches!(&err, ExecError::Protocol(m) if m.contains("stderr")),
             "{err}"
         );
+    }
+
+    fn is_alive(pid: &str) -> bool {
+        std::process::Command::new("kill")
+            .args(["-0", pid.trim()])
+            .stderr(std::process::Stdio::null())
+            .status()
+            .unwrap()
+            .success()
+    }
+
+    #[tokio::test]
+    async fn what_a_timed_out_child_started_is_killed_too() {
+        let dir = tempfile::tempdir().unwrap();
+        let pid_file = dir.path().join("pid");
+        let mut config = script(
+            dir.path(),
+            &format!(
+                "sleep 30 &\necho $! > '{}'\nexec sleep 30",
+                pid_file.display()
+            ),
+        );
+        config.timeout = Duration::from_millis(500);
+        let err = Executor::Subprocess(config)
+            .run(request(dir.path()))
+            .await
+            .unwrap_err();
+        assert!(matches!(err, ExecError::TimedOut(_)), "{err}");
+        let pid = std::fs::read_to_string(&pid_file).unwrap();
+        // The orphan is reparented and reaped by init; give it a moment.
+        let mut alive = true;
+        for _ in 0..50 {
+            alive = is_alive(&pid);
+            if !alive {
+                break;
+            }
+            tokio::time::sleep(Duration::from_millis(20)).await;
+        }
+        assert!(!alive, "grandchild {} survived", pid.trim());
     }
 
     #[tokio::test]
