@@ -29,6 +29,8 @@
 	const months = $derived(boxes.map((box) => box.month));
 	const shownIndex = $derived(dragging ?? Math.max(0, current));
 	const shownMonth = $derived(months[shownIndex]);
+	// Assistive tech expects "up" to raise a slider's value: newer months get higher values.
+	const sliderValue = $derived(months.length - 1 - shownIndex);
 	const percent = (fraction: number) => `${fraction * 100}%`;
 
 	function jumpFromPointer(event: PointerEvent, area: HTMLElement) {
@@ -53,8 +55,20 @@
 		if (area) jumpFromPointer(event, area);
 	}
 
+	let lingerTimer: ReturnType<typeof setTimeout> | undefined;
+
+	/** Shows the phone handle, hiding it again once scrolling (or dragging) stops for a while. */
+	function linger() {
+		handleShown = true;
+		clearTimeout(lingerTimer);
+		lingerTimer = setTimeout(() => {
+			if (dragging === null) handleShown = false;
+		}, HANDLE_LINGER_MS);
+	}
+
 	function release() {
 		dragging = null;
+		linger();
 	}
 
 	function keydown(event: KeyboardEvent) {
@@ -65,18 +79,10 @@
 	}
 
 	onMount(() => {
-		let timer: ReturnType<typeof setTimeout> | undefined;
-		const scrolled = () => {
-			handleShown = true;
-			clearTimeout(timer);
-			timer = setTimeout(() => {
-				if (dragging === null) handleShown = false;
-			}, HANDLE_LINGER_MS);
-		};
-		window.addEventListener('scroll', scrolled, { passive: true });
+		window.addEventListener('scroll', linger, { passive: true });
 		return () => {
-			clearTimeout(timer);
-			window.removeEventListener('scroll', scrolled);
+			clearTimeout(lingerTimer);
+			window.removeEventListener('scroll', linger);
 		};
 	});
 
@@ -100,7 +106,7 @@
 		aria-orientation="vertical"
 		aria-valuemin={0}
 		aria-valuemax={months.length - 1}
-		aria-valuenow={shownIndex}
+		aria-valuenow={sliderValue}
 		aria-valuetext={monthLabel(shownMonth)}
 		onpointerdown={pointerdown}
 		onpointermove={pointermove}
@@ -119,24 +125,17 @@
 		</span>
 	</div>
 
-	<!-- Phones: a round handle on the right edge while scrolling. -->
-	<div class="phone-track" bind:this={track} class:shown={handleShown || dragging !== null}>
+	<!-- Phones: a round handle on the right edge while scrolling. A touch shortcut only: hidden from
+	     assistive tech, which reads the months as headings anyway. -->
+	<div class="phone-track" bind:this={track} class:shown={handleShown || dragging !== null} aria-hidden="true">
 		<div
 			class="handle"
 			style:top={percent(at[shownIndex] ?? 0)}
-			role="slider"
-			tabindex="-1"
-			aria-label="Jump to month"
-			aria-orientation="vertical"
-			aria-valuemin={0}
-			aria-valuemax={months.length - 1}
-			aria-valuenow={shownIndex}
-			aria-valuetext={monthLabel(shownMonth)}
+			role="presentation"
 			onpointerdown={pointerdown}
 			onpointermove={pointermove}
 			onpointerup={release}
 			onpointercancel={release}
-			onkeydown={keydown}
 		>
 			<Icon name="chevron-up" /><Icon name="chevron-down" />
 			{#if dragging !== null}<span class="handle-pill" aria-hidden="true">{shortMonthLabel(shownMonth)}</span>{/if}

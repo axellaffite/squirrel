@@ -25,7 +25,8 @@
 
 	let { asset, left, width, height, selected, selecting, onOpen, onToggle }: Props = $props();
 
-	let broken = $state(false);
+	/** The thumbnail version whose image failed to load; a new version gets a new chance. */
+	let brokenVersion: number | null = $state(null);
 	let loaded = $state(false);
 	let blur: string | null = $state(null);
 	let press: { x: number; y: number; timer: ReturnType<typeof setTimeout> } | null = null;
@@ -33,6 +34,7 @@
 	/** The last press came from a finger: its context menu (long press) is suppressed. */
 	let touching = false;
 
+	const broken = $derived(brokenVersion === asset.thumbnail.version);
 	const thumbState = $derived(broken ? 'failed' : asset.thumbnail.state);
 	const ready = $derived(thumbState === 'ready');
 	const unavailable = $derived(thumbState === 'failed' || thumbState === 'unsupported');
@@ -82,6 +84,8 @@
 	}
 
 	function pointerdown(event: PointerEvent) {
+		// A long press often ends without a click: never let it eat the next tap.
+		swallowClick = false;
 		touching = event.pointerType === 'touch';
 		if (!touching) return;
 		cancelPress();
@@ -139,7 +143,7 @@
 			decoding="async"
 			draggable="false"
 			onload={() => (loaded = true)}
-			onerror={() => (broken = true)}
+			onerror={() => (brokenVersion = asset.thumbnail.version)}
 		/>
 	{/if}
 	<span class="check" aria-hidden="true">{#if selected}<Icon name="check" />{/if}</span>
@@ -235,7 +239,7 @@
 		}
 
 		.selected {
-			outline: 3px solid Highlight;
+			outline: var(--ring-width) solid Highlight;
 		}
 
 		.check {

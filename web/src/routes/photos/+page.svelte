@@ -26,6 +26,8 @@
 	let photosFolder = $state<FileNode | null>(null);
 	let picker: HTMLInputElement | undefined = $state();
 	let preparing = $state(0);
+	/** Said once when preparing starts and once when it ends, not at every poll. */
+	let announcement = $state('');
 	let geometry: Geometry | undefined = $state();
 	let timeline: Timeline | undefined = $state();
 
@@ -40,7 +42,11 @@
 
 	const poller = createPoller({
 		fetch: mediaStatus,
-		onCount: (count) => (preparing = count),
+		onCount: (count) => {
+			if (preparing === 0 && count > 0) announcement = preparingText(count);
+			else if (preparing > 0 && count === 0) announcement = 'Photos and documents are ready.';
+			preparing = count;
+		},
 		onSettled: () => void data.reload(),
 		visible: () => document.visibilityState === 'visible'
 	});
@@ -86,6 +92,8 @@
 		const id = page.url.searchParams.get('photo');
 		if (!id) return;
 		const result = await photoDetails(id);
+		// The user may have opened another photo meanwhile: theirs wins.
+		if (viewing) return;
 		if (result.ok) viewing = result.data.asset;
 		else rememberPhoto(null);
 	}
@@ -115,8 +123,12 @@
 		selection.clear();
 	}
 
+	/** Escape clears the selection, unless something else (a menu, the upload panel) handles it. */
 	function keydown(event: KeyboardEvent) {
-		if (event.key === 'Escape' && selection.active && !viewing && !confirmingDelete && !picking) selection.clear();
+		if (event.key !== 'Escape' || event.defaultPrevented || !selection.active) return;
+		if (viewing || confirmingDelete || picking) return;
+		const target = event.target as Element;
+		if (target === document.body || target.closest('.library, [role=toolbar]')) selection.clear();
 	}
 
 	onMount(() => {
@@ -152,10 +164,9 @@
 
 	<PhotosTabs path={page.url.pathname} />
 
-	<div class="live" aria-live="polite">
-		{#if notice}<Alert tone="success" role="status">{notice}</Alert>{/if}
-		{#if preparing > 0}<Alert tone="info" role="status">{preparingText(preparing)}</Alert>{/if}
-	</div>
+	<div class="live" aria-live="polite">{#if notice}<Alert tone="success" role="status">{notice}</Alert>{/if}</div>
+	<p class="visually-hidden" aria-live="polite">{announcement}</p>
+	{#if preparing > 0}<Alert tone="info" role="note">{preparingText(preparing)}</Alert>{/if}
 	{#if data.error}<Alert>{data.error}</Alert>{/if}
 
 	{#if data.months === null}

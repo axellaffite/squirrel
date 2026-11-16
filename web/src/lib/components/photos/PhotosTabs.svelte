@@ -1,4 +1,6 @@
 <script lang="ts">
+	import { isActive } from '#lib/nav.ts';
+
 	interface Props {
 		/** The current path, to mark the active tab. */
 		path: string;
@@ -11,8 +13,8 @@
 		{ href: '/photos/albums', label: 'Albums' }
 	];
 
-	const current = (href: string) =>
-		href === '/photos' ? path === '/photos' : path === href || path.startsWith(`${href}/`);
+	// The timeline is only "/photos" itself; Albums covers its sub-pages.
+	const current = (href: string) => (href === '/photos' ? path === href : isActive(href, path));
 </script>
 
 <!-- MASTER's segmented control, as links: tint pill track, the chosen segment a card pill. -->
