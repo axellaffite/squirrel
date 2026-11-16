@@ -3370,6 +3370,13 @@
           "sha256"
         ],
         "properties": {
+          "device_asset_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The phone's id for this asset (devices only): recorded so the sync\ncheck knows it is backed up."
+          },
           "name": {
             "type": "string"
           },
@@ -3387,6 +3394,14 @@
             "format": "int64",
             "description": "Total size in bytes.",
             "minimum": 0
+          },
+          "taken_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time",
+            "description": "When the photo or video was taken, by the client's clock: RFC 3339\nwith its UTC offset (`2024-07-14T18:30:05+02:00`). Used for the\ntimeline when the file itself (EXIF, name) has no date."
           }
         }
       },

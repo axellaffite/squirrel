@@ -203,9 +203,12 @@ async fn store_and_link(
         blob: hash,
         size: session.size,
         mime,
-        client_taken: None,
+        client_taken: session.client_taken(),
     };
     let node = nodes::insert_file(&mut tx, &file).await.map_err(discard)?;
+    super::create::record_device_asset(&mut tx, session.device_asset(), &node)
+        .await
+        .map_err(discard)?;
     super::enqueue_media(&mut tx, &node)
         .await
         .map_err(discard)?;

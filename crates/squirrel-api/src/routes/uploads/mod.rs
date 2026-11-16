@@ -2,7 +2,7 @@
 
 pub mod chunks;
 pub mod complete;
-mod create;
+pub(crate) mod create;
 
 use axum::Json;
 use axum::extract::State;
@@ -55,7 +55,7 @@ pub async fn create_upload(
         tracing::warn!(user_id = %owner_id, "upload creation rate limited");
         return Err(ApiError::RateLimited);
     }
-    let input = create::UploadInput::parse(request)?;
+    let input = create::UploadInput::parse(request, caller.device().map(|device| device.id))?;
     if let Some(node) = create::link_existing(&state, owner_id, &input).await? {
         let body = DeduplicatedUpload {
             deduplicated: true,

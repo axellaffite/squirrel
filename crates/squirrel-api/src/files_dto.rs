@@ -94,6 +94,16 @@ pub struct CreateUploadRequest {
     pub size: u64,
     /// SHA-256 of the whole file, 64 lowercase hex characters.
     pub sha256: String,
+    /// When the photo or video was taken, by the client's clock: RFC 3339
+    /// with its UTC offset (`2024-07-14T18:30:05+02:00`). Used for the
+    /// timeline when the file itself (EXIF, name) has no date.
+    #[serde(default)]
+    #[schema(format = DateTime)]
+    pub taken_at: Option<String>,
+    /// The phone's id for this asset (devices only): recorded so the sync
+    /// check knows it is backed up.
+    #[serde(default)]
+    pub device_asset_id: Option<String>,
 }
 
 /// An upload session: send the missing chunks, then complete it.

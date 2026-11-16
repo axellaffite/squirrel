@@ -77,7 +77,8 @@ impl FromRequestParts<AppState> for CurrentUser {
 /// Who is calling: a browser session (CSRF-checked) or a signed-in device.
 #[derive(Debug)]
 pub enum Principal {
-    Session(SessionRecord),
+    /// A browser session (its CSRF token was checked for non-GET requests).
+    Session,
     Device(DeviceRecord),
 }
 
@@ -96,7 +97,7 @@ impl Caller {
     pub fn device(&self) -> Option<&DeviceRecord> {
         match &self.principal {
             Principal::Device(device) => Some(device),
-            Principal::Session(_) => None,
+            Principal::Session => None,
         }
     }
 }
@@ -112,11 +113,11 @@ impl FromRequestParts<AppState> for Caller {
             // Never falls back to the cookie.
             Some(value) => bearer(value, state).await,
             None => {
-                let CurrentUser { user, session } =
+                let CurrentUser { user, .. } =
                     CurrentUser::from_request_parts(parts, state).await?;
                 Ok(Self {
                     user,
-                    principal: Principal::Session(session),
+                    principal: Principal::Session,
                 })
             }
         }
@@ -171,7 +172,7 @@ impl FromRequestParts<AppState> for DeviceCaller {
                 user: caller.user,
                 device,
             }),
-            Principal::Session(_) => Err(ApiError::Forbidden),
+            Principal::Session => Err(ApiError::Forbidden),
         }
     }
 }
