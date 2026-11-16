@@ -64,6 +64,10 @@ struct AdminArgs {
 struct WorkerArgs {
     #[command(flatten)]
     database: DatabaseArgs,
+    /// The server's data directory: blobs are read from it, thumbnails
+    /// written under `derived/`.
+    #[arg(long, env = "SQUIRREL_DATA_DIR")]
+    data_dir: PathBuf,
     #[arg(long, env = "SQUIRREL_LOG_JSON", default_value_t = false, action = ArgAction::Set)]
     log_json: bool,
     #[command(flatten)]
@@ -196,12 +200,15 @@ async fn run_worker(args: WorkerArgs) -> anyhow::Result<()> {
         .await
         .context("connecting to Postgres")?;
     worker::wait_for_migrations(&pool).await?;
+    let storage = BlobStore::open(&args.data_dir)
+        .with_context(|| format!("opening data directory {}", args.data_dir.display()))?;
+    data_dir::bind(&pool, &storage, &args.data_dir).await?;
     let (stop_tx, stop_rx) = watch::channel(false);
     tokio::spawn(async move {
         shutdown_signal().await;
         let _ = stop_tx.send(true);
     });
-    worker::run(pool, args.options, stop_rx).await
+    worker::run(pool, storage, args.options, stop_rx).await
 }
 
 async fn migrate(args: &DatabaseArgs) -> anyhow::Result<()> {
@@ -222,7 +229,7 @@ async fn serve(args: ServeArgs) -> anyhow::Result<()> {
         trusted_proxies: args.trusted_proxies.clone(),
         ..ApiConfig::default()
     };
-    let state = AppState::new(pool.clone(), storage, config);
+    let state = AppState::new(pool.clone(), storage.clone(), config);
     let app = squirrel_api::router(state.clone()).layer(TraceLayer::new_for_http());
 
     // Precompute the timing-equalizer hash so the first unknown-user login isn't slower.
@@ -240,6 +247,7 @@ async fn serve(args: ServeArgs) -> anyhow::Result<()> {
         tracing::info!("running the job worker inside the server");
         tokio::spawn(worker::run(
             pool.clone(),
+            storage,
             args.worker_options.clone(),
             stopping_rx.clone(),
         ))
@@ -400,10 +408,22 @@ mod tests {
             "worker",
             "--database-url",
             "x",
+            "--data-dir",
+            "/tmp/x",
             "--concurrency",
             "0",
         ];
         assert!(Cli::try_parse_from(zero).is_err());
+        assert_eq!(
+            serve_args(&["--media-exec", "in-process"])
+                .worker_options
+                .media_exec,
+            worker::MediaExecMode::InProcess
+        );
+        assert_eq!(
+            serve_args(&[]).worker_options.media_exec,
+            worker::MediaExecMode::Subprocess
+        );
     }
 
     #[test]

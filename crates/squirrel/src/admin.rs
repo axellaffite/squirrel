@@ -31,6 +31,18 @@ pub enum AdminCommand {
         #[command(subcommand)]
         action: Option<JobsAction>,
     },
+    /// The media pipeline (thumbnails, metadata).
+    Media {
+        #[command(subcommand)]
+        action: MediaAction,
+    },
+}
+
+#[derive(Subcommand)]
+pub enum MediaAction {
+    /// Queue processing of every stored file not processed yet (and of
+    /// thumbnails made with older settings). A worker runs it.
+    Backfill,
 }
 
 #[derive(Subcommand)]
@@ -77,6 +89,16 @@ pub async fn run(pool: &PgPool, command: AdminCommand) -> anyhow::Result<()> {
             Ok(())
         }
         AdminCommand::Jobs { action } => jobs(pool, action).await,
+        AdminCommand::Media {
+            action: MediaAction::Backfill,
+        } => {
+            if crate::worker::enqueue_backfill(pool).await? {
+                println!("media backfill queued");
+            } else {
+                println!("a media backfill is already queued or running");
+            }
+            Ok(())
+        }
     }
 }
 

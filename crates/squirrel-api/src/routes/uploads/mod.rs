@@ -8,7 +8,10 @@ use axum::Json;
 use axum::extract::State;
 use axum::http::StatusCode;
 use axum::response::{IntoResponse, Response};
-use squirrel_db::uploads;
+use sqlx::PgConnection;
+use squirrel_core::MediaKind;
+use squirrel_db::nodes::NodeRecord;
+use squirrel_db::{DbError, uploads};
 use uuid::Uuid;
 
 use crate::blocking::run_storage;
@@ -17,6 +20,18 @@ use crate::extract::CurrentUser;
 use crate::files_dto::{CreateUploadRequest, DeduplicatedUpload, UploadSessionDto};
 use crate::input::{ApiJson, ApiPath};
 use crate::state::AppState;
+
+/// Queues media processing of a new file node in the transaction creating it,
+/// so a committed image or document always has its processing queued.
+pub(crate) async fn enqueue_media(
+    conn: &mut PgConnection,
+    node: &NodeRecord,
+) -> Result<(), DbError> {
+    if node.mime.as_deref().and_then(MediaKind::for_mime).is_some() {
+        squirrel_jobs::enqueue(conn, &squirrel_jobs::kinds::process_media(node.id, false)).await?;
+    }
+    Ok(())
+}
 
 #[utoipa::path(post, path = "/api/uploads", tag = "uploads",
     request_body = CreateUploadRequest,

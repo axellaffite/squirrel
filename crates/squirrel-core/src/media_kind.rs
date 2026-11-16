@@ -21,6 +21,7 @@ const IMAGES: &[&str] = &[
     "image/avif",
 ];
 const HEIF_FAMILY: &[&str] = &["image/heic", "image/heif", "image/avif"];
+const PDFS: &[&str] = &["application/pdf"];
 const TEXTS: &[&str] = &["text/plain", "text/markdown"];
 
 impl MediaKind {
@@ -28,7 +29,7 @@ impl MediaKind {
         let essence = essence(mime);
         if IMAGES.contains(&essence.as_str()) {
             Some(Self::Image)
-        } else if essence == "application/pdf" {
+        } else if PDFS.contains(&essence.as_str()) {
             Some(Self::Pdf)
         } else if TEXTS.contains(&essence.as_str()) {
             Some(Self::Text)
@@ -40,6 +41,24 @@ impl MediaKind {
     /// Decodable only when the server is built with the `heic` feature.
     pub fn is_heif_family(mime: &str) -> bool {
         HEIF_FAMILY.contains(&essence(mime).as_str())
+    }
+
+    /// The MIME types (essences) of this kind.
+    pub fn mimes(self) -> &'static [&'static str] {
+        match self {
+            Self::Image => IMAGES,
+            Self::Pdf => PDFS,
+            Self::Text => TEXTS,
+        }
+    }
+
+    /// Every MIME type the pipeline processes.
+    pub fn all_mimes() -> Vec<&'static str> {
+        [Self::Image, Self::Pdf, Self::Text]
+            .into_iter()
+            .flat_map(Self::mimes)
+            .copied()
+            .collect()
     }
 
     pub fn as_str(self) -> &'static str {
@@ -90,6 +109,16 @@ mod tests {
         );
         assert_eq!(MediaKind::for_mime("video/mp4"), None, "Phase 4");
         assert_eq!(MediaKind::for_mime("application/zip"), None);
+    }
+
+    #[test]
+    fn every_listed_mime_maps_back_to_its_kind() {
+        for kind in [MediaKind::Image, MediaKind::Pdf, MediaKind::Text] {
+            for mime in kind.mimes() {
+                assert_eq!(MediaKind::for_mime(mime), Some(kind), "{mime}");
+            }
+        }
+        assert_eq!(MediaKind::all_mimes().len(), 12);
     }
 
     #[test]

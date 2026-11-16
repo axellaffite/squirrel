@@ -205,6 +205,9 @@ async fn store_and_link(
         mime,
     };
     let node = nodes::insert_file(&mut tx, &file).await.map_err(discard)?;
+    super::enqueue_media(&mut tx, &node)
+        .await
+        .map_err(discard)?;
     uploads::delete(&mut *tx, session.id)
         .await
         .map_err(discard)?;

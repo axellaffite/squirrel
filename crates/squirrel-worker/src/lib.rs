@@ -1,6 +1,7 @@
 //! Media job handlers: glue between Postgres, the blob store and
 //! `squirrel-media`. Untrusted decoding goes through [`exec::Executor`].
 
+pub mod backfill;
 pub mod context;
 pub mod exec;
 mod facts;
@@ -19,6 +20,7 @@ pub use context::MediaContext;
 
 const PROCESS_TIMEOUT: Duration = Duration::from_secs(60);
 const METADATA_TIMEOUT: Duration = Duration::from_secs(60);
+const BACKFILL_TIMEOUT: Duration = Duration::from_secs(60);
 /// The sandbox's wall clock is 150 s and the lease 300 s: the sandbox gives up first.
 const THUMBNAILS_TIMEOUT: Duration = Duration::from_secs(180);
 
@@ -59,5 +61,12 @@ pub fn register_all(registry: &mut Registry, ctx: Arc<MediaContext>) {
         jobs::THUMBNAILS,
         THUMBNAILS_TIMEOUT,
         |ctx, job| async move { thumbnails::run(&ctx, job).await },
+    );
+    register(
+        registry,
+        &ctx,
+        jobs::BACKFILL,
+        BACKFILL_TIMEOUT,
+        |ctx, job| async move { backfill::run(&ctx, job).await },
     );
 }

@@ -90,6 +90,7 @@ pub async fn link_existing(
         },
     )
     .await?;
+    super::enqueue_media(&mut tx, &node).await?;
     tx.commit().await.map_err(DbError::from)?;
     tracing::info!(user_id = %owner_id, node_id = %node.id, "upload deduplicated");
     Ok(Some(node))
