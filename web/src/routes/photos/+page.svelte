@@ -162,7 +162,9 @@
 
 	<PhotosTabs path={page.url.pathname} />
 
-	<div class="live" aria-live="polite">{#if notice}<Alert tone="success" role="status">{notice}</Alert>{/if}</div>
+	<!-- Always rendered and never display: contents, so screen readers reliably hear the change. -->
+	<p class="visually-hidden" aria-live="polite">{notice ?? ''}</p>
+	{#if notice}<Alert tone="success" role="note">{notice}</Alert>{/if}
 	<p class="visually-hidden" aria-live="polite">{announcement}</p>
 	{#if preparing > 0}<Alert tone="info" role="note">{preparingText(preparing)}</Alert>{/if}
 	{#if data.error}<Alert>{data.error}</Alert>{/if}
@@ -190,10 +192,10 @@
 
 {#if selection.active}
 	<SelectionBar count={selection.size} onClear={() => selection.clear()}>
-		<Button variant="secondary" size="sm" aria-label="Add the selected photos to an album" onclick={() => (picking = [...selection.ids])}>
+		<Button variant="secondary" size="sm" onclick={() => (picking = [...selection.ids])}>
 			<Icon name="library" /><span class="label">Add to album</span>
 		</Button>
-		<Button variant="danger" size="sm" aria-label="Delete the selected photos" onclick={() => (confirmingDelete = true)}>
+		<Button variant="danger" size="sm" onclick={() => (confirmingDelete = true)}>
 			<Icon name="trash" /><span class="label">Delete</span>
 		</Button>
 	</SelectionBar>
@@ -226,10 +228,6 @@
 {/if}
 
 <style>
-	.live {
-		display: contents;
-	}
-
 	.library {
 		display: grid;
 		min-width: 0;

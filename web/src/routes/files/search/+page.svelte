@@ -64,10 +64,11 @@
 		{#if showShortHint}<p class="hint">Words of one or two letters only match whole words.</p>{/if}
 	</div>
 
-	<div class="live" aria-live="polite">
-		{#if searcher.error}<Alert>{searcher.error}</Alert>{/if}
-		{#if settled}<p class="visually-hidden">{searcher.items.length}{searcher.hasMore ? ' or more' : ''} results</p>{/if}
-	</div>
+	{#if searcher.error}<Alert>{searcher.error}</Alert>{/if}
+	<!-- Always rendered and never display: contents, so screen readers reliably hear the count. -->
+	<p class="visually-hidden" aria-live="polite">
+		{#if settled}{searcher.items.length}{searcher.hasMore ? ' or more' : ''} results{/if}
+	</p>
 
 	{#if searcher.items.length > 0}
 		<ul class="rows" aria-label="Search results" aria-busy={searcher.loading}>
@@ -114,10 +115,6 @@
 		color: var(--ink-muted);
 		font-size: var(--text-sm);
 		line-height: var(--text-sm-lh);
-	}
-
-	.live {
-		display: contents;
 	}
 
 	.rows {
