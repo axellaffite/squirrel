@@ -4,6 +4,8 @@
 use sqlx::{FromRow, PgPool};
 use time::OffsetDateTime;
 
+use crate::queue::CHANNEL;
+
 /// Partial unique index on `dedupe_key` for queued and running jobs.
 const DEDUPE_INDEX: &str = "jobs_dedupe_key";
 
@@ -59,13 +61,17 @@ pub async fn failed(pool: &PgPool, limit: i64) -> Result<Vec<FailedJob>, sqlx::E
     .await
 }
 
-/// Puts a failed job back in the queue, due now, with all its attempts.
+/// Puts a failed job back in the queue, due now, with all its attempts, and
+/// wakes idle workers (the notify trigger only fires on INSERT).
 pub async fn retry_failed(pool: &PgPool, id: i64) -> Result<RetryOutcome, sqlx::Error> {
     let result = sqlx::query(
-        "UPDATE jobs SET status = 'queued', attempts = 0, run_at = now(), updated_at = now() \
-          WHERE id = $1 AND status = 'failed'",
+        "WITH requeued AS ( \
+             UPDATE jobs SET status = 'queued', attempts = 0, run_at = now(), updated_at = now() \
+              WHERE id = $1 AND status = 'failed' RETURNING id) \
+         SELECT pg_notify($2, '') FROM requeued",
     )
     .bind(id)
+    .bind(CHANNEL)
     .execute(pool)
     .await;
     match result {

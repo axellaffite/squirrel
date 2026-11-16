@@ -3,6 +3,7 @@ pub mod auth;
 pub mod content;
 pub mod health;
 pub mod invitations;
+pub mod jobs;
 pub mod join;
 pub mod nodes;
 pub mod setup;

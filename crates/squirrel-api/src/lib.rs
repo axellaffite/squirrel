@@ -55,7 +55,7 @@ const CHUNK_TIMEOUT: Duration = Duration::from_secs(5 * 60);
     tags(
         (name = "system"), (name = "setup"), (name = "auth"), (name = "invitations"),
         (name = "admin"), (name = "files"), (name = "uploads"), (name = "trash"),
-        (name = "storage")
+        (name = "storage"), (name = "jobs")
     )
 )]
 struct ApiDoc;
@@ -119,6 +119,8 @@ fn json_routes() -> OpenApiRouter<AppState> {
             routes::admin::get_settings,
             routes::admin::update_settings
         ))
+        .routes(routes!(routes::jobs::jobs_overview))
+        .routes(routes!(routes::jobs::retry_job))
         .routes(routes!(routes::nodes::list_nodes))
         .routes(routes!(
             routes::nodes::get_node,

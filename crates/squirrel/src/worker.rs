@@ -5,7 +5,7 @@ use std::time::Duration;
 use anyhow::Context;
 use clap::Args;
 use sqlx::PgPool;
-use squirrel_jobs::{Registry, Worker, WorkerConfig};
+use squirrel_jobs::{NewJob, Registry, Worker, WorkerConfig};
 use tokio::sync::watch;
 
 /// A claimed job is someone else's after this long without a heartbeat.
@@ -55,6 +55,10 @@ fn name_for(host: &str, pid: u32) -> String {
     let suffix = format!(":{pid}");
     let keep = MAX_NAME_CHARS.saturating_sub(suffix.chars().count());
     host.chars().take(keep).chain(suffix.chars()).collect()
+}
+
+pub fn noop_job() -> NewJob {
+    NewJob::new(NOOP, serde_json::json!({}))
 }
 
 /// The job kinds this binary executes.
@@ -151,12 +155,9 @@ mod tests {
         let options = WorkerOptions { concurrency: None };
         let worker = tokio::spawn(run(pool.clone(), options, stop_rx));
         let mut conn = pool.acquire().await.unwrap();
-        squirrel_jobs::enqueue(
-            &mut conn,
-            &squirrel_jobs::NewJob::new(NOOP, serde_json::json!({})),
-        )
-        .await
-        .unwrap();
+        squirrel_jobs::enqueue(&mut conn, &noop_job())
+            .await
+            .unwrap();
         let mut left = 1;
         for _ in 0..200 {
             left = sqlx::query_scalar::<_, i64>("SELECT count(*) FROM jobs")

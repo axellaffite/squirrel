@@ -9,6 +9,81 @@
     "version": "0.1.0"
   },
   "paths": {
+    "/api/admin/jobs": {
+      "get": {
+        "tags": [
+          "jobs"
+        ],
+        "operationId": "jobs_overview",
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/JobsOverview"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/admin/jobs/{id}/retry": {
+      "post": {
+        "tags": [
+          "jobs"
+        ],
+        "operationId": "retry_job",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "Failed job id",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Queued again with fresh attempts (or an equivalent job already was)"
+          },
+          "403": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No failed job with this id",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/admin/settings": {
       "get": {
         "tags": [
@@ -1613,6 +1688,38 @@
           }
         }
       },
+      "FailedJobDto": {
+        "type": "object",
+        "required": [
+          "id",
+          "kind",
+          "attempts",
+          "updated_at"
+        ],
+        "properties": {
+          "attempts": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "id": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "kind": {
+            "type": "string"
+          },
+          "last_error": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time"
+          }
+        }
+      },
       "Health": {
         "type": "object",
         "required": [
@@ -1685,6 +1792,55 @@
           "expired",
           "revoked"
         ]
+      },
+      "JobSummaryDto": {
+        "type": "object",
+        "required": [
+          "kind",
+          "queued",
+          "running",
+          "failed"
+        ],
+        "properties": {
+          "failed": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "kind": {
+            "type": "string"
+          },
+          "queued": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "running": {
+            "type": "integer",
+            "format": "int64"
+          }
+        }
+      },
+      "JobsOverview": {
+        "type": "object",
+        "required": [
+          "kinds",
+          "failures"
+        ],
+        "properties": {
+          "failures": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/FailedJobDto"
+            },
+            "description": "The 50 most recent failures, newest first (kept 30 days)."
+          },
+          "kinds": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/JobSummaryDto"
+            },
+            "description": "Queued, running and failed counts per job kind, kinds sorted."
+          }
+        }
       },
       "JoinStatus": {
         "type": "object",
@@ -2064,6 +2220,9 @@
     },
     {
       "name": "storage"
+    },
+    {
+      "name": "jobs"
     }
   ]
 }
