@@ -11,12 +11,15 @@ async function pressStart(target: Locator): Promise<{ x: number; y: number }> {
 	return point;
 }
 
+/** A horizontal finger swipe: down, a move halfway, then up `dx` pixels away. */
 async function swipe(target: Locator, dx: number): Promise<void> {
 	const box = (await target.boundingBox())!;
 	const y = box.y + box.height / 2;
 	const from = box.x + box.width / 2;
-	await target.dispatchEvent('pointerdown', { pointerType: 'touch', isPrimary: true, clientX: from, clientY: y });
-	await target.dispatchEvent('pointerup', { pointerType: 'touch', isPrimary: true, clientX: from + dx, clientY: y });
+	const touch = { pointerType: 'touch', isPrimary: true, pointerId: 1, clientY: y };
+	await target.dispatchEvent('pointerdown', { ...touch, clientX: from });
+	await target.dispatchEvent('pointermove', { ...touch, clientX: from + dx / 2 });
+	await target.dispatchEvent('pointerup', { ...touch, clientX: from + dx });
 }
 
 test('photos on a phone: the bottom bar, long-press selection and swiping in the lightbox', async ({ browser }) => {
@@ -43,7 +46,7 @@ test('photos on a phone: the bottom bar, long-press selection and swiping in the
 	await page.getByRole('button', { name: 'Open photo taken 14 July 2024 18:30' }).click();
 	const viewer = lightbox(page);
 	await expect(viewer).toHaveAttribute('aria-label', 'Photo taken 14 July 2024 18:30');
-	await swipe(viewer.locator('.stage'), -120);
+	await swipe(viewer.getByTestId('lightbox-stage'), -120);
 	await expect(viewer).toHaveAttribute('aria-label', 'Photo taken 1 May 2023 09:00');
 	await page.context().close();
 });
