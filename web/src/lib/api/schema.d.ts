@@ -565,6 +565,22 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/sync/folder": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["sync_folder"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/trash": {
         parameters: {
             query?: never;
@@ -1140,6 +1156,21 @@ export interface components {
         SyncCheckResponse: {
             /** @description The ids to upload, in request order. Everything else is already backed up. */
             missing: string[];
+        };
+        /** @description Where to put this year's backups. */
+        SyncFolderRequest: {
+            /**
+             * Format: int32
+             * @description The asset's local capture year, 1900–9999.
+             */
+            year: number;
+        };
+        SyncFolderResponse: {
+            /**
+             * Format: uuid
+             * @description `Photos/<device name>/<year>`, created if needed.
+             */
+            folder_id: string;
         };
         /** @description A ready thumbnail of a file. */
         ThumbnailRef: {
@@ -2875,6 +2906,55 @@ export interface operations {
                 };
             };
             429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    sync_folder: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SyncFolderRequest"];
+            };
+        };
+        responses: {
+            /** @description `Photos/<device name>/<year>`, created if needed */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SyncFolderResponse"];
+                };
+            };
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not a device */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            422: {
                 headers: {
                     [name: string]: unknown;
                 };

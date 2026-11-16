@@ -141,3 +141,165 @@ async fn checks_are_rate_limited_per_device(pool: PgPool) {
         .await
         .assert_status_ok();
 }
+
+async fn sync_folder(
+    instance: &common::Instance,
+    token: &str,
+    year: Value,
+) -> axum_test::TestResponse {
+    let (name, value) = common::devices::bearer(token);
+    instance
+        .browser()
+        .post("/api/sync/folder")
+        .add_header(name, value)
+        .json(&json!({ "year": year }))
+        .await
+}
+
+async fn folder_of(instance: &common::Instance, token: &str, year: i32) -> uuid::Uuid {
+    let response = sync_folder(instance, token, json!(year)).await;
+    response.assert_status_ok();
+    response.json::<Value>()["folder_id"]
+        .as_str()
+        .unwrap()
+        .parse()
+        .unwrap()
+}
+
+/// `(name, parent name)` of a node, read from the database.
+async fn placed(pool: &PgPool, id: uuid::Uuid) -> (String, String) {
+    sqlx::query_as(
+        "SELECT n.name, p.name FROM nodes n JOIN nodes p ON p.id = n.parent_id WHERE n.id = $1",
+    )
+    .bind(id)
+    .fetch_one(pool)
+    .await
+    .unwrap()
+}
+
+async fn folders_named(pool: &PgPool, name: &str) -> i64 {
+    sqlx::query_scalar("SELECT count(*) FROM nodes WHERE name = $1 AND deleted_at IS NULL")
+        .bind(name)
+        .fetch_one(pool)
+        .await
+        .unwrap()
+}
+
+#[sqlx::test(migrator = "squirrel_db::MIGRATOR")]
+async fn the_year_folder_is_created_once_under_the_devices_folder(pool: PgPool) {
+    let instance = common::Instance::new(pool.clone());
+    common::setup_admin(&instance.browser(), "alice").await;
+    let phone = device_login(&instance, "alice", "Pixel 8").await;
+    let year = folder_of(&instance, &access(&phone), 2024).await;
+    assert_eq!(placed(&pool, year).await, ("2024".into(), "Pixel 8".into()));
+    let device_folder: uuid::Uuid = sqlx::query_scalar("SELECT parent_id FROM nodes WHERE id = $1")
+        .bind(year)
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+    assert_eq!(placed(&pool, device_folder).await.1, "Photos");
+    let recorded: Option<uuid::Uuid> = sqlx::query_scalar("SELECT backup_folder_id FROM devices")
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+    assert_eq!(recorded, Some(device_folder));
+
+    assert_eq!(folder_of(&instance, &access(&phone), 2024).await, year);
+    assert_eq!(folders_named(&pool, "Pixel 8").await, 1);
+    let other = folder_of(&instance, &access(&phone), 2023).await;
+    assert_eq!(
+        placed(&pool, other).await,
+        ("2023".into(), "Pixel 8".into())
+    );
+}
+
+#[sqlx::test(migrator = "squirrel_db::MIGRATOR")]
+async fn a_folder_the_user_made_is_reused(pool: PgPool) {
+    let instance = common::Instance::new(pool.clone());
+    let browser = instance.browser();
+    let me = common::setup_admin(&browser, "alice").await;
+    let photos = root_id(&instance, &me, "Photos").await;
+    let made: Value = browser
+        .post("/api/folders")
+        .add_header(common::CSRF, common::csrf(&me))
+        .json(&json!({ "parent_id": photos, "name": "Pixel 8" }))
+        .await
+        .json();
+    let phone = device_login(&instance, "alice", "Pixel 8").await;
+    let year = folder_of(&instance, &access(&phone), 2024).await;
+    let parent: uuid::Uuid = sqlx::query_scalar("SELECT parent_id FROM nodes WHERE id = $1")
+        .bind(year)
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+    assert_eq!(parent.to_string(), made["id"].as_str().unwrap());
+}
+
+#[sqlx::test(migrator = "squirrel_db::MIGRATOR")]
+async fn a_trashed_device_folder_is_replaced_not_resurrected(pool: PgPool) {
+    let instance = common::Instance::new(pool.clone());
+    let browser = instance.browser();
+    let me = common::setup_admin(&browser, "alice").await;
+    let phone = device_login(&instance, "alice", "Pixel 8").await;
+    let year = folder_of(&instance, &access(&phone), 2024).await;
+    let old: uuid::Uuid = sqlx::query_scalar("SELECT backup_folder_id FROM devices")
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+    browser
+        .delete(&format!("/api/nodes/{old}"))
+        .add_header(common::CSRF, common::csrf(&me))
+        .await
+        .assert_status(StatusCode::NO_CONTENT);
+
+    let fresh = folder_of(&instance, &access(&phone), 2024).await;
+    assert_ne!(fresh, year);
+    let recorded: uuid::Uuid = sqlx::query_scalar("SELECT backup_folder_id FROM devices")
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+    assert_ne!(recorded, old);
+    let still_trashed: bool =
+        sqlx::query_scalar("SELECT deleted_at IS NOT NULL FROM nodes WHERE id = $1")
+            .bind(old)
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+    assert!(still_trashed);
+}
+
+#[sqlx::test(migrator = "squirrel_db::MIGRATOR")]
+async fn concurrent_calls_create_one_folder(pool: PgPool) {
+    let instance = common::Instance::new(pool.clone());
+    common::setup_admin(&instance.browser(), "alice").await;
+    let phone = device_login(&instance, "alice", "Pixel 8").await;
+    let token = access(&phone);
+    let ids = tokio::join!(
+        folder_of(&instance, &token, 2024),
+        folder_of(&instance, &token, 2024),
+        folder_of(&instance, &token, 2024),
+        folder_of(&instance, &token, 2024),
+    );
+    assert!(ids.0 == ids.1 && ids.1 == ids.2 && ids.2 == ids.3);
+    assert_eq!(folders_named(&pool, "Pixel 8").await, 1);
+    assert_eq!(folders_named(&pool, "2024").await, 1);
+}
+
+#[sqlx::test(migrator = "squirrel_db::MIGRATOR")]
+async fn the_folder_route_validates_and_wants_a_device(pool: PgPool) {
+    let instance = common::Instance::new(pool);
+    let browser = instance.browser();
+    let me = common::setup_admin(&browser, "alice").await;
+    let phone = device_login(&instance, "alice", "Pixel 8").await;
+    for year in [json!(1899), json!(10000), json!("2024")] {
+        let response = sync_folder(&instance, &access(&phone), year.clone()).await;
+        response.assert_status(StatusCode::UNPROCESSABLE_ENTITY);
+        assert_eq!(code(&response), "validation_error", "{year}");
+    }
+    browser
+        .post("/api/sync/folder")
+        .add_header(common::CSRF, common::csrf(&me))
+        .json(&json!({ "year": 2024 }))
+        .await
+        .assert_status(StatusCode::FORBIDDEN);
+}

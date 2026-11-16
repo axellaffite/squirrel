@@ -2417,6 +2417,71 @@
         ]
       }
     },
+    "/api/sync/folder": {
+      "post": {
+        "tags": [
+          "sync"
+        ],
+        "operationId": "sync_folder",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SyncFolderRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "`Photos/<device name>/<year>`, created if needed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SyncFolderResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Not a device",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "device_bearer": []
+          }
+        ]
+      }
+    },
     "/api/trash": {
       "get": {
         "tags": [
@@ -4287,6 +4352,33 @@
               "type": "string"
             },
             "description": "The ids to upload, in request order. Everything else is already backed up."
+          }
+        }
+      },
+      "SyncFolderRequest": {
+        "type": "object",
+        "description": "Where to put this year's backups.",
+        "required": [
+          "year"
+        ],
+        "properties": {
+          "year": {
+            "type": "integer",
+            "format": "int32",
+            "description": "The asset's local capture year, 1900–9999."
+          }
+        }
+      },
+      "SyncFolderResponse": {
+        "type": "object",
+        "required": [
+          "folder_id"
+        ],
+        "properties": {
+          "folder_id": {
+            "type": "string",
+            "format": "uuid",
+            "description": "`Photos/<device name>/<year>`, created if needed."
           }
         }
       },
