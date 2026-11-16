@@ -14,6 +14,13 @@ fn sample() -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR")).join("../squirrel-media/tests/fixtures/geo-sample.tsv")
 }
 
+/// What `media.geocoded_with` records for the sample.
+fn sample_id() -> String {
+    let bytes = std::fs::read(sample()).unwrap();
+    let hash = squirrel_media::geo_data::sha256_hex(&bytes);
+    format!("custom:geo-sample.tsv:{}", &hash[..12])
+}
+
 fn sample_fixture(pool: PgPool) -> Fixture {
     Fixture::with_geo(pool, |_| GeoSource::Explicit(sample()))
 }
@@ -76,7 +83,7 @@ async fn names_the_place_of_a_geotagged_blob(pool: PgPool) {
             Some("Île-de-France".into()),
             Some("France".into()),
             Some("FR".into()),
-            Some("custom:geo-sample.tsv".into()),
+            Some(sample_id()),
         )
     );
 }
@@ -88,7 +95,7 @@ async fn the_open_sea_is_no_place_but_counts_as_geocoded(pool: PgPool) {
     run(&fx, &sha('b')).await.unwrap();
     assert_eq!(
         place(fx.pool(), &sha('b')).await,
-        (None, None, None, None, Some("custom:geo-sample.tsv".into()))
+        (None, None, None, None, Some(sample_id()))
     );
 }
 
@@ -147,8 +154,9 @@ async fn backfill_geocodes_what_another_dataset_or_none_handled(pool: PgPool) {
         .execute(fx.pool())
         .await
         .unwrap();
-    sqlx::query("UPDATE media SET geocoded_with = 'custom:geo-sample.tsv' WHERE sha256 = $1")
+    sqlx::query("UPDATE media SET geocoded_with = $2 WHERE sha256 = $1")
         .bind(sha('3'))
+        .bind(sample_id())
         .execute(fx.pool())
         .await
         .unwrap();
@@ -163,4 +171,64 @@ async fn backfill_geocodes_what_another_dataset_or_none_handled(pool: PgPool) {
         .collect();
     geocodes.sort();
     assert_eq!(geocodes, vec![(-20, sha('1')), (-20, sha('2'))]);
+}
+
+#[sqlx::test(migrator = "squirrel_db::MIGRATOR")]
+async fn backfill_queues_no_geocoding_without_an_installed_dataset(pool: PgPool) {
+    let fx = Fixture::with_geo(pool, |dir| GeoSource::resolve(None, dir));
+    media_at(fx.pool(), &sha('1'), Some((48.8606, 2.3376))).await;
+    backfill::run_page(&fx.ctx, job("backfill", json!({})), 10)
+        .await
+        .unwrap();
+    assert!(
+        queued(fx.pool())
+            .await
+            .iter()
+            .all(|(kind, _, _)| kind != "geocode")
+    );
+}
+
+#[sqlx::test(migrator = "squirrel_db::MIGRATOR")]
+async fn backfill_queues_thousands_of_geocodes_in_one_go(pool: PgPool) {
+    let fx = sample_fixture(pool);
+    sqlx::query(
+        "INSERT INTO blobs (sha256, size, mime) \
+         SELECT lpad(to_hex(g), 64, '0'), 1, 'image/jpeg' FROM generate_series(1, 5000) g",
+    )
+    .execute(fx.pool())
+    .await
+    .unwrap();
+    sqlx::query(
+        "INSERT INTO media (sha256, kind, metadata_state, latitude, longitude) \
+         SELECT sha256, 'image', 'ready', 48.86, 2.34 FROM blobs",
+    )
+    .execute(fx.pool())
+    .await
+    .unwrap();
+    let started = std::time::Instant::now();
+    backfill::run_page(&fx.ctx, job("backfill", json!({})), 10)
+        .await
+        .unwrap();
+    assert!(started.elapsed() < Duration::from_secs(20));
+    let jobs = queued(fx.pool()).await;
+    let geocodes: Vec<_> = jobs
+        .iter()
+        .filter(|(kind, _, _)| kind == "geocode")
+        .collect();
+    assert_eq!(geocodes.len(), 5000);
+    // Exactly what one enqueue of the same job would have written.
+    let expected = squirrel_worker::jobs::geocode(&format!("{:0>64}", "1"), true);
+    let row: (serde_json::Value, String) =
+        sqlx::query_as("SELECT payload, dedupe_key FROM jobs WHERE dedupe_key = $1")
+            .bind(expected.dedupe_key.as_deref().unwrap())
+            .fetch_one(fx.pool())
+            .await
+            .unwrap();
+    assert_eq!(row.0, expected.payload);
+    assert!(geocodes.iter().all(|(_, p, _)| *p == expected.priority));
+    // Already queued: a second backfill adds nothing.
+    backfill::run_page(&fx.ctx, job("backfill", json!({})), 10)
+        .await
+        .unwrap();
+    assert_eq!(queued(fx.pool()).await.len(), jobs.len());
 }
