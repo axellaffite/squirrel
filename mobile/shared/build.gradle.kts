@@ -43,6 +43,24 @@ openApiGenerate {
     validateSpec.set(true)
 }
 
+// Models that carry passwords or tokens print as "<redacted>": a stray log line or crash report
+// must never contain a secret. Patched into the generated sources (no template fork needed).
+tasks.named("openApiGenerate") {
+    val models = generatedApiDir.map { it.dir("src/commonMain/kotlin/app/squirrel/api/models") }
+    doLast {
+        val secretModels = listOf(
+            "DeviceLoginRequest", "RefreshRequest", "TokenPair", "LoginRequest", "SetupRequest", "AccountRequest",
+        )
+        secretModels.forEach { name ->
+            val file = models.get().file("$name.kt").asFile
+            val text = file.readText()
+            check("data class $name (" in text) { "$name is no longer a generated data class" }
+            val end = text.lastIndexOf('}')
+            file.writeText(text.substring(0, end) + "    override fun toString(): String = \"$name(<redacted>)\"\n" + text.substring(end))
+        }
+    }
+}
+
 kotlin {
     jvmToolchain(libs.versions.jvm.toolchain.get().toInt())
 
