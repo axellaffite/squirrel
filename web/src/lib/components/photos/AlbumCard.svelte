@@ -36,7 +36,7 @@
 
 	.cover {
 		display: block;
-		aspect-ratio: 4 / 3;
+		aspect-ratio: var(--album-ratio);
 		overflow: hidden;
 		border-radius: var(--radius-tile);
 	}
