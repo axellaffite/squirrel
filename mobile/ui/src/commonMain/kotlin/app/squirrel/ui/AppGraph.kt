@@ -13,7 +13,11 @@ import app.squirrel.shared.db.createDatabase
 import app.squirrel.shared.settings.SettingsStore
 import io.ktor.client.engine.HttpClientEngine
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.IO
+import kotlinx.coroutines.withContext
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -43,6 +47,8 @@ class AppGraph(
     private val engine: () -> HttpClientEngine,
     val device: DeviceDetails,
     private val scope: CoroutineScope,
+    /** Database and keystore work runs here, never on the main thread. */
+    private val io: CoroutineDispatcher = Dispatchers.IO,
 ) {
     val database: SquirrelDatabase = createDatabase(driver)
     val settings = SettingsStore(database)
@@ -63,28 +69,32 @@ class AppGraph(
     fun newApi(serverUrl: String): SquirrelApi = SquirrelApi(serverUrl, engine(), session)
 
     private suspend fun start() {
-        val url = settings.serverUrl()
-        val name = settings.value(AccountKeys.DISPLAY_NAME)
-        if (session.restore() != SessionState.SignedIn || url == null || name == null) {
-            session.signOut()
-            return toSignIn()
-        }
-        api = newApi(url)
-        _state.value = AppState.SignedIn(
-            AccountInfo(
-                serverUrl = url,
-                displayName = name,
-                username = settings.value(AccountKeys.USERNAME).orEmpty(),
-                deviceName = settings.value(AccountKeys.DEVICE_NAME) ?: device.name,
-            ),
-        )
+        val restored = withContext(io) {
+            val url = settings.serverUrl()
+            val name = settings.value(AccountKeys.DISPLAY_NAME)
+            if (session.restore() != SessionState.SignedIn || url == null || name == null) {
+                session.signOut()
+                null
+            } else {
+                AccountInfo(
+                    serverUrl = url,
+                    displayName = name,
+                    username = settings.value(AccountKeys.USERNAME).orEmpty(),
+                    deviceName = settings.value(AccountKeys.DEVICE_NAME) ?: device.name,
+                )
+            }
+        } ?: return toSignIn()
+        api = newApi(restored.serverUrl)
+        _state.value = AppState.SignedIn(restored)
         refreshAccount()
     }
 
     /** After the sign-in screens succeeded. */
     fun onSignedIn(serverUrl: String, api: SquirrelApi, result: SignedIn) {
-        settings.setServerUrl(serverUrl)
-        remember(result)
+        scope.launch(io) {
+            settings.setServerUrl(serverUrl)
+            remember(result)
+        }
         this.api = api
         _state.value = AppState.SignedIn(info(serverUrl, result))
     }
@@ -96,7 +106,7 @@ class AppGraph(
             try {
                 val current = api.devices.getCurrentDevice().bodyOrThrow()
                 val result = SignedIn(current.account, current.device)
-                remember(result)
+                withContext(io) { remember(result) }
                 _state.update { if (it is AppState.SignedIn) AppState.SignedIn(info(api.baseUrl, result)) else it }
             } catch (e: CancellationException) {
                 throw e
@@ -120,10 +130,12 @@ class AppGraph(
         }
     }
 
-    private fun toSignIn() {
+    private suspend fun toSignIn() {
         api?.close()
         api = null
-        listOf(AccountKeys.DISPLAY_NAME, AccountKeys.USERNAME, AccountKeys.DEVICE_NAME).forEach { settings.setValue(it, null) }
+        withContext(io) {
+            listOf(AccountKeys.DISPLAY_NAME, AccountKeys.USERNAME, AccountKeys.DEVICE_NAME).forEach { settings.setValue(it, null) }
+        }
         _state.value = AppState.NeedsSignIn(++attempts)
     }
 
