@@ -12,6 +12,7 @@ use squirrel_storage::{Scratch, StorageError};
 use crate::context::MediaContext;
 use crate::jobs::ShaPayload;
 use crate::outcome;
+use crate::pdf_job::{self, PdfSteps};
 
 pub const NO_HEIC: &str = "built without HEIC support";
 /// Blobs over the sandbox's input cap are never decoded.
@@ -27,7 +28,20 @@ pub async fn run(ctx: &MediaContext, job: JobContext) -> Result<(), JobError> {
     else {
         return Ok(());
     };
-    if media.thumbs_state() == MediaState::Ready && media.thumbs_version == THUMBS_VERSION {
+    let current =
+        media.thumbs_state() == MediaState::Ready && media.thumbs_version == THUMBS_VERSION;
+    if media.kind() == MediaKind::Pdf {
+        // One pass for the page and, while it is pending, the text.
+        let steps = PdfSteps {
+            render: !current,
+            text: media.text_state() == MediaState::Pending,
+        };
+        if !steps.render && !steps.text {
+            return Ok(());
+        }
+        return pdf_job::run(ctx, &job, &hash, steps).await;
+    }
+    if current {
         return Ok(());
     }
     let Some(blob) = blobs::find(&ctx.pool, &hash)
@@ -44,41 +58,16 @@ pub async fn run(ctx: &MediaContext, job: JobContext) -> Result<(), JobError> {
         .await
         .map_err(JobError::retry)?
         .map_err(JobError::retry)?;
-    let input = ctx.storage.blob_path(&hash);
-    let out_dir = scratch.path().to_owned();
-    let request = match (media.kind(), &ctx.pdfium_dir) {
-        (MediaKind::Pdf, Some(pdfium_dir)) => ExecRequest::Pdf {
-            input,
-            out_dir,
-            pdfium_dir: pdfium_dir.clone(),
-            render: true,
-            text: false,
-        },
-        _ => ExecRequest::Image {
-            input,
-            out_dir,
-            limits: ctx.decode_limits,
-        },
+    let request = ExecRequest::Image {
+        input: ctx.storage.blob_path(&hash),
+        out_dir: scratch.path().to_owned(),
+        limits: ctx.decode_limits,
     };
     match ctx.executor.run(request).await {
         Ok(ExecResponse::Image { rendered }) => install(ctx, &hash, scratch, &rendered).await,
-        Ok(ExecResponse::Pdf {
-            rendered: Some(rendered),
-            page_count,
-        }) => {
-            media::set_page_count(&ctx.pool, &sha256, page_count)
-                .await
-                .map_err(JobError::retry)?;
-            install(ctx, &hash, scratch, &rendered).await
-        }
-        Ok(ExecResponse::Pdf { rendered: None, .. }) => {
-            mark(
-                ctx,
-                &sha256,
-                MediaState::Failed,
-                "the sandbox rendered no page",
-            )
-            .await
+        Ok(ExecResponse::Pdf { .. }) => {
+            let reason = "unexpected sandbox response";
+            mark(ctx, &sha256, MediaState::Failed, reason).await
         }
         Ok(ExecResponse::Unsupported { reason }) => {
             mark(ctx, &sha256, MediaState::Unsupported, &reason).await
@@ -113,6 +102,7 @@ fn unsupported_reason(
             Some(NO_HEIC)
         }
         MediaKind::Image => None,
+        // Handled by `pdf_job` before this is asked.
         MediaKind::Pdf => ctx.pdfium().err(),
         MediaKind::Text => Some("no preview for text"),
     }
@@ -120,7 +110,7 @@ fn unsupported_reason(
 
 /// Moves the variants into place, then records them (row after files: a
 /// crash in between only leaves files the next run overwrites).
-async fn install(
+pub(crate) async fn install(
     ctx: &MediaContext,
     hash: &ContentHash,
     scratch: Scratch,
