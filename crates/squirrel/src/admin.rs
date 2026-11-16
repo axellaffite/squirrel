@@ -36,6 +36,33 @@ pub enum AdminCommand {
         #[command(subcommand)]
         action: MediaAction,
     },
+    /// The offline reverse-geocoding dataset (no database needed).
+    Geodata {
+        #[command(subcommand)]
+        action: GeodataAction,
+    },
+}
+
+#[derive(Subcommand)]
+pub enum GeodataAction {
+    /// Join GeoNames dumps into the reverse geocoder's data file.
+    Build {
+        /// GeoNames `cities500.txt`.
+        #[arg(long)]
+        cities: PathBuf,
+        /// GeoNames `admin1CodesASCII.txt`.
+        #[arg(long)]
+        admin1: PathBuf,
+        /// GeoNames `countryInfo.txt`.
+        #[arg(long)]
+        countries: PathBuf,
+        /// When the dumps were downloaded (recorded in the header), e.g. `2026-11-14`.
+        #[arg(long)]
+        date: String,
+        /// The file to write (must not exist).
+        #[arg(long)]
+        out: PathBuf,
+    },
 }
 
 #[derive(Subcommand)]
@@ -71,6 +98,17 @@ pub fn parse_quota(raw: &str) -> Result<Quota, String> {
         .ok_or_else(|| format!("expected a number of bytes or `unlimited`, got {raw:?}"))
 }
 
+/// Runs `command` if it needs no database; otherwise hands it back.
+pub fn run_offline(command: AdminCommand) -> anyhow::Result<Option<AdminCommand>> {
+    match command {
+        AdminCommand::Geodata { action } => {
+            crate::geodata::run(action)?;
+            Ok(None)
+        }
+        other => Ok(Some(other)),
+    }
+}
+
 pub async fn run(pool: &PgPool, command: AdminCommand) -> anyhow::Result<()> {
     match command {
         AdminCommand::SetQuota { username, quota } => {
@@ -89,6 +127,7 @@ pub async fn run(pool: &PgPool, command: AdminCommand) -> anyhow::Result<()> {
             Ok(())
         }
         AdminCommand::Jobs { action } => jobs(pool, action).await,
+        AdminCommand::Geodata { action } => crate::geodata::run(action),
         AdminCommand::Media {
             action: MediaAction::Backfill,
         } => {
