@@ -290,3 +290,67 @@ async fn a_failing_listener_does_not_delay_stopping(pool: PgPool) {
     );
     closing.await.unwrap();
 }
+
+/// A handler that flags when it starts and when it finishes, after `work`.
+fn flagged(work: Duration, timeout: Duration) -> (Registry, Arc<AtomicUsize>, Arc<AtomicUsize>) {
+    let started = Arc::new(AtomicUsize::new(0));
+    let finished = Arc::new(AtomicUsize::new(0));
+    let (s, f) = (started.clone(), finished.clone());
+    let mut registry = Registry::new();
+    registry.register("work", timeout, move |_ctx| {
+        let (s, f) = (s.clone(), f.clone());
+        async move {
+            s.fetch_add(1, Ordering::SeqCst);
+            tokio::time::sleep(work).await;
+            f.fetch_add(1, Ordering::SeqCst);
+            Ok(())
+        }
+    });
+    (registry, started, finished)
+}
+
+async fn wait_for(counter: &AtomicUsize, expected: usize) {
+    for _ in 0..200 {
+        if counter.load(Ordering::SeqCst) == expected {
+            return;
+        }
+        tokio::time::sleep(Duration::from_millis(10)).await;
+    }
+    panic!("timed out waiting for {expected}");
+}
+
+#[sqlx::test(migrator = "squirrel_db::MIGRATOR")]
+async fn a_handler_whose_claim_is_taken_over_is_stopped(pool: PgPool) {
+    let (registry, started, finished) = flagged(Duration::from_secs(1), Duration::from_secs(5));
+    let mut cfg = config();
+    cfg.lease = Duration::from_millis(300);
+    let worker = start(&pool, registry, cfg);
+    add(&pool, NewJob::new("work", json!({}))).await;
+    wait_for(&started, 1).await;
+    // Another claimant now owns the job (its own token, its own lease).
+    sqlx::query(
+        "UPDATE jobs SET claim_id = gen_random_uuid(), locked_until = now() + interval '1 hour'",
+    )
+    .execute(&pool)
+    .await
+    .unwrap();
+    tokio::time::sleep(Duration::from_millis(1500)).await;
+
+    assert_eq!(
+        finished.load(Ordering::SeqCst),
+        0,
+        "the handler was stopped"
+    );
+    let row: (String, i32, Option<String>) =
+        sqlx::query_as("SELECT status, attempts, last_error FROM jobs")
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+    assert_eq!(row, ("running".to_owned(), 1, None), "nothing recorded");
+    worker.stop().await;
+    let after: (String, i32) = sqlx::query_as("SELECT status, attempts FROM jobs")
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+    assert_eq!(after, ("running".to_owned(), 1), "not released either");
+}
