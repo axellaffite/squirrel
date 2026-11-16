@@ -1,7 +1,7 @@
 <script lang="ts">
 	import type { Snippet } from 'svelte';
 	import Icon from '#lib/components/icons/Icon.svelte';
-	import type { IconName } from '#lib/components/icons/paths.ts';
+	import { isActive, navItems } from '#lib/nav.ts';
 
 	interface Props {
 		path: string;
@@ -12,21 +12,7 @@
 
 	let { path, canInvite, footer }: Props = $props();
 
-	interface NavItem {
-		href: string;
-		label: string;
-		icon: IconName;
-	}
-
-	const items: NavItem[] = $derived([
-		{ href: '/', label: 'Home', icon: 'home' },
-		{ href: '/files', label: 'Files', icon: 'folder' },
-		{ href: '/trash', label: 'Trash', icon: 'trash' },
-		...(canInvite ? [{ href: '/settings/invitations', label: 'Invitations', icon: 'user-plus' as const }] : [])
-	]);
-
-	const isActive = (href: string) =>
-		href === '/' ? path === '/' : path === href || path.startsWith(`${href}/`);
+	const items = $derived(navItems(canInvite));
 </script>
 
 <!-- The graphite rail: a floating bar at the bottom on phones and tablets, a sidebar from 1024 px. -->
@@ -36,7 +22,7 @@
 		<ul>
 			{#each items as item (item.href)}
 				<li>
-					<a href={item.href} class="item" aria-current={isActive(item.href) ? 'page' : undefined}>
+					<a href={item.href} class="item" aria-current={isActive(item.href, path) ? 'page' : undefined}>
 						<span class="dot"><Icon name={item.icon} /></span>
 						<span class="label">{item.label}</span>
 					</a>
