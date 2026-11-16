@@ -9,7 +9,7 @@ use squirrel_db::media::{self, MediaRecord, MediaState, Step};
 use squirrel_jobs::{JobContext, JobError};
 use squirrel_media::exec::{ExecRequest, ExecResponse, MAX_INPUT_BYTES};
 use squirrel_media::render::{Rendered, THUMBS_VERSION};
-use squirrel_storage::Scratch;
+use squirrel_storage::{Scratch, StorageError};
 
 use crate::context::MediaContext;
 use crate::jobs::ShaPayload;
@@ -104,10 +104,19 @@ async fn install(
     rendered: &Rendered,
 ) -> Result<(), JobError> {
     let (derived, blob) = (ctx.storage.derived().clone(), hash.clone());
-    tokio::task::spawn_blocking(move || derived.install(&blob, THUMBS_VERSION, &scratch))
-        .await
-        .map_err(JobError::retry)?
-        .map_err(JobError::retry)?;
+    let installed =
+        tokio::task::spawn_blocking(move || derived.install(&blob, THUMBS_VERSION, &scratch))
+            .await
+            .map_err(JobError::retry)?;
+    match installed {
+        Ok(()) => {}
+        // The sandbox wrote something that is not a thumbnail: no retry fixes that.
+        Err(StorageError::Io(err)) if err.kind() == std::io::ErrorKind::InvalidData => {
+            let reason = format!("the sandbox output was refused: {err}");
+            return mark(ctx, hash.as_str(), MediaState::Failed, &reason).await;
+        }
+        Err(err) => return Err(JobError::retry(err)),
+    }
     media::set_thumbnails(
         &ctx.pool,
         hash.as_str(),
