@@ -94,13 +94,13 @@ pub fn openapi() -> utoipa::openapi::OpenApi {
 ///   body limit of one chunk and their own timeout. Never add them to the groups
 ///   above, whose limits would cut transfers short.
 fn api_router(config: &ApiConfig) -> OpenApiRouter<AppState> {
-    let timed =
-        json_routes()
-            .merge(credential_routes(config))
-            .layer(TimeoutLayer::with_status_code(
-                StatusCode::REQUEST_TIMEOUT,
-                API_TIMEOUT,
-            ));
+    let timed = json_routes()
+        .merge(credential_routes(config))
+        .merge(search_routes(config))
+        .layer(TimeoutLayer::with_status_code(
+            StatusCode::REQUEST_TIMEOUT,
+            API_TIMEOUT,
+        ));
     OpenApiRouter::with_openapi(ApiDoc::openapi())
         .merge(timed)
         .merge(transfer_routes(config))
@@ -157,7 +157,6 @@ fn json_routes() -> OpenApiRouter<AppState> {
             routes::albums::add_album_items
         ))
         .routes(routes!(routes::albums::remove_album_items))
-        .routes(routes!(routes::search::search_documents))
         .routes(routes!(routes::storage::storage_usage))
         .routes(routes!(routes::uploads::create_upload))
         .routes(routes!(
@@ -165,6 +164,20 @@ fn json_routes() -> OpenApiRouter<AppState> {
             routes::uploads::abort_upload
         ))
         .layer(DefaultBodyLimit::max(API_BODY_LIMIT))
+}
+
+/// Document search: an ordinary JSON endpoint, rate limited per client
+/// (every search scans text indexes).
+fn search_routes(config: &ApiConfig) -> OpenApiRouter<AppState> {
+    let routes = OpenApiRouter::new()
+        .routes(routes!(routes::search::search_documents))
+        .layer(DefaultBodyLimit::max(API_BODY_LIMIT));
+    rate_limit::apply(
+        routes,
+        config.search_rate_limit,
+        Method::GET,
+        &config.trusted_proxies,
+    )
 }
 
 /// Endpoints that take credentials or one-time secrets: tiny bodies and rate

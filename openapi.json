@@ -1577,7 +1577,7 @@
           {
             "name": "offset",
             "in": "query",
-            "description": "Results to skip, at most 200.",
+            "description": "Results to skip; `offset + limit` is at most 200.",
             "required": false,
             "schema": {
               "type": "integer",
@@ -2669,7 +2669,7 @@
         "properties": {
           "has_more": {
             "type": "boolean",
-            "description": "Whether `offset + limit` would return more (never past 200 results)."
+            "description": "Whether a page at `offset + limit` would return more (never past\n200 results)."
           },
           "items": {
             "type": "array",

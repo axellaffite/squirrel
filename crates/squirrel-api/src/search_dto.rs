@@ -15,7 +15,7 @@ pub struct SearchQuery {
     /// Words to find (1–200 characters): each must start a word of the
     /// file's name or text, accents and case ignored.
     pub q: Option<String>,
-    /// Results to skip, at most 200.
+    /// Results to skip; `offset + limit` is at most 200.
     pub offset: Option<u32>,
     /// Page size, 1–50, default 20.
     pub limit: Option<u32>,
@@ -41,7 +41,8 @@ pub struct DocumentHit {
 pub struct DocumentResults {
     /// Name matches first, then by relevance.
     pub items: Vec<DocumentHit>,
-    /// Whether `offset + limit` would return more (never past 200 results).
+    /// Whether a page at `offset + limit` would return more (never past
+    /// 200 results).
     pub has_more: bool,
 }
 

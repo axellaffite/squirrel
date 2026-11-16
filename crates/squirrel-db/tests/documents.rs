@@ -25,7 +25,7 @@ async fn document(
     drop(conn);
     if let Some(text) = text {
         assert!(
-            documents::store_text(pool, sha.as_str(), text)
+            documents::store_text(pool, sha.as_str(), text, None)
                 .await
                 .unwrap()
         );
@@ -54,15 +54,16 @@ async fn stores_and_replaces_text_and_marks_it_ready(pool: PgPool) {
     assert_eq!(before.text_state(), MediaState::Pending);
 
     assert!(
-        documents::store_text(&pool, sha.as_str(), "Quarterly squirrel\0 budget")
+        documents::store_text(&pool, sha.as_str(), "Quarterly squirrel\0 budget", Some(4))
             .await
             .unwrap()
     );
     let after = media::find(&pool, sha.as_str()).await.unwrap().unwrap();
     assert_eq!(after.text_state(), MediaState::Ready);
+    assert_eq!(after.page_count, Some(4), "recorded with the text");
     assert_eq!(ids(&search(&pool, alice.id, "budget").await), vec![id]);
 
-    documents::store_text(&pool, sha.as_str(), "Acorn inventory")
+    documents::store_text(&pool, sha.as_str(), "Acorn inventory", None)
         .await
         .unwrap();
     assert!(search(&pool, alice.id, "budget").await.is_empty());
@@ -77,7 +78,7 @@ async fn stores_and_replaces_text_and_marks_it_ready(pool: PgPool) {
 
 #[sqlx::test(migrator = "squirrel_db::MIGRATOR")]
 async fn text_of_a_collected_blob_is_not_stored(pool: PgPool) {
-    let stored = documents::store_text(&pool, &"f".repeat(64), "orphan")
+    let stored = documents::store_text(&pool, &"f".repeat(64), "orphan", None)
         .await
         .unwrap();
     assert!(!stored);
@@ -201,4 +202,56 @@ async fn pages_with_offset_and_limit(pool: PgPool) {
     seen.sort();
     all.sort();
     assert_eq!(seen, all);
+}
+
+#[sqlx::test(migrator = "squirrel_db::MIGRATOR")]
+async fn short_words_match_whole_words_only(pool: PgPool) {
+    let alice = admin(&pool).await;
+    let docs = root(&pool, alice.id, "Documents").await;
+    let id = document(
+        &pool,
+        alice.id,
+        docs.id,
+        "n.txt",
+        'a',
+        Some("electricity in EU"),
+    )
+    .await;
+    assert!(
+        search(&pool, alice.id, "el").await.is_empty(),
+        "no 2-letter prefix"
+    );
+    assert_eq!(ids(&search(&pool, alice.id, "eu").await), vec![id]);
+    assert_eq!(ids(&search(&pool, alice.id, "ele").await), vec![id]);
+}
+
+#[sqlx::test(migrator = "squirrel_db::MIGRATOR")]
+async fn words_joined_by_dots_are_highlighted(pool: PgPool) {
+    let alice = admin(&pool).await;
+    let docs = root(&pool, alice.id, "Documents").await;
+    document(
+        &pool,
+        alice.id,
+        docs.id,
+        "n.txt",
+        'a',
+        Some("See Rapport.pdf attached"),
+    )
+    .await;
+    let hits = search(&pool, alice.id, "rapport").await;
+    let snippet = hits[0].snippet.as_deref().unwrap();
+    assert!(snippet.contains("\u{2}Rapport\u{3}"), "{snippet:?}");
+}
+
+#[sqlx::test(migrator = "squirrel_db::MIGRATOR")]
+async fn name_matches_come_first_whatever_the_text_rank(pool: PgPool) {
+    let alice = admin(&pool).await;
+    let docs = root(&pool, alice.id, "Documents").await;
+    let dense = "acorn ".repeat(500);
+    let text = document(&pool, alice.id, docs.id, "notes.txt", 'a', Some(&dense)).await;
+    let named = document(&pool, alice.id, docs.id, "acorns.txt", 'b', Some("nothing")).await;
+    assert_eq!(
+        ids(&search(&pool, alice.id, "acorn").await),
+        vec![named, text]
+    );
 }

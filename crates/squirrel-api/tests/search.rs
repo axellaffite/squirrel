@@ -78,7 +78,7 @@ async fn seed(pool: &PgPool, me: &Value, parent: Uuid, doc: &Doc<'_>) -> Uuid {
     .await
     .unwrap();
     if let Some(text) = doc.text {
-        documents::store_text(pool, &doc.sha256, text)
+        documents::store_text(pool, &doc.sha256, text, None)
             .await
             .unwrap();
     }
@@ -165,6 +165,7 @@ async fn refuses_empty_long_or_far_queries(pool: PgPool) {
         vec![("q", long.as_str())],
         vec![("q", "ok"), ("offset", "500")],
         vec![("q", "ok"), ("limit", "51")],
+        vec![("q", "ok"), ("offset", "190"), ("limit", "11")],
     ] {
         let mut request = browser.get("/api/search/documents");
         for (name, value) in &params {
@@ -242,4 +243,57 @@ async fn pages_with_offset(pool: PgPool) {
         .json();
     assert_eq!(ids(&second).len(), 1);
     assert_eq!(second["has_more"], false);
+}
+
+#[sqlx::test(migrator = "squirrel_db::MIGRATOR")]
+async fn files_inside_a_trashed_folder_are_not_found(pool: PgPool) {
+    let instance = common::Instance::new(pool.clone());
+    let browser = instance.browser();
+    let me = common::setup_admin(&browser, "alice").await;
+    let docs = root_id(&instance, &me, "Documents").await;
+    let folder: Value = browser
+        .post("/api/folders")
+        .add_header(common::CSRF, common::csrf(&me))
+        .json(&json!({ "parent_id": docs, "name": "Old" }))
+        .await
+        .json();
+    let folder_id: Uuid = folder["id"].as_str().unwrap().parse().unwrap();
+    let inside = seed(
+        &pool,
+        &me,
+        folder_id,
+        &Doc::new("deep.txt", Some("buried hazelnut")),
+    )
+    .await;
+    assert_eq!(ids(&search(&browser, "hazelnut").await), vec![inside]);
+    browser
+        .delete(&format!("/api/nodes/{folder_id}"))
+        .add_header(common::CSRF, common::csrf(&me))
+        .await
+        .assert_status(StatusCode::NO_CONTENT);
+    assert_eq!(search(&browser, "hazelnut").await["items"], json!([]));
+    assert_eq!(search(&browser, "deep").await["items"], json!([]));
+}
+
+#[sqlx::test(migrator = "squirrel_db::MIGRATOR")]
+async fn searches_are_rate_limited_per_client(pool: PgPool) {
+    let config = squirrel_api::ApiConfig {
+        search_rate_limit: Some(squirrel_api::RateLimit {
+            replenish_every_secs: 60,
+            burst: 2,
+        }),
+        ..common::test_config()
+    };
+    let instance = common::Instance::with_config(pool, config);
+    let browser = instance.browser();
+    common::setup_admin(&browser, "alice").await;
+    for _ in 0..2 {
+        browser
+            .get("/api/search/documents?q=acorn")
+            .await
+            .assert_status_ok();
+    }
+    let limited = browser.get("/api/search/documents?q=acorn").await;
+    limited.assert_status(StatusCode::TOO_MANY_REQUESTS);
+    assert_eq!(code(&limited), "rate_limited");
 }
