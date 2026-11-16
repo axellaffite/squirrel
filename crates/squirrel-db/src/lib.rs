@@ -1,9 +1,11 @@
 //! Postgres repositories and migrations.
 
+pub mod assets;
 pub mod blobs;
 mod error;
 pub mod instance;
 pub mod invitations;
+pub mod media;
 pub mod nodes;
 mod page;
 pub mod quota;
