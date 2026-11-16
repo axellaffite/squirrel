@@ -17,14 +17,10 @@ fn the_sample_names_its_places() {
     assert_eq!(geo.len(), 10);
     let louvre = geo.nearest(48.8606, 2.3376).unwrap();
     assert_eq!(
-        (
-            louvre.name.as_str(),
-            louvre.admin1.as_str(),
-            louvre.country.as_str()
-        ),
+        (louvre.name.as_str(), &*louvre.admin1, &*louvre.country),
         ("Paris", "Île-de-France", "France")
     );
     assert_eq!(geo.nearest(64.1, -21.9).unwrap().name, "Reykjavík");
-    assert_eq!(geo.nearest(-16.45, 179.4).unwrap().country_code, "FJ");
+    assert_eq!(&*geo.nearest(-16.45, 179.4).unwrap().country_code, "FJ");
     assert!(geo.nearest(30.0, -40.0).is_none(), "mid-Atlantic");
 }
