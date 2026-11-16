@@ -299,3 +299,22 @@ async fn media_status_counts_the_callers_files(pool: PgPool) {
         .await
         .assert_status(StatusCode::UNAUTHORIZED);
 }
+
+#[sqlx::test(migrator = "squirrel_db::MIGRATOR")]
+async fn cursors_from_before_postgres_time_are_a_bad_request(pool: PgPool) {
+    use base64::Engine;
+    let instance = common::Instance::new(pool.clone());
+    let browser = instance.browser();
+    common::setup_admin(&browser, "alice").await;
+    let at = datetime!(-5000-01-01 00:00 UTC).unix_timestamp_nanos();
+    let cursor = base64::engine::general_purpose::URL_SAFE_NO_PAD
+        .encode(format!("{at}\n{}", uuid::Uuid::now_v7()));
+    for url in [
+        format!("/api/photos?cursor={cursor}"),
+        format!("/api/trash?cursor={cursor}"),
+    ] {
+        let response = browser.get(&url).await;
+        response.assert_status(StatusCode::BAD_REQUEST);
+        assert_eq!(code(&response), "bad_request", "{url}");
+    }
+}
