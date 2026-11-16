@@ -359,6 +359,40 @@ async fn a_handler_whose_claim_is_taken_over_is_stopped(pool: PgPool) {
     assert_eq!(after, ("running".to_owned(), 1), "not released either");
 }
 
+#[sqlx::test(migrator = "squirrel_db::MIGRATOR")]
+async fn heartbeats_keep_a_job_longer_than_its_lease(pool: PgPool) {
+    let (registry, started, finished) = flagged(Duration::from_secs(1), Duration::from_secs(5));
+    let mut cfg = config();
+    cfg.lease = Duration::from_millis(300);
+    let worker = start(&pool, registry, cfg);
+    add(&pool, NewJob::new("work", json!({}))).await;
+    wait_for(&started, 1).await;
+    // While it runs (the reaper runs every 50 ms poll), the lease never lapses.
+    for _ in 0..200 {
+        let expired: i64 = sqlx::query_scalar(
+            "SELECT count(*) FROM jobs WHERE last_error LIKE 'lease expired%' OR attempts > 1",
+        )
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+        assert_eq!(expired, 0);
+        if finished.load(Ordering::SeqCst) == 1 {
+            break;
+        }
+        tokio::time::sleep(Duration::from_millis(20)).await;
+    }
+    wait_until(&pool, "SELECT count(*) FROM jobs", 0).await;
+    assert_eq!(
+        (
+            started.load(Ordering::SeqCst),
+            finished.load(Ordering::SeqCst)
+        ),
+        (1, 1),
+        "completed exactly once"
+    );
+    worker.stop().await;
+}
+
 type Clock = Arc<std::sync::Mutex<Option<std::time::Instant>>>;
 
 /// Keeps the first time only: the reaped job runs (and is abandoned) again.
