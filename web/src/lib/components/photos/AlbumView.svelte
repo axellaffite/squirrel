@@ -1,5 +1,6 @@
 <script lang="ts">
-	import { goto } from '$app/navigation';
+	import { goto, replaceState } from '$app/navigation';
+	import { page } from '$app/state';
 	import { onMount } from 'svelte';
 	import ConfirmDialog from '#lib/components/ConfirmDialog.svelte';
 	import Breadcrumbs from '#lib/components/files/Breadcrumbs.svelte';
@@ -21,10 +22,12 @@
 		listAlbumPage,
 		removeFromAlbum,
 		renameAlbum,
+		photoDetails,
 		setAlbumCover,
 		type Album,
 		type AssetSummary
 	} from '#lib/photos/api.ts';
+	import { photoInAddress, withPhoto } from '#lib/photos/address.ts';
 	import { Selection } from '#lib/photos/selection.svelte.ts';
 	import { neighbourAfterRemoval, trashPhotos } from '#lib/photos/trash.ts';
 
@@ -139,7 +142,7 @@
 		const result = await trashPhotos([asset.id]);
 		if (result.error) return result.error;
 		items = items.filter((item) => item.id !== asset.id);
-		if (after) viewing = after;
+		if (after) open(after);
 		else closeViewer();
 		await reload();
 		return null;
@@ -148,6 +151,7 @@
 	function closeViewer() {
 		const id = viewing?.id;
 		viewing = null;
+		replaceState(withPhoto(page.url.href, null), {});
 		if (id) void grid?.focusTile(id);
 	}
 
@@ -155,7 +159,26 @@
 		if (event.key === 'Escape' && selection.active && !viewing && !picking && !confirmingDelete) selection.clear();
 	}
 
-	onMount(() => void reload());
+	/** Shows a photo and keeps `?photo=<id>` in the address, as on the timeline. */
+	function open(asset: AssetSummary) {
+		viewing = asset;
+		replaceState(withPhoto(page.url.href, asset.id), {});
+	}
+
+	async function openFromAddress() {
+		const id = photoInAddress(page.url);
+		if (!id) return;
+		const result = await photoDetails(id);
+		// The user may have opened another photo meanwhile: theirs wins.
+		if (viewing) return;
+		if (result.ok) viewing = result.data.asset;
+		else replaceState(withPhoto(page.url.href, null), {});
+	}
+
+	onMount(() => {
+		void reload();
+		void openFromAddress();
+	});
 </script>
 
 <svelte:head><title>{album?.name ?? 'Album'} · Squirrel</title></svelte:head>
@@ -182,7 +205,7 @@
 				{items}
 				selected={selection.ids}
 				selecting={selection.active}
-				onOpen={(asset) => (viewing = asset)}
+				onOpen={open}
 				onToggle={toggle}
 				onNearEnd={nextPage}
 			/>
@@ -219,7 +242,7 @@
 	<Lightbox
 		asset={viewing}
 		{items}
-		onNavigate={(asset) => (viewing = asset)}
+		onNavigate={open}
 		onClose={closeViewer}
 		onDelete={trashViewed}
 		onAddToAlbum={(asset) => (picking = [asset.id])}

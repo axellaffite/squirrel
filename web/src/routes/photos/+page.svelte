@@ -16,6 +16,7 @@
 	import EmptyState from '#lib/components/ui/EmptyState.svelte';
 	import { listFolder, type FileNode } from '#lib/files/api.ts';
 	import { mediaStatus, photoDetails, type AssetSummary } from '#lib/photos/api.ts';
+	import { photoInAddress, withPhoto } from '#lib/photos/address.ts';
 	import { Selection } from '#lib/photos/selection.svelte.ts';
 	import { createPoller, preparingText } from '#lib/photos/status.ts';
 	import { TimelineData } from '#lib/photos/timeline.svelte.ts';
@@ -65,10 +66,7 @@
 
 	/** Keeps `?photo=<id>` in the address, so a reload reopens the same photo. */
 	function rememberPhoto(id: string | null) {
-		const url = new URL(page.url.href);
-		if (id) url.searchParams.set('photo', id);
-		else url.searchParams.delete('photo');
-		replaceState(url, {});
+		replaceState(withPhoto(page.url.href, id), {});
 	}
 
 	function open(asset: AssetSummary) {
@@ -89,7 +87,7 @@
 	}
 
 	async function openFromAddress() {
-		const id = page.url.searchParams.get('photo');
+		const id = photoInAddress(page.url);
 		if (!id) return;
 		const result = await photoDetails(id);
 		// The user may have opened another photo meanwhile: theirs wins.
