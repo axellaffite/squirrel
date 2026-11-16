@@ -39,11 +39,38 @@ pub enum ThumbError {
 }
 
 /// A decoded image, upright (EXIF orientation applied), with its stored size.
+/// Peak memory of a render is about this many times the decoded buffer
+/// (the buffer, a pixel-format conversion, and the resizer's working copy).
+const DECODE_MEMORY_FACTOR: u64 = 3;
+
+/// A decoded image as stored, with the orientation that makes it upright.
+/// Orientation is applied after resizing ([`Decoded::upright`] for the full size).
 pub struct Decoded {
     pub image: DynamicImage,
+    pub orientation: Orientation,
     /// Dimensions as displayed (after orientation).
     pub width: u32,
     pub height: u32,
+}
+
+impl Decoded {
+    /// The full-size image, upright.
+    pub fn upright(self) -> DynamicImage {
+        let mut image = self.image;
+        image.apply_orientation(self.orientation);
+        image
+    }
+}
+
+/// Whether `orientation` turns the image a quarter turn (width and height swap).
+pub fn swaps_axes(orientation: Orientation) -> bool {
+    matches!(
+        orientation,
+        Orientation::Rotate90
+            | Orientation::Rotate270
+            | Orientation::Rotate90FlipH
+            | Orientation::Rotate270FlipH
+    )
 }
 
 /// Decodes JPEG/PNG/GIF/WebP/TIFF/BMP (and HEIC/HEIF/AVIF with the `heic`
@@ -59,7 +86,9 @@ pub fn decode<R: BufRead + Seek>(
     reader.limits(image_limits);
     let mut decoder = reader.into_decoder()?;
     let (w, h) = decoder.dimensions();
-    if u64::from(w) * u64::from(h) > limits.max_pixels {
+    if u64::from(w) * u64::from(h) > limits.max_pixels
+        || decoder.total_bytes().saturating_mul(DECODE_MEMORY_FACTOR) > limits.max_alloc
+    {
         return Err(ThumbError::TooLarge(w, h));
     }
     // libheif applies the container's rotation and mirroring itself.
@@ -68,11 +97,15 @@ pub fn decode<R: BufRead + Seek>(
     } else {
         decoder.orientation()?
     };
-    let mut image = DynamicImage::from_decoder(decoder)?;
-    image.apply_orientation(orientation);
-    let (width, height) = (image.width(), image.height());
+    let image = DynamicImage::from_decoder(decoder)?;
+    let (width, height) = if swaps_axes(orientation) {
+        (image.height(), image.width())
+    } else {
+        (image.width(), image.height())
+    };
     Ok(Decoded {
         image,
+        orientation,
         width,
         height,
     })
@@ -102,16 +135,24 @@ pub fn fit(width: u32, height: u32, max_w: u32, max_h: u32) -> (u32, u32) {
 }
 
 /// Resized copy (Lanczos3) as 8-bit RGB or RGBA (kept only when the source has alpha).
+/// An 8-bit RGB(A) source is resized as is, without a full-size copy.
 pub fn resize(src: &DynamicImage, width: u32, height: u32) -> Result<DynamicImage, ThumbError> {
-    let src = if src.color().has_alpha() {
-        DynamicImage::ImageRgba8(src.to_rgba8())
-    } else {
-        DynamicImage::ImageRgb8(src.to_rgb8())
+    let converted;
+    let src = match src {
+        DynamicImage::ImageRgb8(_) | DynamicImage::ImageRgba8(_) => src,
+        other if other.color().has_alpha() => {
+            converted = DynamicImage::ImageRgba8(other.to_rgba8());
+            &converted
+        }
+        other => {
+            converted = DynamicImage::ImageRgb8(other.to_rgb8());
+            &converted
+        }
     };
     let mut dst = DynamicImage::new(width, height, src.color());
     let options = ResizeOptions::new().resize_alg(ResizeAlg::Convolution(FilterType::Lanczos3));
     Resizer::new()
-        .resize(&src, &mut dst, &options)
+        .resize(src, &mut dst, &options)
         .map_err(|err| ThumbError::Resize(err.to_string()))?;
     Ok(dst)
 }
@@ -173,6 +214,19 @@ mod tests {
         let jpeg = jpeg_sized_with_exif(64, 64, &ExifSpec::default());
         let limits = DecodeLimits {
             max_pixels: 64 * 63,
+            ..DecodeLimits::default()
+        };
+        assert!(matches!(
+            decode(Cursor::new(jpeg), limits),
+            Err(ThumbError::TooLarge(64, 64))
+        ));
+    }
+
+    #[test]
+    fn images_whose_buffers_exceed_the_memory_budget_are_refused() {
+        let jpeg = jpeg_sized_with_exif(64, 64, &ExifSpec::default());
+        let limits = DecodeLimits {
+            max_alloc: 64 * 64 * 3 * DECODE_MEMORY_FACTOR - 1,
             ..DecodeLimits::default()
         };
         assert!(matches!(
