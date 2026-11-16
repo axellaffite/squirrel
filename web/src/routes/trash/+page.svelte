@@ -65,6 +65,7 @@
 		<ul class="rows" aria-label="Items in the trash">
 			{#each entries as entry, index (entry.node.id)}
 				<ListRow arrive={arrival(entry, index)}>
+					<!-- Icons, not thumbnails: the server serves thumbnails only for files that are not in the trash. -->
 					{#snippet icon()}<Icon name={nodeIcon(entry.node)} />{/snippet}
 					{#snippet title()}{entry.node.name}{/snippet}
 					{#snippet meta()}
