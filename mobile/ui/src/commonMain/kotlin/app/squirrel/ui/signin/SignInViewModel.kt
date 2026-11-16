@@ -46,8 +46,10 @@ private const val UNREACHABLE = "Squirrel could not be reached. Check your conne
 class SignInViewModel(
     private val apiFor: (serverUrl: String) -> SquirrelApi,
     private val device: DeviceDetails,
+    /** The address used before, prefilled after a sign-out or revocation. */
+    lastServer: String? = null,
 ) : ViewModel() {
-    private val _state = MutableStateFlow(SignInState())
+    private val _state = MutableStateFlow(SignInState(server = lastServer ?: "https://"))
     val state: StateFlow<SignInState> = _state.asStateFlow()
     private var api: SquirrelApi? = null
     private var serverUrl: String? = null

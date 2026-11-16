@@ -9,9 +9,9 @@ import app.squirrel.ui.AppGraph
 
 /** The server and sign-in screens, ending in [AppGraph.onSignedIn]. */
 @Composable
-fun SignInFlow(graph: AppGraph, attempt: Int) {
+fun SignInFlow(graph: AppGraph, attempt: Int, lastServer: String?) {
     val vm = viewModel(key = "sign-in-$attempt") {
-        SignInViewModel(apiFor = graph::newApi, device = graph.device)
+        SignInViewModel(apiFor = graph::newApi, device = graph.device, lastServer = lastServer)
     }
     val state by vm.state.collectAsStateWithLifecycle()
     when (val step = state.step) {

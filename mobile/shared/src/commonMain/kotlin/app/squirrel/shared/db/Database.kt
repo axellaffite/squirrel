@@ -29,6 +29,16 @@ fun SquirrelDatabase.recordScanned(asset: ScannedAsset, generation: Long) = tran
     }
 }
 
+/**
+ * Forgets the backup queue, the scan position and the account's settings (sign-out, revocation,
+ * another account). The server address and backup preferences stay.
+ */
+fun SquirrelDatabase.forgetDevice() = transaction {
+    localAssetQueries.deleteAll()
+    scanStateQueries.clear()
+    settingQueries.removeDeviceState()
+}
+
 /** Number of assets per queue state. */
 fun SquirrelDatabase.counts(): Map<String, Long> =
     localAssetQueries.counts().executeAsList().associate { it.state to it.n }

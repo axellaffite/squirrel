@@ -19,7 +19,7 @@ fun App(graph: AppGraph) {
         Box(Modifier.fillMaxSize().ground()) {
             when (val current = state) {
                 AppState.Loading -> Unit
-                is AppState.NeedsSignIn -> SignInFlow(graph, current.attempt)
+                is AppState.NeedsSignIn -> SignInFlow(graph, current.attempt, current.serverUrl)
                 is AppState.SignedIn -> Shell(current.account, onSignOut = graph::signOut, onRefresh = graph::refreshAccount)
             }
         }

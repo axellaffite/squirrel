@@ -15,3 +15,9 @@ DELETE FROM setting WHERE key = ?;
 
 all:
 SELECT * FROM setting;
+
+-- Sign-out or another account: forget what belonged to the device's session, keep the server
+-- address and the backup preferences (they describe this phone, not the account).
+removeDeviceState:
+DELETE FROM setting
+WHERE key != 'server.url' AND (key NOT LIKE 'backup.%' OR key = 'backup.last_run');
