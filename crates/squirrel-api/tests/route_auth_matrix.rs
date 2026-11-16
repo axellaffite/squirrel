@@ -21,8 +21,13 @@ const PUBLIC: &[&str] = &[
     "/api/auth/device/refresh",
 ];
 
-/// Browser session only: account, invitations, administration, device management.
+/// Browser session only: account, invitations, administration, device
+/// management, and deleting files (a stolen phone token must not be able to
+/// destroy the library). `METHOD /path` entries override a path entry.
 const SESSION: &[&str] = &[
+    "DELETE /api/nodes/{id}",
+    "DELETE /api/trash",
+    "DELETE /api/trash/{id}",
     "/api/auth/me",
     "/api/auth/logout",
     "/api/auth/logout-all",
@@ -77,22 +82,30 @@ enum Access {
     Data,
 }
 
-fn access_of(path: &str) -> Access {
+fn access_of(method: &Method, path: &str) -> Access {
     let lists = [
         (PUBLIC, Access::Public),
         (SESSION, Access::Session),
         (DEVICE, Access::Device),
         (DATA, Access::Data),
     ];
-    let found: Vec<Access> = lists
-        .iter()
-        .filter(|(list, _)| list.contains(&path))
-        .map(|(_, access)| *access)
-        .collect();
+    let find = |entry: &str| -> Vec<Access> {
+        lists
+            .iter()
+            .filter(|(list, _)| list.contains(&entry))
+            .map(|(_, access)| *access)
+            .collect()
+    };
+    let operation = find(&format!("{method} {path}"));
+    let found = if operation.is_empty() {
+        find(path)
+    } else {
+        operation
+    };
     assert_eq!(
         found.len(),
         1,
-        "{path} must be listed in exactly one of PUBLIC, SESSION, DEVICE, DATA \
+        "{method} {path} must be listed in exactly one of PUBLIC, SESSION, DEVICE, DATA \
          (route_auth_matrix.rs); found in {found:?}"
     );
     found[0]
@@ -152,7 +165,7 @@ fn the_contract_declares_each_routes_credentials() {
         let operation = &doc["paths"][&path][method.as_str().to_lowercase()];
         assert_eq!(
             operation["security"],
-            security_of(&method, access_of(&path)),
+            security_of(&method, access_of(&method, &path)),
             "{method} {path}: `security` in openapi.json does not match its callers"
         );
     }
@@ -190,7 +203,7 @@ async fn every_route_accepts_exactly_its_callers(pool: PgPool) {
     common::setup_admin(&instance.browser(), "alice").await;
     let mut creds = credentials(&instance).await;
     for (method, path) in operations() {
-        let access = access_of(&path);
+        let access = access_of(&method, &path);
         let url = concrete(&path);
         if path.contains("logout") {
             creds = credentials(&instance).await;

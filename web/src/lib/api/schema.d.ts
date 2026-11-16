@@ -1767,7 +1767,7 @@ export interface operations {
             };
         };
         responses: {
-            /** @description New tokens; the refresh token was rotated */
+            /** @description New tokens. The refresh token was rotated; presenting the previous one again within 30 s returns the same new one, later it revokes the device */
             200: {
                 headers: {
                     [name: string]: unknown;

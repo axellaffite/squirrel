@@ -12,7 +12,7 @@ use uuid::Uuid;
 
 use crate::cursor;
 use crate::error::{ApiError, ErrorBody};
-use crate::extract::Caller;
+use crate::extract::{Caller, CurrentUser};
 use crate::files_dto::{
     CreateFolderRequest, ListNodesQuery, NodeDetails, NodeDto, NodeListing, PathSegmentDto,
     UpdateNodeRequest,
@@ -140,15 +140,15 @@ pub async fn update_node(
     Ok(Json((&node).into()))
 }
 
-#[utoipa::path(delete, path = "/api/nodes/{id}", security(("device_bearer" = []), ("session_cookie" = [], "csrf_token" = [])), tag = "files",
+#[utoipa::path(delete, path = "/api/nodes/{id}", security(("session_cookie" = [], "csrf_token" = [])), tag = "files",
     params(("id" = Uuid, Path, description = "Node id")),
     responses((status = 204, description = "Moved to the trash with everything inside it"),
               (status = 404, body = ErrorBody), (status = 422, body = ErrorBody)))]
 pub async fn trash_node(
     State(state): State<AppState>,
-    caller: Caller,
+    current: CurrentUser,
     ApiPath(id): ApiPath<Uuid>,
 ) -> Result<StatusCode, ApiError> {
-    squirrel_db::trash::trash(&state.pool, caller.user.id, id).await?;
+    squirrel_db::trash::trash(&state.pool, current.user.id, id).await?;
     Ok(StatusCode::NO_CONTENT)
 }
