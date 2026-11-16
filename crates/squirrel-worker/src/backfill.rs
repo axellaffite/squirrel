@@ -51,7 +51,7 @@ pub async fn run_page(ctx: &MediaContext, job: JobContext, page: i64) -> Result<
             .map_err(JobError::retry)?;
     }
     if after.is_none() {
-        requeue_stale_steps(&mut tx).await?;
+        requeue_stale_steps(&mut tx, ctx.geo.dataset_id().as_deref()).await?;
     }
     if i64::try_from(ids.len()).unwrap_or(0) == page {
         let next = jobs::backfill(ids.last().copied()).delay(jobs::BACKFILL_PAGE_DELAY);
@@ -62,9 +62,12 @@ pub async fn run_page(ctx: &MediaContext, job: JobContext, page: i64) -> Result<
     tx.commit().await.map_err(JobError::retry)
 }
 
-/// Thumbnails made with older settings are regenerated. (Geocoding with a
-/// newer dataset joins in Milestone C.)
-async fn requeue_stale_steps(conn: &mut PgConnection) -> Result<(), JobError> {
+/// Thumbnails made with older settings are regenerated, and geotagged blobs
+/// not yet geocoded with the current dataset are geocoded (again).
+async fn requeue_stale_steps(
+    conn: &mut PgConnection,
+    dataset: Option<&str>,
+) -> Result<(), JobError> {
     let stale: Vec<String> = sqlx::query_scalar(
         "SELECT sha256 FROM media WHERE thumbs_state = 'ready' AND thumbs_version < $1",
     )
@@ -74,6 +77,22 @@ async fn requeue_stale_steps(conn: &mut PgConnection) -> Result<(), JobError> {
     .map_err(JobError::retry)?;
     for sha in &stale {
         squirrel_jobs::enqueue(conn, &jobs::thumbnails(sha, true))
+            .await
+            .map_err(JobError::retry)?;
+    }
+    let Some(dataset) = dataset else {
+        return Ok(());
+    };
+    let ungeocoded: Vec<String> = sqlx::query_scalar(
+        "SELECT sha256 FROM media \
+          WHERE latitude IS NOT NULL AND geocoded_with IS DISTINCT FROM $1",
+    )
+    .bind(dataset)
+    .fetch_all(&mut *conn)
+    .await
+    .map_err(JobError::retry)?;
+    for sha in &ungeocoded {
+        squirrel_jobs::enqueue(conn, &jobs::geocode(sha, true))
             .await
             .map_err(JobError::retry)?;
     }

@@ -1,6 +1,7 @@
 #![allow(dead_code)]
 
 use std::io::Cursor;
+use std::path::Path;
 use std::sync::Arc;
 
 use serde_json::Value;
@@ -10,10 +11,12 @@ use squirrel_db::invitations::{self, NewInvitation};
 use squirrel_db::nodes::{self, NodeRecord};
 use squirrel_db::users::{self, NewUser, UserRecord};
 use squirrel_jobs::JobContext;
+use squirrel_media::geo_data::GeoSource;
 use squirrel_media::thumbs::DecodeLimits;
 use squirrel_storage::BlobStore;
 use squirrel_worker::MediaContext;
 use squirrel_worker::exec::Executor;
+use squirrel_worker::geocode::GeoCache;
 use time::{Duration, OffsetDateTime};
 use uuid::Uuid;
 
@@ -28,6 +31,15 @@ impl Fixture {
     }
 
     pub fn with_executor(pool: PgPool, executor: Executor) -> Self {
+        Self::build(pool, executor, |_| GeoSource::Disabled)
+    }
+
+    /// A fixture whose geocoder reads `source(data_dir)`.
+    pub fn with_geo(pool: PgPool, source: impl FnOnce(&Path) -> GeoSource) -> Self {
+        Self::build(pool, Executor::InProcess, source)
+    }
+
+    fn build(pool: PgPool, executor: Executor, source: impl FnOnce(&Path) -> GeoSource) -> Self {
         let dir = tempfile::tempdir().unwrap();
         let storage = BlobStore::open(dir.path()).unwrap();
         let ctx = MediaContext {
@@ -36,6 +48,7 @@ impl Fixture {
             executor,
             pdfium_dir: None,
             decode_limits: DecodeLimits::default(),
+            geo: GeoCache::new(source(dir.path())),
         };
         Self {
             _dir: dir,

@@ -70,7 +70,8 @@ pub enum GeodataAction {
 #[derive(Subcommand)]
 pub enum MediaAction {
     /// Queue processing of every stored file not processed yet (and of
-    /// thumbnails made with older settings). A worker runs it.
+    /// thumbnails made with older settings, and places not named with the
+    /// current geodata). A worker runs it.
     Backfill,
 }
 

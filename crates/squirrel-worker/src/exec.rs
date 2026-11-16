@@ -70,6 +70,10 @@ enum ExchangeError {
     TooMuchOutput(&'static str),
 }
 
+/// The only variables the sandbox inherits: where to find programs, and
+/// libheif's decoder plugins (a packaged libheif may need it to find libde265).
+const PASSED_ENV: [&str; 2] = ["PATH", "LIBHEIF_PLUGIN_PATH"];
+
 async fn run_child(
     config: &SubprocessConfig,
     request: &ExecRequest,
@@ -79,8 +83,10 @@ async fn run_child(
     // Nothing of the worker's environment (database URL, secrets) reaches the
     // process that parses untrusted bytes.
     command.env_clear();
-    if let Some(path) = std::env::var_os("PATH") {
-        command.env("PATH", path);
+    for name in PASSED_ENV {
+        if let Some(value) = std::env::var_os(name) {
+            command.env(name, value);
+        }
     }
     let mut child = command
         .arg("media-exec")
