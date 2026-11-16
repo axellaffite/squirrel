@@ -19,6 +19,8 @@ use crate::queue::{self, CHANNEL, ClaimedJob, Finished};
 
 type JobFuture = Pin<Box<dyn Future<Output = Result<(), JobError>> + Send>>;
 type HandlerFn = Arc<dyn Fn(JobContext) -> JobFuture + Send + Sync>;
+/// Tests: `true` makes the next heartbeat fail as a database error would.
+type HeartbeatFault = Arc<dyn Fn() -> bool + Send + Sync>;
 
 /// Heartbeats never come closer together than this, whatever the lease.
 const MIN_HEARTBEAT: Duration = Duration::from_millis(100);
@@ -39,8 +41,8 @@ impl Registry {
         Self::default()
     }
 
-    /// `timeout` must stay below the lease (heartbeats extend the lease, but a
-    /// stuck handler should fail rather than hold a slot forever).
+    /// `timeout` bounds one run; it may exceed the lease, which heartbeats
+    /// extend while the handler runs. It must not be zero ([`Worker::new`]).
     pub fn register<F, Fut>(&mut self, kind: &'static str, timeout: Duration, handler: F)
     where
         F: Fn(JobContext) -> Fut + Send + Sync + 'static,
@@ -83,15 +85,39 @@ pub struct Worker {
     config: WorkerConfig,
     /// Claimed and not yet finished: released on shutdown.
     in_flight: InFlight,
+    heartbeat_fault: Option<HeartbeatFault>,
 }
 
 impl Worker {
-    pub fn new(pool: PgPool, registry: Registry, config: WorkerConfig) -> Self {
-        Self {
+    /// Refuses a configuration heartbeats cannot keep alive: a lease shorter
+    /// than three heartbeats, or a handler with a zero timeout.
+    pub fn new(pool: PgPool, registry: Registry, config: WorkerConfig) -> anyhow::Result<Self> {
+        if config.lease < MIN_HEARTBEAT * 3 {
+            anyhow::bail!(
+                "the lease ({:?}) must be at least three heartbeats ({:?})",
+                config.lease,
+                MIN_HEARTBEAT * 3
+            );
+        }
+        if let Some((kind, _)) = registry.handlers.iter().find(|(_, h)| h.timeout.is_zero()) {
+            anyhow::bail!("the {kind} handler has a zero timeout");
+        }
+        Ok(Self {
             pool,
             registry: Arc::new(registry),
             config,
             in_flight: Arc::default(),
+            heartbeat_fault: None,
+        })
+    }
+
+    /// Tests: heartbeats fail (as if the database were unreachable) while
+    /// `fault` returns `true`.
+    #[doc(hidden)]
+    pub fn with_heartbeat_fault(self, fault: impl Fn() -> bool + Send + Sync + 'static) -> Self {
+        Self {
+            heartbeat_fault: Some(Arc::new(fault)),
+            ..self
         }
     }
 
@@ -154,6 +180,8 @@ impl Worker {
             if free == 0 {
                 return Ok(());
             }
+            // Taken before the claim: the lease cannot have started earlier.
+            let claimed_at = Instant::now();
             let jobs = queue::claim(
                 &self.pool,
                 kinds,
@@ -170,9 +198,16 @@ impl Worker {
                 let registry = self.registry.clone();
                 let config = self.config.clone();
                 let in_flight = self.in_flight.clone();
+                let fault = self.heartbeat_fault.clone();
                 running.spawn(async move {
                     let _permit = permit;
-                    execute(&pool, &registry, &config, &job).await;
+                    let run = Run {
+                        pool: &pool,
+                        config: &config,
+                        job: &job,
+                        fault: fault.as_ref(),
+                    };
+                    execute(&registry, run, claimed_at).await;
                     lock(&in_flight).remove(&job.id);
                 });
             }
@@ -285,8 +320,55 @@ impl<T> Drop for AbortOnDrop<T> {
     }
 }
 
+/// One claimed job and what running it needs.
+struct Run<'a> {
+    pool: &'a PgPool,
+    config: &'a WorkerConfig,
+    job: &'a ClaimedJob,
+    fault: Option<&'a HeartbeatFault>,
+}
+
+/// Extends the lease every lease/3 until it is lost. Returns when the handler
+/// must be abandoned: another worker owns the job, or heartbeats keep failing
+/// and the lease (as of the last success) runs out before the next one.
+async fn keep_lease(run: &Run<'_>, claimed_at: Instant) {
+    let (job, lease) = (run.job, run.config.lease);
+    let interval = (lease / 3).max(MIN_HEARTBEAT);
+    let mut deadline = claimed_at + lease;
+    let mut ticker = tokio::time::interval(interval);
+    ticker.tick().await;
+    loop {
+        ticker.tick().await;
+        let sent = Instant::now();
+        let beat = if run.fault.is_some_and(|fault| fault()) {
+            Err(sqlx::Error::PoolTimedOut)
+        } else {
+            queue::heartbeat(run.pool, job, lease).await
+        };
+        match beat {
+            Ok(true) => deadline = sent + lease,
+            Ok(false) => {
+                tracing::warn!(job_id = job.id, kind = %job.kind, "lease lost; abandoning the result");
+                return;
+            }
+            Err(err) => {
+                tracing::warn!(job_id = job.id, error = %err, "heartbeat failed");
+                if deadline.saturating_duration_since(Instant::now()) <= interval {
+                    tracing::warn!(
+                        job_id = job.id,
+                        kind = %job.kind,
+                        "lease about to lapse without a heartbeat; abandoning the job to the reaper"
+                    );
+                    return;
+                }
+            }
+        }
+    }
+}
+
 /// Runs one job with a timeout and heartbeats, then records the outcome.
-async fn execute(pool: &PgPool, registry: &Registry, config: &WorkerConfig, job: &ClaimedJob) {
+async fn execute(registry: &Registry, run: Run<'_>, claimed_at: Instant) {
+    let (pool, job) = (run.pool, run.job);
     let Some(handler) = registry.handlers.get(job.kind.as_str()) else {
         if let Err(err) = queue::fail(pool, job, "no handler for this job kind").await {
             tracing::error!(job_id = job.id, error = %err, "could not record a job outcome");
@@ -302,28 +384,14 @@ async fn execute(pool: &PgPool, registry: &Registry, config: &WorkerConfig, job:
     };
     // Its own task, so a panic becomes a JoinError instead of killing the loop.
     let mut work = AbortOnDrop(tokio::spawn((handler.run)(ctx)));
-    let heartbeat = async {
-        let mut ticker = tokio::time::interval((config.lease / 3).max(MIN_HEARTBEAT));
-        ticker.tick().await;
-        loop {
-            ticker.tick().await;
-            match queue::heartbeat(pool, job, config.lease).await {
-                Ok(true) => {}
-                Ok(false) => return,
-                Err(err) => tracing::warn!(job_id = job.id, error = %err, "heartbeat failed"),
-            }
-        }
-    };
     let outcome = tokio::select! {
         result = tokio::time::timeout(handler.timeout, &mut work.0) => match result {
             Ok(Ok(result)) => result,
             Ok(Err(join)) => Err(JobError::retry(anyhow::anyhow!("handler panicked: {join}"))),
             Err(_) => Err(JobError::retry(anyhow::anyhow!("timed out after {:?}", handler.timeout))),
         },
-        () = heartbeat => {
-            tracing::warn!(job_id = job.id, kind = %job.kind, "lease lost; abandoning the result");
-            return;
-        }
+        // Dropping `work` aborts the handler; nothing is recorded or released.
+        () = keep_lease(&run, claimed_at) => return,
     };
     drop(work);
     record(pool, job, outcome).await;

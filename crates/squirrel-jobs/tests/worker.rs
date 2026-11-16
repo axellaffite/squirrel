@@ -47,8 +47,12 @@ impl Running {
 }
 
 fn start(pool: &PgPool, registry: Registry, config: WorkerConfig) -> Running {
+    start_worker(Worker::new(pool.clone(), registry, config).unwrap())
+}
+
+fn start_worker(worker: Worker) -> Running {
     let (stop, stop_rx) = watch::channel(false);
-    let handle = tokio::spawn(Worker::new(pool.clone(), registry, config).run(stop_rx));
+    let handle = tokio::spawn(worker.run(stop_rx));
     Running { stop, handle }
 }
 
@@ -353,4 +357,77 @@ async fn a_handler_whose_claim_is_taken_over_is_stopped(pool: PgPool) {
         .await
         .unwrap();
     assert_eq!(after, ("running".to_owned(), 1), "not released either");
+}
+
+type Clock = Arc<std::sync::Mutex<Option<std::time::Instant>>>;
+
+/// Keeps the first time only: the reaped job runs (and is abandoned) again.
+fn mark(clock: &Clock) {
+    clock
+        .lock()
+        .unwrap()
+        .get_or_insert_with(std::time::Instant::now);
+}
+
+/// Records when the handler's future is dropped before finishing.
+struct DropClock(Clock);
+
+impl Drop for DropClock {
+    fn drop(&mut self) {
+        mark(&self.0);
+    }
+}
+
+#[sqlx::test(migrator = "squirrel_db::MIGRATOR")]
+async fn a_handler_is_abandoned_before_a_lease_heartbeats_cannot_renew(pool: PgPool) {
+    let started_at: Clock = Arc::default();
+    let dropped_at: Clock = Arc::default();
+    let (start_clock, drop_clock) = (started_at.clone(), dropped_at.clone());
+    let mut registry = Registry::new();
+    registry.register("work", Duration::from_secs(5), move |_ctx| {
+        let (start_clock, drop_clock) = (start_clock.clone(), drop_clock.clone());
+        async move {
+            mark(&start_clock);
+            let guard = DropClock(drop_clock);
+            tokio::time::sleep(Duration::from_secs(2)).await;
+            std::mem::forget(guard); // finished: not an abort
+            Ok(())
+        }
+    });
+    let mut cfg = config();
+    cfg.lease = Duration::from_millis(300);
+    // Every heartbeat fails, as if the database had become unreachable.
+    let worker = Worker::new(pool.clone(), registry, cfg)
+        .unwrap()
+        .with_heartbeat_fault(|| true);
+    let worker = start_worker(worker);
+    add(&pool, NewJob::new("work", json!({}))).await;
+    // The reaper (not the worker) puts the job back once the lease has lapsed.
+    wait_until(
+        &pool,
+        "SELECT count(*) FROM jobs WHERE last_error LIKE 'lease expired%'",
+        1,
+    )
+    .await;
+    let started = started_at.lock().unwrap().expect("the handler started");
+    let dropped = dropped_at.lock().unwrap().expect("the handler was aborted");
+    assert!(
+        dropped.duration_since(started) < Duration::from_millis(290),
+        "aborted {:?} after starting, past its 300 ms lease",
+        dropped.duration_since(started)
+    );
+    worker.stop().await;
+}
+
+#[sqlx::test(migrator = "squirrel_db::MIGRATOR")]
+async fn configurations_heartbeats_cannot_serve_are_refused(pool: PgPool) {
+    let mut short = config();
+    short.lease = Duration::from_millis(299);
+    assert!(Worker::new(pool.clone(), noop_registry(), short).is_err());
+    let mut zero = Registry::new();
+    zero.register("instant", Duration::ZERO, |_ctx| async { Ok(()) });
+    assert!(Worker::new(pool.clone(), zero, config()).is_err());
+    let mut ok = config();
+    ok.lease = Duration::from_millis(300);
+    assert!(Worker::new(pool, noop_registry(), ok).is_ok());
 }

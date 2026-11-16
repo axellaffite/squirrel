@@ -180,6 +180,7 @@ pub async fn run(
         tracing::warn!(error = %format!("{err:#}"), "could not queue the media backfill");
     }
     Worker::new(pool, registry(media), config(&options))
+        .context("configuring the job worker")?
         .run(stop)
         .await
         .context("running the job worker")
