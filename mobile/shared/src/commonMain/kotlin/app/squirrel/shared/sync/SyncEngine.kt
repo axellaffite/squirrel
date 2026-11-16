@@ -100,9 +100,9 @@ class SyncEngine(
         } catch (e: CancellationException) {
             _state.value = SyncState.Idle
             throw e
-        } catch (e: RunStopped) {
-            val reason = if (e.reason == StopReason.QuotaExceeded) ErrorReason.QuotaExceeded else ErrorReason.StorageFull
-            return stopped(SyncState.Error(reason), StopCause.Error)
+        } catch (_: RunStopped) {
+            // Quota or disk: nothing more can go up until the user frees space ("Storage full").
+            return stopped(SyncState.Paused(PauseReason.StorageFull), StopCause.Paused)
         } catch (_: SignedOut) {
             return stopped(SyncState.Error(ErrorReason.SignedOut), StopCause.Error)
         } catch (e: Exception) {

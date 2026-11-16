@@ -40,6 +40,12 @@ private const val MAX_RESTARTS = 3
 private const val MAX_COMPLETE_TRIES = 3
 private const val NOT_FOUND = 404
 private const val INSUFFICIENT_STORAGE = 507
+private const val CONFLICT = 409
+private const val PAYLOAD_TOO_LARGE = 413
+private const val MILLIS_PER_SECOND = 1000L
+
+/** Refusals that will not change by retrying the same file. */
+private val PERMANENT = setOf(400, 403, PAYLOAD_TOO_LARGE, 422)
 
 /**
  * Uploads one queued asset: the year folder, `POST /api/uploads`, the chunks the server lacks
@@ -187,10 +193,22 @@ class Uploader(
             queue.resetHash(asset.deviceAssetId)
             UploadResult.Changed
         }
-        else -> retry(asset, e)
+        e.status in PERMANENT || (e.status == CONFLICT && e.code != "upload_incomplete") -> {
+            queue.recordAttempt(asset.deviceAssetId, refusal(e), now())
+            queue.markFailed(asset.deviceAssetId, refusal(e))
+            UploadResult.Failed
+        }
+        else -> retry(asset, e, minDelay = e.retryAfterSeconds?.times(MILLIS_PER_SECOND))
     }
 
-    private fun retry(asset: QueuedAsset, e: Exception): UploadResult {
+    /** A message the Backup screen can show for a file the server will not take. */
+    private fun refusal(e: ApiError): String = when {
+        e.status == PAYLOAD_TOO_LARGE -> "This file is larger than your Squirrel accepts"
+        e.fromServer && !e.message.isNullOrBlank() -> e.message.orEmpty()
+        else -> "Your Squirrel refused this file (HTTP ${e.status})"
+    }
+
+    private fun retry(asset: QueuedAsset, e: Exception, minDelay: Long? = null): UploadResult {
         val attempts = (queue.get(asset.deviceAssetId)?.attempts ?: asset.attempts) + 1
         val message = e.message ?: e::class.simpleName ?: "Upload failed"
         if (attempts >= MAX_ATTEMPTS) {
@@ -198,7 +216,7 @@ class Uploader(
             queue.markFailed(asset.deviceAssetId, message)
             return UploadResult.Failed
         }
-        val at = now() + backoffMillis(attempts - 1, random)
+        val at = now() + maxOf(backoffMillis(attempts - 1, random), minDelay ?: 0L)
         queue.recordAttempt(asset.deviceAssetId, message, at)
         return UploadResult.RetryLater(at)
     }

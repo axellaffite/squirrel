@@ -5,6 +5,7 @@ import app.squirrel.shared.auth.Session
 import io.ktor.client.call.body
 import io.ktor.client.statement.HttpResponse
 import io.ktor.http.ContentType
+import io.ktor.http.HttpHeaders
 import io.ktor.http.contentType
 import io.ktor.http.isSuccess
 import io.ktor.util.AttributeKey
@@ -20,6 +21,8 @@ open class ApiError(
     val code: String,
     message: String,
     val fromServer: Boolean = true,
+    /** The `Retry-After` delay in seconds (429, 503), when the server gave one. */
+    val retryAfterSeconds: Long? = null,
 ) : Exception(message)
 
 /** The server refused the device's tokens and they could not be refreshed: sign in again. */
@@ -58,6 +61,7 @@ suspend fun HttpResponse.apiError(): ApiError {
         code = detail?.code ?: "http_${status.value}",
         message = detail?.message ?: status.description,
         fromServer = detail != null,
+        retryAfterSeconds = headers[HttpHeaders.RetryAfter]?.trim()?.toLongOrNull()?.takeIf { it >= 0 },
     )
 }
 

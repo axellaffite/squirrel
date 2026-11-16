@@ -7,7 +7,10 @@ import app.squirrel.shared.testing.FakeServer
 import app.squirrel.shared.testing.error
 import app.squirrel.shared.testing.runApiTest
 import app.squirrel.shared.testing.testDriver
+import io.ktor.client.engine.mock.respond
+import io.ktor.http.HttpHeaders
 import io.ktor.http.HttpStatusCode
+import io.ktor.http.headersOf
 import kotlinx.io.IOException
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -192,5 +195,66 @@ class UploaderTest {
         assertEquals(15 * 60_000, backoffMillis(attempt = 20, random = { 0.5 }))
         assertEquals(4_000, backoffMillis(attempt = 0, random = { 0.0 }))
         assertEquals(6_000, backoffMillis(attempt = 0, random = { 1.0 }))
+    }
+
+    private fun refuse(path: (String) -> Boolean, status: HttpStatusCode, code: String, message: String = code) {
+        server.onRequest = { request, _ -> if (path(request.url.encodedPath)) error(status, code, message) else null }
+    }
+
+    @Test
+    fun permanentRefusalsFailAtOnceWithAReadableMessage() = runApiTest {
+        val cases = listOf(
+            Triple(HttpStatusCode.BadRequest, "validation_error", "The name is not valid."),
+            Triple(HttpStatusCode.Forbidden, "forbidden", "Uploads are disabled."),
+            Triple(HttpStatusCode.UnprocessableEntity, "validation_error", "The file is empty."),
+            Triple(HttpStatusCode.Conflict, "name_conflict", "A file with this name exists."),
+        )
+        cases.forEachIndexed { i, (status, code, message) ->
+            refuse({ it == "/api/uploads" }, status, code, message)
+            val result = uploader().upload(missing("images:$i"))
+            assertEquals(UploadResult.Failed, result, status.toString())
+            val asset = queue.get("images:$i")!!
+            assertEquals(QueueState.Failed, asset.state)
+            assertEquals(message, asset.lastError)
+        }
+    }
+
+    @Test
+    fun aTooLargeChunkFailsWithAPlainMessage() = runApiTest {
+        server.chunkFailure = { _, _ -> ApiError(413, "http_413", "Payload Too Large", fromServer = false) }
+        assertEquals(UploadResult.Failed, uploader().upload(missing()))
+        assertEquals("This file is larger than your Squirrel accepts", queue.get("images:1")!!.lastError)
+    }
+
+    @Test
+    fun retryAfterIsHonoured() = runApiTest {
+        server.onRequest = { request, _ ->
+            if (request.url.encodedPath == "/api/uploads") {
+                respond(
+                    """{"error":{"code":"rate_limited","message":"slow down"}}""",
+                    HttpStatusCode.TooManyRequests,
+                    headersOf(HttpHeaders.ContentType to listOf("application/json"), HttpHeaders.RetryAfter to listOf("120")),
+                )
+            } else {
+                null
+            }
+        }
+        assertEquals(UploadResult.RetryLater(now + 120_000), uploader().upload(missing()))
+    }
+
+    @Test
+    fun aShortRetryAfterDoesNotShortenTheBackoff() = runApiTest {
+        server.onRequest = { request, _ ->
+            if (request.url.encodedPath == "/api/uploads") {
+                respond(
+                    """{"error":{"code":"unavailable","message":"busy"}}""",
+                    HttpStatusCode.ServiceUnavailable,
+                    headersOf(HttpHeaders.ContentType to listOf("application/json"), HttpHeaders.RetryAfter to listOf("1")),
+                )
+            } else {
+                null
+            }
+        }
+        assertEquals(UploadResult.RetryLater(now + 5_000), uploader().upload(missing()))
     }
 }

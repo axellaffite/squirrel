@@ -151,7 +151,7 @@ class SyncEngineTest {
     }
 
     @Test
-    fun aFullServerIsAnErrorAndLeavesTheRestUntouched() = runApiTest {
+    fun aFullServerPausesTheRunAndLeavesTheRestUntouched() = runApiTest {
         repeat(3) { source.put("images:$it", size = 64) }
         server.onRequest = { request, _ ->
             if (request.url.encodedPath == "/api/uploads") error(HttpStatusCode.InsufficientStorage, "quota_exceeded") else null
@@ -160,7 +160,7 @@ class SyncEngineTest {
 
         engine.runOnce()
 
-        assertEquals(SyncState.Error(ErrorReason.QuotaExceeded), engine.state.value)
+        assertEquals(SyncState.Paused(PauseReason.StorageFull), engine.state.value)
         assertEquals(3L, queue.counts()[QueueState.Missing])
     }
 
