@@ -40,6 +40,7 @@ use axum::extract::DefaultBodyLimit;
 use axum::http::{Method, StatusCode};
 use tower_http::timeout::TimeoutLayer;
 use utoipa::OpenApi;
+use utoipa::openapi::security::SecurityScheme;
 use utoipa_axum::router::OpenApiRouter;
 use utoipa_axum::routes;
 
@@ -61,9 +62,49 @@ const CHUNK_TIMEOUT: Duration = Duration::from_secs(5 * 60);
         (name = "admin"), (name = "files"), (name = "uploads"), (name = "trash"),
         (name = "storage"), (name = "jobs"), (name = "photos"), (name = "albums"),
         (name = "search"), (name = "devices"), (name = "sync")
-    )
+    ),
+    modifiers(&SecuritySchemes)
 )]
 struct ApiDoc;
+
+/// The credentials an operation may accept; each operation's `security` lists
+/// the ones it takes (any one entry suffices):
+/// - `session_cookie` (+ `csrf_token` on non-GET requests): a browser session;
+/// - `device_bearer`: a phone's access token.
+struct SecuritySchemes;
+
+impl utoipa::Modify for SecuritySchemes {
+    fn modify(&self, openapi: &mut utoipa::openapi::OpenApi) {
+        use utoipa::openapi::security::{ApiKey, ApiKeyValue, HttpAuthScheme, HttpBuilder};
+        let components = openapi.components.get_or_insert_with(Default::default);
+        components.add_security_scheme(
+            "session_cookie",
+            SecurityScheme::ApiKey(ApiKey::Cookie(ApiKeyValue::with_description(
+                session::SESSION_COOKIE,
+                "Browser session, set by `POST /api/auth/login`.",
+            ))),
+        );
+        components.add_security_scheme(
+            "csrf_token",
+            SecurityScheme::ApiKey(ApiKey::Header(ApiKeyValue::with_description(
+                "X-CSRF-Token",
+                "The session's `csrf_token` (from `GET /api/auth/me`), required with the \
+                 session cookie on every non-GET request.",
+            ))),
+        );
+        components.add_security_scheme(
+            "device_bearer",
+            SecurityScheme::Http(
+                HttpBuilder::new()
+                    .scheme(HttpAuthScheme::Bearer)
+                    .description(Some(
+                        "Device access token, `sqa_…` (`POST /api/auth/device/login`).",
+                    ))
+                    .build(),
+            ),
+        );
+    }
+}
 
 pub fn router(state: AppState) -> Router {
     let (router, _) = api_router(&state.config).split_for_parts();

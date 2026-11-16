@@ -1,7 +1,10 @@
 use axum::extract::FromRequestParts;
+use axum::http::HeaderValue;
+use axum::http::header::AUTHORIZATION;
 use axum::http::request::Parts;
 use axum_extra::extract::CookieJar;
-use squirrel_auth::hash_token;
+use squirrel_auth::{hash_token, parse_access};
+use squirrel_db::devices::{self, DeviceRecord};
 use squirrel_db::sessions::{self, SessionRecord};
 use squirrel_db::users::{self, UserRecord};
 use subtle::ConstantTimeEq;
@@ -68,5 +71,130 @@ impl FromRequestParts<AppState> for CurrentUser {
             }
         }
         Ok(Self { user, session })
+    }
+}
+
+/// Who is calling: a browser session (CSRF-checked) or a signed-in device.
+#[derive(Debug)]
+pub enum Principal {
+    Session(SessionRecord),
+    Device(DeviceRecord),
+}
+
+/// An authenticated, non-disabled user, by session cookie or by device bearer
+/// token (`Authorization: Bearer sqa_…`). Data routes take this; account,
+/// invitation, admin and device-management routes keep [`CurrentUser`]
+/// (session only). When an `Authorization` header is present the cookie is
+/// ignored entirely, and no CSRF token is needed: a bearer is never sent
+/// ambiently by a browser.
+pub struct Caller {
+    pub user: UserRecord,
+    pub principal: Principal,
+}
+
+impl Caller {
+    pub fn device(&self) -> Option<&DeviceRecord> {
+        match &self.principal {
+            Principal::Device(device) => Some(device),
+            Principal::Session(_) => None,
+        }
+    }
+}
+
+impl FromRequestParts<AppState> for Caller {
+    type Rejection = ApiError;
+
+    async fn from_request_parts(
+        parts: &mut Parts,
+        state: &AppState,
+    ) -> Result<Self, Self::Rejection> {
+        match parts.headers.get(AUTHORIZATION) {
+            // Never falls back to the cookie.
+            Some(value) => bearer(value, state).await,
+            None => {
+                let CurrentUser { user, session } =
+                    CurrentUser::from_request_parts(parts, state).await?;
+                Ok(Self {
+                    user,
+                    principal: Principal::Session(session),
+                })
+            }
+        }
+    }
+}
+
+/// The `sqa_…` token of an `Authorization: Bearer` header, if well formed.
+fn bearer_token(value: &HeaderValue) -> Option<&str> {
+    let (scheme, token) = value.to_str().ok()?.split_once(' ')?;
+    if !scheme.eq_ignore_ascii_case("bearer") {
+        return None;
+    }
+    parse_access(token.trim())
+}
+
+async fn bearer(value: &HeaderValue, state: &AppState) -> Result<Caller, ApiError> {
+    let token = bearer_token(value).ok_or(ApiError::Unauthorized)?;
+    let device = devices::find_by_access_hash(&state.pool, &hash_token(token))
+        .await?
+        .ok_or(ApiError::Unauthorized)?;
+    let user = users::find_by_id(&state.pool, device.owner_id)
+        .await?
+        .filter(|user| !user.is_disabled())
+        .ok_or(ApiError::Unauthorized)?;
+    let now = OffsetDateTime::now_utc();
+    if now - device.last_seen_at > state.config.session_touch_interval {
+        devices::touch(&state.pool, device.id).await?;
+    }
+    Ok(Caller {
+        user,
+        principal: Principal::Device(device),
+    })
+}
+
+/// A signed-in device (bearer only): the device routes and sync. A browser
+/// session is refused with 403 `forbidden`.
+pub struct DeviceCaller {
+    pub user: UserRecord,
+    pub device: DeviceRecord,
+}
+
+impl FromRequestParts<AppState> for DeviceCaller {
+    type Rejection = ApiError;
+
+    async fn from_request_parts(
+        parts: &mut Parts,
+        state: &AppState,
+    ) -> Result<Self, Self::Rejection> {
+        let caller = Caller::from_request_parts(parts, state).await?;
+        match caller.principal {
+            Principal::Device(device) => Ok(Self {
+                user: caller.user,
+                device,
+            }),
+            Principal::Session(_) => Err(ApiError::Forbidden),
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn only_bearer_access_tokens_are_read() {
+        let token = squirrel_auth::DeviceToken::access();
+        let header = |v: String| HeaderValue::from_str(&v).unwrap();
+        assert_eq!(
+            bearer_token(&header(format!("Bearer {token}"))),
+            Some(token.as_str())
+        );
+        assert_eq!(
+            bearer_token(&header(format!("bearer {token}"))),
+            Some(token.as_str())
+        );
+        assert_eq!(bearer_token(&header(format!("Basic {token}"))), None);
+        assert_eq!(bearer_token(&header(token.clone())), None);
+        let refresh = squirrel_auth::DeviceToken::refresh();
+        assert_eq!(bearer_token(&header(format!("Bearer {refresh}"))), None);
     }
 }
