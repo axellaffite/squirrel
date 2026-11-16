@@ -3,6 +3,7 @@
 //! keep their entry (the timeline filters on `nodes.deleted_at`), permanently
 //! deleted ones lose it by cascade.
 
+use sqlx::postgres::PgExecutor;
 use sqlx::{FromRow, PgConnection, PgPool};
 use time::{OffsetDateTime, PrimitiveDateTime};
 use uuid::Uuid;
@@ -66,29 +67,45 @@ pub struct AssetRecord {
     pub created_at: OffsetDateTime,
 }
 
-/// Creates the node's entry or updates its capture time and kind. `false`: the
-/// node (with this owner) no longer exists, and nothing was written. The node
-/// row is locked (`FOR KEY SHARE`) instead of relying on the foreign key, whose
-/// violation would abort the caller's whole transaction.
+/// Creates the node's entry or updates its capture time and kind, except that
+/// a provisional time (file name, upload) never replaces an EXIF one: use
+/// [`replace`] when the metadata itself changed. `false`: nothing was written
+/// (the node, with this owner, no longer exists, or the EXIF time was kept).
+/// The node row is locked (`FOR KEY SHARE`) instead of relying on the foreign
+/// key, whose violation would abort the caller's whole transaction.
 pub async fn upsert(conn: &mut PgConnection, asset: &NewAsset) -> Result<bool, DbError> {
-    let written = sqlx::query(
+    write(conn, asset, KEEP_EXIF).await
+}
+
+/// [`upsert`] without the EXIF guard: for `extract_metadata`, which is the
+/// authority on what the file's metadata says.
+pub async fn replace(conn: &mut PgConnection, asset: &NewAsset) -> Result<bool, DbError> {
+    write(conn, asset, "").await
+}
+
+const KEEP_EXIF: &str = "WHERE assets.taken_source <> 'exif' OR EXCLUDED.taken_source = 'exif'";
+
+/// `guard`: a fixed `WHERE` for the conflict update, never built from input.
+async fn write(conn: &mut PgConnection, asset: &NewAsset, guard: &str) -> Result<bool, DbError> {
+    let sql = format!(
         "INSERT INTO assets (node_id, owner_id, sha256, kind, taken_at, taken_offset_min, \
                              taken_source) \
          SELECT n.id, n.owner_id, $3, $4, $5, $6, $7 FROM nodes n \
           WHERE n.id = $1 AND n.owner_id = $2 FOR KEY SHARE \
          ON CONFLICT (node_id) DO UPDATE SET kind = EXCLUDED.kind, \
                 taken_at = EXCLUDED.taken_at, taken_offset_min = EXCLUDED.taken_offset_min, \
-                taken_source = EXCLUDED.taken_source",
-    )
-    .bind(asset.node_id)
-    .bind(asset.owner_id)
-    .bind(&asset.sha256)
-    .bind(asset.kind.as_str())
-    .bind(asset.taken_at)
-    .bind(asset.taken_offset_min)
-    .bind(asset.taken_source.as_str())
-    .execute(conn)
-    .await?;
+                taken_source = EXCLUDED.taken_source {guard}"
+    );
+    let written = sqlx::query(&sql)
+        .bind(asset.node_id)
+        .bind(asset.owner_id)
+        .bind(&asset.sha256)
+        .bind(asset.kind.as_str())
+        .bind(asset.taken_at)
+        .bind(asset.taken_offset_min)
+        .bind(asset.taken_source.as_str())
+        .execute(conn)
+        .await?;
     Ok(written.rows_affected() == 1)
 }
 
@@ -118,12 +135,15 @@ pub struct BlobNode {
 /// Internal (worker only, no owner check): every file node, live or trashed,
 /// of every owner, that references `sha256`.
 #[doc(hidden)]
-pub async fn for_blob(pool: &PgPool, sha256: &str) -> Result<Vec<BlobNode>, DbError> {
+pub async fn for_blob<'e>(
+    executor: impl PgExecutor<'e>,
+    sha256: &str,
+) -> Result<Vec<BlobNode>, DbError> {
     Ok(sqlx::query_as::<_, BlobNode>(
         "SELECT id AS node_id, owner_id, name, mime, created_at FROM nodes \
           WHERE blob_sha256 = $1 AND kind = 'file' ORDER BY id",
     )
     .bind(sha256)
-    .fetch_all(pool)
+    .fetch_all(executor)
     .await?)
 }

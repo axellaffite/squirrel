@@ -291,3 +291,35 @@ async fn a_missing_node_does_not_spoil_the_transaction(pool: PgPool) {
     tx.commit().await.unwrap();
     assert!(assets::find(&pool, kept).await.unwrap().is_some());
 }
+
+#[sqlx::test(migrator = "squirrel_db::MIGRATOR")]
+async fn a_provisional_time_never_replaces_an_exif_one(pool: PgPool) {
+    let alice = admin(&pool).await;
+    let id = image_with_media(&pool, alice.id, "a.jpg", 'a').await;
+    let mut conn = pool.acquire().await.unwrap();
+    let exif = NewAsset {
+        taken_at: datetime!(2024-07-14 18:30:05),
+        taken_source: TakenSource::Exif,
+        ..asset(id, alice.id, 'a')
+    };
+    assert!(assets::upsert(&mut conn, &exif).await.unwrap());
+    assert!(
+        !assets::upsert(&mut conn, &asset(id, alice.id, 'a'))
+            .await
+            .unwrap()
+    );
+    let row = assets::find(&pool, id).await.unwrap().unwrap();
+    assert_eq!(
+        (row.taken_source.as_str(), row.taken_at),
+        ("exif", exif.taken_at)
+    );
+
+    // Re-extracted metadata without a date is the authority.
+    assert!(
+        assets::replace(&mut conn, &asset(id, alice.id, 'a'))
+            .await
+            .unwrap()
+    );
+    let row = assets::find(&pool, id).await.unwrap().unwrap();
+    assert_eq!(row.taken_source, "upload");
+}
