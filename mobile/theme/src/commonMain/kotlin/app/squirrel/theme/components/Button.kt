@@ -8,6 +8,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.sizeIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.text.BasicText
 import androidx.compose.runtime.Composable
@@ -55,7 +56,7 @@ fun Button(
     val style = if (variant == ButtonVariant.Primary) SquirrelTheme.type.strong else SquirrelTheme.type.label
     Box(
         modifier = modifier
-            .heightIn(min = Tokens.tap)
+            .sizeIn(minWidth = MinTouchTarget, minHeight = MinTouchTarget)
             .then(if (full) Modifier.fillMaxWidth() else Modifier),
         contentAlignment = Alignment.Center,
     ) {

@@ -258,6 +258,10 @@ platforms. It adds no value: every token comes from `tokens.css` through the gen
 - **Which values**: the phone column of `tokens.css` (below 768 px): `--text-md` 14 / 20, the phone
   `--shadow-card` / `--shadow-pop`, `--photo-row` 112. `1rem` is 16 dp; text sizes are `sp`.
   Gradients become two-stop vertical brushes; `color-mix` tokens are resolved by the generator.
+- **Touch targets**: at least 48 dp on phones (`--control-lg`, the Android and iOS guideline),
+  for every button, field, toggle, row and rail item; visuals keep their web sizes (a 36 dp
+  icon button still draws 36 dp inside its 48 dp hit area). Icon-only buttons always have an
+  accessible name.
 - **Font**: Geist, the same variable font as the web, bundled as TTF (the platforms cannot load
   woff2), weights 400 / 500 / 600 and the tracking above.
 - **Shell**: the phone shell of "Layout": ground gradient, the floating graphite bottom rail

@@ -17,9 +17,13 @@ import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.graphics.drawOutline
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.drawscope.translate
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import app.squirrel.theme.SquirrelTheme
 import app.squirrel.theme.Tokens
+
+/** MASTER.md phone app: every interactive element is at least 48 dp (`--control-lg`). */
+val MinTouchTarget: Dp = Tokens.controlLg
 
 /** The page ground: `--ground` gradient. */
 @Composable

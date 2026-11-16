@@ -55,7 +55,7 @@ fun Toggle(
     Row(
         modifier = modifier
             .fillMaxWidth()
-            .heightIn(min = Tokens.tap)
+            .heightIn(min = MinTouchTarget)
             .toggleable(checked, interaction, indication = null, enabled = enabled, role = Role.Switch, onValueChange = onCheckedChange)
             .controlStates(interaction, Shapes.small, enabled),
         horizontalArrangement = Arrangement.spacedBy(Tokens.space3),

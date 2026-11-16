@@ -76,7 +76,7 @@ fun TextField(
                 Box(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .heightIn(min = Tokens.controlMd)
+                        .heightIn(min = MinTouchTarget)
                         .focusRing(focused, Shapes.pill, scheme.accent)
                         .background(scheme.card, Shapes.pill)
                         .border(1.dp, edge, Shapes.pill)
