@@ -24,5 +24,9 @@ serde.workspace = true
 thiserror.workspace = true
 time.workspace = true
 
+[[example]]
+name = "make_fixtures"
+required-features = ["test-util"]
+
 [dev-dependencies]
 tempfile.workspace = true

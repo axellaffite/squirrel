@@ -18,6 +18,11 @@ pub struct ExifSpec {
     pub model: Option<&'static str>,
     pub orientation: Option<u16>,
     pub user_comment: Option<&'static str>,
+    /// Exposure time as a fraction of a second: `(1, 250)` is 1/250 s.
+    pub exposure_time: Option<(u32, u32)>,
+    /// Aperture as a fraction: `(17, 10)` is f/1.7.
+    pub f_number: Option<(u32, u32)>,
+    pub iso: Option<u16>,
 }
 
 fn ascii(tag: Tag, text: &str) -> Field {
@@ -58,6 +63,27 @@ pub fn exif_payload(spec: &ExifSpec) -> Option<Vec<u8>> {
     if let Some(v) = spec.orientation {
         fields.push(Field {
             tag: Tag::Orientation,
+            ifd_num: In::PRIMARY,
+            value: Value::Short(vec![v]),
+        });
+    }
+    if let Some((num, denom)) = spec.exposure_time {
+        fields.push(Field {
+            tag: Tag::ExposureTime,
+            ifd_num: In::PRIMARY,
+            value: Value::Rational(vec![Rational { num, denom }]),
+        });
+    }
+    if let Some((num, denom)) = spec.f_number {
+        fields.push(Field {
+            tag: Tag::FNumber,
+            ifd_num: In::PRIMARY,
+            value: Value::Rational(vec![Rational { num, denom }]),
+        });
+    }
+    if let Some(v) = spec.iso {
+        fields.push(Field {
+            tag: Tag::PhotographicSensitivity,
             ifd_num: In::PRIMARY,
             value: Value::Short(vec![v]),
         });

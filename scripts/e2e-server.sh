@@ -67,4 +67,12 @@ export SQUIRREL_BIND="127.0.0.1:${SQUIRREL_E2E_PORT:-8099}"
 export SQUIRREL_COOKIE_SECURE=false
 export SQUIRREL_SETUP_TOKEN=e2e-setup-token
 export SQUIRREL_DATA_DIR="${DATA_DIR}"
+# Media processing runs in the server, with the tiny offline geodata sample (Paris, Lyon, …).
+# SQUIRREL_MEDIA_EXEC stays the default (subprocess): E2E exercises the decoding sandbox.
+export SQUIRREL_EMBEDDED_WORKER=true
+export SQUIRREL_GEODATA_FILE="${PWD}/crates/squirrel-media/tests/fixtures/geo-sample.tsv"
+# PDF thumbnails and text when pdfium was fetched (scripts/fetch-pdfium.sh); otherwise PDFs are unsupported.
+if [[ -z "${SQUIRREL_PDFIUM_DIR:-}" && -d "${PWD}/target/pdfium/lib" ]]; then
+	export SQUIRREL_PDFIUM_DIR="${PWD}/target/pdfium/lib"
+fi
 exec cargo run -q -p squirrel -- serve
