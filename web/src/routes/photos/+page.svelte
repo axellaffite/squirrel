@@ -3,6 +3,7 @@
 	import { page } from '$app/state';
 	import Icon from '#lib/components/icons/Icon.svelte';
 	import PhotosTabs from '#lib/components/photos/PhotosTabs.svelte';
+	import Scrubber from '#lib/components/photos/Scrubber.svelte';
 	import Timeline, { type Geometry } from '#lib/components/photos/Timeline.svelte';
 	import Page from '#lib/components/shell/Page.svelte';
 	import Alert from '#lib/components/ui/Alert.svelte';
@@ -97,6 +98,14 @@
 	{:else}
 		<section class="library" aria-label="Photo timeline">
 			<Timeline bind:this={timeline} bind:geometry {data} {selected} selecting={false} onOpen={open} onToggle={toggle} />
+			{#if geometry}
+				<Scrubber
+					boxes={geometry.boxes}
+					total={geometry.total}
+					current={geometry.current}
+					onJump={(index) => timeline?.jumpTo(index)}
+				/>
+			{/if}
 		</section>
 	{/if}
 </Page>
@@ -107,6 +116,15 @@
 	}
 
 	.library {
+		display: grid;
 		min-width: 0;
+	}
+
+	@media (min-width: 48rem) {
+		.library {
+			grid-template-columns: minmax(0, 1fr) var(--scrubber-w);
+			gap: var(--space-4);
+			align-items: start;
+		}
 	}
 </style>
