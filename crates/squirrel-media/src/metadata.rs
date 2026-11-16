@@ -381,6 +381,20 @@ mod tests {
     }
 
     #[test]
+    fn reads_exposure_aperture_and_iso() {
+        let jpeg = jpeg_with_exif(&ExifSpec {
+            exposure_time: Some((1, 250)),
+            f_number: Some((17, 10)),
+            iso: Some(64),
+            ..ExifSpec::default()
+        });
+        let meta = read_metadata(&mut Cursor::new(jpeg)).unwrap();
+        assert_eq!(meta.exposure_time.as_deref(), Some("1/250"));
+        assert_eq!(meta.f_number, Some(1.7));
+        assert_eq!(meta.iso, Some(64));
+    }
+
+    #[test]
     fn exposure_is_formatted_like_cameras_do() {
         assert_eq!(format_exposure(0.004), "1/250");
         assert_eq!(format_exposure(2.5), "2.5 s");
