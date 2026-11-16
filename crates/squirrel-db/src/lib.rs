@@ -1,5 +1,6 @@
 //! Postgres repositories and migrations.
 
+pub mod albums;
 pub mod assets;
 pub mod blobs;
 mod error;

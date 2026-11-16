@@ -38,7 +38,7 @@ impl DisplayName {
 
 /// Unicode general category Cf (format) characters: invisible characters and
 /// bidirectional controls that can spoof how a name renders.
-fn is_format_char(c: char) -> bool {
+pub(crate) fn is_format_char(c: char) -> bool {
     matches!(
         c,
         '\u{00AD}'
