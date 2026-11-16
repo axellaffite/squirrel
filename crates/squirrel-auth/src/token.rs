@@ -42,6 +42,31 @@ impl DeviceToken {
     }
 }
 
+/// Domain separation for [`DeviceToken::rotated_refresh`].
+const ROTATION_CONTEXT: &[u8] = b"squirrel device refresh rotation v1\0";
+
+impl DeviceToken {
+    /// A random salt for one refresh rotation (stored with the device).
+    pub fn rotation_salt() -> Vec<u8> {
+        let mut bytes = vec![0u8; TOKEN_BYTES];
+        OsRng.fill_bytes(&mut bytes);
+        bytes
+    }
+
+    /// The refresh token that replaces `previous` in a rotation salted with
+    /// `salt`: `sqr_` + base64url(SHA-256(context, previous, salt)). Only a
+    /// holder of `previous` can compute it, so the server can answer a replay
+    /// of `previous` with the same new token without storing it in clear.
+    pub fn rotated_refresh(previous: &str, salt: &[u8]) -> String {
+        let digest = Sha256::new()
+            .chain_update(ROTATION_CONTEXT)
+            .chain_update(previous.as_bytes())
+            .chain_update(salt)
+            .finalize();
+        format!("{REFRESH_PREFIX}{}", URL_SAFE_NO_PAD.encode(digest))
+    }
+}
+
 /// `token` if it is shaped like an access token; checked before any hashing
 /// or database lookup.
 pub fn parse_access(token: &str) -> Option<&str> {
@@ -95,6 +120,23 @@ mod tests {
         let refresh = DeviceToken::refresh();
         assert_eq!(parse_refresh(&refresh), Some(refresh.as_str()));
         assert_eq!(parse_refresh(&DeviceToken::access()), None);
+    }
+
+    #[test]
+    fn rotated_refresh_tokens_are_well_formed_and_depend_on_both_inputs() {
+        let previous = DeviceToken::refresh();
+        let salt = DeviceToken::rotation_salt();
+        let next = DeviceToken::rotated_refresh(&previous, &salt);
+        assert_eq!(parse_refresh(&next), Some(next.as_str()));
+        assert_eq!(DeviceToken::rotated_refresh(&previous, &salt), next);
+        assert_ne!(
+            DeviceToken::rotated_refresh(&previous, &DeviceToken::rotation_salt()),
+            next
+        );
+        assert_ne!(
+            DeviceToken::rotated_refresh(&DeviceToken::refresh(), &salt),
+            next
+        );
     }
 
     #[test]
