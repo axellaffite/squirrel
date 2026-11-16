@@ -242,14 +242,12 @@ async fn a_worker_that_cannot_listen_at_start_polls_instead(pool: PgPool) {
     // Two connections, both held by the test while the worker starts: its
     // LISTEN connection cannot be acquired.
     let tight = tight_pool(&pool).await;
-    let held = (
-        tight.acquire().await.unwrap(),
-        tight.acquire().await.unwrap(),
-    );
+    let held = (acquire(&tight).await, acquire(&tight).await);
     let mut cfg = config();
     cfg.poll_interval = Duration::from_millis(200);
     let worker = start(&tight, noop_registry(), cfg);
-    tokio::time::sleep(Duration::from_millis(300)).await;
+    // Past the LISTEN connection's acquire timeout.
+    tokio::time::sleep(Duration::from_millis(800)).await;
     assert!(!worker.handle.is_finished(), "the worker must not give up");
     drop(held);
 
@@ -258,14 +256,23 @@ async fn a_worker_that_cannot_listen_at_start_polls_instead(pool: PgPool) {
     worker.stop().await;
 }
 
-/// A pool of two connections that gives up acquiring after 100 ms.
+/// A pool of two connections that gives up acquiring after 500 ms. Lazy: no
+/// connection is opened (and timed) before it is needed.
 async fn tight_pool(pool: &PgPool) -> PgPool {
     sqlx::postgres::PgPoolOptions::new()
         .max_connections(2)
-        .acquire_timeout(Duration::from_millis(100))
-        .connect_with((*pool.connect_options()).clone())
-        .await
-        .unwrap()
+        .acquire_timeout(Duration::from_millis(500))
+        .connect_lazy_with((*pool.connect_options()).clone())
+}
+
+/// Opening connections can be slow while other tests run: retry.
+async fn acquire(pool: &PgPool) -> sqlx::pool::PoolConnection<sqlx::Postgres> {
+    for _ in 0..20 {
+        if let Ok(conn) = pool.acquire().await {
+            return conn;
+        }
+    }
+    panic!("no connection");
 }
 
 #[sqlx::test(migrator = "squirrel_db::MIGRATOR")]
