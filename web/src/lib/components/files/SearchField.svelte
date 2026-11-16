@@ -1,0 +1,95 @@
+<script lang="ts">
+	import { goto } from '$app/navigation';
+	import Icon from '#lib/components/icons/Icon.svelte';
+	import { MAX_QUERY, normalizeQuery } from '#lib/files/search.ts';
+
+	interface Props {
+		value?: string;
+		/** Called as the user types (the search page searches as you type). */
+		oninput?: (value: string) => void;
+		/** Defaults to opening `/files/search?q=…`. */
+		onsubmit?: (value: string) => void;
+		autofocus?: boolean;
+	}
+
+	let { value = $bindable(''), oninput, onsubmit, autofocus = false }: Props = $props();
+
+	const uid = $props.id();
+	const inputId = `search-${uid}`;
+
+	function submit(event: SubmitEvent) {
+		event.preventDefault();
+		const query = normalizeQuery(value);
+		if (onsubmit) onsubmit(query);
+		else if (query) void goto(`/files/search?q=${encodeURIComponent(query)}`);
+	}
+</script>
+
+<form class="search" role="search" onsubmit={submit}>
+	<label class="visually-hidden" for={inputId}>Search files</label>
+	<Icon name="search" />
+	<!-- svelte-ignore a11y_autofocus -->
+	<input
+		id={inputId}
+		type="search"
+		bind:value
+		placeholder="Search names and documents"
+		maxlength={MAX_QUERY}
+		autocomplete="off"
+		spellcheck="false"
+		enterkeyhint="search"
+		{autofocus}
+		oninput={() => oninput?.(value)}
+	/>
+</form>
+
+<style>
+	/* The text field pill with a leading search icon. */
+	.search {
+		position: relative;
+		display: flex;
+		align-items: center;
+		min-width: min(100%, var(--menu-w));
+	}
+
+	.search :global(.icon) {
+		position: absolute;
+		left: var(--space-4);
+		color: var(--ink-muted);
+		pointer-events: none;
+	}
+
+	input {
+		width: 100%;
+		min-height: var(--control-md);
+		padding: var(--space-2) var(--space-4) var(--space-2) calc(var(--space-4) + var(--icon-sm) + var(--space-2));
+		border: 1px solid var(--edge);
+		border-radius: var(--radius-full);
+		background: var(--card);
+		color: var(--ink);
+		font-size: var(--text-md);
+		line-height: var(--text-md-lh);
+		transition: border-color var(--dur-fast) var(--ease);
+	}
+
+	input::placeholder {
+		color: var(--ink-muted);
+	}
+
+	@media (hover: hover) {
+		input:hover {
+			border-color: var(--ink-muted);
+		}
+	}
+
+	input:focus-visible {
+		outline: var(--ring-width) solid var(--accent);
+		outline-offset: var(--ring-offset);
+	}
+
+	@media (forced-colors: active) {
+		input {
+			border-color: CanvasText;
+		}
+	}
+</style>

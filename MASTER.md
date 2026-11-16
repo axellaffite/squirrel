@@ -183,6 +183,9 @@ press. Disabled: 45 % opacity, no shadow or glow, `cursor: not-allowed`. Hover o
   `--danger` edge plus an icon and message (never colour alone).
 - **Segmented control** (theme picker): `--tint` pill track; chosen segment is a `--card` pill
   with `--shadow-knob` and `--ink` label; others `--ink-muted`, hover `--ink`.
+- **Search field**: the text field pill with a leading 20 px `search` icon in `--ink-muted` and a
+  visually hidden label. Results are row cards; matched words in snippets are `<mark>` with an
+  `--accent-soft` background and `--ink` text (the text-highlight colour).
 - **Toggle**: `--tint` track with 1 px `--edge`, white knob; checked fills the track with
   `--accent`.
 - **Card**: `--card`, `--radius-card`, `--shadow-card`; interactive cards hover `--shadow-hover`.
