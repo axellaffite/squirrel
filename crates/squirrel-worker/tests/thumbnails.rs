@@ -142,3 +142,35 @@ async fn sandbox_failures_are_retried_then_recorded(pool: PgPool) {
     assert!(matches!(last, Err(JobError::Retry(_))));
     assert_eq!(row(&fx, &sha).await.thumbs_state(), MediaState::Failed);
 }
+
+#[sqlx::test(migrator = "squirrel_db::MIGRATOR")]
+async fn a_sandbox_timeout_leaves_no_scratch_directory(pool: PgPool) {
+    use std::os::unix::fs::PermissionsExt;
+    let bin = tempfile::tempdir().unwrap();
+    let program = bin.path().join("fake-squirrel");
+    std::fs::write(&program, "#!/bin/sh\nexec sleep 30\n").unwrap();
+    std::fs::set_permissions(&program, std::fs::Permissions::from_mode(0o755)).unwrap();
+    let fx = Fixture::with_executor(
+        pool,
+        Executor::Subprocess(SubprocessConfig {
+            program,
+            max_memory_mb: 64,
+            max_cpu_secs: 1,
+            timeout: Duration::from_millis(300),
+        }),
+    );
+    let sha = pending(
+        &fx,
+        "a.jpg",
+        &jpeg_sized_with_exif(40, 30, &ExifSpec::default()),
+    )
+    .await;
+    let result = thumbnails::run(&fx.ctx, thumbs_job(&sha)).await;
+    assert!(matches!(result, Err(JobError::Retry(_))));
+    let leftovers: Vec<_> = std::fs::read_dir(fx._dir.path().join("tmp"))
+        .unwrap()
+        .filter_map(Result::ok)
+        .filter(|e| e.file_name().to_string_lossy().starts_with("derived-"))
+        .collect();
+    assert!(leftovers.is_empty(), "{leftovers:?}");
+}
