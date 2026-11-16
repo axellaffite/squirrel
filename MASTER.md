@@ -103,8 +103,8 @@ the panel) 12 px, 22 px from 1024 px; `--panel-pad` 18 / 24 (768) / 28 (1024); `
 
 ## Radii
 
-`--radius-sm` 12 (code blocks, focus outlines on text links), `--radius-card` 18 (cards, row cards,
-alerts, menus), `--radius-well` 22 (tinted wells, empty states), `--radius-panel` 26 (the panel,
+`--radius-sm` 12 (code blocks, focus outlines on text links), `--radius-tile` 6 (photo tiles: 18 is
+too round for dense 112 px tiles), `--radius-card` 18 (cards, row cards, alerts, menus), `--radius-well` 22 (tinted wells, empty states), `--radius-panel` 26 (the panel,
 dialogs, auth card), `--radius-rail` 28 (the rail), `--radius-full` for every button, field,
 segmented control, badge and icon well.
 
@@ -123,7 +123,9 @@ One diffuse drop shadow per surface, never a highlight/shadow pair.
 | `--panel-edge` | inset 0 1 0 white 60 % | Top hairline of the panel |
 
 Dark mode replaces the card shadows with a faint top hairline plus a deeper black drop shadow.
-Selection is a 2 px accent ring (`--select-ring`), stacked on the card shadow.
+Selection is a 2 px accent ring (`--select-ring`), stacked on the card shadow. On photos, the
+hover selection circle is a white 70 % ring (`--photo-ring`) over a soft `--photo-shade`, so it
+reads on bright and dark images alike.
 
 ## Motion
 
@@ -156,6 +158,11 @@ Presses, sheets and dialogs still animate there.
   `background-attachment: fixed` (full repaints on mobile). Viewport heights use `svh`.
 - **Layout tokens**: `--sheet-max` (90dvh, tallest a sheet or dialog gets), `--center-min` (60dvh,
   centred loading/error states), `--underline-offset` (0.2em, link underlines).
+- **Photo tokens** (validated 2026-11-14): `--photo-row` (justified row height: 112 px on phones,
+  168 px from 768 px, 208 px from 1440 px), `--photo-month-head` 48 px and `--photo-day-head` 32 px
+  (heading blocks of the timeline), `--select-check` 24 px (selection circle), `--album-min` 160 px
+  (album card minimum width), `--scrubber-w` 56 px, `--scrub-tick` 2 px, `--info-w` 360 px (lightbox
+  info panel from 1024 px), `--locator-dot` 6 px. Grid gaps are `--space-1` (4 px).
 
 ## Components (states: default, hover, focus-visible, active, disabled)
 
@@ -203,6 +210,30 @@ press. Disabled: 45 % opacity, no shadow or glow, `cursor: not-allowed`. Hover o
   the rail.
 - **Icons**: inline SVG (Lucide shapes), 1.75 px stroke, `currentColor`, 20 px. Decorative icons are
   `aria-hidden`. No emoji as icons.
+
+### Photos (validated 2026-11-14)
+
+- **Photo tile**: the image fills the tile (`object-fit: cover`), `--radius-tile` (6 px), no shadow;
+  while loading, the tile shows the photo's blurhash (or its average colour), else `--tint` with a
+  20 px `image` icon in `--ink-muted`. Hover (hover devices): a 24 px round selection circle appears
+  top-left (`--photo-ring`). Selected: `--select-ring` and a filled `--accent` check circle with an
+  `--on-accent` check. Focus: the global ring. Unsupported previews: `--tint` with the `image-off`
+  icon. Tiles never animate in: the blurhash to image swap is instant.
+- **Justified grid**: rows `--photo-row` high (112 px phones, 168 px from 768 px, 208 px from 1440 px),
+  gaps `--space-1`; day labels `--text-sm` 500 `--ink-muted` tabular above each day; month headings
+  `--text-lg` `--weight-heading` above each month. Months not loaded yet show `--tint` rows of the
+  same height, never fake photos.
+- **Scrubber** (from 768 px): a slim column (`--scrubber-w`) on the panel's right edge listing years
+  as `--text-xs` tabular `--ink-muted` labels, with months as `--scrub-tick` ticks; the current month
+  is a `--card` pill with `--shadow-knob` and `--ink` label; dragging shows the month label in that
+  pill. Phones: a 44 px round `--card` handle on the right edge appears while scrolling (no persistent
+  column).
+- **Lightbox**: a full-viewport graphite stage (`--rail` gradient) with the photo centred; controls
+  are `--rail-well` circles with `--rail-ink` icons (as rail items); the info panel is a `--card` sheet
+  (bottom sheet on phones, right-side panel `--info-w` wide from 1024 px). The place locator is a
+  `--tint` well with `--tint-strong` land and a `--locator-dot` `--accent` dot.
+- **Selection bar**: a `--card` pill with `--shadow-pop` floating above the phone rail (top of the
+  panel from 1024 px): count (tabular), then actions.
 
 ## Theme
 
