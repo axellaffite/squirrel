@@ -44,6 +44,8 @@ openApiGenerate {
 kotlin {
     jvmToolchain(libs.versions.jvm.toolchain.get().toInt())
 
+    compilerOptions { freeCompilerArgs.add("-Xexpect-actual-classes") }
+
     jvm()
     android {
         namespace = "app.squirrel.shared"
@@ -57,7 +59,7 @@ kotlin {
 
     sourceSets {
         commonMain {
-            kotlin.srcDir(generatedApiDir.map { it.dir("src/commonMain/kotlin") })
+            kotlin.srcDir(files(generatedApiDir.map { it.dir("src/commonMain/kotlin") }).builtBy("openApiGenerate"))
             dependencies {
                 api(libs.coroutines.core)
                 api(libs.ktor.client.core)
@@ -101,7 +103,8 @@ sqldelight {
 }
 
 tasks.withType<KotlinCompilationTask<*>>().configureEach { dependsOn(tasks.named<GenerateTask>("openApiGenerate")) }
-tasks.matching { it.name.endsWith("SourcesJar") }.configureEach { dependsOn(tasks.named<GenerateTask>("openApiGenerate")) }
+// AGP also reads the generated source root (e.g. its baselineProfiles folder).
+tasks.matching { it.name.endsWith("SourcesJar") || it.name.contains("ArtProfile") }.configureEach { dependsOn(tasks.named<GenerateTask>("openApiGenerate")) }
 
 tasks.named<Test>("jvmTest") {
     // ContractTest reads the same contract the client is generated from.
