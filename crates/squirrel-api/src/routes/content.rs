@@ -9,11 +9,11 @@ use axum::http::header::{
     CONTENT_SECURITY_POLICY, CONTENT_TYPE, ETAG, IF_NONE_MATCH, RANGE, X_CONTENT_TYPE_OPTIONS,
     X_FRAME_OPTIONS,
 };
-use axum::http::{HeaderMap, HeaderName, HeaderValue, StatusCode};
+use axum::http::{HeaderMap, StatusCode};
 use axum::response::{IntoResponse, Response};
 use serde::Deserialize;
-use squirrel_core::{ContentHash, NodeKind};
-use squirrel_db::nodes::{self, NodeRecord};
+use squirrel_core::NodeKind;
+use squirrel_db::nodes;
 use tokio::io::{AsyncReadExt, AsyncSeekExt};
 use tokio_util::io::ReaderStream;
 use utoipa::IntoParams;
@@ -21,7 +21,8 @@ use uuid::Uuid;
 
 use crate::blocking::run_storage;
 use crate::content::{
-    ContentPolicy, RangeRequest, content_disposition, entity_tag, etag_matches, resolve_range,
+    CROSS_ORIGIN_RESOURCE_POLICY, ContentPolicy, RangeRequest, blob_hash, content_disposition,
+    entity_tag, etag_matches, header_str, resolve_range, to_header_map,
 };
 use crate::downloads::HeldReader;
 use crate::error::{ApiError, ErrorBody};
@@ -33,8 +34,6 @@ use crate::upload_runtime::Slot;
 /// Browsers may keep a copy but must revalidate it (auth + ETag) every time.
 const CACHE_POLICY: &str = "private, no-cache";
 const STREAM_BUFFER: usize = 64 * 1024;
-const CROSS_ORIGIN_RESOURCE_POLICY: HeaderName =
-    HeaderName::from_static("cross-origin-resource-policy");
 
 #[derive(Debug, Deserialize, IntoParams)]
 #[into_params(parameter_in = Query)]
@@ -130,22 +129,6 @@ fn select(range: Option<&str>, size: u64) -> Option<Selection> {
     }
 }
 
-fn blob_hash(node: &NodeRecord) -> Result<ContentHash, ApiError> {
-    node.blob_sha256
-        .as_deref()
-        .and_then(|sha| ContentHash::parse(sha).ok())
-        .ok_or_else(|| {
-            ApiError::Internal(anyhow::anyhow!(
-                "file node {} has no valid blob hash",
-                node.id
-            ))
-        })
-}
-
-fn header_str(headers: &HeaderMap, name: HeaderName) -> Option<&str> {
-    headers.get(name).and_then(|value| value.to_str().ok())
-}
-
 /// Headers shared by 200, 206 and 304. The handler sets CSP and
 /// `X-Frame-Options` itself; the global layers only add theirs when absent, so
 /// these (frameable by the app, sandboxed) win.
@@ -176,14 +159,6 @@ fn body_headers(policy: &ContentPolicy, selection: &Selection) -> Result<HeaderM
         pairs.push((CONTENT_RANGE, range.clone()));
     }
     to_header_map(pairs)
-}
-
-fn to_header_map(pairs: Vec<(HeaderName, String)>) -> Result<HeaderMap, ApiError> {
-    pairs
-        .into_iter()
-        .map(|(name, value)| HeaderValue::try_from(value).map(|value| (name, value)))
-        .collect::<Result<HeaderMap, _>>()
-        .map_err(|err| ApiError::Internal(err.into()))
 }
 
 /// The download slot travels with the body and is released when it finishes

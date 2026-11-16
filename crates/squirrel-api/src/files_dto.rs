@@ -1,7 +1,10 @@
 //! Request and response bodies for files, uploads and the trash.
 
+use std::collections::HashMap;
+
 use serde::{Deserialize, Serialize};
 use squirrel_core::NodeKind;
+use squirrel_db::media::ThumbRef;
 use squirrel_db::nodes::NodeRecord;
 use squirrel_db::uploads::UploadRecord;
 use time::OffsetDateTime;
@@ -27,6 +30,42 @@ pub struct NodeDto {
     #[serde(with = "time::serde::rfc3339")]
     #[schema(value_type = String, format = DateTime)]
     pub modified_at: OffsetDateTime,
+    /// Set when a thumbnail is ready (`GET /api/files/{id}/thumbnail`); `null`
+    /// otherwise, and in listings that do not look thumbnails up.
+    pub thumbnail: Option<ThumbnailRef>,
+}
+
+/// A ready thumbnail of a file.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, ToSchema)]
+pub struct ThumbnailRef {
+    /// Pass as `v` to the thumbnail URL: a new version is a new URL.
+    pub version: i16,
+    /// A compact blurred placeholder (blurha.sh) to show while it loads.
+    pub blurhash: Option<String>,
+}
+
+impl From<&ThumbRef> for ThumbnailRef {
+    fn from(thumb: &ThumbRef) -> Self {
+        Self {
+            version: thumb.version,
+            blurhash: thumb.blurhash.clone(),
+        }
+    }
+}
+
+impl NodeDto {
+    /// The node, with its thumbnail when `thumbnails` (by blob hash) has one.
+    pub fn with_thumbnails(node: &NodeRecord, thumbnails: &HashMap<String, ThumbRef>) -> Self {
+        let thumbnail = node
+            .blob_sha256
+            .as_ref()
+            .and_then(|sha| thumbnails.get(sha))
+            .map(ThumbnailRef::from);
+        Self {
+            thumbnail,
+            ..Self::from(node)
+        }
+    }
 }
 
 impl From<&NodeRecord> for NodeDto {
@@ -41,6 +80,7 @@ impl From<&NodeRecord> for NodeDto {
             is_root: node.is_root(),
             created_at: node.created_at,
             modified_at: node.modified_at,
+            thumbnail: None,
         }
     }
 }
