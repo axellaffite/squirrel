@@ -1,6 +1,6 @@
 package app.squirrel.shared.sync
 
-enum class ErrorReason { QuotaExceeded, StorageFull, SignedOut, Unreachable }
+enum class ErrorReason { QuotaExceeded, StorageFull, SignedOut, Unreachable, Unexpected }
 
 sealed interface SyncState {
     data object Idle : SyncState
