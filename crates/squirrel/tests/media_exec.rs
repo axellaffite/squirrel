@@ -58,3 +58,32 @@ async fn a_child_that_overruns_its_time_is_killed() {
         .unwrap_err();
     assert!(matches!(err, ExecError::TimedOut(_)), "{err}");
 }
+
+/// RLIMIT_AS is enforced on Linux only (macOS refuses it).
+#[cfg(target_os = "linux")]
+#[tokio::test]
+async fn the_memory_limit_stops_a_large_decode() {
+    let dir = tempfile::tempdir().unwrap();
+    let input = dir.path().join("in.jpg");
+    std::fs::write(
+        &input,
+        jpeg_sized_with_exif(4000, 3000, &ExifSpec::default()),
+    )
+    .unwrap();
+    let executor = Executor::Subprocess(SubprocessConfig {
+        program: env!("CARGO_BIN_EXE_squirrel").into(),
+        max_memory_mb: 64,
+        max_cpu_secs: 60,
+        timeout: Duration::from_secs(60),
+    });
+    let request = ExecRequest::Image {
+        input,
+        out_dir: dir.path().into(),
+        limits: DecodeLimits::default(),
+    };
+    let outcome = executor.run(request).await;
+    assert!(
+        !matches!(outcome, Ok(ExecResponse::Image { .. })),
+        "{outcome:?}"
+    );
+}

@@ -4,7 +4,7 @@
 
 use std::io::{Read, Write};
 
-use rustix::process::{Resource, Rlimit, setrlimit};
+use rustix::process::{Resource, Rlimit, getrlimit, setrlimit};
 
 const MAX_REQUEST_BYTES: u64 = 64 * 1024;
 
@@ -16,11 +16,15 @@ pub struct MediaExecArgs {
     max_cpu_secs: u64,
 }
 
+/// Largest file the child may write (its outputs are thumbnails of a few hundred KB).
+const MAX_FILE_BYTES: u64 = 64 * 1024 * 1024;
+const MAX_OPEN_FILES: u64 = 64;
+
 pub fn run(args: &MediaExecArgs) -> anyhow::Result<()> {
-    // Before reading anything untrusted. Best effort on macOS (RLIMIT_AS is not enforced there).
-    limit(Resource::As, args.max_memory_mb * 1024 * 1024);
-    limit(Resource::Cpu, args.max_cpu_secs);
-    limit(Resource::Nofile, 64);
+    // Before reading anything untrusted: without its limits the child refuses to run.
+    for (resource, value) in limits(args) {
+        apply(resource, value)?;
+    }
     #[cfg(feature = "heic")]
     squirrel_media::heic::register();
     let mut raw = Vec::new();
@@ -35,14 +39,64 @@ pub fn run(args: &MediaExecArgs) -> anyhow::Result<()> {
     Ok(())
 }
 
-fn limit(resource: Resource, value: u64) {
-    if let Err(err) = setrlimit(
+fn limits(args: &MediaExecArgs) -> [(Resource, u64); 5] {
+    [
+        (Resource::As, args.max_memory_mb.saturating_mul(1024 * 1024)),
+        (Resource::Cpu, args.max_cpu_secs),
+        (Resource::Nofile, MAX_OPEN_FILES),
+        (Resource::Fsize, MAX_FILE_BYTES),
+        // A crashing decoder must not leave a core dump of what it parsed.
+        (Resource::Core, 0),
+    ]
+}
+
+/// Sets soft and hard limits to `value`, or to the current hard limit when
+/// that is lower already (lowering never needs privileges).
+fn apply(resource: Resource, value: u64) -> anyhow::Result<()> {
+    let value = clamp(value, getrlimit(resource).maximum);
+    let set = setrlimit(
         resource,
         Rlimit {
             current: Some(value),
             maximum: Some(value),
         },
-    ) {
-        eprintln!("media-exec: could not set {resource:?} limit: {err}");
+    );
+    match set {
+        Ok(()) => Ok(()),
+        // macOS does not support RLIMIT_AS (EINVAL): the CPU limit and the
+        // parent's wall clock still apply. Every other failure is fatal.
+        Err(err) if cfg!(target_os = "macos") && resource == Resource::As => {
+            eprintln!("media-exec: address-space limit unsupported here: {err}");
+            Ok(())
+        }
+        Err(err) => anyhow::bail!("could not set the {resource:?} limit: {err}"),
+    }
+}
+
+fn clamp(value: u64, hard: Option<u64>) -> u64 {
+    hard.map_or(value, |hard| value.min(hard))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn limits_never_exceed_the_hard_limit_already_set() {
+        assert_eq!(clamp(64, None), 64);
+        assert_eq!(clamp(64, Some(1024)), 64);
+        assert_eq!(clamp(64, Some(16)), 16);
+    }
+
+    #[test]
+    fn the_child_gets_no_core_dumps_and_small_files() {
+        let args = MediaExecArgs {
+            max_memory_mb: 2048,
+            max_cpu_secs: 120,
+        };
+        let limits = limits(&args);
+        assert!(limits.contains(&(Resource::Core, 0)));
+        assert!(limits.contains(&(Resource::Fsize, MAX_FILE_BYTES)));
+        assert!(limits.contains(&(Resource::As, 2048 * 1024 * 1024)));
     }
 }
