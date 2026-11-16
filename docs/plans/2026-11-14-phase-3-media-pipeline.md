@@ -22,7 +22,7 @@
 - E2E: `cd web && source ~/.nvm/nvm.sh && nvm use 22 >/dev/null && SQUIRREL_E2E_PORT=8199 pnpm test:e2e` (8099 is taken on this machine).
 - Tests that touch the filesystem use `tempfile::tempdir()`. Media fixtures are **generated in code** (`squirrel_media::testutil`: JPEGs with chosen EXIF, PNGs, minimal PDFs) so no binary of unclear licence is committed; the only committed binaries are the E2E fixtures produced by `cargo run -p squirrel-media --example make_fixtures --features test-util` (Task 42).
 - `sqlx` runtime queries (`query_as::<_, T>`) as before; no compile-time macros. SQL whose `WHERE` depends on optional filters is assembled with `sqlx::QueryBuilder` from fixed fragments and `push_bind` (never user input in the SQL text) so keyset conditions stay `Index Cond`s — no `$n IS NULL OR …`.
-- Existing migrations are **frozen** (CI refuses edits). Phase 3 adds new files only: `20261114000002_jobs.sql` (A), `20261114000003_media.sql` (B), `20261114000004_albums.sql` (D), `20261114000005_documents.sql` (E). If the calendar moved on, use the current date for the prefix, keeping this order.
+- Existing migrations are **frozen** (CI refuses edits). Phase 3 adds new files only: `20261114000003_jobs.sql` (A), `20261114000004_media.sql` (B), `20261114000005_albums.sql` (D), `20261114000006_documents.sql` (E). If the calendar moved on, use the current date for the prefix, keeping this order.
 - Every API change regenerates the contract in the same task, or `tests/openapi.rs` fails:
   `cargo run -q -p squirrel -- openapi > openapi.json && (cd web && source ~/.nvm/nvm.sh && nvm use 22 >/dev/null && pnpm gen:api)`
 - Commit messages follow the repo pattern `<type>(<scope>): <description>` (scopes: `core`, `db`, `storage`, `api`, `jobs`, `media`, `worker`, `web`, …), short body optional, ending with
@@ -168,10 +168,10 @@ Each milestone ends green (`cargo test --workspace`, `pnpm check`, `pnpm test:un
 
 ## Milestone A — Job queue & worker
 
-### Task 1: Migration `20261114000002_jobs.sql`
+### Task 1: Migration `20261114000003_jobs.sql`
 
 **Files:**
-- Create: `crates/squirrel-db/migrations/20261114000002_jobs.sql`
+- Create: `crates/squirrel-db/migrations/20261114000003_jobs.sql`
 - Create: `crates/squirrel-db/tests/jobs_schema.rs`
 - Modify: `Cargo.toml` (workspace `sqlx` features: add `"json"`)
 
@@ -296,7 +296,7 @@ Workspace `Cargo.toml`: `sqlx = { version = "0.8", default-features = false, fea
 
 **Step 5: Commit**
 ```bash
-git add Cargo.toml Cargo.lock crates/squirrel-db/migrations/20261114000002_jobs.sql crates/squirrel-db/tests
+git add Cargo.toml Cargo.lock crates/squirrel-db/migrations/20261114000003_jobs.sql crates/squirrel-db/tests
 git commit -m "feat(db): add the jobs table and its wake-up notification" -m "Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
 ```
 
@@ -3092,10 +3092,10 @@ async fn run_child(config: &SubprocessConfig, request: &ExecRequest) -> Result<E
 
 ---
 
-### Task 13: Migration `20261114000003_media.sql` and the media/asset repositories
+### Task 13: Migration `20261114000004_media.sql` and the media/asset repositories
 
 **Files:**
-- Create: `crates/squirrel-db/migrations/20261114000003_media.sql`
+- Create: `crates/squirrel-db/migrations/20261114000004_media.sql`
 - Create: `crates/squirrel-db/src/media.rs`, `crates/squirrel-db/src/assets.rs`
 - Create: `crates/squirrel-db/tests/media.rs`
 - Modify: `crates/squirrel-db/src/lib.rs`, `crates/squirrel-db/src/nodes/read.rs` (`find_any`)
@@ -4058,10 +4058,10 @@ pub struct TimelineQuery {
 
 ---
 
-### Task 25: Migration `20261114000004_albums.sql` and the albums repository
+### Task 25: Migration `20261114000005_albums.sql` and the albums repository
 
 **Files:**
-- Create: `crates/squirrel-db/migrations/20261114000004_albums.sql`, `crates/squirrel-db/src/albums.rs`, `crates/squirrel-db/tests/albums.rs`
+- Create: `crates/squirrel-db/migrations/20261114000005_albums.sql`, `crates/squirrel-db/src/albums.rs`, `crates/squirrel-db/tests/albums.rs`
 - Create: `crates/squirrel-core/src/album_name.rs` (`AlbumName::parse`: trimmed, NFC, 1–100 chars, no control characters; tests like `DisplayName`'s)
 
 **Step 1: Write the failing tests:** create/list (newest `updated_at` first, with `item_count` and `cover_node_id` = chosen cover else the newest live item); rename; delete (items gone, photos untouched); `add_items(album, owner, &[node_ids])` is idempotent (`ON CONFLICT DO NOTHING`), skips ids that are not the owner's live assets and returns how many were added; `remove_items`; **isolation at the database level:** inserting an `album_items` row pairing Alice's album with Bob's asset fails on `album_items_asset_fkey`; deleting a node clears it from albums and nulls the cover; trashed items are hidden from `items(…)` but come back after restore; `items` pages by `(taken_at DESC, node_id DESC)` like the timeline; `albums_for_node(owner, node)` for the detail endpoint. Adding or removing items bumps `updated_at`.
@@ -4128,10 +4128,10 @@ Endpoints (all `json_routes`, `CurrentUser`, CSRF on writes): `GET /api/albums` 
 
 ## Milestone E — Documents: PDF thumbnails, text and search
 
-### Task 27: Migration `20261114000005_documents.sql` and the document repository
+### Task 27: Migration `20261114000006_documents.sql` and the document repository
 
 **Files:**
-- Create: `crates/squirrel-db/migrations/20261114000005_documents.sql`, `crates/squirrel-db/src/documents.rs`, `crates/squirrel-db/tests/documents.rs`
+- Create: `crates/squirrel-db/migrations/20261114000006_documents.sql`, `crates/squirrel-db/src/documents.rs`, `crates/squirrel-db/tests/documents.rs`
 
 **Step 1: Write the failing tests:**
 1. `documents::store_text(pool, sha, body)` stores the body and its `tsvector`; storing again replaces it; `media.text_state` becomes `ready` in the same transaction.
