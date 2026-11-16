@@ -26,3 +26,13 @@ export async function trashPhotos(
 	const count = failures.length === 1 ? '1 photo was' : `${failures.length} photos were`;
 	return { moved, error: `${count} not moved to the trash. ${reason}` };
 }
+
+/**
+ * The photo to show after `id` leaves `order` (the next one, else the previous one), or null
+ * when there is none or `id` is not in `order` (e.g. opened from the address, month not loaded).
+ */
+export function neighbourAfterRemoval<T extends { id: string }>(order: readonly T[], id: string): T | null {
+	const index = order.findIndex((item) => item.id === id);
+	if (index < 0) return null;
+	return order[index + 1] ?? order[index - 1] ?? null;
+}

@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { goto } from '$app/navigation';
 	import { onMount } from 'svelte';
+	import ConfirmDialog from '#lib/components/ConfirmDialog.svelte';
 	import Breadcrumbs from '#lib/components/files/Breadcrumbs.svelte';
 	import NameDialog from '#lib/components/files/NameDialog.svelte';
 	import Icon from '#lib/components/icons/Icon.svelte';
@@ -12,7 +13,6 @@
 	import Page from '#lib/components/shell/Page.svelte';
 	import Alert from '#lib/components/ui/Alert.svelte';
 	import Button from '#lib/components/ui/Button.svelte';
-	import Dialog from '#lib/components/ui/Dialog.svelte';
 	import EmptyState from '#lib/components/ui/EmptyState.svelte';
 	import { batches, photoCount } from '#lib/photos/albums.ts';
 	import {
@@ -26,7 +26,7 @@
 		type AssetSummary
 	} from '#lib/photos/api.ts';
 	import { Selection } from '#lib/photos/selection.svelte.ts';
-	import { trashPhotos } from '#lib/photos/trash.ts';
+	import { neighbourAfterRemoval, trashPhotos } from '#lib/photos/trash.ts';
 
 	let { albumId }: { albumId: string } = $props();
 
@@ -119,21 +119,28 @@
 		return null;
 	}
 
-	const remove = () =>
-		run(async () => {
-			const result = await deleteAlbum(albumId);
-			if (!result.ok) return result.error;
-			confirmingDelete = false;
-			void goto('/photos/albums');
-			return null;
-		});
+	let deleted = false;
+
+	async function remove(): Promise<string | null> {
+		const result = await deleteAlbum(albumId);
+		if (!result.ok) return result.error;
+		deleted = true;
+		return null;
+	}
+
+	/** The album is gone once its confirmation closed: back to the albums. */
+	function confirmClosed() {
+		confirmingDelete = false;
+		if (deleted) void goto('/photos/albums');
+	}
 
 	async function trashViewed(asset: AssetSummary): Promise<string | null> {
-		const index = items.findIndex((item) => item.id === asset.id);
+		const after = neighbourAfterRemoval(items, asset.id);
 		const result = await trashPhotos([asset.id]);
 		if (result.error) return result.error;
-		const after = items[index + 1] ?? items[index - 1] ?? null;
-		viewing = after;
+		items = items.filter((item) => item.id !== asset.id);
+		if (after) viewing = after;
+		else closeViewer();
 		await reload();
 		return null;
 	}
@@ -203,13 +210,9 @@
 {/if}
 
 {#if confirmingDelete}
-	<Dialog open title="Delete the album?" onclose={() => (confirmingDelete = false)}>
-		<p class="muted">The photos stay in your timeline.</p>
-		{#snippet actions()}
-			<Button variant="secondary" onclick={() => (confirmingDelete = false)}>Cancel</Button>
-			<Button variant="danger-solid" disabled={busy} onclick={remove}>Delete album</Button>
-		{/snippet}
-	</Dialog>
+	<ConfirmDialog title="Delete the album?" confirmLabel="Delete album" onConfirm={remove} onClose={confirmClosed}>
+		The photos stay in your timeline.
+	</ConfirmDialog>
 {/if}
 
 {#if viewing}

@@ -48,7 +48,7 @@
 	}
 
 	@media (hover: hover) {
-		.stage-btn:hover {
+		.stage-btn:not([aria-disabled='true']):hover {
 			background: var(--rail-well-hover);
 		}
 	}
@@ -67,7 +67,8 @@
 		color: var(--rail-active-ink);
 	}
 
-	.stage-btn:disabled {
+	.stage-btn:disabled,
+	.stage-btn[aria-disabled='true'] {
 		opacity: var(--disabled-opacity);
 		cursor: not-allowed;
 	}

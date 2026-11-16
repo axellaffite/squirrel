@@ -3,9 +3,7 @@
 	import LightboxPhoto from '#lib/components/photos/LightboxPhoto.svelte';
 	import PhotoInfo from '#lib/components/photos/PhotoInfo.svelte';
 	import StageButton from '#lib/components/photos/StageButton.svelte';
-	import Alert from '#lib/components/ui/Alert.svelte';
-	import Button from '#lib/components/ui/Button.svelte';
-	import Dialog from '#lib/components/ui/Dialog.svelte';
+	import ConfirmDialog from '#lib/components/ConfirmDialog.svelte';
 	import { contentUrl } from '#lib/files/format.ts';
 	import { latestOnly } from '#lib/files/latest.ts';
 	import { photoDetails, thumbnailUrl, type AssetDetails, type AssetSummary } from '#lib/photos/api.ts';
@@ -33,8 +31,6 @@
 	let details: AssetDetails | null = $state(null);
 	let detailsError: string | null = $state(null);
 	let confirming = $state(false);
-	let deleting = $state(false);
-	let deleteError: string | null = $state(null);
 	let swipe: { x: number; y: number } | null = null;
 	const track = latestOnly();
 
@@ -66,8 +62,15 @@
 		if (target) onNavigate(target);
 	}
 
+	/**
+	 * ←/→ step through photos wherever focus is in the lightbox (window listener), but not while
+	 * another dialog (confirmation, album picker) is over it or a field has the focus.
+	 */
 	function keydown(event: KeyboardEvent) {
-		if (confirming || event.defaultPrevented) return;
+		if (confirming || event.defaultPrevented || !dialog?.open) return;
+		const target = event.target as Element | null;
+		const owner = target?.closest?.('dialog');
+		if ((owner && owner !== dialog) || target?.closest?.('input, textarea, select')) return;
 		if (event.key === 'ArrowLeft') go(previous);
 		else if (event.key === 'ArrowRight') go(next);
 		else return;
@@ -87,21 +90,14 @@
 		go(dx > 0 ? previous : next);
 	}
 
-	async function confirmDelete() {
-		deleting = true;
-		deleteError = null;
-		const error = await onDelete(asset);
-		deleting = false;
-		if (error) deleteError = error;
-		else confirming = false;
-	}
-
 	onMount(() => {
 		dialog?.showModal();
 	});
 </script>
 
-<dialog bind:this={dialog} class="lightbox" class:with-info={infoOpen} aria-label={`Photo taken ${when}`} onclose={onClose} onkeydown={keydown}>
+<svelte:window onkeydown={keydown} />
+
+<dialog bind:this={dialog} class="lightbox" class:with-info={infoOpen} aria-label={`Photo taken ${when}`} onclose={onClose}>
 	<div class="stage" onpointerdown={pointerdown} onpointerup={pointerup} role="presentation">
 		<LightboxPhoto {asset} />
 		<div class="bar">
@@ -122,12 +118,23 @@
 				<StageButton icon="trash" label={`Move the photo taken ${when} to the trash`} tooltip="Move to trash" onclick={() => (confirming = true)} />
 			</div>
 		</div>
-		{#if previous}
-			<StageButton class="nav prev" icon="chevron-left" label={`Previous photo, taken ${tileDateTime(previous.taken_at)}`} tooltip="Previous" onclick={() => go(previous)} />
-		{/if}
-		{#if next}
-			<StageButton class="nav next" icon="chevron-right" label={`Next photo, taken ${tileDateTime(next.taken_at)}`} tooltip="Next" onclick={() => go(next)} />
-		{/if}
+		<!-- Always rendered (aria-disabled at the ends), so a focused arrow never vanishes under focus. -->
+		<StageButton
+			class="nav prev"
+			icon="chevron-left"
+			label={previous ? `Previous photo, taken ${tileDateTime(previous.taken_at)}` : 'Previous photo'}
+			tooltip="Previous"
+			aria-disabled={previous ? undefined : 'true'}
+			onclick={() => go(previous)}
+		/>
+		<StageButton
+			class="nav next"
+			icon="chevron-right"
+			label={next ? `Next photo, taken ${tileDateTime(next.taken_at)}` : 'Next photo'}
+			tooltip="Next"
+			aria-disabled={next ? undefined : 'true'}
+			onclick={() => go(next)}
+		/>
 	</div>
 	{#if infoOpen}
 		<aside class="sheet" id="photo-info" aria-label="Photo details">
@@ -136,16 +143,9 @@
 	{/if}
 
 	{#if confirming}
-		<Dialog open title="Move this photo to the trash?" onclose={() => (confirming = false)}>
-			<div class="confirm">
-				<p class="muted">{asset.name} stays in the trash for 30 days before it is deleted for good.</p>
-				{#if deleteError}<Alert>{deleteError}</Alert>{/if}
-			</div>
-			{#snippet actions()}
-				<Button variant="secondary" onclick={() => (confirming = false)}>Cancel</Button>
-				<Button variant="danger-solid" onclick={confirmDelete} disabled={deleting}>Move to trash</Button>
-			{/snippet}
-		</Dialog>
+		<ConfirmDialog title="Move this photo to the trash?" confirmLabel="Move to trash" onConfirm={() => onDelete(asset)} onClose={() => (confirming = false)}>
+			{asset.name} stays in the trash for 30 days before it is deleted for good.
+		</ConfirmDialog>
 	{/if}
 </dialog>
 
@@ -246,11 +246,6 @@
 		box-shadow: var(--shadow-pop);
 		color: var(--ink);
 		overscroll-behavior: contain;
-	}
-
-	.confirm {
-		display: grid;
-		gap: var(--space-3);
 	}
 
 	/* From 768 px the photo gets side room for the arrows. */
