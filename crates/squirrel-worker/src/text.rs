@@ -167,7 +167,7 @@ fn read_sandbox_text(path: &Path) -> io::Result<String> {
 
 async fn store(ctx: &MediaContext, sha256: &str, text: &str) -> Result<(), JobError> {
     // `false`: collected meanwhile, nothing left to record.
-    documents::store_text(&ctx.pool, sha256, text)
+    documents::store_text(&ctx.pool, sha256, text, None)
         .await
         .map(|_| ())
         .map_err(JobError::retry)

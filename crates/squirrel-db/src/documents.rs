@@ -17,6 +17,11 @@ pub const MAX_BODY_BYTES: usize = 256 * 1024;
 const MIN_WORD_CHARS: usize = 2;
 const MAX_QUERY_WORDS: usize = 16;
 const MAX_WORD_CHARS: usize = 64;
+/// A search may not run longer than this (a pathological query or a huge
+/// library); it then fails as [`DbError::Busy`].
+const SEARCH_TIMEOUT: &str = "5s";
+/// SQLSTATE of a statement cancelled by `statement_timeout`.
+const QUERY_CANCELED: &str = "57014";
 /// Marks around matched words in [`SearchHit::snippet`].
 pub const HIGHLIGHT_START: char = '\u{2}';
 pub const HIGHLIGHT_END: char = '\u{3}';
@@ -25,12 +30,21 @@ pub const HIGHLIGHT_END: char = '\u{3}';
 /// step ready, in one transaction. Control characters other than tabs and
 /// line breaks are dropped (they would collide with the highlight marks; NUL
 /// does not fit in `text`), then the body is cut to [`MAX_BODY_BYTES`].
+/// `page_count`, when given, is recorded in the same transaction.
 /// `false`: the media row is gone (the blob was collected meanwhile).
-pub async fn store_text(pool: &PgPool, sha256: &str, text: &str) -> Result<bool, DbError> {
+pub async fn store_text(
+    pool: &PgPool,
+    sha256: &str,
+    text: &str,
+    page_count: Option<u32>,
+) -> Result<bool, DbError> {
     let body = clean_body(text);
     let mut tx = pool.begin().await?;
     if media::lock(&mut tx, sha256).await?.is_none() {
         return Ok(false);
+    }
+    if let Some(pages) = page_count {
+        media::set_page_count(&mut *tx, sha256, pages).await?;
     }
     sqlx::query(
         "INSERT INTO document_text (sha256, body, content) \
@@ -103,25 +117,43 @@ pub async fn search(
             has_more: false,
         });
     };
+    let mut tx = pool.begin().await?;
+    sqlx::query(&format!("SET LOCAL statement_timeout = '{SEARCH_TIMEOUT}'"))
+        .execute(&mut *tx)
+        .await?;
     let rows = sqlx::query_as::<_, SearchHit>(SEARCH_SQL)
         .bind(owner_id)
         .bind(terms)
         .bind(i64::from(limit) + 1)
         .bind(i64::from(offset))
-        .fetch_all(pool)
-        .await?;
+        .fetch_all(&mut *tx)
+        .await
+        .map_err(timed_out_is_busy)?;
+    tx.commit().await?;
     Ok(Page::from_overfetch(rows, limit))
 }
 
+fn timed_out_is_busy(err: sqlx::Error) -> DbError {
+    match &err {
+        sqlx::Error::Database(db) if db.code().as_deref() == Some(QUERY_CANCELED) => {
+            DbError::Busy(err)
+        }
+        _ => err.into(),
+    }
+}
+
 /// `$1` owner, `$2` the [`search_terms`], `$3` limit (+1), `$4` offset.
-/// Each term becomes a quoted prefix lexeme (`'ecole':* & 'elec':*`), quotes
-/// and backslashes escaped although the terms cannot contain them. The name
-/// expression is the one `nodes_name_search_idx` indexes.
+/// Each term becomes a quoted lexeme, a prefix from 3 characters on
+/// (`'ecole':* & 'el'`), quotes and backslashes escaped although the terms
+/// cannot contain them. The name expression is the one
+/// `nodes_name_search_idx` indexes. Snippets are cut from the start of the
+/// body with the same separators as the index, so "Rapport.pdf" highlights.
 const SEARCH_SQL: &str = "\
 WITH q AS (
     SELECT to_tsquery('squirrel_text', (
         SELECT string_agg(
-                   '''' || replace(replace(u.lexeme, '\\', '\\\\'), '''', '''''') || ''':*',
+                   '''' || replace(replace(u.lexeme, '\\', '\\\\'), '''', '''''') || ''''
+                   || CASE WHEN length(u.lexeme) >= 3 THEN ':*' ELSE '' END,
                    ' & ')
           FROM unnest(to_tsvector('squirrel_text', $2)) AS u
          WHERE length(u.lexeme) >= 2)) AS query
@@ -140,26 +172,26 @@ WITH q AS (
     SELECT n.id, n.owner_id, n.parent_id, n.name, n.kind, n.blob_sha256, n.size, n.mime,
            n.created_at, n.modified_at, n.deleted_at, m.page_count, d.body,
            d.content @@ q.query AS text_matches,
-           CASE WHEN to_tsvector('squirrel_text', translate(n.name, '._-/', '    ')) @@ q.query
-                THEN 1.0::real ELSE 0.0::real END
-             + COALESCE(ts_rank(d.content, q.query), 0.0::real) AS rank
+           to_tsvector('squirrel_text', translate(n.name, '._-/', '    ')) @@ q.query
+             AS name_matches,
+           COALESCE(ts_rank(d.content, q.query), 0.0::real) AS rank
       FROM hits h
       JOIN nodes n ON n.id = h.id
       CROSS JOIN q
       LEFT JOIN media m ON m.sha256 = n.blob_sha256
       LEFT JOIN document_text d ON d.sha256 = n.blob_sha256
-     ORDER BY rank DESC, n.modified_at DESC, n.id
+     ORDER BY name_matches DESC, rank DESC, n.modified_at DESC, n.id
      LIMIT $3 OFFSET $4
 )
 SELECT p.id, p.owner_id, p.parent_id, p.name, p.kind, p.blob_sha256, p.size, p.mime,
        p.created_at, p.modified_at, p.deleted_at, p.page_count,
        CASE WHEN p.text_matches THEN
-           ts_headline('squirrel_text', p.body, q.query,
+           ts_headline('squirrel_text', left(translate(p.body, '._-/', '    '), 65536), q.query,
                'StartSel=' || chr(2) || ', StopSel=' || chr(3)
                || ', MaxFragments=2, MaxWords=18, MinWords=6, FragmentDelimiter=\" … \"')
        END AS snippet
   FROM page p CROSS JOIN q
- ORDER BY p.rank DESC, p.modified_at DESC, p.id";
+ ORDER BY p.name_matches DESC, p.rank DESC, p.modified_at DESC, p.id";
 
 #[cfg(test)]
 mod tests {
@@ -180,6 +212,22 @@ mod tests {
         for nothing in ["", "   ", "' & | !", "a", "a b c", "\\ :*"] {
             assert_eq!(search_terms(nothing), None, "{nothing:?}");
         }
+    }
+
+    #[sqlx::test(migrator = "crate::MIGRATOR")]
+    async fn a_timed_out_statement_is_busy(pool: PgPool) {
+        let mut tx = pool.begin().await.unwrap();
+        sqlx::query("SET LOCAL statement_timeout = '10ms'")
+            .execute(&mut *tx)
+            .await
+            .unwrap();
+        let err = sqlx::query("SELECT pg_sleep(1)")
+            .execute(&mut *tx)
+            .await
+            .unwrap_err();
+        assert!(matches!(timed_out_is_busy(err), DbError::Busy(_)));
+        let other = sqlx::query("SELECT nope").execute(&pool).await.unwrap_err();
+        assert!(matches!(timed_out_is_busy(other), DbError::Sqlx(_)));
     }
 
     #[test]

@@ -720,7 +720,10 @@ export interface components {
             snippet: components["schemas"]["SnippetPart"][];
         };
         DocumentResults: {
-            /** @description Whether `offset + limit` would return more (never past 200 results). */
+            /**
+             * @description Whether a page at `offset + limit` would return more (never past
+             *     200 results).
+             */
             has_more: boolean;
             /** @description Name matches first, then by relevance. */
             items: components["schemas"]["DocumentHit"][];
@@ -2191,7 +2194,7 @@ export interface operations {
                  *     file's name or text, accents and case ignored.
                  */
                 q?: string;
-                /** @description Results to skip, at most 200. */
+                /** @description Results to skip; `offset + limit` is at most 200. */
                 offset?: number;
                 /** @description Page size, 1–50, default 20. */
                 limit?: number;

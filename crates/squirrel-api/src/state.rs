@@ -32,6 +32,9 @@ pub struct ApiConfig {
     pub login_rate_limit: Option<RateLimit>,
     /// Separate, more generous per-client limit on `GET /api/join/{token}`.
     pub join_check_rate_limit: Option<RateLimit>,
+    /// Per-client limit on `GET /api/search/documents` (each search scans
+    /// text indexes). `None` disables it.
+    pub search_rate_limit: Option<RateLimit>,
     /// Proxies whose `X-Forwarded-For` is believed when resolving client addresses.
     pub trusted_proxies: TrustedProxies,
     /// Required to create the first administrator. `None` refuses setup entirely.
@@ -81,6 +84,10 @@ impl Default for ApiConfig {
             join_check_rate_limit: Some(RateLimit {
                 replenish_every_secs: 1,
                 burst: 30,
+            }),
+            search_rate_limit: Some(RateLimit {
+                replenish_every_secs: 1,
+                burst: 20,
             }),
             trusted_proxies: TrustedProxies::default(),
             setup_token: None,

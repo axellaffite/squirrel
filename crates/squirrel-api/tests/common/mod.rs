@@ -29,6 +29,7 @@ pub fn test_config() -> ApiConfig {
         cookie_secure: false,
         login_rate_limit: None,
         join_check_rate_limit: None,
+        search_rate_limit: None,
         setup_token: Some(SetupToken::new(SETUP_TOKEN)),
         upload_chunk_size: TEST_CHUNK_SIZE,
         min_free_bytes: 0,

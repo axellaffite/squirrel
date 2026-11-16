@@ -15,7 +15,7 @@ use crate::search_dto::{DocumentHit, DocumentResults, SearchQuery, snippet_parts
 use crate::state::AppState;
 
 pub const MAX_QUERY_CHARS: usize = 200;
-/// Results reachable through `offset`, at most.
+/// Results reachable through `offset` and `limit`, at most.
 pub const MAX_RESULTS: u32 = 200;
 pub const DEFAULT_LIMIT: u32 = 20;
 pub const MAX_LIMIT: u32 = 50;
@@ -38,6 +38,11 @@ fn validate(query: &SearchQuery) -> Result<(&str, u32, u32), ApiError> {
     let limit = query.limit.unwrap_or(DEFAULT_LIMIT);
     if !(1..=MAX_LIMIT).contains(&limit) {
         return Err(ApiError::Validation(format!("limit must be 1–{MAX_LIMIT}")));
+    }
+    if offset + limit > MAX_RESULTS {
+        return Err(ApiError::Validation(format!(
+            "offset + limit must be at most {MAX_RESULTS}"
+        )));
     }
     Ok((q, offset, limit))
 }
@@ -77,7 +82,7 @@ pub async fn search_documents(
         .collect();
     Ok(Json(DocumentResults {
         items,
-        has_more: page.has_more && offset + limit <= MAX_RESULTS,
+        has_more: page.has_more && offset + limit < MAX_RESULTS,
     }))
 }
 
@@ -106,9 +111,10 @@ mod tests {
             query(Some("ok"), Some(201), None),
             query(Some("ok"), None, Some(0)),
             query(Some("ok"), None, Some(51)),
+            query(Some("ok"), Some(180), Some(21)),
         ] {
             assert!(validate(&bad).is_err(), "{bad:?}");
         }
-        assert!(validate(&query(Some(&"é".repeat(200)), Some(200), Some(50))).is_ok());
+        assert!(validate(&query(Some(&"é".repeat(200)), Some(150), Some(50))).is_ok());
     }
 }
