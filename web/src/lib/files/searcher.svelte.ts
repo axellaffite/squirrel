@@ -26,6 +26,8 @@ export class Searcher {
 	readonly #delay: number;
 	#timer: ReturnType<typeof setTimeout> | undefined;
 	#controller: AbortController | null = null;
+	/** The query of the request in flight, if any. */
+	#pending: string | null = null;
 
 	constructor(run: RunSearch = searchDocuments, delay: number = SEARCH_DEBOUNCE_MS) {
 		this.#run = run;
@@ -36,7 +38,10 @@ export class Searcher {
 	type(raw: string): void {
 		clearTimeout(this.#timer);
 		const query = normalizeQuery(raw);
-		if (query === this.query && (this.items.length > 0 || this.loading)) return;
+		// A request for another query is now useless (e.g. "abcd" after backspacing to "abc").
+		if (this.#pending !== null && this.#pending !== query) this.#cancel();
+		if (query === this.#pending) return;
+		if (query === this.query && this.query !== '') return;
 		if (!isSearchable(query)) {
 			this.#cancel();
 			this.query = '';
@@ -69,6 +74,7 @@ export class Searcher {
 	#cancel() {
 		this.#controller?.abort();
 		this.#controller = null;
+		this.#pending = null;
 		this.loading = false;
 	}
 
@@ -76,10 +82,12 @@ export class Searcher {
 		this.#cancel();
 		const controller = new AbortController();
 		this.#controller = controller;
+		this.#pending = query;
 		this.loading = true;
 		const result = await this.#run(query, offset, controller.signal);
 		if (controller !== this.#controller) return;
 		this.#controller = null;
+		this.#pending = null;
 		this.loading = false;
 		if (!result.ok) {
 			if ('aborted' in result) return;

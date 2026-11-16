@@ -45,6 +45,28 @@ describe('Searcher', () => {
 		expect(searcher.items.map((h) => (h as { node: { id: string } }).node.id)).toEqual(['new']);
 	});
 
+	it('keeps the shown results when backspacing to them while a longer query is in flight', async () => {
+		let release: (() => void) | undefined;
+		const signals: AbortSignal[] = [];
+		const run = vi.fn<RunSearch>((q, _offset, signal) => {
+			signals.push(signal);
+			if (q === 'abcd') return new Promise((resolve) => (release = () => resolve(results(['abcd']))));
+			return Promise.resolve(results(['abc']));
+		});
+		const searcher = new Searcher(run, 10);
+		searcher.now('abc');
+		await vi.advanceTimersByTimeAsync(0);
+		searcher.type('abcd');
+		await vi.advanceTimersByTimeAsync(10);
+		searcher.type('abc');
+		expect(signals[1].aborted).toBe(true);
+		release?.();
+		await vi.advanceTimersByTimeAsync(20);
+		expect(searcher.query).toBe('abc');
+		expect(searcher.items.map((h) => (h as { node: { id: string } }).node.id)).toEqual(['abc']);
+		expect(run).toHaveBeenCalledTimes(2);
+	});
+
 	it('clears for queries too short to send', async () => {
 		const run = vi.fn<RunSearch>(async () => results(['a']));
 		const searcher = new Searcher(run, 10);
