@@ -11,8 +11,11 @@
 
 	let { node }: Props = $props();
 
-	let failed = $state(false);
-	const thumb = $derived(failed ? null : (node.thumbnail ?? null));
+	/** The thumbnail version whose image failed to load; a new version gets a new chance. */
+	let failedVersion: number | null = $state(null);
+	const thumb = $derived(
+		node.thumbnail && node.thumbnail.version !== failedVersion ? node.thumbnail : null
+	);
 	const tone = $derived(thumb && isBlurhash(thumb.blurhash) ? averageColor(thumb.blurhash) : undefined);
 </script>
 
@@ -24,7 +27,7 @@
 			alt=""
 			loading="lazy"
 			decoding="async"
-			onerror={() => (failed = true)}
+			onerror={() => (failedVersion = thumb.version)}
 		/>
 	</span>
 {:else}

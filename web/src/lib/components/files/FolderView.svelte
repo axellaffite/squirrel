@@ -99,6 +99,7 @@
 		replaceState(url, {});
 		const node = items.find((item) => item.id === id);
 		if (node) open(node);
+		else error = 'That file is no longer in this folder.';
 	}
 
 	function changed() {
