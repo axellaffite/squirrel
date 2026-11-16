@@ -3,9 +3,6 @@
   "info": {
     "title": "Squirrel API",
     "description": "",
-    "license": {
-      "name": ""
-    },
     "version": "0.1.0"
   },
   "paths": {

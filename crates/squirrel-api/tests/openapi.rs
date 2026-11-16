@@ -11,3 +11,9 @@ fn committed_openapi_json_is_up_to_date() {
         "openapi.json is stale — run: cargo run -q -p squirrel -- openapi > openapi.json"
     );
 }
+
+#[test]
+fn the_spec_declares_no_empty_licence() {
+    let spec = squirrel_api::openapi();
+    assert!(spec.info.license.is_none());
+}

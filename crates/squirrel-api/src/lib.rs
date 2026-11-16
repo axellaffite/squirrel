@@ -79,6 +79,9 @@ struct SecuritySchemes;
 impl utoipa::Modify for SecuritySchemes {
     fn modify(&self, openapi: &mut utoipa::openapi::OpenApi) {
         use utoipa::openapi::security::{ApiKey, ApiKeyValue, HttpAuthScheme, HttpBuilder};
+        // utoipa fills the licence from Cargo.toml, where none is set yet: an
+        // empty `license.name` fails client generators' spec validation.
+        openapi.info.license = None;
         let components = openapi.components.get_or_insert_with(Default::default);
         components.add_security_scheme(
             "session_cookie",
