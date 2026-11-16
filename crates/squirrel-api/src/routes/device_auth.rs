@@ -99,7 +99,7 @@ pub async fn device_login(
     request_body = RefreshRequest,
     security(()),
     responses(
-        (status = 200, body = RefreshResponse, description = "New tokens; the refresh token was rotated"),
+        (status = 200, body = RefreshResponse, description = "New tokens. The refresh token was rotated; presenting the previous one again within 30 s returns the same new one, later it revokes the device"),
         (status = 401, body = ErrorBody, description = "unauthorized: sign in again"),
         (status = 429, body = ErrorBody),
     ))]
@@ -110,13 +110,18 @@ pub async fn device_refresh(
 ) -> Result<Json<RefreshResponse>, ApiError> {
     // Shape first: garbage, sessions and access tokens never reach the database.
     let presented = parse_refresh(&request.refresh_token).ok_or(ApiError::Unauthorized)?;
-    let issued = Issued::new(&state);
+    let salt = DeviceToken::rotation_salt();
+    let issued = Issued {
+        refresh: DeviceToken::rotated_refresh(presented, &salt),
+        ..Issued::new(&state)
+    };
     let (access_hash, refresh_hash) = (hash_token(&issued.access), hash_token(&issued.refresh));
     let rotation = devices::rotate_refresh(
         &state.pool,
         &Refresh {
             presented: &hash_token(presented),
             new_refresh: &refresh_hash,
+            rotation_salt: &salt,
             refresh_expires_at: issued.refresh_expires_at,
             access: NewAccess {
                 hash: &access_hash,
@@ -125,8 +130,23 @@ pub async fn device_refresh(
         },
     )
     .await?;
-    let device = match rotation {
-        Rotation::Rotated(device) => device,
+    let (device, issued) = match rotation {
+        Rotation::Rotated(device) => (device, issued),
+        // A concurrent refresh, or a retry after a lost response: the same
+        // current refresh token, recomputed from the presented one.
+        Rotation::Replayed {
+            device,
+            rotation_salt,
+        } => {
+            let current = DeviceToken::rotated_refresh(presented, &rotation_salt);
+            (
+                device,
+                Issued {
+                    refresh: current,
+                    ..issued
+                },
+            )
+        }
         Rotation::Reused {
             device_id,
             owner_id,

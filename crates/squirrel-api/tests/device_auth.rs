@@ -133,23 +133,50 @@ async fn refresh_rotates_and_detects_reuse(pool: PgPool) {
     assert!(access_is_live(&pool, &a1).await);
     assert!(access_is_live(&pool, &a2).await);
 
-    // The response with r2 was lost: r1 again works once more.
-    let third = refresh(&phone, &r1).await;
+    // The response with r2 was lost (or a second request raced it): r1 again
+    // within the grace window gives the same r2 and a fresh access token.
+    let replayed = refresh(&phone, &r1).await;
+    replayed.assert_status_ok();
+    let replayed: Value = replayed.json();
+    assert_eq!(refresh_token(&replayed), r2);
+    assert_ne!(access(&replayed), a2);
+
+    let third = refresh(&phone, &r2).await;
     third.assert_status_ok();
     let r3 = refresh_token(&third.json());
-    let fourth = refresh(&phone, &r3).await;
-    fourth.assert_status_ok();
-    let a4 = access(&fourth.json());
+    let a3 = access(&third.json());
 
-    // r1 has now been rotated out twice: presenting it is reuse.
-    let reused = refresh(&phone, &r1).await;
+    // r2 is now the previous token: replayed after the grace window, it is reuse.
+    sqlx::query("UPDATE devices SET rotated_at = now() - interval '31 seconds'")
+        .execute(&pool)
+        .await
+        .unwrap();
+    let reused = refresh(&phone, &r2).await;
     reused.assert_status(StatusCode::UNAUTHORIZED);
     assert_eq!(code(&reused), "unauthorized");
-    for token in [&a1, &a2, &a4] {
+    for token in [&a1, &a2, &a3] {
         assert!(!access_is_live(&pool, token).await);
     }
-    let r4 = refresh_token(&fourth.json());
-    refresh(&phone, &r4)
+    refresh(&phone, &r3)
+        .await
+        .assert_status(StatusCode::UNAUTHORIZED);
+}
+
+#[sqlx::test(migrator = "squirrel_db::MIGRATOR")]
+async fn a_retired_refresh_token_revokes_the_device(pool: PgPool) {
+    let instance = setup(&pool).await;
+    let phone = instance.browser();
+    let login = device_login(&instance, "alice", "Pixel").await;
+    let r1 = refresh_token(&login);
+    let r2 = refresh_token(&refresh(&phone, &r1).await.json());
+    let second = refresh(&phone, &r2).await;
+    let r3 = refresh_token(&second.json());
+    // r1 was retired by the second rotation, whatever the time.
+    refresh(&phone, &r1)
+        .await
+        .assert_status(StatusCode::UNAUTHORIZED);
+    assert!(!access_is_live(&pool, &access(&second.json())).await);
+    refresh(&phone, &r3)
         .await
         .assert_status(StatusCode::UNAUTHORIZED);
 }

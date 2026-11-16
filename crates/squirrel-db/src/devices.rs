@@ -3,7 +3,7 @@
 //! `owner_id`: another user's device behaves exactly like a missing one.
 
 use sqlx::{FromRow, PgConnection, PgPool};
-use time::OffsetDateTime;
+use time::{Duration, OffsetDateTime};
 use uuid::Uuid;
 
 use crate::DbError;
@@ -53,11 +53,19 @@ pub struct NewDevice<'a> {
     pub access: NewAccess<'a>,
 }
 
-/// A refresh request: the presented token's hash and the replacements.
+/// How long after a rotation the previous refresh token is still answered
+/// (with the same new token): two refreshes racing, or a lost response.
+pub const REFRESH_GRACE: Duration = Duration::seconds(30);
+
+/// A refresh request: the presented token's hash and the replacements. The
+/// new refresh token must be derived from the presented one and
+/// `rotation_salt`, so a replay within [`REFRESH_GRACE`] can be answered with
+/// the same token.
 #[derive(Debug, Clone, Copy)]
 pub struct Refresh<'a> {
     pub presented: &'a [u8],
     pub new_refresh: &'a [u8],
+    pub rotation_salt: &'a [u8],
     pub refresh_expires_at: OffsetDateTime,
     pub access: NewAccess<'a>,
 }
@@ -66,6 +74,14 @@ pub struct Refresh<'a> {
 pub enum Rotation {
     /// New tokens were stored for this device.
     Rotated(DeviceRecord),
+    /// The previous token, within [`REFRESH_GRACE`] of its rotation: a new
+    /// access token was stored, the refresh token was not rotated again. The
+    /// current refresh token is the one derived from the presented token and
+    /// this salt.
+    Replayed {
+        device: DeviceRecord,
+        rotation_salt: Vec<u8>,
+    },
     /// A retired refresh token was presented: the device has been revoked.
     Reused { device_id: Uuid, owner_id: Uuid },
     /// The device's refresh lifetime is over. Nothing changed.
@@ -138,16 +154,19 @@ fn prefixed(alias: &str) -> String {
         .join(", ")
 }
 
-/// Rotates a refresh token. The current token becomes `previous` (still
-/// accepted once, so a refresh whose response was lost can be retried) and
-/// the token it replaces as previous is retired. Presenting the previous
-/// token retires the current one, never used. Presenting a retired token is
-/// reuse: the device is revoked. One transaction, the device row locked, so
-/// two refreshes with the same token cannot both rotate from the same state.
+/// Rotates a refresh token. Presenting the current token makes it `previous`,
+/// retires the one it replaces, and stores the new one. Presenting the
+/// previous token within [`REFRESH_GRACE`] of the rotation (a concurrent
+/// refresh, or a retry after a lost response) only adds an access token: the
+/// caller answers with the same current token ([`Rotation::Replayed`]).
+/// Presenting the previous token later, or a retired one, is reuse: the
+/// device is revoked. One transaction with the device row locked, so two
+/// refreshes with the same token serialise: one rotates, the other replays.
 pub async fn rotate_refresh(pool: &PgPool, refresh: &Refresh<'_>) -> Result<Rotation, DbError> {
     let mut tx = pool.begin().await?;
     let sql = format!(
-        "SELECT {DEVICE_COLUMNS}, refresh_hash, previous_refresh_hash FROM devices \
+        "SELECT {DEVICE_COLUMNS}, refresh_hash, previous_refresh_hash, rotated_at, rotation_salt \
+           FROM devices \
           WHERE refresh_hash = $1 OR previous_refresh_hash = $1 FOR UPDATE"
     );
     let row: Option<RefreshRow> = sqlx::query_as(&sql)
@@ -165,13 +184,13 @@ pub async fn rotate_refresh(pool: &PgPool, refresh: &Refresh<'_>) -> Result<Rota
     if row.device.refresh_expires_at <= OffsetDateTime::now_utc() {
         return Ok(Rotation::Expired);
     }
-    let presented_current = row.refresh_hash == refresh.presented;
-    let (retire, keep_previous) = if presented_current {
-        (row.previous_refresh_hash, row.refresh_hash)
-    } else {
-        (Some(row.refresh_hash), refresh.presented.to_vec())
-    };
-    if let Some(retired) = retire {
+    if row.refresh_hash != refresh.presented {
+        // The previous token.
+        let rotation = replay(&mut tx, row, refresh).await?;
+        tx.commit().await?;
+        return Ok(rotation);
+    }
+    if let Some(retired) = row.previous_refresh_hash {
         sqlx::query(
             "INSERT INTO device_retired_refresh (token_hash, device_id) VALUES ($1, $2) \
              ON CONFLICT (token_hash) DO NOTHING",
@@ -183,14 +202,16 @@ pub async fn rotate_refresh(pool: &PgPool, refresh: &Refresh<'_>) -> Result<Rota
     }
     let sql = format!(
         "UPDATE devices SET refresh_hash = $2, previous_refresh_hash = $3, \
-                refresh_expires_at = $4, last_seen_at = now() \
+                refresh_expires_at = $4, rotated_at = now(), rotation_salt = $5, \
+                last_seen_at = now() \
           WHERE id = $1 RETURNING {DEVICE_COLUMNS}"
     );
     let device = sqlx::query_as::<_, DeviceRecord>(&sql)
         .bind(row.device.id)
         .bind(refresh.new_refresh)
-        .bind(keep_previous)
+        .bind(row.refresh_hash)
         .bind(refresh.refresh_expires_at)
+        .bind(refresh.rotation_salt)
         .fetch_one(&mut *tx)
         .await?;
     insert_access(&mut tx, device.id, &refresh.access).await?;
@@ -204,6 +225,34 @@ struct RefreshRow {
     device: DeviceRecord,
     refresh_hash: Vec<u8>,
     previous_refresh_hash: Option<Vec<u8>>,
+    rotated_at: Option<OffsetDateTime>,
+    rotation_salt: Option<Vec<u8>>,
+}
+
+/// The previous token was presented: within the grace window, a new access
+/// token and the same current refresh token; after it, reuse.
+async fn replay(
+    conn: &mut PgConnection,
+    row: RefreshRow,
+    refresh: &Refresh<'_>,
+) -> Result<Rotation, DbError> {
+    let now = OffsetDateTime::now_utc();
+    match (row.rotated_at, row.rotation_salt) {
+        (Some(rotated_at), Some(rotation_salt)) if now - rotated_at <= REFRESH_GRACE => {
+            insert_access(conn, row.device.id, &refresh.access).await?;
+            Ok(Rotation::Replayed {
+                device: row.device,
+                rotation_salt,
+            })
+        }
+        _ => {
+            revoke_ids(conn, &[row.device.id]).await?;
+            Ok(Rotation::Reused {
+                device_id: row.device.id,
+                owner_id: row.device.owner_id,
+            })
+        }
+    }
 }
 
 /// A presented token that is no current or previous one: reuse if retired.

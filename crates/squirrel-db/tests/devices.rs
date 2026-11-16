@@ -33,6 +33,7 @@ fn refresh<'a>(presented: &'a [u8], new_refresh: &'a [u8], new_access: &'a [u8])
     Refresh {
         presented,
         new_refresh,
+        rotation_salt: b"salt",
         refresh_expires_at: in_(Duration::days(90)),
         access: access(new_access),
     }
@@ -131,7 +132,7 @@ async fn refreshing_with_the_current_token_rotates_it(pool: PgPool) {
 }
 
 #[sqlx::test(migrator = "squirrel_db::MIGRATOR")]
-async fn the_previous_token_can_retry_a_lost_refresh(pool: PgPool) {
+async fn the_previous_token_replays_within_the_grace_window(pool: PgPool) {
     let alice = common::admin(&pool).await;
     let device = devices::create(&pool, &phone(alice.id, b"r1", b"a1"))
         .await
@@ -139,17 +140,125 @@ async fn the_previous_token_can_retry_a_lost_refresh(pool: PgPool) {
     devices::rotate_refresh(&pool, &refresh(b"r1", b"r2", b"a2"))
         .await
         .unwrap();
-    // The client never saw r2: it retries with r1.
-    let retried = devices::rotate_refresh(&pool, &refresh(b"r1", b"r3", b"a3"))
+    // The client never saw r2 (or a second request raced the first): r1 again.
+    let replayed = devices::rotate_refresh(&pool, &refresh(b"r1", b"r3", b"a3"))
         .await
         .unwrap();
-    assert!(matches!(retried, Rotation::Rotated(_)));
-    // r2 was never used: retired. r1 stays previous.
-    assert_eq!(retired_count(&pool, device.id).await, 1);
-    let r2_reused = devices::rotate_refresh(&pool, &refresh(b"r2", b"x", b"y"))
+    let Rotation::Replayed {
+        device: after,
+        rotation_salt,
+    } = replayed
+    else {
+        panic!("expected a replay, got {replayed:?}");
+    };
+    assert_eq!(after.id, device.id);
+    assert_eq!(rotation_salt, b"salt");
+    // Not rotated again: r2 stays current, nothing retired, a3 works.
+    assert_eq!(retired_count(&pool, device.id).await, 0);
+    assert!(
+        devices::find_by_access_hash(&pool, b"a3")
+            .await
+            .unwrap()
+            .is_some()
+    );
+    let next = devices::rotate_refresh(&pool, &refresh(b"r2", b"r4", b"a4"))
         .await
         .unwrap();
-    assert!(matches!(r2_reused, Rotation::Reused { device_id, .. } if device_id == device.id));
+    assert!(matches!(next, Rotation::Rotated(_)));
+    // The replay's own candidate token was never stored.
+    let never_stored = devices::rotate_refresh(&pool, &refresh(b"r3", b"x", b"y"))
+        .await
+        .unwrap();
+    assert!(matches!(never_stored, Rotation::Unknown));
+}
+
+#[sqlx::test(migrator = "squirrel_db::MIGRATOR")]
+async fn the_previous_token_after_the_grace_window_is_reuse(pool: PgPool) {
+    let alice = common::admin(&pool).await;
+    let device = devices::create(&pool, &phone(alice.id, b"r1", b"a1"))
+        .await
+        .unwrap();
+    devices::rotate_refresh(&pool, &refresh(b"r1", b"r2", b"a2"))
+        .await
+        .unwrap();
+    sqlx::query("UPDATE devices SET rotated_at = now() - interval '31 seconds'")
+        .execute(&pool)
+        .await
+        .unwrap();
+    let late = devices::rotate_refresh(&pool, &refresh(b"r1", b"r3", b"a3"))
+        .await
+        .unwrap();
+    assert!(matches!(late, Rotation::Reused { device_id, .. } if device_id == device.id));
+    assert!(devices::list_for_owner(&pool, alice.id).await.unwrap()[0].is_revoked());
+    assert!(
+        devices::find_by_access_hash(&pool, b"a2")
+            .await
+            .unwrap()
+            .is_none()
+    );
+}
+
+#[sqlx::test(migrator = "squirrel_db::MIGRATOR")]
+async fn concurrent_refreshes_with_one_token_leave_the_device_healthy(pool: PgPool) {
+    let alice = common::admin(&pool).await;
+    let device = devices::create(&pool, &phone(alice.id, b"r1", b"a1"))
+        .await
+        .unwrap();
+    // Two connections of the pool, racing on the device row.
+    let left = Refresh {
+        rotation_salt: b"salt-left",
+        ..refresh(b"r1", b"left", b"a-left")
+    };
+    let right = Refresh {
+        rotation_salt: b"salt-right",
+        ..refresh(b"r1", b"right", b"a-right")
+    };
+    let (first, second) = tokio::join!(
+        devices::rotate_refresh(&pool, &left),
+        devices::rotate_refresh(&pool, &right),
+    );
+    let outcomes = [first.unwrap(), second.unwrap()];
+    let rotated = outcomes
+        .iter()
+        .filter(|o| matches!(o, Rotation::Rotated(_)))
+        .count();
+    let replayed = outcomes
+        .iter()
+        .filter(|o| matches!(o, Rotation::Replayed { .. }))
+        .count();
+    assert_eq!((rotated, replayed), (1, 1), "{outcomes:?}");
+    assert!(!devices::list_for_owner(&pool, alice.id).await.unwrap()[0].is_revoked());
+    for hash in [b"a-left".as_slice(), b"a-right"] {
+        assert!(
+            devices::find_by_access_hash(&pool, hash)
+                .await
+                .unwrap()
+                .is_some()
+        );
+    }
+    // Both callers derive the same current token from r1 and the stored salt:
+    // the replay returns the salt of the rotation that won.
+    let current: Vec<u8> = sqlx::query_scalar("SELECT refresh_hash FROM devices WHERE id = $1")
+        .bind(device.id)
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+    let expected_salt: &[u8] = if current == b"left" {
+        b"salt-left"
+    } else {
+        b"salt-right"
+    };
+    let salt: Vec<u8> = sqlx::query_scalar("SELECT rotation_salt FROM devices WHERE id = $1")
+        .bind(device.id)
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+    for outcome in &outcomes {
+        if let Rotation::Replayed { rotation_salt, .. } = outcome {
+            assert_eq!(rotation_salt, &salt);
+            assert_eq!(rotation_salt.as_slice(), expected_salt);
+        }
+    }
 }
 
 #[sqlx::test(migrator = "squirrel_db::MIGRATOR")]
