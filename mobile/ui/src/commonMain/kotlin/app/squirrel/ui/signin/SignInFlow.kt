@@ -11,7 +11,7 @@ import app.squirrel.ui.AppGraph
 @Composable
 fun SignInFlow(graph: AppGraph, attempt: Int) {
     val vm = viewModel(key = "sign-in-$attempt") {
-        SignInViewModel(apiFor = graph::newApi, device = graph.device, allowHttp = graph.allowHttp)
+        SignInViewModel(apiFor = graph::newApi, device = graph.device)
     }
     val state by vm.state.collectAsStateWithLifecycle()
     when (val step = state.step) {

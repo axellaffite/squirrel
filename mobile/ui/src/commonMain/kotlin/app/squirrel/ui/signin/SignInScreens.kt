@@ -70,6 +70,9 @@ fun SignInScreen(
             )
             Button("Change", onClick = onChangeServer, variant = ButtonVariant.Quiet, size = ButtonSize.Sm, enabled = !state.busy)
         }
+        if (state.cleartext) {
+            Alert("Not encrypted by the app: use this address only on your home network or VPN.")
+        }
         TextField(
             value = state.username,
             onValueChange = onUsernameChange,
