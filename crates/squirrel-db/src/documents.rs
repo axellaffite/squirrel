@@ -5,6 +5,7 @@
 //! [`search`] only ever reaches them through one of the caller's live nodes.
 
 use sqlx::{FromRow, PgPool};
+use unicode_normalization::UnicodeNormalization;
 use uuid::Uuid;
 
 use crate::nodes::NodeRecord;
@@ -64,6 +65,8 @@ pub fn clean_body(text: &str) -> String {
 /// when nothing is left. Only letters, digits and spaces reach the database,
 /// so no input can form text-search syntax.
 pub fn search_terms(query: &str) -> Option<String> {
+    // Composed first: a decomposed "é" would otherwise split the word.
+    let query: String = query.nfc().collect();
     let words: Vec<String> = query
         .split(|c: char| !c.is_alphanumeric())
         .filter(|word| word.chars().count() >= MIN_WORD_CHARS)
@@ -173,6 +176,7 @@ mod tests {
             search_terms("École 'élec':*").as_deref(),
             Some("École élec")
         );
+        assert_eq!(search_terms("e\u{301}cole").as_deref(), Some("école"));
         for nothing in ["", "   ", "' & | !", "a", "a b c", "\\ :*"] {
             assert_eq!(search_terms(nothing), None, "{nothing:?}");
         }

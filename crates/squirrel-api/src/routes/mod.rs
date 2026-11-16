@@ -8,6 +8,7 @@ pub mod jobs;
 pub mod join;
 pub mod nodes;
 pub mod photos;
+pub mod search;
 pub mod setup;
 pub mod storage;
 pub mod thumbnails;

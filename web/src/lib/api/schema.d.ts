@@ -389,6 +389,22 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/search/documents": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["search_documents"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/setup/admin": {
         parameters: {
             query?: never;
@@ -693,6 +709,22 @@ export interface components {
             deduplicated: boolean;
             node: components["schemas"]["NodeDto"];
         };
+        DocumentHit: {
+            node: components["schemas"]["NodeDto"];
+            /**
+             * Format: int32
+             * @description Pages of a PDF; `null` for other files or before it is processed.
+             */
+            page_count?: number | null;
+            /** @description Passages of the text around the matches; empty when only the name matched. */
+            snippet: components["schemas"]["SnippetPart"][];
+        };
+        DocumentResults: {
+            /** @description Whether `offset + limit` would return more (never past 200 results). */
+            has_more: boolean;
+            /** @description Name matches first, then by relevance. */
+            items: components["schemas"]["DocumentHit"][];
+        };
         ErrorBody: {
             error: components["schemas"]["ErrorDetail"];
         };
@@ -874,6 +906,11 @@ export interface components {
         };
         SetupStatus: {
             needs_setup: boolean;
+        };
+        /** @description A piece of a snippet; `highlight` marks a matched word. */
+        SnippetPart: {
+            highlight: boolean;
+            text: string;
         };
         StorageUsageDto: {
             /**
@@ -2136,6 +2173,44 @@ export interface operations {
                 };
             };
             404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    search_documents: {
+        parameters: {
+            query?: {
+                /**
+                 * @description Words to find (1–200 characters): each must start a word of the
+                 *     file's name or text, accents and case ignored.
+                 */
+                q?: string;
+                /** @description Results to skip, at most 200. */
+                offset?: number;
+                /** @description Page size, 1–50, default 20. */
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DocumentResults"];
+                };
+            };
+            /** @description Invalid q, offset or limit */
+            422: {
                 headers: {
                     [name: string]: unknown;
                 };
