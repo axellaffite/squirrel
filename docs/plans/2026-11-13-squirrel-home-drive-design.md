@@ -160,6 +160,11 @@ Setup / join / login; Photos (virtualized justified grid, timeline scrubber, lig
 6. KMP sync app (Android first, then iOS).
 7. Deployment hardening: Docker Compose, Tailscale/Caddy docs, backups (`pg_dump` + blob rsync).
 
+**Order changed on 2026-11-16:** after Phases 1–3, Phase 6 (the phone app, plan
+`docs/plans/2026-11-16-phase-6-kmp-app.md`) is built **before** Phases 4 (video) and 5 (ML). The
+build order is now 1, 2, 3, 6, 4, 5, 7. Videos the phone backs up are stored as files until
+Phase 4's backfill processes them.
+
 ## Out of scope for v1
 
 Cross-user sharing, public links, live transcoding, OCR, email delivery of invitations, WebDAV.
