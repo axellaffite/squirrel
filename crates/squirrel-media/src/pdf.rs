@@ -44,6 +44,8 @@ pub fn library_path(library_dir: &Path) -> PathBuf {
 /// pdfium can be bound once per process; later calls reuse that binding.
 static PDFIUM: OnceLock<Pdfium> = OnceLock::new();
 static BINDING: Mutex<()> = Mutex::new(());
+/// Held while a document loads (see [`process`]).
+static LOADING: Mutex<()> = Mutex::new(());
 
 /// The process's pdfium, bound from `library_dir` on first use. A directory
 /// without the library is refused even once another one was bound.
@@ -80,7 +82,15 @@ fn unreadable(err: PdfiumError) -> PdfError {
 
 pub fn process(pdfium: &Pdfium, input: &Path, work: PdfWork) -> Result<PdfOutput, PdfError> {
     // No password: documents that need one fail here and are reported unsupported.
-    let document = pdfium.load_pdf_from_file(input, None).map_err(unreadable)?;
+    // pdfium reports why a load failed through a process-wide "last error":
+    // loads in parallel threads (in-process execution, tests) would read
+    // each other's. The sandbox runs one document per process.
+    let document = {
+        let _load = LOADING
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        pdfium.load_pdf_from_file(input, None).map_err(unreadable)?
+    };
     let pages = document.pages();
     let page_count = u32::try_from(pages.len()).unwrap_or(0);
     let first_page = if work.render {
