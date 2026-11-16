@@ -1,0 +1,67 @@
+package app.squirrel.shared.testing
+
+import app.squirrel.shared.db.ScannedAsset
+import app.squirrel.shared.sync.AssetReader
+import app.squirrel.shared.sync.AssetSource
+import app.squirrel.shared.sync.MediaAccess
+import app.squirrel.shared.sync.ScanResult
+import app.squirrel.shared.sync.SourceFilter
+
+/** An in-memory phone library. Tokens are change counters; it ignores the filter (the scanner applies it). */
+class FakeAssetSource : AssetSource {
+    private val assets = linkedMapOf<String, ScannedAsset>()
+    private val readers = mutableMapOf<String, FakeReader>()
+    private val changedAt = mutableMapOf<String, Int>()
+    private val removedAt = mutableMapOf<String, Int>()
+    private var clock = 0
+    var access: MediaAccess = MediaAccess.Full
+    var opened = 0
+        private set
+
+    fun put(
+        id: String,
+        size: Long = 1000,
+        kind: String = "photo",
+        album: String = "Camera",
+        modifiedAt: Long = 1,
+        takenAt: String? = "2024-07-14T18:30:05+02:00",
+    ): ScannedAsset {
+        clock++
+        val asset = ScannedAsset(id, kind, "$id.jpg", if (kind == "video") "video/mp4" else "image/jpeg", size, modifiedAt, takenAt, album)
+        assets[id] = asset
+        readers[id] = FakeReader(size, seed = id.hashCode())
+        changedAt[id] = clock
+        removedAt.remove(id)
+        return asset
+    }
+
+    fun remove(id: String) {
+        clock++
+        assets.remove(id)
+        readers.remove(id)
+        removedAt[id] = clock
+    }
+
+    fun reader(id: String): FakeReader = readers.getValue(id)
+
+    override suspend fun changes(token: String?, filter: SourceFilter): ScanResult {
+        val since = token?.toInt()
+        return if (since == null) {
+            ScanResult(assets.values.toList(), removed = emptyList(), token = clock.toString(), full = true)
+        } else {
+            ScanResult(
+                assets = assets.values.filter { changedAt.getValue(it.deviceAssetId) > since },
+                removed = removedAt.filterValues { it > since }.keys.toList(),
+                token = clock.toString(),
+                full = false,
+            )
+        }
+    }
+
+    override suspend fun open(deviceAssetId: String): AssetReader? {
+        opened++
+        return readers[deviceAssetId]
+    }
+
+    override fun access(): MediaAccess = access
+}
