@@ -1,6 +1,6 @@
 //! EXIF metadata of an image file (JPEG, HEIC/HEIF, PNG, WebP, TIFF).
 
-use std::io::{BufRead, Seek};
+use std::io::{BufRead, Cursor, Read, Seek};
 
 use exif::{Exif, Field, In, Tag, Value};
 use time::{Date, Month, PrimitiveDateTime, Time, UtcOffset};
@@ -50,6 +50,17 @@ pub fn read_metadata<R: BufRead + Seek>(reader: &mut R) -> std::io::Result<Image
         Err(exif::Error::Io(err)) => Err(err),
         Err(_) => Ok(ImageMetadata::default()),
     }
+}
+
+/// Parses EXIF from at most the first `cap` bytes of `reader`. Container
+/// headers can declare huge sizes (a PNG `eXIf` chunk of 4 GiB, an ISO-BMFF box
+/// of size 0 meaning "to the end"), which the parser would otherwise read
+/// whole. Only reading the prefix is an I/O error; a prefix cut mid-structure
+/// gives the default (empty) metadata.
+pub fn read_metadata_bounded(reader: impl Read, cap: u64) -> std::io::Result<ImageMetadata> {
+    let mut prefix = Vec::new();
+    reader.take(cap).read_to_end(&mut prefix)?;
+    Ok(read_metadata(&mut Cursor::new(prefix)).unwrap_or_default())
 }
 
 fn from_exif(exif: &Exif) -> ImageMetadata {
@@ -318,6 +329,55 @@ mod tests {
             let parsed = exif::Reader::new().read_from_container(&mut Cursor::new(bytes));
             assert!(parsed.is_ok(), "{name}: {:?}", parsed.err());
         }
+    }
+
+    /// Counts the bytes taken from an endless stream behind `header`.
+    fn bounded_read_of_endless(header: &[u8], cap: u64) -> (ImageMetadata, u64) {
+        let endless = Cursor::new(header.to_vec()).chain(std::io::repeat(0));
+        let mut counted = Counting(endless, 0);
+        let meta = read_metadata_bounded(&mut counted, cap).unwrap();
+        (meta, counted.1)
+    }
+
+    struct Counting<R>(R, u64);
+
+    impl<R: Read> Read for Counting<R> {
+        fn read(&mut self, buf: &mut [u8]) -> std::io::Result<usize> {
+            let n = self.0.read(buf)?;
+            self.1 += n as u64;
+            Ok(n)
+        }
+    }
+
+    #[test]
+    fn huge_declared_png_chunks_are_read_only_up_to_the_cap() {
+        let mut png = b"\x89PNG\r\n\x1a\n".to_vec();
+        png.extend_from_slice(&0xFFFF_FFF0_u32.to_be_bytes());
+        png.extend_from_slice(b"eXIf");
+        let (meta, read) = bounded_read_of_endless(&png, 1024 * 1024);
+        assert_eq!(meta, ImageMetadata::default());
+        assert_eq!(read, 1024 * 1024);
+    }
+
+    #[test]
+    fn heif_boxes_running_to_the_end_are_read_only_up_to_the_cap() {
+        let mut heif = vec![0, 0, 0, 24];
+        heif.extend_from_slice(b"ftypheic\0\0\0\0mif1heic");
+        heif.extend_from_slice(&[0, 0, 0, 0]);
+        heif.extend_from_slice(b"meta");
+        let (meta, read) = bounded_read_of_endless(&heif, 1024 * 1024);
+        assert_eq!(meta, ImageMetadata::default());
+        assert_eq!(read, 1024 * 1024);
+    }
+
+    #[test]
+    fn bounded_reads_still_find_exif() {
+        let jpeg = jpeg_with_exif(&ExifSpec {
+            make: Some("Google"),
+            ..ExifSpec::default()
+        });
+        let meta = read_metadata_bounded(Cursor::new(jpeg), 1024 * 1024).unwrap();
+        assert_eq!(meta.camera_make.as_deref(), Some("Google"));
     }
 
     #[test]

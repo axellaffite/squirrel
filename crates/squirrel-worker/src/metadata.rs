@@ -9,15 +9,17 @@ use squirrel_core::{ContentHash, MediaKind};
 use squirrel_db::assets;
 use squirrel_db::media::{self, MediaState, MetadataUpdate, Step};
 use squirrel_jobs::{JobContext, JobError};
-use squirrel_media::metadata::{ImageMetadata, read_metadata};
+use squirrel_media::metadata::{ImageMetadata, read_metadata_bounded};
 use time::OffsetDateTime;
 
 use crate::context::MediaContext;
 use crate::facts;
 use crate::jobs::{self, ShaPayload};
 
-/// EXIF of TIFF files (read whole by kamadak-exif) is skipped above this size.
-const MAX_TIFF_EXIF_BYTES: u64 = 64 * 1024 * 1024;
+/// EXIF is parsed from at most this prefix of any file (containers can declare
+/// sizes far beyond it); TIFF files larger than this are skipped (kamadak-exif
+/// needs the whole file).
+const MAX_EXIF_BYTES: u64 = 64 * 1024 * 1024;
 
 pub async fn run(ctx: &MediaContext, job: JobContext) -> Result<(), JobError> {
     let ShaPayload { sha256 } = job.payload()?;
@@ -149,10 +151,10 @@ fn extract(path: &Path) -> std::io::Result<Extracted> {
         .map(<[u8]>::to_vec)
         .unwrap_or_default();
     let is_tiff = head == *b"II*\0" || head == *b"MM\0*";
-    let meta = if is_tiff && len > MAX_TIFF_EXIF_BYTES {
+    let meta = if is_tiff && len > MAX_EXIF_BYTES {
         ImageMetadata::default()
     } else {
-        read_metadata(&mut reader)?
+        read_metadata_bounded(reader, MAX_EXIF_BYTES)?
     };
     let size = image::ImageReader::open(path)
         .and_then(|r| r.with_guessed_format())
