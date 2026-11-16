@@ -159,23 +159,29 @@ pub async fn fail(pool: &PgPool, job: &ClaimedJob, error: &str) -> Result<Finish
 }
 
 /// Back to the queue after `delay`, giving the attempt back. `false`: lease lost.
+/// A job due at once also wakes idle workers (the notify trigger only fires on
+/// INSERT), in the same statement.
 pub async fn reschedule(
     pool: &PgPool,
     job: &ClaimedJob,
     delay: Duration,
 ) -> Result<bool, sqlx::Error> {
-    let updated = sqlx::query(
-        "UPDATE jobs SET status = 'queued', attempts = attempts - 1, \
-                run_at = now() + make_interval(secs => $3), locked_until = NULL, claim_id = NULL, \
-                claimed_by = NULL, updated_at = now() \
-          WHERE id = $1 AND claim_id = $2 AND status = 'running'",
+    let updated: i64 = sqlx::query_scalar(
+        "WITH updated AS ( \
+             UPDATE jobs SET status = 'queued', attempts = attempts - 1, \
+                    run_at = now() + make_interval(secs => $3), locked_until = NULL, \
+                    claim_id = NULL, claimed_by = NULL, updated_at = now() \
+              WHERE id = $1 AND claim_id = $2 AND status = 'running' RETURNING id) \
+         SELECT count(*) FROM updated \
+           LEFT JOIN LATERAL (SELECT pg_notify($4, '') WHERE $3 <= 0) woken ON true",
     )
     .bind(job.id)
     .bind(job.claim_id)
     .bind(secs(delay))
-    .execute(pool)
+    .bind(CHANNEL)
+    .fetch_one(pool)
     .await?;
-    Ok(updated.rows_affected() == 1)
+    Ok(updated == 1)
 }
 
 /// Shutdown: hand an unfinished job back at once, attempt not counted.

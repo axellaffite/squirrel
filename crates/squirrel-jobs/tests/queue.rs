@@ -225,3 +225,35 @@ async fn enqueue_is_transactional_and_deduplicated(pool: PgPool) {
     tx.rollback().await.unwrap();
     assert_eq!(count(&pool).await, 0, "rolled back with the transaction");
 }
+
+/// Whether a notification arrives on the jobs channel within a short wait.
+async fn notified(listener: &mut sqlx::postgres::PgListener) -> bool {
+    tokio::time::timeout(Duration::from_millis(500), listener.recv())
+        .await
+        .is_ok_and(|note| note.is_ok())
+}
+
+#[sqlx::test(migrator = "squirrel_db::MIGRATOR")]
+async fn jobs_handed_back_for_now_wake_idle_workers(pool: PgPool) {
+    add(&pool, NewJob::new("a", json!({}))).await;
+    let mut listener = sqlx::postgres::PgListener::connect_with(&pool)
+        .await
+        .unwrap();
+    listener.listen(queue::CHANNEL).await.unwrap();
+
+    let job = claim_one(&pool, LEASE, "w").await;
+    assert!(queue::release(&pool, &job).await.unwrap());
+    assert!(notified(&mut listener).await, "release notifies");
+
+    let job = claim_one(&pool, LEASE, "w").await;
+    assert!(
+        queue::reschedule(&pool, &job, Duration::from_secs(60))
+            .await
+            .unwrap()
+    );
+    assert!(!notified(&mut listener).await, "a delayed job wakes nobody");
+
+    // A stale claim changes nothing and wakes nobody.
+    assert!(!queue::release(&pool, &job).await.unwrap());
+    assert!(!notified(&mut listener).await);
+}
