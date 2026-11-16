@@ -1,3 +1,5 @@
+use std::fmt;
+
 use serde::{Deserialize, Serialize};
 use squirrel_core::Role;
 use squirrel_db::invitations::{InvitationRecord, InvitationStatus};
@@ -7,7 +9,7 @@ use time::OffsetDateTime;
 use utoipa::ToSchema;
 use uuid::Uuid;
 
-#[derive(Debug, Deserialize, ToSchema)]
+#[derive(Deserialize, ToSchema)]
 pub struct AccountRequest {
     pub username: String,
     pub display_name: String,
@@ -16,7 +18,7 @@ pub struct AccountRequest {
 
 /// Creates the first administrator. `setup_token` is the setup code printed in
 /// the server log on first start (or `SQUIRREL_SETUP_TOKEN`).
-#[derive(Debug, Deserialize, ToSchema)]
+#[derive(Deserialize, ToSchema)]
 pub struct SetupRequest {
     /// Missing is treated like a wrong code (403), not a validation error.
     #[serde(default)]
@@ -37,10 +39,43 @@ impl SetupRequest {
     }
 }
 
-#[derive(Debug, Deserialize, ToSchema)]
+#[derive(Deserialize, ToSchema)]
 pub struct LoginRequest {
     pub username: String,
     pub password: String,
+}
+
+/// Shown instead of a secret in `Debug` output.
+const REDACTED: &str = "<redacted>";
+
+impl fmt::Debug for LoginRequest {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("LoginRequest")
+            .field("username", &self.username)
+            .field("password", &REDACTED)
+            .finish()
+    }
+}
+
+impl fmt::Debug for AccountRequest {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("AccountRequest")
+            .field("username", &self.username)
+            .field("display_name", &self.display_name)
+            .field("password", &REDACTED)
+            .finish()
+    }
+}
+
+impl fmt::Debug for SetupRequest {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("SetupRequest")
+            .field("setup_token", &REDACTED)
+            .field("username", &self.username)
+            .field("display_name", &self.display_name)
+            .field("password", &REDACTED)
+            .finish()
+    }
 }
 
 #[derive(Debug, Serialize, ToSchema)]
@@ -150,6 +185,37 @@ impl From<InstanceSettings> for InstanceSettingsDto {
     fn from(settings: InstanceSettings) -> Self {
         Self {
             invites_admin_only: settings.invites_admin_only,
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn debug_output_never_shows_passwords_or_setup_codes() {
+        let login = LoginRequest {
+            username: "alice".into(),
+            password: "secret-password".into(),
+        };
+        let setup = SetupRequest {
+            setup_token: "secret-code".into(),
+            username: "alice".into(),
+            display_name: "Alice".into(),
+            password: "secret-password".into(),
+        };
+        let account = AccountRequest {
+            username: "bob".into(),
+            display_name: "Bob".into(),
+            password: "secret-password".into(),
+        };
+        for shown in [
+            format!("{login:?}"),
+            format!("{setup:?}"),
+            format!("{account:?}"),
+        ] {
+            assert!(!shown.contains("secret"), "{shown}");
         }
     }
 }
