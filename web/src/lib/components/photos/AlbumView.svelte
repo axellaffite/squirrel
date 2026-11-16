@@ -160,7 +160,9 @@
 		{/if}
 	{/snippet}
 
-	<div class="live" aria-live="polite">{#if notice}<Alert tone="success" role="status">{notice}</Alert>{/if}</div>
+	<!-- Always rendered and never display: contents, so screen readers reliably hear the change. -->
+	<p class="visually-hidden" aria-live="polite">{notice ?? ''}</p>
+	{#if notice}<Alert tone="success" role="note">{notice}</Alert>{/if}
 	{#if data.albumError}<Alert>{data.albumError}</Alert>{/if}
 	{#if error ?? data.pageError}<Alert>{error ?? data.pageError}</Alert>{/if}
 
@@ -186,11 +188,11 @@
 {#if selection.active}
 	<SelectionBar count={selection.size} onClear={() => selection.clear()}>
 		{#if selection.size === 1}
-			<Button variant="secondary" size="sm" aria-label="Use the selected photo as the album cover" disabled={busy} onclick={makeCover}>
+			<Button variant="secondary" size="sm" disabled={busy} onclick={makeCover}>
 				<Icon name="images" /><span class="label">Set as cover</span>
 			</Button>
 		{/if}
-		<Button variant="danger" size="sm" aria-label="Remove the selected photos from the album" disabled={busy} onclick={removeSelected}>
+		<Button variant="danger" size="sm" disabled={busy} onclick={removeSelected}>
 			<Icon name="x" /><span class="label">Remove from album</span>
 		</Button>
 	</SelectionBar>
@@ -222,7 +224,4 @@
 {/if}
 
 <style>
-	.live {
-		display: contents;
-	}
 </style>
