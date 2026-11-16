@@ -17,6 +17,8 @@ class FakeAssetSource : AssetSource {
     var access: MediaAccess = MediaAccess.Full
     var opened = 0
         private set
+    /** Ids the scan lists but [open] cannot read (deleted between the two). */
+    val unreadable = mutableSetOf<String>()
 
     fun put(
         id: String,
@@ -60,6 +62,7 @@ class FakeAssetSource : AssetSource {
 
     override suspend fun open(deviceAssetId: String): AssetReader? {
         opened++
+        if (deviceAssetId in unreadable) return null
         return readers[deviceAssetId]
     }
 
