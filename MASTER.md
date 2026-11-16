@@ -203,8 +203,9 @@ press. Disabled: 45 % opacity, no shadow or glow, `cursor: not-allowed`. Hover o
   (never narrower than a circle), figures printed as text beside it; warning fill from 90 %.
 - **Progress** (uploads): 6 px `--track` pill, `--accent` fill, named `<progress>`.
 - **Badge**: `--tint` pill, 12 px label 500 in the tone colour.
-- **Alert**: `--danger-soft` (error) or `--tint` (success, or `--ink` for neutral information such as
-  "Preparing 12 photos…") with tone text, `--radius-card`.
+- **Alert**: `--radius-card`; error: `--danger-soft` background, `--danger` text; success: `--tint`
+  background, `--success` text; information (e.g. "Preparing 12 photos…"): `--tint` background,
+  `--ink` text.
 - **Empty state**: `--tint` well, 56 px white round icon well with `--shadow-card`, title and muted
   line.
 - **Dialog / sheet**: bottom sheet on phones, centred from 768 px (`wide` for previews);

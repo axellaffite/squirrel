@@ -4,8 +4,11 @@
 
 	interface Props {
 		tone?: 'danger' | 'success' | 'info';
-		/** Live region role; errors use "alert" so they are announced at once. */
-		role?: 'alert' | 'status';
+		/**
+		 * Live region role; errors use "alert" so they are announced at once. "note" is not live:
+		 * for messages announced elsewhere (e.g. once at start and end, not at every update).
+		 */
+		role?: 'alert' | 'status' | 'note';
 		children: Snippet;
 	}
 
