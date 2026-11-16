@@ -3,26 +3,33 @@
 	import { page } from '$app/state';
 	import Icon from '#lib/components/icons/Icon.svelte';
 	import PhotosTabs from '#lib/components/photos/PhotosTabs.svelte';
+	import Timeline, { type Geometry } from '#lib/components/photos/Timeline.svelte';
 	import Page from '#lib/components/shell/Page.svelte';
 	import Alert from '#lib/components/ui/Alert.svelte';
 	import Button from '#lib/components/ui/Button.svelte';
 	import EmptyState from '#lib/components/ui/EmptyState.svelte';
 	import { listFolder, type FileNode } from '#lib/files/api.ts';
-	import { listMonths, type MonthCount } from '#lib/photos/api.ts';
-	import { enqueue } from '#lib/upload/uploads.svelte.ts';
+	import { mediaStatus, type AssetSummary } from '#lib/photos/api.ts';
+	import { createPoller, preparingText } from '#lib/photos/status.ts';
+	import { TimelineData } from '#lib/photos/timeline.svelte.ts';
+	import { enqueue, onUploadsSettled } from '#lib/upload/uploads.svelte.ts';
 
-	let months = $state<MonthCount[] | null>(null);
-	let error: string | null = $state(null);
+	const data = new TimelineData();
 	let photosFolder = $state<FileNode | null>(null);
 	let picker: HTMLInputElement | undefined = $state();
+	let preparing = $state(0);
+	let geometry: Geometry | undefined = $state();
+	let timeline: Timeline | undefined = $state();
 
-	const total = $derived(months?.reduce((sum, entry) => sum + entry.count, 0) ?? null);
+	const total = $derived(data.total);
+	const selected: ReadonlySet<string> = new Set();
 
-	async function load() {
-		const result = await listMonths();
-		if (result.ok) months = result.data;
-		else error = result.error;
-	}
+	const poller = createPoller({
+		fetch: mediaStatus,
+		onCount: (count) => (preparing = count),
+		onSettled: () => void data.reload(),
+		visible: () => document.visibilityState === 'visible'
+	});
 
 	async function findPhotosFolder() {
 		const roots = await listFolder(null);
@@ -36,9 +43,30 @@
 		if (photosFolder && files.length > 0) enqueue(files, photosFolder.id);
 	}
 
+	function open(asset: AssetSummary) {
+		void asset;
+	}
+
+	function toggle(asset: AssetSummary, range: boolean) {
+		void asset;
+		void range;
+	}
+
 	onMount(() => {
-		void load();
+		void data.reload();
 		void findPhotosFolder();
+		poller.start();
+		const restart = () => poller.start();
+		document.addEventListener('visibilitychange', restart);
+		const unsubscribe = onUploadsSettled(() => {
+			void data.reload();
+			poller.start();
+		});
+		return () => {
+			poller.stop();
+			unsubscribe();
+			document.removeEventListener('visibilitychange', restart);
+		};
 	});
 </script>
 
@@ -55,13 +83,30 @@
 
 	<PhotosTabs path={page.url.pathname} />
 
-	{#if error}
-		<Alert>{error}</Alert>
-	{:else if months === null}
-		<p class="muted" aria-live="polite">Loading…</p>
-	{:else if months.length === 0}
+	<div class="live" aria-live="polite">
+		{#if preparing > 0}<Alert tone="info" role="status">{preparingText(preparing)}</Alert>{/if}
+	</div>
+	{#if data.error}<Alert>{data.error}</Alert>{/if}
+
+	{#if data.months === null}
+		{#if !data.error}<p class="muted" aria-live="polite">Loading…</p>{/if}
+	{:else if data.months.length === 0}
 		<EmptyState icon="images" title="No photos yet">
 			Upload photos, or add images anywhere in your drive: they appear here by date.
 		</EmptyState>
+	{:else}
+		<section class="library" aria-label="Photo timeline">
+			<Timeline bind:this={timeline} bind:geometry {data} {selected} selecting={false} onOpen={open} onToggle={toggle} />
+		</section>
 	{/if}
 </Page>
+
+<style>
+	.live {
+		display: contents;
+	}
+
+	.library {
+		min-width: 0;
+	}
+</style>
