@@ -133,6 +133,25 @@ pub struct BlobNode {
     pub name: String,
     pub mime: Option<String>,
     pub created_at: OffsetDateTime,
+    /// The capture time the uploading client reported (step 3 of the chain).
+    pub client_taken_at: Option<PrimitiveDateTime>,
+    pub client_taken_offset_min: Option<i16>,
+}
+
+const BLOB_NODE_COLUMNS: &str = "id AS node_id, owner_id, name, mime, created_at, \
+     client_taken_at, client_taken_offset_min";
+
+/// Internal (worker only, no owner check): one file node, live or trashed.
+#[doc(hidden)]
+pub async fn blob_node<'e>(
+    executor: impl PgExecutor<'e>,
+    node_id: Uuid,
+) -> Result<Option<BlobNode>, DbError> {
+    let sql = format!("SELECT {BLOB_NODE_COLUMNS} FROM nodes WHERE id = $1 AND kind = 'file'");
+    Ok(sqlx::query_as::<_, BlobNode>(&sql)
+        .bind(node_id)
+        .fetch_optional(executor)
+        .await?)
 }
 
 /// Internal (worker only, no owner check): every file node, live or trashed,
@@ -142,11 +161,11 @@ pub async fn for_blob<'e>(
     executor: impl PgExecutor<'e>,
     sha256: &str,
 ) -> Result<Vec<BlobNode>, DbError> {
-    Ok(sqlx::query_as::<_, BlobNode>(
-        "SELECT id AS node_id, owner_id, name, mime, created_at FROM nodes \
-          WHERE blob_sha256 = $1 AND kind = 'file' ORDER BY id",
-    )
-    .bind(sha256)
-    .fetch_all(executor)
-    .await?)
+    let sql = format!(
+        "SELECT {BLOB_NODE_COLUMNS} FROM nodes WHERE blob_sha256 = $1 AND kind = 'file' ORDER BY id"
+    );
+    Ok(sqlx::query_as::<_, BlobNode>(&sql)
+        .bind(sha256)
+        .fetch_all(executor)
+        .await?)
 }

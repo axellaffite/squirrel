@@ -9,6 +9,8 @@ use crate::metadata::{CaptureTime, ImageMetadata};
 pub enum TakenSource {
     Exif,
     Filename,
+    /// The uploading client's capture time (a phone's photo date).
+    Device,
     Upload,
 }
 
@@ -17,10 +19,21 @@ impl TakenSource {
         match self {
             Self::Exif => "exif",
             Self::Filename => "filename",
+            Self::Device => "device",
             Self::Upload => "upload",
         }
     }
 }
+
+/// What the uploading client said, if anything (the phone's capture time).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ClientTaken {
+    pub local: PrimitiveDateTime,
+    pub offset: Option<UtcOffset>,
+}
+
+/// Earlier years mean an unset clock (as for EXIF).
+const MIN_CLIENT_YEAR: i32 = 1900;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Taken {
@@ -29,11 +42,14 @@ pub struct Taken {
     pub source: TakenSource,
 }
 
-/// EXIF, else a date in the file name, else the upload time (UTC). Candidates
-/// more than a day in the future (wrong camera clock) are skipped.
+/// EXIF, else a date in the file name (the camera's own record), else the
+/// time the uploading client reported, else the upload time (UTC). Candidates
+/// more than a day in the future (wrong clock) are skipped, and so is a client
+/// time before 1900 (an unset clock).
 pub fn resolve_taken(
     exif: Option<CaptureTime>,
     file_name: &str,
+    client: Option<ClientTaken>,
     uploaded_at: OffsetDateTime,
     now: OffsetDateTime,
 ) -> Taken {
@@ -53,6 +69,16 @@ pub fn resolve_taken(
             local,
             offset: None,
             source: TakenSource::Filename,
+        };
+    }
+    if let Some(client) = client
+        .filter(|c| c.local.year() >= MIN_CLIENT_YEAR)
+        .filter(|c| plausible(c.local, c.offset))
+    {
+        return Taken {
+            local: client.local,
+            offset: client.offset,
+            source: TakenSource::Device,
         };
     }
     let utc = uploaded_at.to_offset(UtcOffset::UTC);
@@ -209,18 +235,65 @@ mod tests {
             offset: Some(offset!(+1)),
         };
         let uploaded = datetime!(2026-11-01 10:00 UTC);
-        let taken = resolve_taken(Some(exif), "IMG_20240714_183005.jpg", uploaded, NOW);
+        let taken = resolve_taken(Some(exif), "IMG_20240714_183005.jpg", None, uploaded, NOW);
         assert_eq!((taken.local, taken.source), (exif.local, TakenSource::Exif));
-        let taken = resolve_taken(None, "IMG_20240714_183005.jpg", uploaded, NOW);
+        let taken = resolve_taken(None, "IMG_20240714_183005.jpg", None, uploaded, NOW);
         assert_eq!(
             (taken.local, taken.offset, taken.source),
             (datetime!(2024-07-14 18:30:05), None, TakenSource::Filename)
         );
-        let taken = resolve_taken(None, "holiday.jpg", uploaded, NOW);
+        let taken = resolve_taken(None, "holiday.jpg", None, uploaded, NOW);
         assert_eq!(
             (taken.local, taken.source),
             (datetime!(2026-11-01 10:00), TakenSource::Upload)
         );
+    }
+
+    fn phone(local: PrimitiveDateTime) -> Option<ClientTaken> {
+        Some(ClientTaken {
+            local,
+            offset: Some(offset!(+2)),
+        })
+    }
+
+    #[test]
+    fn the_phones_time_comes_after_exif_and_the_name() {
+        let uploaded = datetime!(2026-11-01 10:00 UTC);
+        let client = phone(datetime!(2024-07-14 18:30:05));
+        let taken = resolve_taken(None, "photo.jpg", client, uploaded, NOW);
+        assert_eq!(
+            (taken.local, taken.offset, taken.source),
+            (
+                datetime!(2024-07-14 18:30:05),
+                Some(offset!(+2)),
+                TakenSource::Device
+            )
+        );
+        let exif = CaptureTime {
+            local: datetime!(2023-01-02 03:04:05),
+            offset: None,
+        };
+        let taken = resolve_taken(Some(exif), "photo.jpg", client, uploaded, NOW);
+        assert_eq!(taken.source, TakenSource::Exif);
+        let taken = resolve_taken(None, "IMG_20220101_101010.jpg", client, uploaded, NOW);
+        assert_eq!(taken.source, TakenSource::Filename);
+    }
+
+    #[test]
+    fn implausible_phone_times_fall_through_to_the_upload() {
+        let uploaded = datetime!(2026-11-01 10:00 UTC);
+        for local in [datetime!(2030-01-01 00:00), datetime!(1899-12-31 23:59)] {
+            let taken = resolve_taken(None, "photo.jpg", phone(local), uploaded, NOW);
+            assert_eq!(taken.source, TakenSource::Upload, "{local}");
+        }
+        let taken = resolve_taken(
+            None,
+            "photo.jpg",
+            phone(datetime!(1900-01-01 00:00)),
+            uploaded,
+            NOW,
+        );
+        assert_eq!(taken.source, TakenSource::Device);
     }
 
     #[test]
@@ -229,7 +302,13 @@ mod tests {
             local: datetime!(2030-01-01 00:00),
             offset: None,
         };
-        let taken = resolve_taken(Some(future), "x.jpg", datetime!(2026-11-01 10:00 UTC), NOW);
+        let taken = resolve_taken(
+            Some(future),
+            "x.jpg",
+            None,
+            datetime!(2026-11-01 10:00 UTC),
+            NOW,
+        );
         assert_eq!(taken.source, TakenSource::Upload);
     }
 

@@ -241,3 +241,34 @@ async fn process_media_waits_for_the_media_row_lock(pool: PgPool) {
     settling.commit().await.unwrap();
     late.await.unwrap().unwrap();
 }
+
+#[sqlx::test(migrator = "squirrel_db::MIGRATOR")]
+async fn the_phones_capture_time_is_used_when_the_file_has_none(pool: PgPool) {
+    let fx = Fixture::new(pool);
+    let alice = admin(fx.pool()).await;
+    let parent = photos(&fx, &alice).await;
+    let jpeg = jpeg_with_exif(&ExifSpec::default());
+    let node = fx.store_file(alice.id, parent, "photo.jpg", &jpeg).await;
+    sqlx::query(
+        "UPDATE nodes SET client_taken_at = '2024-07-14 18:30:05', client_taken_offset_min = 120 \
+         WHERE id = $1",
+    )
+    .bind(node.id)
+    .execute(fx.pool())
+    .await
+    .unwrap();
+    process(&fx, node.id, false).await.unwrap();
+    let expect_device = |asset: assets::AssetRecord| {
+        assert_eq!(asset.taken_source, "device");
+        assert_eq!(asset.taken_at, time::macros::datetime!(2024-07-14 18:30:05));
+        assert_eq!(asset.taken_offset_min, Some(120));
+    };
+    expect_device(assets::find(fx.pool(), node.id).await.unwrap().unwrap());
+
+    // Once the metadata is known (no EXIF date), the phone's time stays.
+    let sha = node.blob_sha256.clone().unwrap();
+    squirrel_worker::metadata::run(&fx.ctx, job("extract_metadata", json!({ "sha256": sha })))
+        .await
+        .unwrap();
+    expect_device(assets::find(fx.pool(), node.id).await.unwrap().unwrap());
+}

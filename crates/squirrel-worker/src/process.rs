@@ -2,7 +2,7 @@
 
 use serde::Deserialize;
 use squirrel_core::MediaKind;
-use squirrel_db::assets::{self, BlobNode};
+use squirrel_db::assets;
 use squirrel_db::{media, nodes};
 use squirrel_jobs::{JobContext, JobError};
 use time::OffsetDateTime;
@@ -36,14 +36,11 @@ pub async fn run(ctx: &MediaContext, job: JobContext) -> Result<(), JobError> {
     let media = media::ensure(&mut tx, &sha, kind)
         .await
         .map_err(JobError::retry)?;
-    if kind == MediaKind::Image {
-        let target = BlobNode {
-            node_id: node.id,
-            owner_id: node.owner_id,
-            name: node.name,
-            mime: Some(mime),
-            created_at: node.created_at,
-        };
+    if kind == MediaKind::Image
+        && let Some(target) = assets::blob_node(&mut *tx, node.id)
+            .await
+            .map_err(JobError::retry)?
+    {
         let asset = facts::asset_for(&target, &media, OffsetDateTime::now_utc());
         assets::upsert(&mut tx, &asset)
             .await
