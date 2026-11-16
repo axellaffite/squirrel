@@ -40,7 +40,6 @@ class AppGraphTest {
                 }
             },
             device = device,
-            allowHttp = false,
             scope = scope,
         )
 
@@ -66,7 +65,6 @@ class AppGraphTest {
                 }
             },
             device = device,
-            allowHttp = false,
             scope = scope,
         )
 

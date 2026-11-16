@@ -26,7 +26,6 @@ object AndroidGraph {
                 model = Build.MODEL,
                 appVersion = BuildConfig.VERSION_NAME,
             ),
-            allowHttp = BuildConfig.DEBUG,
             scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate),
         )
     }

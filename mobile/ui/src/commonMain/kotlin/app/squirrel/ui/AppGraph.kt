@@ -42,8 +42,6 @@ class AppGraph(
     tokenStore: (SquirrelDatabase) -> TokenStore,
     private val engine: () -> HttpClientEngine,
     val device: DeviceDetails,
-    /** Debug builds may reach `http://10.0.2.2` and `http://localhost`. */
-    val allowHttp: Boolean,
     private val scope: CoroutineScope,
 ) {
     val database: SquirrelDatabase = createDatabase(driver)

@@ -6,6 +6,8 @@ import app.squirrel.shared.api.ApiError
 import app.squirrel.shared.api.DeviceDetails
 import app.squirrel.shared.api.SignedIn
 import app.squirrel.shared.api.SquirrelApi
+import app.squirrel.shared.api.isCleartext
+import app.squirrel.shared.api.normalizeServerUrl
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -29,7 +31,10 @@ data class SignInState(
     val passwordError: String? = null,
     val alert: String? = null,
     val busy: Boolean = false,
-)
+) {
+    /** Plain HTTP to a home or VPN address: the screen says it is not encrypted. */
+    val cleartext: Boolean get() = step != SignInStep.Server && isCleartext(server)
+}
 
 private const val NO_ANSWER = "No Squirrel answered at this address"
 private const val NEEDS_SETUP = "This Squirrel is not set up yet: finish the setup in a browser first"
@@ -41,7 +46,6 @@ private const val UNREACHABLE = "Squirrel could not be reached. Check your conne
 class SignInViewModel(
     private val apiFor: (serverUrl: String) -> SquirrelApi,
     private val device: DeviceDetails,
-    private val allowHttp: Boolean,
 ) : ViewModel() {
     private val _state = MutableStateFlow(SignInState())
     val state: StateFlow<SignInState> = _state.asStateFlow()
@@ -57,7 +61,7 @@ class SignInViewModel(
 
     fun onContinue() {
         if (_state.value.busy) return
-        val url = normalizeServerUrl(_state.value.server, allowHttp).getOrElse { error ->
+        val url = normalizeServerUrl(_state.value.server).getOrElse { error ->
             _state.update { it.copy(serverError = error.message) }
             return
         }

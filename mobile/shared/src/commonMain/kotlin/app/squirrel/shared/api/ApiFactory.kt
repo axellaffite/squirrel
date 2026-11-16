@@ -22,6 +22,7 @@ import app.squirrel.shared.auth.Session
 import app.squirrel.shared.auth.Tokens
 import io.ktor.client.HttpClient
 import io.ktor.client.HttpClientConfig
+import io.ktor.client.plugins.api.createClientPlugin
 import io.ktor.client.engine.HttpClientEngine
 import io.ktor.client.plugins.HttpTimeout
 import io.ktor.client.plugins.auth.Auth
@@ -135,8 +136,19 @@ class SquirrelApi(
     }
 }
 
+/** Refuses plain HTTP to public hosts on every request (the address check alone is not enough). */
+private val CleartextGuard = createClientPlugin("CleartextGuard") {
+    onRequest { request, _ ->
+        val url = request.url.build()
+        if (!cleartextAllowed(url)) throw CleartextRefused(url.host)
+    }
+}
+
 private fun HttpClientConfig<*>.base() {
     expectSuccess = false
+    // The API never redirects; following one could leave the allowed hosts.
+    followRedirects = false
+    install(CleartextGuard)
     install(ContentNegotiation) { json(ApiJson) }
     install(HttpTimeout) {
         requestTimeoutMillis = REQUEST_TIMEOUT_MS

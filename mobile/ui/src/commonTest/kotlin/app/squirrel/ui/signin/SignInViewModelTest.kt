@@ -45,14 +45,12 @@ class SignInViewModelTest {
         respond(body, status, headersOf(HttpHeaders.ContentType, ContentType.Application.Json.toString()))
 
     private fun viewModel(
-        allowHttp: Boolean = false,
         handler: suspend MockRequestHandleScope.(HttpRequestData) -> HttpResponseData,
     ): SignInViewModel {
         val session = Session(InMemoryTokenStore())
         return SignInViewModel(
             apiFor = { url -> connected += url; SquirrelApi(url, MockEngine(handler), session) },
             device = device,
-            allowHttp = allowHttp,
         )
     }
 
@@ -79,18 +77,21 @@ class SignInViewModelTest {
     }
 
     @Test
-    fun plainHttpIsRefusedOutsideDebugBuilds() = runVm {
+    fun plainHttpIsRefusedForAPublicAddress() = runVm {
         val vm = viewModel { error("no request expected") }
-        vm.onServerChange("http://10.0.2.2:8080")
+        vm.onServerChange("http://squirrel.example.com")
         vm.onContinue()
-        assertEquals("Use an https:// address", vm.state.value.serverError)
+        assertEquals("Use https:// for an address outside your home network or VPN", vm.state.value.serverError)
     }
 
     @Test
-    fun theAddressIsNormalised() {
-        assertEquals("https://home.example", normalizeServerUrl("home.example/", allowHttp = false).getOrThrow())
-        assertEquals("https://home.example:8443/sq", normalizeServerUrl(" https://home.example:8443/sq/ ", false).getOrThrow())
-        assertEquals("http://10.0.2.2:8080", normalizeServerUrl("http://10.0.2.2:8080", allowHttp = true).getOrThrow())
+    fun plainHttpOnTheHomeNetworkIsAcceptedAndFlagged() = runVm {
+        val vm = viewModel { server(it) }
+        vm.onServerChange("http://192.168.11.218:8080")
+        vm.onContinue()
+        val state = vm.settle()
+        assertEquals(SignInStep.Credentials, state.step)
+        assertEquals(true, state.cleartext)
     }
 
     @Test

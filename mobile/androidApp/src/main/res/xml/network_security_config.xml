@@ -1,7 +1,15 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- Release: HTTPS only, system CAs only (no user-installed CAs, no pinning). -->
+<!--
+  System CAs only (no user-installed CAs, no pinning), in debug and release builds alike.
+
+  Clear text is permitted here on purpose: the app may reach a Squirrel over plain HTTP on a home
+  network or VPN (RFC 1918, Tailscale 100.64.0.0/10 and *.ts.net, .local/.lan/.home.arpa, IPv6
+  ULA and link-local, loopback), and this file cannot express IP ranges. The app enforces that
+  list itself: normalizeServerUrl refuses http:// for any other host, and every request passes
+  CleartextGuard (shared/.../api/ServerAddress.kt, ApiFactory.kt), with redirects not followed.
+-->
 <network-security-config>
-    <base-config cleartextTrafficPermitted="false">
+    <base-config cleartextTrafficPermitted="true">
         <trust-anchors>
             <certificates src="system" />
         </trust-anchors>
