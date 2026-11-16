@@ -73,14 +73,19 @@
 				if (dragging === null) handleShown = false;
 			}, HANDLE_LINGER_MS);
 		};
-		const observer = new ResizeObserver(([entry]) => (columnHeight = entry.contentRect.height));
-		if (column) observer.observe(column);
 		window.addEventListener('scroll', scrolled, { passive: true });
 		return () => {
 			clearTimeout(timer);
-			observer.disconnect();
 			window.removeEventListener('scroll', scrolled);
 		};
+	});
+
+	// The column appears once months are known, so it is observed whenever it (re)mounts.
+	$effect(() => {
+		if (!column) return;
+		const observer = new ResizeObserver(([entry]) => (columnHeight = entry.contentRect.height));
+		observer.observe(column);
+		return () => observer.disconnect();
 	});
 </script>
 
@@ -174,7 +179,7 @@
 		width: var(--space-2);
 		height: var(--scrub-tick);
 		border-radius: var(--radius-full);
-		background: var(--tint-strong);
+		background: var(--edge);
 	}
 
 	.year {

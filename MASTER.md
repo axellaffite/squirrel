@@ -225,7 +225,7 @@ press. Disabled: 45 % opacity, no shadow or glow, `cursor: not-allowed`. Hover o
   `--text-lg` `--weight-heading` above each month. Months not loaded yet show `--tint` rows of the
   same height, never fake photos.
 - **Scrubber** (from 768 px): a slim column (`--scrubber-w`) on the panel's right edge listing years
-  as `--text-xs` tabular `--ink-muted` labels, with months as `--scrub-tick` ticks; the current month
+  as `--text-xs` tabular `--ink-muted` labels, with months as `--scrub-tick` `--edge` ticks; the current month
   is a `--card` pill with `--shadow-knob` and `--ink` label; dragging shows the month label in that
   pill. Phones: a 44 px round `--card` handle on the right edge appears while scrolling (no persistent
   column).
