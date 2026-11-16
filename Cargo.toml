@@ -16,9 +16,11 @@ axum-test = "17"
 base64 = "0.22"
 clap = { version = "4", features = ["derive", "env"] }
 http-range-header = "1.1"
+image = { version = "0.25.10", default-features = false, features = ["jpeg", "png", "gif", "webp", "tiff", "bmp"] }
 infer = "0.22"
 http-body-util = "0.1"
 ipnet = "2"
+kamadak-exif = "0.6.2"
 mime_guess = "2"
 percent-encoding = "2"
 rand = "0.8"
@@ -50,3 +52,4 @@ squirrel-db = { path = "crates/squirrel-db" }
 squirrel-api = { path = "crates/squirrel-api" }
 squirrel-storage = { path = "crates/squirrel-storage" }
 squirrel-jobs = { path = "crates/squirrel-jobs" }
+squirrel-media = { path = "crates/squirrel-media" }
