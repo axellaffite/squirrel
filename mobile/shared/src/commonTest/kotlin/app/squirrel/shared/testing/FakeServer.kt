@@ -14,6 +14,8 @@ import io.ktor.client.request.HttpRequestData
 import io.ktor.client.request.HttpResponseData
 import io.ktor.http.HttpStatusCode
 import io.ktor.http.content.OutgoingContent
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
@@ -24,6 +26,12 @@ import kotlinx.serialization.json.jsonPrimitive
  * that remember received chunks. Override [onRequest] to inject failures.
  */
 class FakeServer {
+    /** Chunks go up two at a time on several threads: every fake mutation happens under it. */
+    private val lock = Mutex()
+
+    /** Runs a test's own bookkeeping (a fake clock, say) under the server's lock. */
+    suspend fun <T> locked(block: suspend () -> T): T = lock.withLock { block() }
+
     val requests = mutableListOf<HttpRequestData>()
     val bodies = mutableListOf<String>()
     /** Content hashes the server already has (dedup and sync check). */
@@ -36,11 +44,11 @@ class FakeServer {
 
     suspend fun session(): Session = Session(InMemoryTokenStore()).apply { signedIn(Tokens("sqa_a", "sqr_a")) }
 
-    suspend fun api(): SquirrelApi = SquirrelApi(BASE_URL, MockEngine { handle(it) }, session())
+    suspend fun api(): SquirrelApi = SquirrelApi(BASE_URL, MockEngine { lock.withLock { handle(it) } }, session())
 
     /** A chunk transport that stores chunks in [sessions] (or throws what [chunkFailure] returns). */
     val transport = object : ChunkTransport {
-        override suspend fun put(session: UploadSession, index: Int, reader: AssetReader) {
+        override suspend fun put(session: UploadSession, index: Int, reader: AssetReader) = lock.withLock {
             chunkFailure?.invoke(session.uploadId, index)?.let { throw it }
             val received = sessions[session.uploadId] ?: throw ApiError(404, "not_found", "gone")
             sent += session.uploadId to index
