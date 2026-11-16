@@ -428,7 +428,7 @@
           {
             "name": "v",
             "in": "query",
-            "description": "The `thumbnail.version` from the listing; only busts caches.",
+            "description": "The `thumbnail.version` from the listing. Only a URL with the current\nversion is cached as immutable.",
             "required": false,
             "schema": {
               "type": "integer",

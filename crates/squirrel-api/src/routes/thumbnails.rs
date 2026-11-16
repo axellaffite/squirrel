@@ -24,9 +24,11 @@ use crate::extract::CurrentUser;
 use crate::input::{ApiPath, ApiQuery};
 use crate::state::AppState;
 
-/// The URL carries the version and a node's bytes never change: cache for a
-/// year without revalidating (logout clears the cache, see `routes::auth`).
-const CACHE: &str = "private, max-age=31536000, immutable";
+/// A URL naming the current version always maps to the same bytes: cache for
+/// a year without revalidating (logout clears the cache, see `routes::auth`).
+const CACHE_IMMUTABLE: &str = "private, max-age=31536000, immutable";
+/// Any other URL (no `v`, or an older one) may change: revalidate by ETag.
+const CACHE_REVALIDATE: &str = "private, no-cache";
 
 #[derive(Debug, Deserialize, IntoParams)]
 #[into_params(parameter_in = Query)]
@@ -34,8 +36,8 @@ pub struct ThumbnailQuery {
     /// `thumb` (grid, 360 px tall) or `preview` (lightbox, 1440 px).
     #[param(inline)]
     pub size: ThumbnailSize,
-    /// The `thumbnail.version` from the listing; only busts caches.
-    #[allow(dead_code, reason = "part of the URL for caches, never read")]
+    /// The `thumbnail.version` from the listing. Only a URL with the current
+    /// version is cached as immutable.
     pub v: Option<i16>,
 }
 
@@ -52,6 +54,14 @@ impl ThumbnailSize {
             Self::Thumb => Variant::Thumb,
             Self::Preview => Variant::Preview,
         }
+    }
+}
+
+fn cache_policy(requested: Option<i16>, current: i16) -> &'static str {
+    if requested == Some(current) {
+        CACHE_IMMUTABLE
+    } else {
+        CACHE_REVALIDATE
     }
 }
 
@@ -90,7 +100,7 @@ pub async fn thumbnail(
     let etag = format!("\"{}-{}-v{version}\"", hash.as_str(), variant.stem());
     // A 304 carries the same policy headers as the 200 (see `routes::content`).
     let mut response_headers = to_header_map(vec![
-        (CACHE_CONTROL, CACHE.to_owned()),
+        (CACHE_CONTROL, cache_policy(query.v, version).to_owned()),
         (ETAG, etag.clone()),
         (CONTENT_SECURITY_POLICY, SANDBOX_CSP.to_owned()),
         (X_CONTENT_TYPE_OPTIONS, "nosniff".to_owned()),
