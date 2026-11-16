@@ -7,10 +7,20 @@ rust-version.workspace = true
 [features]
 # Exposes `testutil` (fixture generators) to other crates' tests and the fixtures example.
 test-util = []
+# HEIC/HEIF (and AVIF) decoding through the system libheif (>= 1.17).
+heic = ["dep:libheif-rs"]
 
 [dependencies]
+blurhash.workspace = true
+fast_image_resize.workspace = true
+libheif-rs = { workspace = true, optional = true }
+serde_json.workspace = true
+webp.workspace = true
 kamadak-exif.workspace = true
 image.workspace = true
 serde.workspace = true
 thiserror.workspace = true
 time.workspace = true
+
+[dev-dependencies]
+tempfile.workspace = true
