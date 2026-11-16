@@ -2,7 +2,7 @@ mod common;
 
 use axum::http::StatusCode;
 use axum_test::TestServer;
-use common::files::{code, root_id};
+use common::files::{self, code, root_id};
 use common::photos::{Seed, photo, seed, sha_of};
 use serde_json::{Value, json};
 use sqlx::PgPool;
@@ -141,4 +141,161 @@ async fn users_see_only_their_own_live_photos(pool: PgPool) {
         get(&alice, "/api/photos/months").await,
         json!([{ "month": "2024-07", "count": 1 }])
     );
+}
+
+#[sqlx::test(migrator = "squirrel_db::MIGRATOR")]
+async fn a_photo_describes_its_place_location_and_camera(pool: PgPool) {
+    let instance = common::Instance::new(pool.clone());
+    let ((alice, alice_me), (bob, _)) = common::two_users(&instance).await;
+    let photos = root_id(&instance, &alice_me, "Photos").await;
+    let tagged = photo(
+        &pool,
+        &alice_me,
+        photos,
+        "eiffel.jpg",
+        datetime!(2024-07-14 18:30),
+    )
+    .await;
+    sqlx::query(
+        "UPDATE media SET latitude = 48.8584, longitude = 2.2945, altitude = 35.5, \
+                camera_make = 'Canon', camera_model = 'EOS R6', lens_model = 'RF 35mm', \
+                exposure_time = '1/250', f_number = 1.8, iso = 200, focal_length_mm = 35, \
+                place_name = 'Paris', place_admin1 = 'Île-de-France', place_country = 'France', \
+                place_country_code = 'FR', geocoded_with = 'x' \
+          WHERE sha256 = $1",
+    )
+    .bind(sha_of(&pool, tagged).await)
+    .execute(&pool)
+    .await
+    .unwrap();
+    let plain = photo(
+        &pool,
+        &alice_me,
+        photos,
+        "plain.jpg",
+        datetime!(2024-07-15 10:00),
+    )
+    .await;
+
+    let details = get(&alice, &format!("/api/photos/{tagged}")).await;
+    assert_eq!(details["asset"]["id"], tagged.to_string());
+    assert_eq!(details["asset"]["name"], "eiffel.jpg");
+    assert_eq!(details["size"], 10);
+    assert_eq!(details["parent_id"], photos.to_string());
+    assert_eq!(
+        details["place"],
+        json!({ "name": "Paris", "admin1": "Île-de-France", "country": "France", "country_code": "FR" })
+    );
+    assert_eq!(
+        details["location"],
+        json!({ "latitude": 48.8584, "longitude": 2.2945, "altitude": 35.5 })
+    );
+    assert_eq!(
+        details["camera"],
+        json!({
+            "make": "Canon", "model": "EOS R6", "lens": "RF 35mm", "exposure_time": "1/250",
+            "f_number": 1.8, "iso": 200, "focal_length_mm": 35.0
+        })
+    );
+    assert_eq!(details["albums"], json!([]));
+
+    let bare = get(&alice, &format!("/api/photos/{plain}")).await;
+    assert_eq!(
+        (&bare["place"], &bare["location"], &bare["camera"]),
+        (&Value::Null, &Value::Null, &Value::Null)
+    );
+
+    let stolen = bob.get(&format!("/api/photos/{tagged}")).await;
+    stolen.assert_status(StatusCode::NOT_FOUND);
+    assert_eq!(code(&stolen), "not_found");
+}
+
+#[sqlx::test(migrator = "squirrel_db::MIGRATOR")]
+async fn only_live_photos_have_details(pool: PgPool) {
+    let instance = common::Instance::new(pool.clone());
+    let browser = instance.browser();
+    let me = common::setup_admin(&browser, "alice").await;
+    let docs = root_id(&instance, &me, "Documents").await;
+    let photos = root_id(&instance, &me, "Photos").await;
+    let pdf = files::upload(&browser, &me, docs, "a.pdf", b"%PDF-1.4 tiny").await;
+    let trashed = photo(&pool, &me, photos, "gone.jpg", datetime!(2024-07-14 12:00)).await;
+    browser
+        .delete(&format!("/api/nodes/{trashed}"))
+        .add_header(common::CSRF, common::csrf(&me))
+        .await
+        .assert_status(StatusCode::NO_CONTENT);
+    for id in [
+        pdf["id"].as_str().unwrap().to_owned(),
+        trashed.to_string(),
+        photos.to_string(),
+        uuid::Uuid::now_v7().to_string(),
+    ] {
+        let response = browser.get(&format!("/api/photos/{id}")).await;
+        response.assert_status(StatusCode::NOT_FOUND);
+    }
+    browser
+        .get("/api/photos/not-a-uuid")
+        .await
+        .assert_status(StatusCode::BAD_REQUEST);
+}
+
+#[sqlx::test(migrator = "squirrel_db::MIGRATOR")]
+async fn media_status_counts_the_callers_files(pool: PgPool) {
+    let instance = common::Instance::new(pool.clone());
+    let ((alice, alice_me), (bob, _)) = common::two_users(&instance).await;
+    let photos = root_id(&instance, &alice_me, "Photos").await;
+    let docs = root_id(&instance, &alice_me, "Documents").await;
+    let at = datetime!(2024-07-14 12:00);
+    // Uploaded, not processed yet: no media row.
+    files::upload(
+        &alice,
+        &alice_me,
+        photos,
+        "new.jpg",
+        b"\xFF\xD8\xFF\xE0 new photo",
+    )
+    .await;
+    files::upload(&alice, &alice_me, docs, "notes.txt", b"plain notes").await;
+    files::upload(&alice, &alice_me, docs, "a.zip", b"PK\x03\x04 not media").await;
+    photo(&pool, &alice_me, photos, "done.jpg", at).await;
+    for (name, state) in [("busy.jpg", "pending"), ("broken.jpg", "failed")] {
+        seed(
+            &pool,
+            &alice_me,
+            photos,
+            &Seed {
+                thumbs_state: state,
+                ..Seed::new(name, at)
+            },
+        )
+        .await;
+    }
+    let trashed = seed(
+        &pool,
+        &alice_me,
+        photos,
+        &Seed {
+            thumbs_state: "failed",
+            ..Seed::new("trashed.jpg", at)
+        },
+    )
+    .await;
+    alice
+        .delete(&format!("/api/nodes/{trashed}"))
+        .add_header(common::CSRF, common::csrf(&alice_me))
+        .await
+        .assert_status(StatusCode::NO_CONTENT);
+
+    assert_eq!(
+        get(&alice, "/api/media/status").await,
+        json!({ "queued": 2, "processing": 1, "failed": 1 })
+    );
+    assert_eq!(
+        get(&bob, "/api/media/status").await,
+        json!({ "queued": 0, "processing": 0, "failed": 0 })
+    );
+    common::server(pool)
+        .get("/api/media/status")
+        .await
+        .assert_status(StatusCode::UNAUTHORIZED);
 }

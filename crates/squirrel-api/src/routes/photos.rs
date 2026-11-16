@@ -3,12 +3,15 @@
 use axum::Json;
 use axum::extract::State;
 use squirrel_db::timeline::{self, Filter, month_bounds};
+use uuid::Uuid;
 
 use crate::cursor;
 use crate::error::{ApiError, ErrorBody};
 use crate::extract::CurrentUser;
-use crate::input::ApiQuery;
-use crate::photos_dto::{AssetSummary, MonthCountDto, TimelinePage, TimelineQuery};
+use crate::input::{ApiPath, ApiQuery};
+use crate::photos_dto::{
+    AssetDetails, AssetSummary, MediaStatus, MonthCountDto, TimelinePage, TimelineQuery,
+};
 use crate::state::AppState;
 
 pub const DEFAULT_PHOTO_PAGE: u32 = 200;
@@ -92,6 +95,30 @@ pub async fn photo_months(
 ) -> Result<Json<Vec<MonthCountDto>>, ApiError> {
     let months = timeline::months(&state.pool, current.user.id).await?;
     Ok(Json(months.into_iter().map(MonthCountDto::from).collect()))
+}
+
+#[utoipa::path(get, path = "/api/photos/{id}", tag = "photos",
+    params(("id" = Uuid, Path, description = "The photo's file node id")),
+    responses((status = 200, body = AssetDetails), (status = 404, body = ErrorBody)))]
+pub async fn get_photo(
+    State(state): State<AppState>,
+    current: CurrentUser,
+    ApiPath(id): ApiPath<Uuid>,
+) -> Result<Json<AssetDetails>, ApiError> {
+    let record = timeline::detail(&state.pool, current.user.id, id)
+        .await?
+        .ok_or(ApiError::NotFound)?;
+    Ok(Json(AssetDetails::new(&record, Vec::new())))
+}
+
+#[utoipa::path(get, path = "/api/media/status", tag = "photos",
+    responses((status = 200, body = MediaStatus)))]
+pub async fn media_status(
+    State(state): State<AppState>,
+    current: CurrentUser,
+) -> Result<Json<MediaStatus>, ApiError> {
+    let counts = timeline::status_counts(&state.pool, current.user.id).await?;
+    Ok(Json(counts.into()))
 }
 
 #[cfg(test)]

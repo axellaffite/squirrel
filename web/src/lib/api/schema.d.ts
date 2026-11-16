@@ -229,6 +229,22 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/media/status": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["media_status"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/nodes": {
         parameters: {
             query?: never;
@@ -285,6 +301,22 @@ export interface paths {
             cookie?: never;
         };
         get: operations["photo_months"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/photos/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["get_photo"];
         put?: never;
         post?: never;
         delete?: never;
@@ -466,6 +498,31 @@ export interface components {
             password: string;
             username: string;
         };
+        /** @description An album a photo belongs to. */
+        AlbumRef: {
+            /** Format: uuid */
+            id: string;
+            name: string;
+        };
+        /** @description Everything the photo viewer shows about one photo. */
+        AssetDetails: {
+            /** @description Albums of the caller holding this photo, by name. */
+            albums: components["schemas"]["AlbumRef"][];
+            asset: components["schemas"]["AssetSummary"];
+            camera?: null | components["schemas"]["CameraDto"];
+            location?: null | components["schemas"]["LocationDto"];
+            /**
+             * Format: uuid
+             * @description The folder holding the file.
+             */
+            parent_id?: string | null;
+            place?: null | components["schemas"]["PlaceDto"];
+            /**
+             * Format: int64
+             * @description Bytes.
+             */
+            size: number;
+        };
         /** @enum {string} */
         AssetKindDto: "photo" | "screenshot";
         /** @description One photo of the timeline. */
@@ -494,6 +551,19 @@ export interface components {
              * @description Displayed size, once known. The grid treats unknown as square.
              */
             width?: number | null;
+        };
+        CameraDto: {
+            /** @description As recorded, e.g. `1/250`. */
+            exposure_time?: string | null;
+            /** Format: float */
+            f_number?: number | null;
+            /** Format: float */
+            focal_length_mm?: number | null;
+            /** Format: int32 */
+            iso?: number | null;
+            lens?: string | null;
+            make?: string | null;
+            model?: string | null;
         };
         CreateFolderRequest: {
             name: string;
@@ -592,6 +662,17 @@ export interface components {
         JoinStatus: {
             valid: boolean;
         };
+        LocationDto: {
+            /**
+             * Format: double
+             * @description Metres above sea level.
+             */
+            altitude?: number | null;
+            /** Format: double */
+            latitude: number;
+            /** Format: double */
+            longitude: number;
+        };
         LoginRequest: {
             password: string;
             username: string;
@@ -606,6 +687,24 @@ export interface components {
             id: string;
             role: components["schemas"]["Role"];
             username: string;
+        };
+        /** @description The caller's files still being processed (drives "Preparing 12 photos…"). */
+        MediaStatus: {
+            /**
+             * Format: int64
+             * @description With a step that failed.
+             */
+            failed: number;
+            /**
+             * Format: int64
+             * @description With a step in progress.
+             */
+            processing: number;
+            /**
+             * Format: int64
+             * @description Waiting for their first processing step.
+             */
+            queued: number;
         };
         MonthCountDto: {
             /** Format: int64 */
@@ -654,6 +753,13 @@ export interface components {
         PathSegmentDto: {
             /** Format: uuid */
             id: string;
+            name: string;
+        };
+        /** @description Where a photo was taken, named from the offline GeoNames dataset. */
+        PlaceDto: {
+            admin1?: string | null;
+            country?: string | null;
+            country_code?: string | null;
             name: string;
         };
         /** @enum {string} */
@@ -1382,6 +1488,25 @@ export interface operations {
             };
         };
     };
+    media_status: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MediaStatus"];
+                };
+            };
+        };
+    };
     list_nodes: {
         parameters: {
             query?: {
@@ -1601,6 +1726,36 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["MonthCountDto"][];
+                };
+            };
+        };
+    };
+    get_photo: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The photo's file node id */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AssetDetails"];
+                };
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
                 };
             };
         };

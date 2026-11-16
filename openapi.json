@@ -785,6 +785,26 @@
         }
       }
     },
+    "/api/media/status": {
+      "get": {
+        "tags": [
+          "photos"
+        ],
+        "operationId": "media_status",
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MediaStatus"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/nodes": {
       "get": {
         "tags": [
@@ -1099,6 +1119,48 @@
                   "items": {
                     "$ref": "#/components/schemas/MonthCountDto"
                   }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/photos/{id}": {
+      "get": {
+        "tags": [
+          "photos"
+        ],
+        "operationId": "get_photo",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "The photo's file node id",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AssetDetails"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
                 }
               }
             }
@@ -1747,6 +1809,87 @@
           }
         }
       },
+      "AlbumRef": {
+        "type": "object",
+        "description": "An album a photo belongs to.",
+        "required": [
+          "id",
+          "name"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "name": {
+            "type": "string"
+          }
+        }
+      },
+      "AssetDetails": {
+        "type": "object",
+        "description": "Everything the photo viewer shows about one photo.",
+        "required": [
+          "asset",
+          "size",
+          "albums"
+        ],
+        "properties": {
+          "albums": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/AlbumRef"
+            },
+            "description": "Albums of the caller holding this photo, by name."
+          },
+          "asset": {
+            "$ref": "#/components/schemas/AssetSummary"
+          },
+          "camera": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/CameraDto"
+              }
+            ]
+          },
+          "location": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/LocationDto"
+              }
+            ]
+          },
+          "parent_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid",
+            "description": "The folder holding the file."
+          },
+          "place": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/PlaceDto"
+              }
+            ]
+          },
+          "size": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Bytes."
+          }
+        }
+      },
       "AssetKindDto": {
         "type": "string",
         "enum": [
@@ -1819,6 +1962,57 @@
             "format": "int32",
             "description": "Displayed size, once known. The grid treats unknown as square.",
             "minimum": 0
+          }
+        }
+      },
+      "CameraDto": {
+        "type": "object",
+        "properties": {
+          "exposure_time": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "As recorded, e.g. `1/250`."
+          },
+          "f_number": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "format": "float"
+          },
+          "focal_length_mm": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "format": "float"
+          },
+          "iso": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32"
+          },
+          "lens": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "make": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "model": {
+            "type": [
+              "string",
+              "null"
+            ]
           }
         }
       },
@@ -2105,6 +2299,31 @@
           }
         }
       },
+      "LocationDto": {
+        "type": "object",
+        "required": [
+          "latitude",
+          "longitude"
+        ],
+        "properties": {
+          "altitude": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "format": "double",
+            "description": "Metres above sea level."
+          },
+          "latitude": {
+            "type": "number",
+            "format": "double"
+          },
+          "longitude": {
+            "type": "number",
+            "format": "double"
+          }
+        }
+      },
       "LoginRequest": {
         "type": "object",
         "required": [
@@ -2151,6 +2370,32 @@
           },
           "username": {
             "type": "string"
+          }
+        }
+      },
+      "MediaStatus": {
+        "type": "object",
+        "description": "The caller's files still being processed (drives \"Preparing 12 photos…\").",
+        "required": [
+          "queued",
+          "processing",
+          "failed"
+        ],
+        "properties": {
+          "failed": {
+            "type": "integer",
+            "format": "int64",
+            "description": "With a step that failed."
+          },
+          "processing": {
+            "type": "integer",
+            "format": "int64",
+            "description": "With a step in progress."
+          },
+          "queued": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Waiting for their first processing step."
           }
         }
       },
@@ -2296,6 +2541,36 @@
           "id": {
             "type": "string",
             "format": "uuid"
+          },
+          "name": {
+            "type": "string"
+          }
+        }
+      },
+      "PlaceDto": {
+        "type": "object",
+        "description": "Where a photo was taken, named from the offline GeoNames dataset.",
+        "required": [
+          "name"
+        ],
+        "properties": {
+          "admin1": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "country": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "country_code": {
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "name": {
             "type": "string"
