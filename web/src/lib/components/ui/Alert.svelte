@@ -3,7 +3,7 @@
 	import Icon from '#lib/components/icons/Icon.svelte';
 
 	interface Props {
-		tone?: 'danger' | 'success';
+		tone?: 'danger' | 'success' | 'info';
 		/** Live region role; errors use "alert" so they are announced at once. */
 		role?: 'alert' | 'status';
 		children: Snippet;
@@ -13,7 +13,7 @@
 </script>
 
 <div class="alert {tone}" {role}>
-	<Icon name={tone === 'danger' ? 'alert' : 'check'} />
+	<Icon name={tone === 'danger' ? 'alert' : tone === 'info' ? 'info' : 'check'} />
 	<div class="body">{@render children()}</div>
 </div>
 
@@ -37,6 +37,11 @@
 	.success {
 		background: var(--tint);
 		color: var(--success);
+	}
+
+	.info {
+		background: var(--tint);
+		color: var(--ink);
 	}
 
 	.body {
