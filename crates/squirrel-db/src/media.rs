@@ -143,8 +143,9 @@ impl MediaRecord {
     }
 }
 
-/// The row for `sha256`, created with the initial states of `kind` if missing.
-/// An existing row is returned unchanged.
+/// The row for `sha256`, created with the initial states of `kind` if missing,
+/// and locked until the caller's transaction ends (see [`lock`]). An existing
+/// row is returned unchanged.
 pub async fn ensure(
     conn: &mut PgConnection,
     sha256: &str,
@@ -162,7 +163,18 @@ pub async fn ensure(
     .bind(text.as_str())
     .execute(&mut *conn)
     .await?;
-    find(&mut *conn, sha256).await?.ok_or(DbError::NotFound)
+    lock(conn, sha256).await?.ok_or(DbError::NotFound)
+}
+
+/// The row, locked (`FOR UPDATE`) until the caller's transaction ends. Every
+/// writer of a blob's timeline entries (`process_media`, `extract_metadata`)
+/// takes it first, so they never interleave.
+pub async fn lock(conn: &mut PgConnection, sha256: &str) -> Result<Option<MediaRecord>, DbError> {
+    let sql = format!("SELECT {MEDIA_COLUMNS} FROM media WHERE sha256 = $1 FOR UPDATE");
+    Ok(sqlx::query_as::<_, MediaRecord>(&sql)
+        .bind(sha256)
+        .fetch_optional(conn)
+        .await?)
 }
 
 /// Internal (no owner check): the worker's view of a blob's media facts.
@@ -200,8 +212,8 @@ pub struct MetadataUpdate {
 }
 
 /// Records extracted metadata and marks the step ready.
-pub async fn set_metadata(
-    pool: &PgPool,
+pub async fn set_metadata<'e>(
+    executor: impl PgExecutor<'e>,
     sha256: &str,
     update: &MetadataUpdate,
 ) -> Result<(), DbError> {
@@ -234,7 +246,7 @@ pub async fn set_metadata(
     .bind(update.is_screenshot)
     .bind(width)
     .bind(height)
-    .execute(pool)
+    .execute(executor)
     .await?;
     Ok(())
 }

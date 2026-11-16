@@ -55,10 +55,7 @@ pub async fn run(ctx: &MediaContext, job: JobContext) -> Result<(), JobError> {
             return Err(JobError::retry(err));
         }
     };
-    media::set_metadata(&ctx.pool, &sha256, &extracted.update())
-        .await
-        .map_err(JobError::retry)?;
-    recompute_assets(ctx, &sha256).await?;
+    settle(ctx, &sha256, &extracted.update()).await?;
     if extracted.meta.gps.is_some() {
         let mut conn = ctx.pool.acquire().await.map_err(JobError::retry)?;
         squirrel_jobs::enqueue(&mut conn, &jobs::geocode(&sha256, false))
@@ -68,26 +65,35 @@ pub async fn run(ctx: &MediaContext, job: JobContext) -> Result<(), JobError> {
     Ok(())
 }
 
-/// Settles the timeline entry of every node of the blob, in one transaction.
-async fn recompute_assets(ctx: &MediaContext, sha256: &str) -> Result<(), JobError> {
-    let nodes = assets::for_blob(&ctx.pool, sha256)
-        .await
-        .map_err(JobError::retry)?;
+/// Records the metadata and settles the timeline entry of every node of the
+/// blob, in one transaction holding the media row's lock, so a concurrent
+/// `process_media` cannot write a provisional time in between.
+async fn settle(ctx: &MediaContext, sha256: &str, update: &MetadataUpdate) -> Result<(), JobError> {
     let mut tx = ctx.pool.begin().await.map_err(JobError::retry)?;
-    let Some(media) = media::find(&mut *tx, sha256)
+    if media::lock(&mut tx, sha256)
         .await
         .map_err(JobError::retry)?
-    else {
-        return Ok(());
-    };
+        .is_none()
+    {
+        return Ok(()); // the blob was collected meanwhile
+    }
+    media::set_metadata(&mut *tx, sha256, update)
+        .await
+        .map_err(JobError::retry)?;
+    let media = media::find(&mut *tx, sha256)
+        .await
+        .map_err(JobError::retry)?
+        .ok_or_else(|| JobError::retry(anyhow::anyhow!("media row vanished under its lock")))?;
+    let nodes = assets::for_blob(&mut *tx, sha256)
+        .await
+        .map_err(JobError::retry)?;
     let now = OffsetDateTime::now_utc();
     for node in nodes
         .iter()
         .filter(|n| n.mime.as_deref().and_then(MediaKind::for_mime) == Some(MediaKind::Image))
     {
-        let asset = facts::asset_for(node, &media, now);
         // `false`: deleted for good meanwhile, skipped without failing the transaction.
-        assets::upsert(&mut tx, &asset)
+        assets::replace(&mut tx, &facts::asset_for(node, &media, now))
             .await
             .map_err(JobError::retry)?;
     }

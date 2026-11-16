@@ -187,3 +187,57 @@ async fn deleted_nodes_and_bad_payloads(pool: PgPool) {
     let bad = process::run(&fx.ctx, job("process_media", json!({"node": 1}))).await;
     assert!(matches!(bad, Err(JobError::Permanent(_))));
 }
+
+#[sqlx::test(migrator = "squirrel_db::MIGRATOR")]
+async fn a_late_process_media_keeps_the_exif_time(pool: PgPool) {
+    let fx = Fixture::new(pool);
+    let alice = admin(fx.pool()).await;
+    let parent = photos(&fx, &alice).await;
+    let jpeg = jpeg_with_exif(&ExifSpec {
+        date_time_original: Some("2023:01:02 03:04:05"),
+        ..ExifSpec::default()
+    });
+    let node = fx.store_file(alice.id, parent, "a.jpg", &jpeg).await;
+    process(&fx, node.id, false).await.unwrap();
+    let sha = node.blob_sha256.clone().unwrap();
+    squirrel_worker::metadata::run(&fx.ctx, job("extract_metadata", json!({"sha256": sha})))
+        .await
+        .unwrap();
+    // A process_media that read the media row before metadata was ready.
+    sqlx::query("UPDATE media SET metadata_state = 'pending'")
+        .execute(fx.pool())
+        .await
+        .unwrap();
+    process(&fx, node.id, false).await.unwrap();
+    let asset = assets::find(fx.pool(), node.id).await.unwrap().unwrap();
+    assert_eq!(
+        (asset.taken_source.as_str(), asset.taken_at),
+        ("exif", time::macros::datetime!(2023-01-02 03:04:05))
+    );
+}
+
+#[sqlx::test(migrator = "squirrel_db::MIGRATOR")]
+async fn process_media_waits_for_the_media_row_lock(pool: PgPool) {
+    let fx = Fixture::new(pool);
+    let alice = admin(fx.pool()).await;
+    let parent = photos(&fx, &alice).await;
+    let jpeg = jpeg_with_exif(&ExifSpec::default());
+    let first = fx.store_file(alice.id, parent, "a.jpg", &jpeg).await;
+    process(&fx, first.id, false).await.unwrap();
+    let second = fx.store_file(alice.id, parent, "b.jpg", &jpeg).await;
+
+    // `extract_metadata` holding the row while it settles the blob's entries.
+    let mut settling = fx.pool().begin().await.unwrap();
+    media::lock(&mut settling, first.blob_sha256.as_deref().unwrap())
+        .await
+        .unwrap()
+        .unwrap();
+    let ctx = fx.ctx.clone();
+    let late = tokio::spawn(async move {
+        process::run(&ctx, job("process_media", json!({"node_id": second.id}))).await
+    });
+    tokio::time::sleep(std::time::Duration::from_millis(300)).await;
+    assert!(!late.is_finished(), "process_media must wait for the lock");
+    settling.commit().await.unwrap();
+    late.await.unwrap().unwrap();
+}
