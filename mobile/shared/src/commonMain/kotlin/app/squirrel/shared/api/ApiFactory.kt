@@ -41,6 +41,7 @@ data class DeviceDetails(val name: String, val platform: DevicePlatform, val mod
 data class SignedIn(val account: AccountDto, val device: DeviceDto)
 
 internal const val REQUEST_TIMEOUT_MS = 30_000L
+private val REFUSED = setOf(400, 401, 403)
 
 /** JSON settings shared by every call: tolerant of new server fields, omits nulls. */
 val ApiJson: Json = Json {
@@ -62,6 +63,9 @@ class SquirrelApi(
 
     private val authed: HttpClient = HttpClient(engine) {
         base()
+        install(createClientPlugin("SquirrelSession") {
+            onRequest { request, _ -> request.attributes.put(AuthenticatedCall, session) }
+        })
         install(Auth) {
             bearer {
                 loadTokens { session.accessToken()?.let { BearerTokens(it, null) } }
@@ -118,9 +122,18 @@ class SquirrelApi(
         }
     }
 
+    /**
+     * The server answers 401 for a revoked device, an unknown, expired or reused token and a
+     * disabled user, and 400 for a malformed one: any of 400/401/403 in its own envelope means
+     * sign in again. Without the envelope (a proxy page) it is a transient failure.
+     */
     private suspend fun callRefresh(refreshToken: String): RefreshOutcome {
         val response = publicDevices.refreshDeviceToken(RefreshRequest(refreshToken))
-        if (response.status == 401) return RefreshOutcome.Rejected
+        if (response.status in REFUSED) {
+            val error = response.response.apiError()
+            if (error.fromServer) return RefreshOutcome.Rejected
+            throw error
+        }
         val tokens = response.bodyOrThrow().tokens
         return RefreshOutcome.Refreshed(Tokens(tokens.accessToken, tokens.refreshToken))
     }
