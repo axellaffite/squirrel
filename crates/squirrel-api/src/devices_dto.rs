@@ -1,5 +1,7 @@
 //! Request and response bodies for devices (phones) and their tokens.
 
+use std::fmt;
+
 use serde::{Deserialize, Serialize};
 use squirrel_core::Role;
 use squirrel_db::devices::DeviceRecord;
@@ -100,14 +102,14 @@ fn text(field: &str, value: &str, max_chars: usize) -> Result<String, ApiError> 
     Ok(value.to_owned())
 }
 
-#[derive(Debug, Deserialize, ToSchema)]
+#[derive(Deserialize, ToSchema)]
 pub struct DeviceLoginRequest {
     pub username: String,
     pub password: String,
     pub device: DeviceInfo,
 }
 
-#[derive(Debug, Deserialize, ToSchema)]
+#[derive(Deserialize, ToSchema)]
 pub struct RefreshRequest {
     /// The current (or, after a lost response, the previous) `sqr_…` token.
     pub refresh_token: String,
@@ -116,7 +118,7 @@ pub struct RefreshRequest {
 /// Tokens of one device. Send the access token as `Authorization: Bearer
 /// <access_token>`; before it expires, trade the refresh token for a new pair
 /// (`POST /api/auth/device/refresh`). Every refresh rotates the refresh token.
-#[derive(Debug, Serialize, ToSchema)]
+#[derive(Serialize, ToSchema)]
 pub struct TokenPair {
     /// `sqa_…`, valid 15 minutes.
     pub access_token: String,
@@ -129,6 +131,38 @@ pub struct TokenPair {
     #[serde(with = "time::serde::rfc3339")]
     #[schema(value_type = String, format = DateTime)]
     pub refresh_expires_at: OffsetDateTime,
+}
+
+/// Shown instead of a secret in `Debug` output.
+const REDACTED: &str = "<redacted>";
+
+impl fmt::Debug for DeviceLoginRequest {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("DeviceLoginRequest")
+            .field("username", &self.username)
+            .field("password", &REDACTED)
+            .field("device", &self.device)
+            .finish()
+    }
+}
+
+impl fmt::Debug for RefreshRequest {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("RefreshRequest")
+            .field("refresh_token", &REDACTED)
+            .finish()
+    }
+}
+
+impl fmt::Debug for TokenPair {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("TokenPair")
+            .field("access_token", &REDACTED)
+            .field("access_expires_at", &self.access_expires_at)
+            .field("refresh_token", &REDACTED)
+            .field("refresh_expires_at", &self.refresh_expires_at)
+            .finish()
+    }
 }
 
 /// The signed-in user, as a device sees it.
@@ -218,6 +252,33 @@ pub struct RenameDeviceRequest {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn debug_output_never_shows_secrets() {
+        let login = DeviceLoginRequest {
+            username: "alice".into(),
+            password: "hunter2-secret".into(),
+            device: info("Pixel", "0.1.0"),
+        };
+        let refresh = RefreshRequest {
+            refresh_token: "sqr_secret".into(),
+        };
+        let pair = TokenPair {
+            access_token: "sqa_secret".into(),
+            access_expires_at: OffsetDateTime::UNIX_EPOCH,
+            refresh_token: "sqr_secret".into(),
+            refresh_expires_at: OffsetDateTime::UNIX_EPOCH,
+        };
+        for shown in [
+            format!("{login:?}"),
+            format!("{refresh:?}"),
+            format!("{pair:?}"),
+        ] {
+            assert!(!shown.contains("secret"), "{shown}");
+            assert!(shown.contains("<redacted>"), "{shown}");
+        }
+        assert!(format!("{login:?}").contains("alice"));
+    }
 
     fn info(name: &str, version: &str) -> DeviceInfo {
         DeviceInfo {
