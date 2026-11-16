@@ -5,6 +5,8 @@
 import {
 	isSearchable,
 	MAX_RESULTS,
+	MAX_RETRY_WAIT_MS,
+	STILL_TOO_FAST,
 	normalizeQuery,
 	SEARCH_DEBOUNCE_MS,
 	searchDocuments,
@@ -78,7 +80,7 @@ export class Searcher {
 		this.loading = false;
 	}
 
-	async #fetch(query: string, offset: number) {
+	async #fetch(query: string, offset: number, retried = false) {
 		this.#cancel();
 		const controller = new AbortController();
 		this.#controller = controller;
@@ -91,7 +93,20 @@ export class Searcher {
 		this.loading = false;
 		if (!result.ok) {
 			if ('aborted' in result) return;
-			this.error = result.error;
+			// Rate-limited: retry once, when the server says it is fine (typing cancels the retry).
+			const wait = result.retryAfterMs;
+			if (result.status === 429 && !retried && wait !== undefined && wait <= MAX_RETRY_WAIT_MS) {
+				this.error = result.error;
+				this.#timer = setTimeout(() => void this.#fetch(query, offset, true), wait);
+				return;
+			}
+			this.error = result.status === 429 ? STILL_TOO_FAST : result.error;
+			// Results of an older query must not pass for this one's.
+			if (offset === 0 && query !== this.query) {
+				this.query = '';
+				this.items = [];
+				this.hasMore = false;
+			}
 			return;
 		}
 		this.error = null;

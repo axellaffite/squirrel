@@ -6,6 +6,7 @@ import {
 	nextLimit,
 	normalizeQuery,
 	pagesLabel,
+	retryDelay,
 	searchError,
 	snippetParts
 } from '#lib/files/search.ts';
@@ -69,7 +70,7 @@ describe('snippetParts', () => {
 
 describe('wording', () => {
 	it('explains rate limits and timeouts calmly', () => {
-		expect(searchError(429, 'x')).toMatch(/too fast/);
+		expect(searchError(429, 'x')).toBe('Searching a little too fast. Trying again in a moment…');
 		expect(searchError(503, 'x')).toMatch(/took too long/);
 		expect(searchError(422, 'x')).toBe('Searches use 2 to 200 characters.');
 		expect(searchError(500, 'fallback')).toBe('fallback');
@@ -82,5 +83,13 @@ describe('wording', () => {
 		expect(pagesLabel(3)).toBe('3 pages');
 		expect(pagesLabel(1)).toBe('1 page');
 		expect(pagesLabel(null)).toBeNull();
+	});
+});
+
+describe('retryDelay', () => {
+	it('reads Retry-After in seconds, else waits a second', () => {
+		expect(retryDelay('2')).toBe(2000);
+		expect(retryDelay(null)).toBe(1000);
+		expect(retryDelay('soon')).toBe(1000);
 	});
 });
