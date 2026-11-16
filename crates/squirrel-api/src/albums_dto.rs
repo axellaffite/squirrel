@@ -38,9 +38,21 @@ pub struct CreateAlbumRequest {
 pub struct UpdateAlbumRequest {
     #[serde(default)]
     pub name: Option<String>,
-    /// Must be a photo of the album.
-    #[serde(default)]
-    pub cover_node_id: Option<Uuid>,
+    /// A photo of the album to show as its cover; `null` goes back to the
+    /// newest photo; absent keeps the current choice.
+    #[serde(default, deserialize_with = "present")]
+    #[schema(value_type = Option<Uuid>, nullable)]
+    pub cover_node_id: Option<Option<Uuid>>,
+}
+
+/// A field that is present, `null` included (`Some(None)`); an absent one is
+/// `None` through `#[serde(default)]`.
+fn present<'de, D, T>(deserializer: D) -> Result<Option<Option<T>>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+    T: Deserialize<'de>,
+{
+    Option::<T>::deserialize(deserializer).map(Some)
 }
 
 #[derive(Debug, Deserialize, ToSchema)]
@@ -62,4 +74,27 @@ pub struct AlbumItemsQuery {
     pub cursor: Option<String>,
     /// Default 200, at most 500.
     pub limit: Option<u32>,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn cover(json: &str) -> Option<Option<Uuid>> {
+        serde_json::from_str::<UpdateAlbumRequest>(json)
+            .unwrap()
+            .cover_node_id
+    }
+
+    #[test]
+    fn the_cover_is_kept_cleared_or_set() {
+        let id = Uuid::now_v7();
+        assert_eq!(cover(r#"{"name": "x"}"#), None);
+        assert_eq!(cover(r#"{"cover_node_id": null}"#), Some(None));
+        assert_eq!(
+            cover(&format!(r#"{{"cover_node_id": "{id}"}}"#)),
+            Some(Some(id))
+        );
+        assert!(serde_json::from_str::<UpdateAlbumRequest>(r#"{"cover_node_id": 3}"#).is_err());
+    }
 }

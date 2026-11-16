@@ -6,7 +6,7 @@ use axum::Json;
 use axum::extract::State;
 use axum::http::StatusCode;
 use squirrel_core::AlbumName;
-use squirrel_db::albums::{self, AlbumRecord, AlbumUpdate, UpdateOutcome};
+use squirrel_db::albums::{self, AlbumRecord, AlbumUpdate, CoverChange, UpdateOutcome};
 use squirrel_db::timeline;
 use uuid::Uuid;
 
@@ -118,7 +118,11 @@ pub async fn update_album(
     }
     let changes = AlbumUpdate {
         name: request.name.as_deref().map(AlbumName::parse).transpose()?,
-        cover_node_id: request.cover_node_id,
+        cover: match request.cover_node_id {
+            None => CoverChange::Keep,
+            Some(None) => CoverChange::Clear,
+            Some(Some(id)) => CoverChange::Set(id),
+        },
     };
     let owner = current.user.id;
     match albums::update(&state.pool, id, owner, &changes).await? {
@@ -156,9 +160,9 @@ pub async fn list_album_items(
     ApiQuery(query): ApiQuery<AlbumItemsQuery>,
 ) -> Result<Json<TimelinePage>, ApiError> {
     let owner = current.user.id;
-    albums::find(&state.pool, owner, id)
-        .await?
-        .ok_or(ApiError::NotFound)?;
+    if !albums::exists(&state.pool, owner, id).await? {
+        return Err(ApiError::NotFound);
+    }
     let after = query
         .cursor
         .as_deref()
