@@ -402,3 +402,34 @@ async fn trashed_content_is_not_asked_for_again(pool: PgPool) {
             .is_empty()
     );
 }
+
+async fn device_folder_name(pool: &PgPool, year_folder: uuid::Uuid) -> String {
+    sqlx::query_scalar(
+        "SELECT p.name FROM nodes n JOIN nodes p ON p.id = n.parent_id WHERE n.id = $1",
+    )
+    .bind(year_folder)
+    .fetch_one(pool)
+    .await
+    .unwrap()
+}
+
+#[sqlx::test(migrator = "squirrel_db::MIGRATOR")]
+async fn two_phones_with_one_name_get_separate_folders(pool: PgPool) {
+    let instance = common::Instance::new(pool.clone());
+    common::setup_admin(&instance.browser(), "alice").await;
+    let first = device_login(&instance, "alice", "Pixel 8").await;
+    let second = device_login(&instance, "alice", "Pixel 8").await;
+    let first_year = folder_of(&instance, &access(&first), 2024).await;
+    let second_year = folder_of(&instance, &access(&second), 2024).await;
+    assert_ne!(first_year, second_year);
+    assert_eq!(device_folder_name(&pool, first_year).await, "Pixel 8");
+    assert_eq!(device_folder_name(&pool, second_year).await, "Pixel 8 (2)");
+
+    // The first phone signs out and signs in again: it gets its folder back.
+    device_logout(&instance, &access(&first)).await;
+    let again = device_login(&instance, "alice", "Pixel 8").await;
+    assert_eq!(
+        folder_of(&instance, &access(&again), 2024).await,
+        first_year
+    );
+}
