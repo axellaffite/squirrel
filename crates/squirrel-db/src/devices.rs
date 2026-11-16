@@ -333,16 +333,14 @@ pub async fn revoke(pool: &PgPool, owner_id: Uuid, id: Uuid) -> Result<bool, DbE
     Ok(exists)
 }
 
-/// Revokes every live device of the user. Returns how many were live.
-pub async fn revoke_all_for_user(pool: &PgPool, owner_id: Uuid) -> Result<u64, DbError> {
-    let mut tx = pool.begin().await?;
+/// Revokes every live device of the user, in the caller's transaction.
+/// Returns how many were live.
+pub async fn revoke_all_for_user(conn: &mut PgConnection, owner_id: Uuid) -> Result<u64, DbError> {
     let ids: Vec<Uuid> = sqlx::query_scalar("SELECT id FROM devices WHERE owner_id = $1")
         .bind(owner_id)
-        .fetch_all(&mut *tx)
+        .fetch_all(&mut *conn)
         .await?;
-    let revoked = revoke_ids(&mut tx, &ids).await?;
-    tx.commit().await?;
-    Ok(revoked)
+    revoke_ids(conn, &ids).await
 }
 
 /// Records activity (callers throttle it).

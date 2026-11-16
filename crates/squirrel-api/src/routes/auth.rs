@@ -5,7 +5,7 @@ use axum_extra::extract::CookieJar;
 use squirrel_auth::{burn_verification_time, verify_password};
 use squirrel_core::{Password, Username};
 use squirrel_db::users::UserRecord;
-use squirrel_db::{devices, sessions, settings, users};
+use squirrel_db::{DbError, devices, sessions, settings, users};
 use time::OffsetDateTime;
 
 use crate::blocking::run_hashing;
@@ -63,8 +63,11 @@ pub async fn logout_all(
     client_ip: ClientIp,
     jar: CookieJar,
 ) -> Result<(StatusCode, [(HeaderName, HeaderValue); 1], CookieJar), ApiError> {
-    let revoked = sessions::delete_all_for_user(&state.pool, current.user.id).await?;
-    let devices_revoked = devices::revoke_all_for_user(&state.pool, current.user.id).await?;
+    // One transaction: "everywhere" never stops halfway.
+    let mut tx = state.pool.begin().await.map_err(DbError::from)?;
+    let devices_revoked = devices::revoke_all_for_user(&mut tx, current.user.id).await?;
+    let revoked = sessions::delete_all_for_user(&mut *tx, current.user.id).await?;
+    tx.commit().await.map_err(DbError::from)?;
     tracing::info!(
         user_id = %current.user.id,
         username = %current.user.username,

@@ -92,10 +92,13 @@ pub async fn delete_by_token_hash(pool: &PgPool, token_hash: &[u8]) -> Result<()
     Ok(())
 }
 
-pub async fn delete_all_for_user(pool: &PgPool, user_id: Uuid) -> Result<u64, DbError> {
+pub async fn delete_all_for_user<'e>(
+    executor: impl sqlx::PgExecutor<'e>,
+    user_id: Uuid,
+) -> Result<u64, DbError> {
     let result = sqlx::query("DELETE FROM sessions WHERE user_id = $1")
         .bind(user_id)
-        .execute(pool)
+        .execute(executor)
         .await?;
     Ok(result.rows_affected())
 }
