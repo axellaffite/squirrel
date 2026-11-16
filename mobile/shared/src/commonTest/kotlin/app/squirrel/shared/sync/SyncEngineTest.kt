@@ -116,7 +116,7 @@ class SyncEngineTest {
         val transport = object : ChunkTransport {
             override suspend fun put(session: UploadSession, index: Int, reader: AssetReader) {
                 server.transport.put(session, index, reader)
-                conditions.pause = PauseReason.WifiRequired // Wi-Fi lost during the first chunk
+                server.locked { conditions.pause = PauseReason.WifiRequired } // Wi-Fi lost during the first chunk
             }
         }
         val engine = engine(transport = transport)
@@ -149,7 +149,7 @@ class SyncEngineTest {
         val transport = object : ChunkTransport {
             override suspend fun put(session: UploadSession, index: Int, reader: AssetReader) {
                 server.transport.put(session, index, reader)
-                clock += 1_000
+                server.locked { clock += 1_000 }
             }
         }
         val engine = engine(transport = transport)
@@ -239,7 +239,7 @@ class SyncEngineTest {
         val transport = object : ChunkTransport {
             override suspend fun put(session: UploadSession, index: Int, reader: AssetReader) {
                 server.transport.put(session, index, reader)
-                clock += 10_000
+                server.locked { clock += 10_000 }
             }
         }
         val engine = engine(transport = transport)
@@ -292,7 +292,8 @@ class SyncEngineTest {
         val dispatchers = mutableSetOf<Any?>()
         val transport = object : ChunkTransport {
             override suspend fun put(session: UploadSession, index: Int, reader: AssetReader) {
-                dispatchers += currentCoroutineContext()[ContinuationInterceptor]
+                val dispatcher = currentCoroutineContext()[ContinuationInterceptor]
+                server.locked { dispatchers += dispatcher }
                 server.transport.put(session, index, reader)
             }
         }
