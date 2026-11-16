@@ -4,6 +4,7 @@ use axum::http::{HeaderMap, HeaderName, HeaderValue, StatusCode};
 use axum_extra::extract::CookieJar;
 use squirrel_auth::{burn_verification_time, verify_password};
 use squirrel_core::{Password, Username};
+use squirrel_db::users::UserRecord;
 use squirrel_db::{sessions, settings, users};
 use time::OffsetDateTime;
 
@@ -90,13 +91,28 @@ pub async fn login(
     headers: HeaderMap,
     ApiJson(request): ApiJson<LoginRequest>,
 ) -> Result<(CookieJar, Json<MeResponse>), ApiError> {
-    if request.password.len() > MAX_PASSWORD_BYTES {
+    let user = authenticate(&state, &client_ip, &request.username, request.password).await?;
+    tracing::info!(user_id = %user.id, username = %user.username, %client_ip, "login succeeded");
+    let (cookie, me) = session::start(&state, &user, &headers, &jar).await?;
+    Ok((jar.add(cookie), Json(me)))
+}
+
+/// Checks a username and password the way every sign-in does (browser or
+/// device): the same lockout, failure counting, timing equalisation and
+/// logging. On success the failure counter is reset.
+pub(crate) async fn authenticate(
+    state: &AppState,
+    client_ip: &ClientIp,
+    username: &str,
+    password: String,
+) -> Result<UserRecord, ApiError> {
+    if password.len() > MAX_PASSWORD_BYTES {
         tracing::warn!(%client_ip, reason = "password too long", "login failed");
         return Err(ApiError::InvalidCredentials);
     }
     // Only a syntactically valid username is logged: a password typed into the
     // username field must never reach the logs.
-    let username = Username::parse(&request.username).ok();
+    let username = Username::parse(username).ok();
     let logged_name = username.as_ref().map_or("<invalid>", Username::as_str);
     let user = match &username {
         Some(username) => users::find_by_username(&state.pool, username).await?,
@@ -110,11 +126,11 @@ pub async fn login(
             reason = "unknown, disabled or locked account",
             "login failed"
         );
-        burn_verification(&state, request.password).await?;
+        burn_verification(state, password).await?;
         return Err(ApiError::InvalidCredentials);
     };
 
-    if !verify(&state, request.password, user.password_hash.clone()).await? {
+    if !verify(state, password, user.password_hash.clone()).await? {
         let failures = users::record_login_failure(&state.pool, user.id).await?;
         tracing::warn!(user_id = %user.id, username = %user.username, %client_ip,
             failures, reason = "wrong password", "login failed");
@@ -125,9 +141,7 @@ pub async fn login(
         return Err(ApiError::InvalidCredentials);
     }
     users::record_login_success(&state.pool, user.id).await?;
-    tracing::info!(user_id = %user.id, username = %user.username, %client_ip, "login succeeded");
-    let (cookie, me) = session::start(&state, &user, &headers, &jar).await?;
-    Ok((jar.add(cookie), Json(me)))
+    Ok(user)
 }
 
 async fn burn_verification(state: &AppState, password: String) -> Result<(), ApiError> {

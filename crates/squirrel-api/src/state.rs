@@ -28,10 +28,18 @@ pub struct ApiConfig {
     pub session_absolute_ttl: Duration,
     pub session_touch_interval: Duration,
     pub invitation_ttl: Duration,
+    /// Lifetime of a device access token (`sqa_…`).
+    pub device_access_ttl: Duration,
+    /// Idle lifetime of a device refresh token, pushed back on every refresh.
+    pub device_refresh_ttl: Duration,
+    /// Revoked or expired devices are deleted (with their sync records) after this long.
+    pub device_retention: Duration,
     /// Per-client limit on credential POSTs (login, setup, join). `None` disables it.
     pub login_rate_limit: Option<RateLimit>,
     /// Separate, more generous per-client limit on `GET /api/join/{token}`.
     pub join_check_rate_limit: Option<RateLimit>,
+    /// Per-client limit on `POST /api/auth/device/refresh`. `None` disables it.
+    pub device_refresh_rate_limit: Option<RateLimit>,
     /// Per-client limit on `GET /api/search/documents` (each search scans
     /// text indexes). `None` disables it.
     pub search_rate_limit: Option<RateLimit>,
@@ -77,12 +85,20 @@ impl Default for ApiConfig {
             session_absolute_ttl: Duration::days(90),
             session_touch_interval: Duration::hours(1),
             invitation_ttl: Duration::days(7),
+            device_access_ttl: Duration::minutes(15),
+            device_refresh_ttl: Duration::days(90),
+            device_retention: Duration::days(30),
             login_rate_limit: Some(RateLimit {
                 replenish_every_secs: 2,
                 burst: 10,
             }),
             join_check_rate_limit: Some(RateLimit {
                 replenish_every_secs: 1,
+                burst: 30,
+            }),
+            // 30 a minute per client.
+            device_refresh_rate_limit: Some(RateLimit {
+                replenish_every_secs: 2,
                 burst: 30,
             }),
             search_rate_limit: Some(RateLimit {

@@ -542,6 +542,122 @@
         }
       }
     },
+    "/api/auth/device/login": {
+      "post": {
+        "tags": [
+          "devices"
+        ],
+        "operationId": "device_login",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DeviceLoginRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "Signed in: a new device and its tokens",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DeviceLoginResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "invalid_credentials",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {}
+        ]
+      }
+    },
+    "/api/auth/device/refresh": {
+      "post": {
+        "tags": [
+          "devices"
+        ],
+        "operationId": "refresh_device_token",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RefreshRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "New tokens; the refresh token was rotated",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RefreshResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "unauthorized: sign in again",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {}
+        ]
+      }
+    },
     "/api/auth/login": {
       "post": {
         "tags": [
@@ -2243,6 +2359,31 @@
   },
   "components": {
     "schemas": {
+      "AccountDto": {
+        "type": "object",
+        "description": "The signed-in user, as a device sees it.",
+        "required": [
+          "id",
+          "username",
+          "display_name",
+          "role"
+        ],
+        "properties": {
+          "display_name": {
+            "type": "string"
+          },
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "role": {
+            "$ref": "#/components/schemas/Role"
+          },
+          "username": {
+            "type": "string"
+          }
+        }
+      },
       "AccountRequest": {
         "type": "object",
         "required": [
@@ -2632,6 +2773,133 @@
             "$ref": "#/components/schemas/NodeDto"
           }
         }
+      },
+      "DeviceDto": {
+        "type": "object",
+        "required": [
+          "id",
+          "name",
+          "platform",
+          "app_version",
+          "created_at",
+          "last_seen_at",
+          "current"
+        ],
+        "properties": {
+          "app_version": {
+            "type": "string"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "current": {
+            "type": "boolean",
+            "description": "Whether this is the calling device."
+          },
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "last_seen_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "model": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "name": {
+            "type": "string"
+          },
+          "platform": {
+            "$ref": "#/components/schemas/DevicePlatform"
+          },
+          "revoked_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time",
+            "description": "Set once the device was signed out; its tokens no longer work."
+          }
+        }
+      },
+      "DeviceInfo": {
+        "type": "object",
+        "description": "The phone signing in.",
+        "required": [
+          "name",
+          "platform",
+          "app_version"
+        ],
+        "properties": {
+          "app_version": {
+            "type": "string",
+            "description": "The app's version, 1–32 characters."
+          },
+          "model": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Hardware model, e.g. \"Pixel 8\". At most 64 characters."
+          },
+          "name": {
+            "type": "string",
+            "description": "Shown in Settings › Devices and used as the backup folder's name. 1–64 characters."
+          },
+          "platform": {
+            "$ref": "#/components/schemas/DevicePlatform"
+          }
+        }
+      },
+      "DeviceLoginRequest": {
+        "type": "object",
+        "required": [
+          "username",
+          "password",
+          "device"
+        ],
+        "properties": {
+          "device": {
+            "$ref": "#/components/schemas/DeviceInfo"
+          },
+          "password": {
+            "type": "string"
+          },
+          "username": {
+            "type": "string"
+          }
+        }
+      },
+      "DeviceLoginResponse": {
+        "type": "object",
+        "required": [
+          "device",
+          "account",
+          "tokens"
+        ],
+        "properties": {
+          "account": {
+            "$ref": "#/components/schemas/AccountDto"
+          },
+          "device": {
+            "$ref": "#/components/schemas/DeviceDto"
+          },
+          "tokens": {
+            "$ref": "#/components/schemas/TokenPair"
+          }
+        }
+      },
+      "DevicePlatform": {
+        "type": "string",
+        "enum": [
+          "android",
+          "ios"
+        ]
       },
       "DocumentHit": {
         "type": "object",
@@ -3165,6 +3433,29 @@
           }
         }
       },
+      "RefreshRequest": {
+        "type": "object",
+        "required": [
+          "refresh_token"
+        ],
+        "properties": {
+          "refresh_token": {
+            "type": "string",
+            "description": "The current (or, after a lost response, the previous) `sqr_…` token."
+          }
+        }
+      },
+      "RefreshResponse": {
+        "type": "object",
+        "required": [
+          "tokens"
+        ],
+        "properties": {
+          "tokens": {
+            "$ref": "#/components/schemas/TokenPair"
+          }
+        }
+      },
       "Role": {
         "type": "string",
         "enum": [
@@ -3317,6 +3608,35 @@
               "null"
             ],
             "description": "Pass back as `cursor` for the next page; `null` on the last page."
+          }
+        }
+      },
+      "TokenPair": {
+        "type": "object",
+        "description": "Tokens of one device. Send the access token as `Authorization: Bearer\n<access_token>`; before it expires, trade the refresh token for a new pair\n(`POST /api/auth/device/refresh`). Every refresh rotates the refresh token.",
+        "required": [
+          "access_token",
+          "access_expires_at",
+          "refresh_token",
+          "refresh_expires_at"
+        ],
+        "properties": {
+          "access_expires_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "access_token": {
+            "type": "string",
+            "description": "`sqa_…`, valid 15 minutes."
+          },
+          "refresh_expires_at": {
+            "type": "string",
+            "format": "date-time",
+            "description": "Pushed back on every refresh."
+          },
+          "refresh_token": {
+            "type": "string",
+            "description": "`sqr_…`. Store it securely; it is shown once."
           }
         }
       },
@@ -3480,6 +3800,12 @@
     },
     {
       "name": "search"
+    },
+    {
+      "name": "devices"
+    },
+    {
+      "name": "sync"
     }
   ]
 }
