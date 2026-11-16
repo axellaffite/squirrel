@@ -9,7 +9,7 @@ use crate::extract::CurrentUser;
 use crate::input::ApiJson;
 use crate::state::AppState;
 
-#[utoipa::path(get, path = "/api/admin/settings", tag = "admin",
+#[utoipa::path(get, path = "/api/admin/settings", security(("session_cookie" = [])), tag = "admin",
     responses((status = 200, body = InstanceSettingsDto), (status = 403, body = ErrorBody)))]
 pub async fn get_settings(
     State(state): State<AppState>,
@@ -19,7 +19,7 @@ pub async fn get_settings(
     Ok(Json(settings::get(&state.pool).await?.into()))
 }
 
-#[utoipa::path(patch, path = "/api/admin/settings", tag = "admin",
+#[utoipa::path(patch, path = "/api/admin/settings", security(("session_cookie" = [], "csrf_token" = [])), tag = "admin",
     request_body = InstanceSettingsDto,
     responses((status = 200, body = InstanceSettingsDto), (status = 403, body = ErrorBody)))]
 pub async fn update_settings(

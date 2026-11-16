@@ -13,7 +13,7 @@ use crate::routes::setup::prepare_new_user;
 use crate::session;
 use crate::state::AppState;
 
-#[utoipa::path(get, path = "/api/join/{token}", tag = "invitations",
+#[utoipa::path(get, path = "/api/join/{token}", security(()), tag = "invitations",
     params(("token" = String, Path, description = "Invitation token from the link")),
     responses((status = 200, body = JoinStatus)))]
 pub async fn check_invitation(
@@ -24,7 +24,7 @@ pub async fn check_invitation(
     Ok(Json(JoinStatus { valid }))
 }
 
-#[utoipa::path(post, path = "/api/join/{token}", tag = "invitations",
+#[utoipa::path(post, path = "/api/join/{token}", security(()), tag = "invitations",
     params(("token" = String, Path, description = "Invitation token from the link")),
     request_body = AccountRequest,
     responses((status = 201, body = MeResponse), (status = 409, body = ErrorBody),

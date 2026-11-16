@@ -8,7 +8,7 @@ use uuid::Uuid;
 
 use crate::cursor;
 use crate::error::{ApiError, ErrorBody};
-use crate::extract::CurrentUser;
+use crate::extract::Caller;
 use crate::input::{ApiPath, ApiQuery};
 use crate::photos_dto::{
     AlbumRef, AssetDetails, AssetSummary, MediaStatus, MonthCountDto, TimelinePage, TimelineQuery,
@@ -54,14 +54,14 @@ pub fn timeline_page(page: squirrel_db::Page<timeline::AssetSummaryRecord>) -> T
     }
 }
 
-#[utoipa::path(get, path = "/api/photos", tag = "photos", params(TimelineQuery),
+#[utoipa::path(get, path = "/api/photos", security(("device_bearer" = []), ("session_cookie" = [])), tag = "photos", params(TimelineQuery),
     responses(
         (status = 200, body = TimelinePage),
         (status = 400, body = ErrorBody, description = "Invalid cursor"),
         (status = 422, body = ErrorBody, description = "Invalid month")))]
 pub async fn list_photos(
     State(state): State<AppState>,
-    current: CurrentUser,
+    caller: Caller,
     ApiQuery(query): ApiQuery<TimelineQuery>,
 ) -> Result<Json<TimelinePage>, ApiError> {
     let filter = match query.month.as_deref() {
@@ -79,7 +79,7 @@ pub async fn list_photos(
         .transpose()?;
     let page = timeline::page(
         &state.pool,
-        current.user.id,
+        caller.user.id,
         filter,
         after.as_ref(),
         photo_page_size(query.limit),
@@ -88,28 +88,28 @@ pub async fn list_photos(
     Ok(Json(timeline_page(page)))
 }
 
-#[utoipa::path(get, path = "/api/photos/months", tag = "photos",
+#[utoipa::path(get, path = "/api/photos/months", security(("device_bearer" = []), ("session_cookie" = [])), tag = "photos",
     responses((status = 200, body = Vec<MonthCountDto>, description = "Newest month first")))]
 pub async fn photo_months(
     State(state): State<AppState>,
-    current: CurrentUser,
+    caller: Caller,
 ) -> Result<Json<Vec<MonthCountDto>>, ApiError> {
-    let months = timeline::months(&state.pool, current.user.id).await?;
+    let months = timeline::months(&state.pool, caller.user.id).await?;
     Ok(Json(months.into_iter().map(MonthCountDto::from).collect()))
 }
 
-#[utoipa::path(get, path = "/api/photos/{id}", tag = "photos",
+#[utoipa::path(get, path = "/api/photos/{id}", security(("device_bearer" = []), ("session_cookie" = [])), tag = "photos",
     params(("id" = Uuid, Path, description = "The photo's file node id")),
     responses((status = 200, body = AssetDetails), (status = 404, body = ErrorBody)))]
 pub async fn get_photo(
     State(state): State<AppState>,
-    current: CurrentUser,
+    caller: Caller,
     ApiPath(id): ApiPath<Uuid>,
 ) -> Result<Json<AssetDetails>, ApiError> {
-    let record = timeline::detail(&state.pool, current.user.id, id)
+    let record = timeline::detail(&state.pool, caller.user.id, id)
         .await?
         .ok_or(ApiError::NotFound)?;
-    let albums = albums::albums_for_node(&state.pool, current.user.id, id)
+    let albums = albums::albums_for_node(&state.pool, caller.user.id, id)
         .await?
         .into_iter()
         .map(|album| AlbumRef {
@@ -120,13 +120,13 @@ pub async fn get_photo(
     Ok(Json(AssetDetails::new(&record, albums)))
 }
 
-#[utoipa::path(get, path = "/api/media/status", tag = "photos",
+#[utoipa::path(get, path = "/api/media/status", security(("device_bearer" = []), ("session_cookie" = [])), tag = "photos",
     responses((status = 200, body = MediaStatus)))]
 pub async fn media_status(
     State(state): State<AppState>,
-    current: CurrentUser,
+    caller: Caller,
 ) -> Result<Json<MediaStatus>, ApiError> {
-    let counts = timeline::status_counts(&state.pool, current.user.id).await?;
+    let counts = timeline::status_counts(&state.pool, caller.user.id).await?;
     Ok(Json(counts.into()))
 }
 

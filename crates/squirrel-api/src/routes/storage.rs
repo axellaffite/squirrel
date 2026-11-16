@@ -7,7 +7,7 @@ use squirrel_db::quota;
 use utoipa::ToSchema;
 
 use crate::error::{ApiError, ErrorBody};
-use crate::extract::CurrentUser;
+use crate::extract::Caller;
 use crate::state::AppState;
 
 #[derive(Debug, Serialize, ToSchema)]
@@ -20,13 +20,13 @@ pub struct StorageUsageDto {
     pub quota_bytes: Option<i64>,
 }
 
-#[utoipa::path(get, path = "/api/storage", tag = "storage",
+#[utoipa::path(get, path = "/api/storage", security(("device_bearer" = []), ("session_cookie" = [])), tag = "storage",
     responses((status = 200, body = StorageUsageDto), (status = 401, body = ErrorBody)))]
 pub async fn storage_usage(
     State(state): State<AppState>,
-    current: CurrentUser,
+    caller: Caller,
 ) -> Result<Json<StorageUsageDto>, ApiError> {
-    let usage = quota::usage(&state.pool, current.user.id).await?;
+    let usage = quota::usage(&state.pool, caller.user.id).await?;
     Ok(Json(StorageUsageDto {
         used_bytes: usage.used_bytes,
         trash_bytes: usage.trash_bytes,

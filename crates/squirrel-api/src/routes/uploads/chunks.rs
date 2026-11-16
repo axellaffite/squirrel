@@ -12,7 +12,7 @@ use uuid::Uuid;
 
 use crate::blocking::run_storage;
 use crate::error::{ApiError, ErrorBody};
-use crate::extract::CurrentUser;
+use crate::extract::Caller;
 use crate::input::ApiPath;
 use crate::state::AppState;
 
@@ -24,7 +24,7 @@ struct Slot {
 
 /// Stores one chunk at its offset. Chunks may arrive in any order and may be
 /// re-sent; each must have exactly the planned length.
-#[utoipa::path(put, path = "/api/uploads/{id}/chunks/{index}", tag = "uploads",
+#[utoipa::path(put, path = "/api/uploads/{id}/chunks/{index}", security(("device_bearer" = []), ("session_cookie" = [], "csrf_token" = [])), tag = "uploads",
     params(
         ("id" = Uuid, Path, description = "Upload id"),
         ("index" = u32, Path, description = "Zero-based chunk index"),
@@ -41,12 +41,12 @@ struct Slot {
     ))]
 pub async fn put_chunk(
     State(state): State<AppState>,
-    current: CurrentUser,
+    caller: Caller,
     ApiPath((id, index)): ApiPath<(Uuid, u32)>,
     headers: HeaderMap,
     body: Body,
 ) -> Result<StatusCode, ApiError> {
-    let owner_id = current.user.id;
+    let owner_id = caller.user.id;
     let session = open_session(&state, owner_id, id).await?;
     let slot = chunk_slot(&session, index)?;
     // Everything below happens before the body is read.

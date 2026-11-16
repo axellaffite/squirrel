@@ -16,7 +16,7 @@ use crate::albums_dto::{
 };
 use crate::cursor;
 use crate::error::{ApiError, ErrorBody};
-use crate::extract::CurrentUser;
+use crate::extract::Caller;
 use crate::input::{ApiJson, ApiPath, ApiQuery};
 use crate::photos_dto::{AssetSummary, TimelinePage};
 use crate::routes::photos::{photo_page_size, timeline_page};
@@ -65,49 +65,49 @@ async fn album(state: &AppState, owner: Uuid, id: Uuid) -> Result<AlbumDto, ApiE
         .ok_or(ApiError::NotFound)
 }
 
-#[utoipa::path(get, path = "/api/albums", tag = "albums",
+#[utoipa::path(get, path = "/api/albums", security(("device_bearer" = []), ("session_cookie" = [])), tag = "albums",
     responses((status = 200, body = Vec<AlbumDto>, description = "Most recently changed first, at most 1000")))]
 pub async fn list_albums(
     State(state): State<AppState>,
-    current: CurrentUser,
+    caller: Caller,
 ) -> Result<Json<Vec<AlbumDto>>, ApiError> {
-    let records = albums::list(&state.pool, current.user.id).await?;
-    Ok(Json(dtos(&state, current.user.id, &records).await?))
+    let records = albums::list(&state.pool, caller.user.id).await?;
+    Ok(Json(dtos(&state, caller.user.id, &records).await?))
 }
 
-#[utoipa::path(post, path = "/api/albums", tag = "albums", request_body = CreateAlbumRequest,
+#[utoipa::path(post, path = "/api/albums", security(("device_bearer" = []), ("session_cookie" = [], "csrf_token" = [])), tag = "albums", request_body = CreateAlbumRequest,
     responses((status = 201, body = AlbumDto), (status = 422, body = ErrorBody)))]
 pub async fn create_album(
     State(state): State<AppState>,
-    current: CurrentUser,
+    caller: Caller,
     ApiJson(request): ApiJson<CreateAlbumRequest>,
 ) -> Result<(StatusCode, Json<AlbumDto>), ApiError> {
     let name = AlbumName::parse(&request.name)?;
     check_count(&request.node_ids, 0)?;
-    let owner = current.user.id;
+    let owner = caller.user.id;
     let id = albums::create(&state.pool, owner, &name, &request.node_ids).await?;
     Ok((StatusCode::CREATED, Json(album(&state, owner, id).await?)))
 }
 
-#[utoipa::path(get, path = "/api/albums/{id}", tag = "albums",
+#[utoipa::path(get, path = "/api/albums/{id}", security(("device_bearer" = []), ("session_cookie" = [])), tag = "albums",
     params(("id" = Uuid, Path, description = "Album id")),
     responses((status = 200, body = AlbumDto), (status = 404, body = ErrorBody)))]
 pub async fn get_album(
     State(state): State<AppState>,
-    current: CurrentUser,
+    caller: Caller,
     ApiPath(id): ApiPath<Uuid>,
 ) -> Result<Json<AlbumDto>, ApiError> {
-    Ok(Json(album(&state, current.user.id, id).await?))
+    Ok(Json(album(&state, caller.user.id, id).await?))
 }
 
-#[utoipa::path(patch, path = "/api/albums/{id}", tag = "albums",
+#[utoipa::path(patch, path = "/api/albums/{id}", security(("device_bearer" = []), ("session_cookie" = [], "csrf_token" = [])), tag = "albums",
     params(("id" = Uuid, Path, description = "Album id")),
     request_body = UpdateAlbumRequest,
     responses((status = 200, body = AlbumDto), (status = 404, body = ErrorBody),
               (status = 422, body = ErrorBody)))]
 pub async fn update_album(
     State(state): State<AppState>,
-    current: CurrentUser,
+    caller: Caller,
     ApiPath(id): ApiPath<Uuid>,
     ApiJson(request): ApiJson<UpdateAlbumRequest>,
 ) -> Result<Json<AlbumDto>, ApiError> {
@@ -124,7 +124,7 @@ pub async fn update_album(
             Some(Some(id)) => CoverChange::Set(id),
         },
     };
-    let owner = current.user.id;
+    let owner = caller.user.id;
     match albums::update(&state.pool, id, owner, &changes).await? {
         UpdateOutcome::Updated => Ok(Json(album(&state, owner, id).await?)),
         UpdateOutcome::NotFound => Err(ApiError::NotFound),
@@ -134,32 +134,32 @@ pub async fn update_album(
     }
 }
 
-#[utoipa::path(delete, path = "/api/albums/{id}", tag = "albums",
+#[utoipa::path(delete, path = "/api/albums/{id}", security(("device_bearer" = []), ("session_cookie" = [], "csrf_token" = [])), tag = "albums",
     params(("id" = Uuid, Path, description = "Album id")),
     responses((status = 204, description = "Deleted; its photos stay"), (status = 404, body = ErrorBody)))]
 pub async fn delete_album(
     State(state): State<AppState>,
-    current: CurrentUser,
+    caller: Caller,
     ApiPath(id): ApiPath<Uuid>,
 ) -> Result<StatusCode, ApiError> {
-    if albums::delete(&state.pool, id, current.user.id).await? {
+    if albums::delete(&state.pool, id, caller.user.id).await? {
         Ok(StatusCode::NO_CONTENT)
     } else {
         Err(ApiError::NotFound)
     }
 }
 
-#[utoipa::path(get, path = "/api/albums/{id}/items", tag = "albums",
+#[utoipa::path(get, path = "/api/albums/{id}/items", security(("device_bearer" = []), ("session_cookie" = [])), tag = "albums",
     params(("id" = Uuid, Path, description = "Album id"), AlbumItemsQuery),
     responses((status = 200, body = TimelinePage), (status = 400, body = ErrorBody),
               (status = 404, body = ErrorBody)))]
 pub async fn list_album_items(
     State(state): State<AppState>,
-    current: CurrentUser,
+    caller: Caller,
     ApiPath(id): ApiPath<Uuid>,
     ApiQuery(query): ApiQuery<AlbumItemsQuery>,
 ) -> Result<Json<TimelinePage>, ApiError> {
-    let owner = current.user.id;
+    let owner = caller.user.id;
     if !albums::exists(&state.pool, owner, id).await? {
         return Err(ApiError::NotFound);
     }
@@ -179,34 +179,34 @@ pub async fn list_album_items(
     Ok(Json(timeline_page(page)))
 }
 
-#[utoipa::path(post, path = "/api/albums/{id}/items", tag = "albums",
+#[utoipa::path(post, path = "/api/albums/{id}/items", security(("device_bearer" = []), ("session_cookie" = [], "csrf_token" = [])), tag = "albums",
     params(("id" = Uuid, Path, description = "Album id")),
     request_body = AlbumItemsRequest,
     responses((status = 200, body = ItemsChanged), (status = 404, body = ErrorBody),
               (status = 422, body = ErrorBody)))]
 pub async fn add_album_items(
     State(state): State<AppState>,
-    current: CurrentUser,
+    caller: Caller,
     ApiPath(id): ApiPath<Uuid>,
     ApiJson(request): ApiJson<AlbumItemsRequest>,
 ) -> Result<Json<ItemsChanged>, ApiError> {
     check_count(&request.node_ids, 1)?;
-    let changed = albums::add_items(&state.pool, id, current.user.id, &request.node_ids).await?;
+    let changed = albums::add_items(&state.pool, id, caller.user.id, &request.node_ids).await?;
     Ok(Json(ItemsChanged { changed }))
 }
 
-#[utoipa::path(post, path = "/api/albums/{id}/items/remove", tag = "albums",
+#[utoipa::path(post, path = "/api/albums/{id}/items/remove", security(("device_bearer" = []), ("session_cookie" = [], "csrf_token" = [])), tag = "albums",
     params(("id" = Uuid, Path, description = "Album id")),
     request_body = AlbumItemsRequest,
     responses((status = 200, body = ItemsChanged), (status = 404, body = ErrorBody),
               (status = 422, body = ErrorBody)))]
 pub async fn remove_album_items(
     State(state): State<AppState>,
-    current: CurrentUser,
+    caller: Caller,
     ApiPath(id): ApiPath<Uuid>,
     ApiJson(request): ApiJson<AlbumItemsRequest>,
 ) -> Result<Json<ItemsChanged>, ApiError> {
     check_count(&request.node_ids, 1)?;
-    let changed = albums::remove_items(&state.pool, id, current.user.id, &request.node_ids).await?;
+    let changed = albums::remove_items(&state.pool, id, caller.user.id, &request.node_ids).await?;
     Ok(Json(ItemsChanged { changed }))
 }

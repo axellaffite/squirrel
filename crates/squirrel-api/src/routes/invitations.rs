@@ -16,7 +16,7 @@ use crate::state::AppState;
 
 const EMAIL_HINT_MAX_LEN: usize = 254;
 
-#[utoipa::path(post, path = "/api/invitations", tag = "invitations",
+#[utoipa::path(post, path = "/api/invitations", security(("session_cookie" = [], "csrf_token" = [])), tag = "invitations",
     request_body = CreateInvitationRequest,
     responses((status = 201, body = CreatedInvitation), (status = 401, body = ErrorBody),
               (status = 403, body = ErrorBody), (status = 422, body = ErrorBody)))]
@@ -65,7 +65,7 @@ pub async fn create_invitation(
     Ok((StatusCode::CREATED, Json(created)))
 }
 
-#[utoipa::path(get, path = "/api/invitations", tag = "invitations",
+#[utoipa::path(get, path = "/api/invitations", security(("session_cookie" = [])), tag = "invitations",
     responses((status = 200, body = Vec<InvitationDto>), (status = 401, body = ErrorBody)))]
 pub async fn list_invitations(
     State(state): State<AppState>,
@@ -81,7 +81,7 @@ pub async fn list_invitations(
     ))
 }
 
-#[utoipa::path(delete, path = "/api/invitations/{id}", tag = "invitations",
+#[utoipa::path(delete, path = "/api/invitations/{id}", security(("session_cookie" = [], "csrf_token" = [])), tag = "invitations",
     params(("id" = Uuid, Path, description = "Invitation id")),
     responses((status = 204), (status = 404, body = ErrorBody)))]
 pub async fn revoke_invitation(

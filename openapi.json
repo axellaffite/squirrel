@@ -36,7 +36,12 @@
               }
             }
           }
-        }
+        },
+        "security": [
+          {
+            "session_cookie": []
+          }
+        ]
       }
     },
     "/api/admin/jobs/{id}/retry": {
@@ -81,7 +86,13 @@
               }
             }
           }
-        }
+        },
+        "security": [
+          {
+            "csrf_token": [],
+            "session_cookie": []
+          }
+        ]
       }
     },
     "/api/admin/settings": {
@@ -111,7 +122,12 @@
               }
             }
           }
-        }
+        },
+        "security": [
+          {
+            "session_cookie": []
+          }
+        ]
       },
       "patch": {
         "tags": [
@@ -149,7 +165,13 @@
               }
             }
           }
-        }
+        },
+        "security": [
+          {
+            "csrf_token": [],
+            "session_cookie": []
+          }
+        ]
       }
     },
     "/api/albums": {
@@ -172,7 +194,15 @@
               }
             }
           }
-        }
+        },
+        "security": [
+          {
+            "device_bearer": []
+          },
+          {
+            "session_cookie": []
+          }
+        ]
       },
       "post": {
         "tags": [
@@ -210,7 +240,16 @@
               }
             }
           }
-        }
+        },
+        "security": [
+          {
+            "device_bearer": []
+          },
+          {
+            "csrf_token": [],
+            "session_cookie": []
+          }
+        ]
       }
     },
     "/api/albums/{id}": {
@@ -252,7 +291,15 @@
               }
             }
           }
-        }
+        },
+        "security": [
+          {
+            "device_bearer": []
+          },
+          {
+            "session_cookie": []
+          }
+        ]
       },
       "delete": {
         "tags": [
@@ -285,7 +332,16 @@
               }
             }
           }
-        }
+        },
+        "security": [
+          {
+            "device_bearer": []
+          },
+          {
+            "csrf_token": [],
+            "session_cookie": []
+          }
+        ]
       },
       "patch": {
         "tags": [
@@ -345,7 +401,16 @@
               }
             }
           }
-        }
+        },
+        "security": [
+          {
+            "device_bearer": []
+          },
+          {
+            "csrf_token": [],
+            "session_cookie": []
+          }
+        ]
       }
     },
     "/api/albums/{id}/items": {
@@ -417,7 +482,15 @@
               }
             }
           }
-        }
+        },
+        "security": [
+          {
+            "device_bearer": []
+          },
+          {
+            "session_cookie": []
+          }
+        ]
       },
       "post": {
         "tags": [
@@ -477,7 +550,16 @@
               }
             }
           }
-        }
+        },
+        "security": [
+          {
+            "device_bearer": []
+          },
+          {
+            "csrf_token": [],
+            "session_cookie": []
+          }
+        ]
       }
     },
     "/api/albums/{id}/items/remove": {
@@ -539,7 +621,16 @@
               }
             }
           }
-        }
+        },
+        "security": [
+          {
+            "device_bearer": []
+          },
+          {
+            "csrf_token": [],
+            "session_cookie": []
+          }
+        ]
       }
     },
     "/api/auth/device/login": {
@@ -698,7 +789,10 @@
           "429": {
             "description": ""
           }
-        }
+        },
+        "security": [
+          {}
+        ]
       }
     },
     "/api/auth/logout": {
@@ -731,7 +825,13 @@
               }
             }
           }
-        }
+        },
+        "security": [
+          {
+            "csrf_token": [],
+            "session_cookie": []
+          }
+        ]
       }
     },
     "/api/auth/logout-all": {
@@ -764,7 +864,13 @@
               }
             }
           }
-        }
+        },
+        "security": [
+          {
+            "csrf_token": [],
+            "session_cookie": []
+          }
+        ]
       }
     },
     "/api/auth/me": {
@@ -794,7 +900,12 @@
               }
             }
           }
-        }
+        },
+        "security": [
+          {
+            "session_cookie": []
+          }
+        ]
       }
     },
     "/api/files/{id}/content": {
@@ -898,7 +1009,15 @@
               }
             }
           }
-        }
+        },
+        "security": [
+          {
+            "device_bearer": []
+          },
+          {
+            "session_cookie": []
+          }
+        ]
       }
     },
     "/api/files/{id}/thumbnail": {
@@ -981,7 +1100,15 @@
               }
             }
           }
-        }
+        },
+        "security": [
+          {
+            "device_bearer": []
+          },
+          {
+            "session_cookie": []
+          }
+        ]
       }
     },
     "/api/folders": {
@@ -1041,7 +1168,16 @@
               }
             }
           }
-        }
+        },
+        "security": [
+          {
+            "device_bearer": []
+          },
+          {
+            "csrf_token": [],
+            "session_cookie": []
+          }
+        ]
       }
     },
     "/api/healthz": {
@@ -1062,7 +1198,10 @@
               }
             }
           }
-        }
+        },
+        "security": [
+          {}
+        ]
       }
     },
     "/api/invitations": {
@@ -1095,7 +1234,12 @@
               }
             }
           }
-        }
+        },
+        "security": [
+          {
+            "session_cookie": []
+          }
+        ]
       },
       "post": {
         "tags": [
@@ -1153,7 +1297,13 @@
               }
             }
           }
-        }
+        },
+        "security": [
+          {
+            "csrf_token": [],
+            "session_cookie": []
+          }
+        ]
       }
     },
     "/api/invitations/{id}": {
@@ -1188,7 +1338,13 @@
               }
             }
           }
-        }
+        },
+        "security": [
+          {
+            "csrf_token": [],
+            "session_cookie": []
+          }
+        ]
       }
     },
     "/api/join/{token}": {
@@ -1219,7 +1375,10 @@
               }
             }
           }
-        }
+        },
+        "security": [
+          {}
+        ]
       },
       "post": {
         "tags": [
@@ -1288,7 +1447,10 @@
               }
             }
           }
-        }
+        },
+        "security": [
+          {}
+        ]
       }
     },
     "/api/media/status": {
@@ -1308,7 +1470,15 @@
               }
             }
           }
-        }
+        },
+        "security": [
+          {
+            "device_bearer": []
+          },
+          {
+            "session_cookie": []
+          }
+        ]
       }
     },
     "/api/nodes": {
@@ -1380,7 +1550,15 @@
               }
             }
           }
-        }
+        },
+        "security": [
+          {
+            "device_bearer": []
+          },
+          {
+            "session_cookie": []
+          }
+        ]
       }
     },
     "/api/nodes/{id}": {
@@ -1422,7 +1600,15 @@
               }
             }
           }
-        }
+        },
+        "security": [
+          {
+            "device_bearer": []
+          },
+          {
+            "session_cookie": []
+          }
+        ]
       },
       "delete": {
         "tags": [
@@ -1465,7 +1651,16 @@
               }
             }
           }
-        }
+        },
+        "security": [
+          {
+            "device_bearer": []
+          },
+          {
+            "csrf_token": [],
+            "session_cookie": []
+          }
+        ]
       },
       "patch": {
         "tags": [
@@ -1535,7 +1730,16 @@
               }
             }
           }
-        }
+        },
+        "security": [
+          {
+            "device_bearer": []
+          },
+          {
+            "csrf_token": [],
+            "session_cookie": []
+          }
+        ]
       }
     },
     "/api/photos": {
@@ -1606,7 +1810,15 @@
               }
             }
           }
-        }
+        },
+        "security": [
+          {
+            "device_bearer": []
+          },
+          {
+            "session_cookie": []
+          }
+        ]
       }
     },
     "/api/photos/months": {
@@ -1629,7 +1841,15 @@
               }
             }
           }
-        }
+        },
+        "security": [
+          {
+            "device_bearer": []
+          },
+          {
+            "session_cookie": []
+          }
+        ]
       }
     },
     "/api/photos/{id}": {
@@ -1671,7 +1891,15 @@
               }
             }
           }
-        }
+        },
+        "security": [
+          {
+            "device_bearer": []
+          },
+          {
+            "session_cookie": []
+          }
+        ]
       }
     },
     "/api/search/documents": {
@@ -1734,7 +1962,15 @@
               }
             }
           }
-        }
+        },
+        "security": [
+          {
+            "device_bearer": []
+          },
+          {
+            "session_cookie": []
+          }
+        ]
       }
     },
     "/api/setup/admin": {
@@ -1794,7 +2030,10 @@
               }
             }
           }
-        }
+        },
+        "security": [
+          {}
+        ]
       }
     },
     "/api/setup/status": {
@@ -1814,7 +2053,10 @@
               }
             }
           }
-        }
+        },
+        "security": [
+          {}
+        ]
       }
     },
     "/api/storage": {
@@ -1844,7 +2086,15 @@
               }
             }
           }
-        }
+        },
+        "security": [
+          {
+            "device_bearer": []
+          },
+          {
+            "session_cookie": []
+          }
+        ]
       }
     },
     "/api/trash": {
@@ -1896,7 +2146,15 @@
               }
             }
           }
-        }
+        },
+        "security": [
+          {
+            "device_bearer": []
+          },
+          {
+            "session_cookie": []
+          }
+        ]
       },
       "delete": {
         "tags": [
@@ -1907,7 +2165,16 @@
           "204": {
             "description": "Trash emptied"
           }
-        }
+        },
+        "security": [
+          {
+            "device_bearer": []
+          },
+          {
+            "csrf_token": [],
+            "session_cookie": []
+          }
+        ]
       }
     },
     "/api/trash/{id}": {
@@ -1942,7 +2209,16 @@
               }
             }
           }
-        }
+        },
+        "security": [
+          {
+            "device_bearer": []
+          },
+          {
+            "csrf_token": [],
+            "session_cookie": []
+          }
+        ]
       }
     },
     "/api/trash/{id}/restore": {
@@ -1994,7 +2270,16 @@
               }
             }
           }
-        }
+        },
+        "security": [
+          {
+            "device_bearer": []
+          },
+          {
+            "csrf_token": [],
+            "session_cookie": []
+          }
+        ]
       }
     },
     "/api/uploads": {
@@ -2074,7 +2359,16 @@
               }
             }
           }
-        }
+        },
+        "security": [
+          {
+            "device_bearer": []
+          },
+          {
+            "csrf_token": [],
+            "session_cookie": []
+          }
+        ]
       }
     },
     "/api/uploads/{id}": {
@@ -2116,7 +2410,15 @@
               }
             }
           }
-        }
+        },
+        "security": [
+          {
+            "device_bearer": []
+          },
+          {
+            "session_cookie": []
+          }
+        ]
       },
       "delete": {
         "tags": [
@@ -2159,7 +2461,16 @@
               }
             }
           }
-        }
+        },
+        "security": [
+          {
+            "device_bearer": []
+          },
+          {
+            "csrf_token": [],
+            "session_cookie": []
+          }
+        ]
       }
     },
     "/api/uploads/{id}/chunks/{index}": {
@@ -2271,7 +2582,16 @@
               }
             }
           }
-        }
+        },
+        "security": [
+          {
+            "device_bearer": []
+          },
+          {
+            "csrf_token": [],
+            "session_cookie": []
+          }
+        ]
       }
     },
     "/api/uploads/{id}/complete": {
@@ -2353,7 +2673,16 @@
               }
             }
           }
-        }
+        },
+        "security": [
+          {
+            "device_bearer": []
+          },
+          {
+            "csrf_token": [],
+            "session_cookie": []
+          }
+        ]
       }
     }
   },

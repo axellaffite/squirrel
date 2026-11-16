@@ -16,7 +16,7 @@ use uuid::Uuid;
 
 use crate::blocking::run_storage;
 use crate::error::{ApiError, ErrorBody};
-use crate::extract::CurrentUser;
+use crate::extract::Caller;
 use crate::files_dto::{CreateUploadRequest, DeduplicatedUpload, UploadSessionDto};
 use crate::input::{ApiJson, ApiPath};
 use crate::state::AppState;
@@ -33,7 +33,7 @@ pub(crate) async fn enqueue_media(
     Ok(())
 }
 
-#[utoipa::path(post, path = "/api/uploads", tag = "uploads",
+#[utoipa::path(post, path = "/api/uploads", security(("device_bearer" = []), ("session_cookie" = [], "csrf_token" = [])), tag = "uploads",
     request_body = CreateUploadRequest,
     responses(
         (status = 200, body = DeduplicatedUpload, description = "Content already in your library: linked, nothing to upload"),
@@ -45,10 +45,10 @@ pub(crate) async fn enqueue_media(
     ))]
 pub async fn create_upload(
     State(state): State<AppState>,
-    current: CurrentUser,
+    caller: Caller,
     ApiJson(request): ApiJson<CreateUploadRequest>,
 ) -> Result<Response, ApiError> {
-    let owner_id = current.user.id;
+    let owner_id = caller.user.id;
     if let Some(limiter) = &state.uploads.create_rate
         && !limiter.check(owner_id)
     {
@@ -69,22 +69,22 @@ pub async fn create_upload(
     Ok((StatusCode::CREATED, Json(body)).into_response())
 }
 
-#[utoipa::path(get, path = "/api/uploads/{id}", tag = "uploads",
+#[utoipa::path(get, path = "/api/uploads/{id}", security(("device_bearer" = []), ("session_cookie" = [])), tag = "uploads",
     params(("id" = Uuid, Path, description = "Upload id")),
     responses((status = 200, body = UploadSessionDto), (status = 404, body = ErrorBody)))]
 pub async fn upload_status(
     State(state): State<AppState>,
-    current: CurrentUser,
+    caller: Caller,
     ApiPath(id): ApiPath<Uuid>,
 ) -> Result<Json<UploadSessionDto>, ApiError> {
-    let session = uploads::find(&state.pool, current.user.id, id)
+    let session = uploads::find(&state.pool, caller.user.id, id)
         .await?
         .ok_or(ApiError::NotFound)?;
     let received = uploads::received_chunks(&state.pool, id).await?;
     Ok(Json(UploadSessionDto::new(&session, &received)))
 }
 
-#[utoipa::path(delete, path = "/api/uploads/{id}", tag = "uploads",
+#[utoipa::path(delete, path = "/api/uploads/{id}", security(("device_bearer" = []), ("session_cookie" = [], "csrf_token" = [])), tag = "uploads",
     params(("id" = Uuid, Path, description = "Upload id")),
     responses(
         (status = 204, description = "Upload aborted and its bytes deleted"),
@@ -93,12 +93,12 @@ pub async fn upload_status(
     ))]
 pub async fn abort_upload(
     State(state): State<AppState>,
-    current: CurrentUser,
+    caller: Caller,
     ApiPath(id): ApiPath<Uuid>,
 ) -> Result<StatusCode, ApiError> {
-    uploads::abort(&state.pool, current.user.id, id).await?;
+    uploads::abort(&state.pool, caller.user.id, id).await?;
     let store = state.storage.clone();
     run_storage(move || store.discard_upload(id)).await?;
-    tracing::info!(user_id = %current.user.id, upload_id = %id, "upload aborted");
+    tracing::info!(user_id = %caller.user.id, upload_id = %id, "upload aborted");
     Ok(StatusCode::NO_CONTENT)
 }

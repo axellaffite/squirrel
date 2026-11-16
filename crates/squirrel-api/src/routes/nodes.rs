@@ -20,7 +20,7 @@ use crate::files_dto::{
 use crate::input::{ApiJson, ApiPath, ApiQuery};
 use crate::state::AppState;
 
-#[utoipa::path(get, path = "/api/nodes", tag = "files", params(ListNodesQuery),
+#[utoipa::path(get, path = "/api/nodes", security(("device_bearer" = []), ("session_cookie" = [])), tag = "files", params(ListNodesQuery),
     responses((status = 200, body = NodeListing), (status = 400, body = ErrorBody),
               (status = 404, body = ErrorBody)))]
 pub async fn list_nodes(
@@ -65,7 +65,7 @@ pub async fn list_nodes(
     }))
 }
 
-#[utoipa::path(get, path = "/api/nodes/{id}", tag = "files",
+#[utoipa::path(get, path = "/api/nodes/{id}", security(("device_bearer" = []), ("session_cookie" = [])), tag = "files",
     params(("id" = Uuid, Path, description = "Node id")),
     responses((status = 200, body = NodeDetails), (status = 404, body = ErrorBody)))]
 pub async fn get_node(
@@ -103,7 +103,7 @@ async fn thumbnails_of(
     Ok(media::thumbnails_for(&state.pool, &hashes).await?)
 }
 
-#[utoipa::path(post, path = "/api/folders", tag = "files", request_body = CreateFolderRequest,
+#[utoipa::path(post, path = "/api/folders", security(("device_bearer" = []), ("session_cookie" = [], "csrf_token" = [])), tag = "files", request_body = CreateFolderRequest,
     responses((status = 201, body = NodeDto), (status = 404, body = ErrorBody),
               (status = 409, body = ErrorBody), (status = 422, body = ErrorBody)))]
 pub async fn create_folder(
@@ -116,7 +116,7 @@ pub async fn create_folder(
     Ok((StatusCode::CREATED, Json((&node).into())))
 }
 
-#[utoipa::path(patch, path = "/api/nodes/{id}", tag = "files",
+#[utoipa::path(patch, path = "/api/nodes/{id}", security(("device_bearer" = []), ("session_cookie" = [], "csrf_token" = [])), tag = "files",
     params(("id" = Uuid, Path, description = "Node id")),
     request_body = UpdateNodeRequest,
     responses((status = 200, body = NodeDto), (status = 404, body = ErrorBody),
@@ -140,7 +140,7 @@ pub async fn update_node(
     Ok(Json((&node).into()))
 }
 
-#[utoipa::path(delete, path = "/api/nodes/{id}", tag = "files",
+#[utoipa::path(delete, path = "/api/nodes/{id}", security(("device_bearer" = []), ("session_cookie" = [], "csrf_token" = [])), tag = "files",
     params(("id" = Uuid, Path, description = "Node id")),
     responses((status = 204, description = "Moved to the trash with everything inside it"),
               (status = 404, body = ErrorBody), (status = 422, body = ErrorBody)))]

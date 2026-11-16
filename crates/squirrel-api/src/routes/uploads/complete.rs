@@ -15,7 +15,7 @@ use uuid::Uuid;
 
 use crate::blocking::run_storage;
 use crate::error::{ApiError, ErrorBody};
-use crate::extract::CurrentUser;
+use crate::extract::Caller;
 use crate::files_dto::NodeDto;
 use crate::input::ApiPath;
 use crate::state::AppState;
@@ -37,7 +37,7 @@ fn discard(err: impl Into<ApiError>) -> Failure {
     Failure::Discard(err.into())
 }
 
-#[utoipa::path(post, path = "/api/uploads/{id}/complete", tag = "uploads",
+#[utoipa::path(post, path = "/api/uploads/{id}/complete", security(("device_bearer" = []), ("session_cookie" = [], "csrf_token" = [])), tag = "uploads",
     params(("id" = Uuid, Path, description = "Upload id")),
     responses(
         (status = 201, body = NodeDto, description = "File created; its name may carry a \" (n)\" suffix if the name was taken"),
@@ -49,10 +49,10 @@ fn discard(err: impl Into<ApiError>) -> Failure {
     ))]
 pub async fn complete_upload(
     State(state): State<AppState>,
-    current: CurrentUser,
+    caller: Caller,
     ApiPath(id): ApiPath<Uuid>,
 ) -> Result<(StatusCode, Json<NodeDto>), ApiError> {
-    let owner_id = current.user.id;
+    let owner_id = caller.user.id;
     let slot = state
         .uploads
         .completions

@@ -8,7 +8,7 @@ use squirrel_db::documents;
 use squirrel_db::media;
 
 use crate::error::{ApiError, ErrorBody};
-use crate::extract::CurrentUser;
+use crate::extract::Caller;
 use crate::files_dto::NodeDto;
 use crate::input::ApiQuery;
 use crate::search_dto::{DocumentHit, DocumentResults, SearchQuery, snippet_parts};
@@ -47,16 +47,16 @@ fn validate(query: &SearchQuery) -> Result<(&str, u32, u32), ApiError> {
     Ok((q, offset, limit))
 }
 
-#[utoipa::path(get, path = "/api/search/documents", tag = "search", params(SearchQuery),
+#[utoipa::path(get, path = "/api/search/documents", security(("device_bearer" = []), ("session_cookie" = [])), tag = "search", params(SearchQuery),
     responses((status = 200, body = DocumentResults),
               (status = 422, body = ErrorBody, description = "Invalid q, offset or limit")))]
 pub async fn search_documents(
     State(state): State<AppState>,
-    current: CurrentUser,
+    caller: Caller,
     ApiQuery(query): ApiQuery<SearchQuery>,
 ) -> Result<Json<DocumentResults>, ApiError> {
     let (q, offset, limit) = validate(&query)?;
-    let page = documents::search(&state.pool, current.user.id, q, offset, limit).await?;
+    let page = documents::search(&state.pool, caller.user.id, q, offset, limit).await?;
     let hashes: Vec<String> = page
         .items
         .iter()
