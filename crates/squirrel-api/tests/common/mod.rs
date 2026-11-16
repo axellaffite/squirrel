@@ -32,6 +32,7 @@ pub fn test_config() -> ApiConfig {
         join_check_rate_limit: None,
         search_rate_limit: None,
         device_refresh_rate_limit: None,
+        sync_check_rate: None,
         setup_token: Some(SetupToken::new(SETUP_TOKEN)),
         upload_chunk_size: TEST_CHUNK_SIZE,
         min_free_bytes: 0,

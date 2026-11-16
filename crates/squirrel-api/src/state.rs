@@ -9,7 +9,7 @@ use tokio::sync::Semaphore;
 use crate::client_ip::TrustedProxies;
 use crate::downloads::DownloadLimits;
 use crate::setup_token::SetupToken;
-use crate::upload_runtime::{Slots, UploadLimits, UploadRuntime};
+use crate::upload_runtime::{Slots, UploadLimits, UploadRuntime, UserRate, UserRateLimiter};
 
 #[derive(Debug, Clone, Copy)]
 pub struct RateLimit {
@@ -40,6 +40,8 @@ pub struct ApiConfig {
     pub join_check_rate_limit: Option<RateLimit>,
     /// Per-client limit on `POST /api/auth/device/refresh`. `None` disables it.
     pub device_refresh_rate_limit: Option<RateLimit>,
+    /// Per-device limit on `POST /api/sync/check`. `None` disables it.
+    pub sync_check_rate: Option<UserRate>,
     /// Per-client limit on `GET /api/search/documents` (each search scans
     /// text indexes). `None` disables it.
     pub search_rate_limit: Option<RateLimit>,
@@ -101,6 +103,10 @@ impl Default for ApiConfig {
                 replenish_every_secs: 2,
                 burst: 30,
             }),
+            sync_check_rate: Some(UserRate {
+                per_second: 2.0,
+                burst: 20,
+            }),
             search_rate_limit: Some(RateLimit {
                 replenish_every_secs: 1,
                 burst: 20,
@@ -134,6 +140,8 @@ pub struct AppState {
     pub hash_permits: Arc<Semaphore>,
     /// Per-upload locks and upload concurrency limits.
     pub uploads: Arc<UploadRuntime>,
+    /// Per-device sync check limit (see [`ApiConfig::sync_check_rate`]).
+    pub sync_rate: Option<Arc<UserRateLimiter>>,
     /// Streaming file bodies; a slot lives as long as its body.
     pub downloads: Slots,
     pub free_space: FreeSpace,
@@ -149,6 +157,9 @@ impl AppState {
             hash_permits: Arc::new(Semaphore::new(config.hash_concurrency)),
             uploads: Arc::new(UploadRuntime::new(&config.upload_limits)),
             downloads: config.download_limits.slots(),
+            sync_rate: config
+                .sync_check_rate
+                .map(|rate| Arc::new(UserRateLimiter::new(rate))),
             config: Arc::new(config),
         }
     }

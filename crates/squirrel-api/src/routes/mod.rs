@@ -13,6 +13,7 @@ pub mod photos;
 pub mod search;
 pub mod setup;
 pub mod storage;
+pub mod sync;
 pub mod thumbnails;
 pub mod trash;
 pub mod uploads;
