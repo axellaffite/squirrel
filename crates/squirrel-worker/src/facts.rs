@@ -2,7 +2,7 @@
 
 use squirrel_db::assets::{AssetKind, BlobNode, NewAsset, TakenSource};
 use squirrel_db::media::{MediaRecord, MediaState};
-use squirrel_media::capture::{self, is_screenshot, resolve_taken};
+use squirrel_media::capture::{self, ClientTaken, is_screenshot, resolve_taken};
 use squirrel_media::metadata::{CaptureTime, ImageMetadata};
 use time::{OffsetDateTime, UtcOffset};
 
@@ -41,14 +41,30 @@ fn source(source: capture::TakenSource) -> TakenSource {
     match source {
         capture::TakenSource::Exif => TakenSource::Exif,
         capture::TakenSource::Filename => TakenSource::Filename,
+        capture::TakenSource::Device => TakenSource::Device,
         capture::TakenSource::Upload => TakenSource::Upload,
     }
 }
 
 /// The timeline entry of `node`; provisional until metadata is ready
 /// (`extract_metadata` recomputes it).
+/// The capture time the node's uploader reported, if any.
+pub fn client_taken(node: &BlobNode) -> Option<ClientTaken> {
+    let local = node.client_taken_at?;
+    let offset = node
+        .client_taken_offset_min
+        .and_then(|minutes| UtcOffset::from_whole_seconds(i32::from(minutes) * 60).ok());
+    Some(ClientTaken { local, offset })
+}
+
 pub fn asset_for(node: &BlobNode, media: &MediaRecord, now: OffsetDateTime) -> NewAsset {
-    let taken = resolve_taken(capture_time(media), &node.name, node.created_at, now);
+    let taken = resolve_taken(
+        capture_time(media),
+        &node.name,
+        client_taken(node),
+        node.created_at,
+        now,
+    );
     let mime = node.mime.as_deref().unwrap_or_default();
     let screenshot = is_screenshot(
         &image_metadata(media),
