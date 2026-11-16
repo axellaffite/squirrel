@@ -8,7 +8,6 @@ import {
 	tile,
 	tiles,
 	uploadPhotos,
-	waitForTimeline,
 	WORKER_TIMEOUT
 } from './helpers/photos.ts';
 
@@ -31,15 +30,35 @@ test.beforeAll(async ({ browser }) => {
 		fixture('lyon-2023.jpg'),
 		fixture('Screenshot_2024-07-15-10-00-00.png')
 	);
-	await waitForTimeline(page, 3);
+	// One wait for all worker output: three photos in the timeline, nothing pending, and the
+	// Paris photo named from the geodata (its geocode step runs last).
+	await expect
+		.poll(
+			async () => {
+				const months = (await (await page.request.get('/api/photos/months')).json()) as { count: number }[];
+				const status = (await (await page.request.get('/api/media/status')).json()) as {
+					queued: number;
+					processing: number;
+				};
+				const photos = (await (await page.request.get('/api/photos?limit=500')).json()) as {
+					items: { id: string; name: string }[];
+				};
+				const parisId = photos.items.find((item) => item.name === 'paris-2024.jpg')?.id;
+				const place = parisId
+					? ((await (await page.request.get(`/api/photos/${parisId}`)).json()) as { place?: { name: string } | null })
+							.place?.name
+					: undefined;
+				return {
+					photos: months.reduce((sum, month) => sum + month.count, 0),
+					pending: status.queued + status.processing,
+					place
+				};
+			},
+			{ timeout: WORKER_TIMEOUT }
+		)
+		.toEqual({ photos: 3, pending: 0, place: 'Paris' });
 	paris = await photoId(page, 'paris-2024.jpg');
 	lyon = await photoId(page, 'lyon-2023.jpg');
-	// The place comes from a later geocode step: wait for it too.
-	await expect
-		.poll(async () => (await (await page.request.get(`/api/photos/${paris}`)).json()).place?.name, {
-			timeout: WORKER_TIMEOUT
-		})
-		.toBe('Paris');
 });
 
 test.afterAll(async () => {
