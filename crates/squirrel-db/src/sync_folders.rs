@@ -84,7 +84,7 @@ async fn child_folder(
         return Ok(id);
     }
     let name = free_name(conn, owner_id, parent_id, name).await?;
-    Ok(sqlx::query_scalar(
+    sqlx::query_scalar(
         "INSERT INTO nodes (id, owner_id, parent_id, name, kind) \
          VALUES ($1, $2, $3, $4, 'folder') RETURNING id",
     )
@@ -94,5 +94,5 @@ async fn child_folder(
     .bind(name.as_str())
     .fetch_one(conn)
     .await
-    .map_err(crate::error::name_conflict_or)?)
+    .map_err(crate::error::name_conflict_or)
 }

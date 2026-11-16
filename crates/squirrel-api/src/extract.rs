@@ -79,7 +79,7 @@ impl FromRequestParts<AppState> for CurrentUser {
 pub enum Principal {
     /// A browser session (its CSRF token was checked for non-GET requests).
     Session,
-    Device(DeviceRecord),
+    Device(Box<DeviceRecord>),
 }
 
 /// An authenticated, non-disabled user, by session cookie or by device bearer
@@ -96,7 +96,7 @@ pub struct Caller {
 impl Caller {
     pub fn device(&self) -> Option<&DeviceRecord> {
         match &self.principal {
-            Principal::Device(device) => Some(device),
+            Principal::Device(device) => Some(device.as_ref()),
             Principal::Session => None,
         }
     }
@@ -148,7 +148,7 @@ async fn bearer(value: &HeaderValue, state: &AppState) -> Result<Caller, ApiErro
     }
     Ok(Caller {
         user,
-        principal: Principal::Device(device),
+        principal: Principal::Device(Box::new(device)),
     })
 }
 
@@ -170,7 +170,7 @@ impl FromRequestParts<AppState> for DeviceCaller {
         match caller.principal {
             Principal::Device(device) => Ok(Self {
                 user: caller.user,
-                device,
+                device: *device,
             }),
             Principal::Session => Err(ApiError::Forbidden),
         }
