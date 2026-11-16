@@ -122,8 +122,12 @@
 		if (id) void grid?.focusTile(id);
 	}
 
+	/** Escape clears the selection, unless something else (a dialog, a menu) handles it. */
 	function keydown(event: KeyboardEvent) {
-		if (event.key === 'Escape' && selection.active && !viewing && !picking && !confirmingDelete) selection.clear();
+		if (event.key !== 'Escape' || event.defaultPrevented || !selection.active) return;
+		if (viewing || picking || confirmingDelete || renaming) return;
+		const target = event.target as Element;
+		if (target === document.body || target.closest('.album-grid, [role=toolbar]')) selection.clear();
 	}
 
 	/** Shows a photo and keeps `?photo=<id>` in the address, as on the timeline. */
@@ -169,7 +173,7 @@
 	{#if album && album.item_count === 0 && items.length === 0}
 		<EmptyState icon="library" title="This album is empty">Select photos in the timeline, then choose Add to album.</EmptyState>
 	{:else if items.length > 0}
-		<section aria-label="Photos in the album">
+		<section class="album-grid" aria-label="Photos in the album">
 			<PhotoGrid
 				bind:this={grid}
 				{items}
