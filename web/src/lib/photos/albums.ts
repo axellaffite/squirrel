@@ -29,3 +29,22 @@ export function batches<T>(items: readonly T[], size: number = MAX_ITEMS_PER_REQ
 	for (let i = 0; i < items.length; i += size) out.push(items.slice(i, i + size));
 	return out;
 }
+
+/** The server's AlbumName limit, in characters (after trimming and NFC). */
+export const ALBUM_NAME_MAX = 100;
+
+/** Control characters (Cc) and invisible formatting characters (Cf), refused by the server. */
+const HIDDEN = /[\p{Cc}\p{Cf}]/u;
+
+/**
+ * Mirrors the server's AlbumName rules: 1–100 characters once trimmed and NFC-normalised, no
+ * control or invisible formatting characters. Unlike file names, "/", "." and ".." are fine.
+ */
+export function albumNameProblem(raw: string): string | null {
+	const name = raw.trim().normalize('NFC');
+	const length = [...name].length;
+	if (length === 0) return 'Enter a name.';
+	if (length > ALBUM_NAME_MAX) return `Album names have at most ${ALBUM_NAME_MAX} characters.`;
+	if (HIDDEN.test(name)) return 'Names cannot contain invisible or control characters.';
+	return null;
+}

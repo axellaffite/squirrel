@@ -16,7 +16,7 @@
 	import Button from '#lib/components/ui/Button.svelte';
 	import EmptyState from '#lib/components/ui/EmptyState.svelte';
 	import { AlbumData } from '#lib/photos/album.svelte.ts';
-	import { photoCount } from '#lib/photos/albums.ts';
+	import { albumNameProblem, photoCount } from '#lib/photos/albums.ts';
 	import {
 		deleteAlbum,
 		renameAlbum,
@@ -197,7 +197,7 @@
 {/if}
 
 {#if renaming && album}
-	<NameDialog title="Rename album" initial={album.name} submitLabel="Save" onSubmit={rename} onClose={() => (renaming = false)} />
+	<NameDialog title="Rename album" initial={album.name} submitLabel="Save" validate={albumNameProblem} onSubmit={rename} onClose={() => (renaming = false)} />
 {/if}
 
 {#if confirmingDelete}

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { addedMessage, batches, photoCount, sortByName } from '#lib/photos/albums.ts';
+import { addedMessage, albumNameProblem, batches, photoCount, sortByName } from '#lib/photos/albums.ts';
 
 describe('albums', () => {
 	it('sorts by name, ignoring case and accents, numbers in order', () => {
@@ -22,5 +22,28 @@ describe('albums', () => {
 	it('splits requests', () => {
 		expect(batches([1, 2, 3, 4, 5], 2)).toEqual([[1, 2], [3, 4], [5]]);
 		expect(batches([], 2)).toEqual([]);
+	});
+});
+
+describe('albumNameProblem', () => {
+	it('accepts what file names refuse', () => {
+		expect(albumNameProblem('Paris / Lyon')).toBeNull();
+		expect(albumNameProblem('.')).toBeNull();
+		expect(albumNameProblem('..')).toBeNull();
+		expect(albumNameProblem('  Été 2024 ')).toBeNull();
+	});
+
+	it('bounds the length in characters, after trimming', () => {
+		expect(albumNameProblem('   ')).toBe('Enter a name.');
+		expect(albumNameProblem('é'.repeat(100))).toBeNull();
+		expect(albumNameProblem('e\u0301'.repeat(100))).toBeNull();
+		expect(albumNameProblem('é'.repeat(101))).toBe('Album names have at most 100 characters.');
+	});
+
+	it('refuses control and invisible formatting characters', () => {
+		expect(albumNameProblem('a\u0007b')).not.toBeNull();
+		expect(albumNameProblem('a\u200Bb')).not.toBeNull();
+		expect(albumNameProblem('a\u202Eb')).not.toBeNull();
+		expect(albumNameProblem('a\u00ADb')).not.toBeNull();
 	});
 });
