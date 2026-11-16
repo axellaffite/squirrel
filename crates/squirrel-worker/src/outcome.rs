@@ -13,16 +13,30 @@ pub async fn mark(
     state: MediaState,
     reason: &str,
 ) -> Result<(), JobError> {
-    tracing::info!(
-        sha256,
-        ?step,
-        state = state.as_str(),
-        reason,
-        "step not done"
-    );
-    media::set_state(&ctx.pool, sha256, step, state, Some(reason))
-        .await
-        .map_err(JobError::retry)
+    mark_all(ctx, sha256, &[step], state, reason).await
+}
+
+/// [`mark`] for each of `steps`.
+pub async fn mark_all(
+    ctx: &MediaContext,
+    sha256: &str,
+    steps: &[Step],
+    state: MediaState,
+    reason: &str,
+) -> Result<(), JobError> {
+    for &step in steps {
+        tracing::info!(
+            sha256,
+            ?step,
+            state = state.as_str(),
+            reason,
+            "step not done"
+        );
+        media::set_state(&ctx.pool, sha256, step, state, Some(reason))
+            .await
+            .map_err(JobError::retry)?;
+    }
+    Ok(())
 }
 
 /// Retries a transient failure; on the last attempt records `failed` first so
@@ -34,10 +48,23 @@ pub async fn give_up_or_retry(
     step: Step,
     reason: String,
 ) -> Result<(), JobError> {
+    give_up_or_retry_all(ctx, job, sha256, &[step], reason).await
+}
+
+/// [`give_up_or_retry`] for each of `steps`.
+pub async fn give_up_or_retry_all(
+    ctx: &MediaContext,
+    job: &JobContext,
+    sha256: &str,
+    steps: &[Step],
+    reason: String,
+) -> Result<(), JobError> {
     if job.is_last_attempt() {
-        media::set_state(&ctx.pool, sha256, step, MediaState::Failed, Some(&reason))
-            .await
-            .map_err(JobError::retry)?;
+        for &step in steps {
+            media::set_state(&ctx.pool, sha256, step, MediaState::Failed, Some(&reason))
+                .await
+                .map_err(JobError::retry)?;
+        }
     }
     Err(JobError::retry(anyhow::anyhow!(reason)))
 }

@@ -9,6 +9,7 @@ pub mod geocode;
 pub mod jobs;
 pub mod metadata;
 mod outcome;
+pub mod pdf_job;
 pub mod process;
 pub mod text;
 pub mod thumbnails;
