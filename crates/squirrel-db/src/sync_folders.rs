@@ -11,9 +11,12 @@ use crate::quota::lock_owner;
 
 /// Where the device's photos of `year` go: `Photos/<device folder>/<year>`.
 /// The device folder is the one recorded on the device while it is live (the
-/// user may have renamed or moved it); otherwise the live folder named
-/// `device_folder` under `Photos` (one the user made is reused), else a new
-/// one, which is recorded. One transaction under the owner lock, so concurrent
+/// user may have renamed or moved it). Otherwise the first of `<name>`,
+/// `<name> (2)`, `<name> (3)`… under `Photos` that is either free (it is
+/// created) or a folder no other signed-in device of the owner backs up into
+/// (reused: one the user made, or the folder of a phone that signed out and
+/// signs in again). Two phones signed in at once with the same name therefore
+/// get separate folders. One transaction under the owner lock, so concurrent
 /// calls create each folder once. Returns the year folder's id.
 pub async fn ensure_year_folder(
     pool: &PgPool,
@@ -42,7 +45,7 @@ pub async fn ensure_year_folder(
         Some(id) => id,
         None => {
             let photos = photos_root(&mut tx, owner_id).await?;
-            let id = child_folder(&mut tx, owner_id, photos, device_folder).await?;
+            let id = unclaimed_folder(&mut tx, owner_id, device_id, photos, device_folder).await?;
             crate::devices::set_backup_folder(&mut *tx, device_id, id).await?;
             id
         }
@@ -61,6 +64,55 @@ async fn photos_root(conn: &mut PgConnection, owner_id: Uuid) -> Result<Uuid, Db
     .fetch_optional(conn)
     .await?
     .ok_or(DbError::NotFound)
+}
+
+/// Variants of a device folder's name tried before giving up.
+const MAX_DEVICE_FOLDERS: u32 = 100;
+
+/// The device's folder under `Photos`: see [`ensure_year_folder`].
+async fn unclaimed_folder(
+    conn: &mut PgConnection,
+    owner_id: Uuid,
+    device_id: Uuid,
+    photos: Uuid,
+    base: &NodeName,
+) -> Result<Uuid, DbError> {
+    for n in 1..=MAX_DEVICE_FOLDERS {
+        let name = if n == 1 {
+            base.clone()
+        } else {
+            NodeName::parse(&format!("{} ({n})", base.as_str()))
+                .map_err(|_| DbError::InvalidInput("device folder name"))?
+        };
+        let existing: Option<(Uuid, String)> = sqlx::query_as(
+            "SELECT id, kind FROM nodes WHERE owner_id = $1 AND parent_id = $2 AND name = $3 \
+               AND deleted_at IS NULL",
+        )
+        .bind(owner_id)
+        .bind(photos)
+        .bind(name.as_str())
+        .fetch_optional(&mut *conn)
+        .await?;
+        let Some((id, kind)) = existing else {
+            return child_folder(conn, owner_id, photos, &name).await;
+        };
+        if kind != "folder" {
+            continue;
+        }
+        let claimed: bool = sqlx::query_scalar(
+            "SELECT EXISTS (SELECT 1 FROM devices WHERE owner_id = $1 AND backup_folder_id = $2 \
+                              AND id <> $3 AND revoked_at IS NULL AND refresh_expires_at > now())",
+        )
+        .bind(owner_id)
+        .bind(id)
+        .bind(device_id)
+        .fetch_one(&mut *conn)
+        .await?;
+        if !claimed {
+            return Ok(id);
+        }
+    }
+    Err(DbError::NameConflict)
 }
 
 /// The live folder `name` in `parent_id`, created if missing (under a free
