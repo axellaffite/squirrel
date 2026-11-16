@@ -126,19 +126,35 @@ pub fn jpeg_sized_with_exif(width: u32, height: u32, spec: &ExifSpec) -> Vec<u8>
 
 /// A valid one-page PDF (A4 portrait) whose page shows `text` in Helvetica.
 pub fn pdf_with_text(text: &str) -> Vec<u8> {
-    let stream = format!("BT /F1 24 Tf 72 720 Td ({text}) Tj ET");
-    let objects = [
+    pdf_with_pages(&[text], "")
+}
+
+/// A valid PDF with one A4 page per entry of `pages`, each showing its text.
+/// `trailer_extra` is appended to the trailer dictionary.
+pub fn pdf_with_pages(pages: &[&str], trailer_extra: &str) -> Vec<u8> {
+    let page_ids: Vec<usize> = (0..pages.len()).map(|i| 4 + 2 * i).collect();
+    let kids: Vec<String> = page_ids.iter().map(|id| format!("{id} 0 R")).collect();
+    let mut objects = vec![
         "<< /Type /Catalog /Pages 2 0 R >>".to_owned(),
-        "<< /Type /Pages /Kids [3 0 R] /Count 1 >>".to_owned(),
-        "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] \
-         /Resources << /Font << /F1 4 0 R >> >> /Contents 5 0 R >>"
-            .to_owned(),
-        "<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>".to_owned(),
         format!(
+            "<< /Type /Pages /Kids [{}] /Count {} >>",
+            kids.join(" "),
+            pages.len()
+        ),
+        "<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>".to_owned(),
+    ];
+    for (text, id) in pages.iter().zip(&page_ids) {
+        let stream = format!("BT /F1 24 Tf 72 720 Td ({text}) Tj ET");
+        objects.push(format!(
+            "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] \
+             /Resources << /Font << /F1 3 0 R >> >> /Contents {} 0 R >>",
+            id + 1
+        ));
+        objects.push(format!(
             "<< /Length {} >>\nstream\n{stream}\nendstream",
             stream.len()
-        ),
-    ];
+        ));
+    }
     let mut pdf = b"%PDF-1.4\n".to_vec();
     let mut offsets = Vec::new();
     for (i, body) in objects.iter().enumerate() {
@@ -154,12 +170,24 @@ pub fn pdf_with_text(text: &str) -> Vec<u8> {
     }
     pdf.extend_from_slice(
         format!(
-            "trailer\n<< /Size {} /Root 1 0 R >>\nstartxref\n{xref}\n%%EOF\n",
+            "trailer\n<< /Size {} /Root 1 0 R {trailer_extra}>>\nstartxref\n{xref}\n%%EOF\n",
             objects.len() + 1
         )
         .as_bytes(),
     );
     pdf
+}
+
+/// A PDF that needs a user password to open (standard security handler,
+/// revision 2, with a `/U` entry no empty password produces).
+pub fn encrypted_pdf() -> Vec<u8> {
+    let hex32 = "AB".repeat(32);
+    let encrypt = format!(
+        "/Encrypt << /Filter /Standard /V 1 /R 2 /Length 40 /P -4 /O <{hex32}> /U <{hex32}> >> \
+         /ID [<{id}> <{id}>] ",
+        id = "01".repeat(16)
+    );
+    pdf_with_pages(&["Secret"], &encrypt)
 }
 
 #[test]
@@ -176,6 +204,8 @@ fn generated_pdfs_have_a_consistent_xref() {
         .parse()
         .unwrap();
     assert!(text[start..].starts_with("xref\n0 6\n"));
+    let two = String::from_utf8(pdf_with_pages(&["a", "b"], "")).unwrap();
+    assert!(two.contains("/Kids [4 0 R 6 0 R] /Count 2"));
     let obj5 = text.find("5 0 obj").unwrap();
     assert!(text.contains(&format!("{obj5:010} 00000 n ")));
 }

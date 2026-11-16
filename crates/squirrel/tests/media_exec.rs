@@ -1,7 +1,7 @@
 use std::time::Duration;
 
-use squirrel_media::exec::{ExecRequest, ExecResponse};
-use squirrel_media::testutil::{ExifSpec, jpeg_sized_with_exif};
+use squirrel_media::exec::{ExecRequest, ExecResponse, TEXT_FILE};
+use squirrel_media::testutil::{ExifSpec, jpeg_sized_with_exif, pdf_with_text};
 use squirrel_media::thumbs::DecodeLimits;
 use squirrel_worker::exec::{ExecError, Executor, SubprocessConfig};
 
@@ -36,6 +36,39 @@ async fn renders_in_a_child_process() {
         other => panic!("unexpected {other:?}"),
     }
     assert!(out.path().join("thumb.webp").is_file());
+}
+
+/// With pdfium (`scripts/fetch-pdfium.sh`); skipped otherwise.
+#[tokio::test]
+async fn renders_a_pdf_in_a_child_process() {
+    let Some(pdfium_dir) = std::env::var_os("SQUIRREL_PDFIUM_DIR") else {
+        eprintln!("skipped: SQUIRREL_PDFIUM_DIR is not set");
+        return;
+    };
+    let dir = tempfile::tempdir().unwrap();
+    let input = dir.path().join("in.pdf");
+    std::fs::write(&input, pdf_with_text("Sandboxed acorns")).unwrap();
+    let out = tempfile::tempdir().unwrap();
+    let request = ExecRequest::Pdf {
+        input,
+        out_dir: out.path().into(),
+        pdfium_dir: pdfium_dir.into(),
+        render: true,
+        text: true,
+    };
+    match executor(Duration::from_secs(60))
+        .run(request)
+        .await
+        .unwrap()
+    {
+        ExecResponse::Pdf {
+            rendered: Some(rendered),
+            page_count: 1,
+        } => assert_eq!(rendered.height, 1440),
+        other => panic!("unexpected {other:?}"),
+    }
+    let text = std::fs::read_to_string(out.path().join(TEXT_FILE)).unwrap();
+    assert!(text.contains("Sandboxed acorns"), "{text}");
 }
 
 #[tokio::test]
