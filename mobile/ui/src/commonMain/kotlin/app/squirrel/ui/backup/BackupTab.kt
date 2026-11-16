@@ -1,6 +1,13 @@
 package app.squirrel.ui.backup
 
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
+import app.squirrel.api.models.RenameDeviceRequest
+import app.squirrel.shared.api.bodyOrThrow
+import app.squirrel.ui.AppState
 import androidx.lifecycle.viewmodel.compose.viewModel
 import app.squirrel.shared.sync.MediaAccess
 import app.squirrel.ui.AppGraph
@@ -23,5 +30,24 @@ fun BackupTab(graph: AppGraph, actions: PhotoAccessActions) {
             failures = { withContext(Dispatchers.IO) { graph.queue.failures() } },
         )
     }
-    BackupScreen(vm, actions, onOpenSettings = {})
+    var settingsOpen by rememberSaveable { mutableStateOf(false) }
+    if (settingsOpen) {
+        val settingsVm = viewModel {
+            BackupSettingsViewModel(
+                store = graph.settings,
+                applySchedule = graph::applySchedule,
+                loadAlbums = { graph.backup?.albums().orEmpty() },
+                rename = { name ->
+                    val api = checkNotNull(graph.api) { "Signed out" }
+                    val kept = api.devices.renameCurrentDevice(RenameDeviceRequest(name)).bodyOrThrow().device.name
+                    graph.refreshAccount()
+                    kept
+                },
+                deviceName = (graph.state.value as? AppState.SignedIn)?.account?.deviceName.orEmpty(),
+            )
+        }
+        BackupSettingsScreen(settingsVm, onBack = { settingsOpen = false })
+    } else {
+        BackupScreen(vm, actions, onOpenSettings = { settingsOpen = true })
+    }
 }
