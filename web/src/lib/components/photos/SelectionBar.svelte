@@ -1,25 +1,22 @@
 <script lang="ts">
-	import Icon from '#lib/components/icons/Icon.svelte';
-	import Button from '#lib/components/ui/Button.svelte';
+	import type { Snippet } from 'svelte';
 	import IconButton from '#lib/components/ui/IconButton.svelte';
 
 	interface Props {
 		count: number;
-		busy?: boolean;
-		onDelete: () => void;
+		/** The page's actions on the selection (small buttons). */
+		children: Snippet;
 		onClear: () => void;
 	}
 
-	let { count, busy = false, onDelete, onClear }: Props = $props();
+	let { count, children, onClear }: Props = $props();
 </script>
 
 <!-- Floats above the phone rail; from 1024 px at the top of the panel. -->
 <div class="dock">
 	<div class="bar" role="toolbar" aria-label="Selected photos">
 		<p class="count tabular" aria-live="polite">{count} selected</p>
-		<Button variant="danger" size="sm" onclick={onDelete} disabled={busy}>
-			<Icon name="trash" />Delete
-		</Button>
+		{@render children()}
 		<IconButton icon="x" label="Clear the selection" tooltip="Clear" onclick={onClear} />
 	</div>
 </div>
@@ -45,6 +42,13 @@
 		background: var(--card);
 		box-shadow: var(--shadow-pop);
 		pointer-events: auto;
+	}
+
+	/* Phones: actions keep their icon and lose their label when space runs out. */
+	@media (max-width: 30rem) {
+		.bar :global(.label) {
+			display: none;
+		}
 	}
 
 	.count {

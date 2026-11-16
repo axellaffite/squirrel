@@ -3,6 +3,7 @@
 	import { replaceState } from '$app/navigation';
 	import { page } from '$app/state';
 	import Icon from '#lib/components/icons/Icon.svelte';
+	import AlbumPicker from '#lib/components/photos/AlbumPicker.svelte';
 	import Lightbox from '#lib/components/photos/Lightbox.svelte';
 	import PhotosTabs from '#lib/components/photos/PhotosTabs.svelte';
 	import Scrubber from '#lib/components/photos/Scrubber.svelte';
@@ -33,6 +34,9 @@
 	let confirmingDelete = $state(false);
 	let deleting = $state(false);
 	let deleteError: string | null = $state(null);
+	/** Photos the album picker is open for. */
+	let picking: readonly string[] | null = $state(null);
+	let notice: string | null = $state(null);
 
 	const total = $derived(data.total);
 
@@ -112,8 +116,13 @@
 		void data.reload();
 	}
 
+	function added(message: string) {
+		notice = message;
+		selection.clear();
+	}
+
 	function keydown(event: KeyboardEvent) {
-		if (event.key === 'Escape' && selection.active && !viewing && !confirmingDelete) selection.clear();
+		if (event.key === 'Escape' && selection.active && !viewing && !confirmingDelete && !picking) selection.clear();
 	}
 
 	onMount(() => {
@@ -150,6 +159,7 @@
 	<PhotosTabs path={page.url.pathname} />
 
 	<div class="live" aria-live="polite">
+		{#if notice}<Alert tone="success" role="status">{notice}</Alert>{/if}
 		{#if preparing > 0}<Alert tone="info" role="status">{preparingText(preparing)}</Alert>{/if}
 	</div>
 	{#if data.error}<Alert>{data.error}</Alert>{/if}
@@ -176,7 +186,14 @@
 </Page>
 
 {#if selection.active}
-	<SelectionBar count={selection.size} busy={deleting} onDelete={() => (confirmingDelete = true)} onClear={() => selection.clear()} />
+	<SelectionBar count={selection.size} onClear={() => selection.clear()}>
+		<Button variant="secondary" size="sm" aria-label="Add the selected photos to an album" onclick={() => (picking = [...selection.ids])}>
+			<Icon name="library" /><span class="label">Add to album</span>
+		</Button>
+		<Button variant="danger" size="sm" aria-label="Delete the selected photos" disabled={deleting} onclick={() => (confirmingDelete = true)}>
+			<Icon name="trash" /><span class="label">Delete</span>
+		</Button>
+	</SelectionBar>
 {/if}
 
 {#if confirmingDelete}
@@ -200,7 +217,18 @@
 {/if}
 
 {#if viewing}
-	<Lightbox asset={viewing} items={data.ordered} onNavigate={open} onClose={closeViewer} onDelete={deleteViewed} />
+	<Lightbox
+		asset={viewing}
+		items={data.ordered}
+		onNavigate={open}
+		onClose={closeViewer}
+		onDelete={deleteViewed}
+		onAddToAlbum={(asset) => (picking = [asset.id])}
+	/>
+{/if}
+
+{#if picking}
+	<AlbumPicker ids={picking} onDone={added} onClose={() => (picking = null)} />
 {/if}
 
 <style>

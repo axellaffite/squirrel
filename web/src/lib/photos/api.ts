@@ -11,6 +11,8 @@ export type CameraInfo = components['schemas']['CameraDto'];
 export type PlaceInfo = components['schemas']['PlaceDto'];
 export type LocationInfo = components['schemas']['LocationDto'];
 export type ThumbnailSize = 'thumb' | 'preview';
+export type Album = components['schemas']['AlbumDto'];
+export type TimelinePage = components['schemas']['TimelinePage'];
 
 /** A month rarely holds more than a few hundred photos: fetch it whole, 500 at a time. */
 const MONTH_PAGE = 500;
@@ -44,3 +46,36 @@ export const mediaStatus = (): Promise<Outcome<MediaStatus>> => call(api.GET('/a
 export function thumbnailUrl(id: string, size: ThumbnailSize, version: number): string {
 	return `/api/files/${encodeURIComponent(id)}/thumbnail?size=${size}&v=${version}`;
 }
+
+export const listAlbums = (): Promise<Outcome<Album[]>> => call(api.GET('/api/albums'));
+
+export const getAlbum = (id: string): Promise<Outcome<Album>> =>
+	call(api.GET('/api/albums/{id}', { params: { path: { id } } }));
+
+/** A new album, holding `nodeIds` right away when given. */
+export const createAlbum = (name: string, nodeIds: readonly string[] = []): Promise<Outcome<Album>> =>
+	call(api.POST('/api/albums', { body: { name, node_ids: [...nodeIds] } }));
+
+export const renameAlbum = (id: string, name: string): Promise<Outcome<Album>> =>
+	call(api.PATCH('/api/albums/{id}', { params: { path: { id } }, body: { name } }));
+
+/** `null` goes back to the newest photo as the cover. */
+export const setAlbumCover = (id: string, nodeId: string | null): Promise<Outcome<Album>> =>
+	call(api.PATCH('/api/albums/{id}', { params: { path: { id } }, body: { cover_node_id: nodeId } }));
+
+export const deleteAlbum = (id: string): Promise<Outcome<unknown>> =>
+	call(api.DELETE('/api/albums/{id}', { params: { path: { id } } }));
+
+/** One page of an album's photos, newest first. */
+export const listAlbumPage = (id: string, cursor: string | null): Promise<Outcome<TimelinePage>> =>
+	call(
+		api.GET('/api/albums/{id}/items', {
+			params: { path: { id }, query: { cursor: cursor ?? undefined, limit: MONTH_PAGE } }
+		})
+	);
+
+export const addToAlbum = (id: string, nodeIds: readonly string[]): Promise<Outcome<{ changed: number }>> =>
+	call(api.POST('/api/albums/{id}/items', { params: { path: { id } }, body: { node_ids: [...nodeIds] } }));
+
+export const removeFromAlbum = (id: string, nodeIds: readonly string[]): Promise<Outcome<{ changed: number }>> =>
+	call(api.POST('/api/albums/{id}/items/remove', { params: { path: { id } }, body: { node_ids: [...nodeIds] } }));

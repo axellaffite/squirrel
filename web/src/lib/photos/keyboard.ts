@@ -52,3 +52,24 @@ export function neighbour(rects: readonly TileRect[], from: number, key: ArrowKe
 	});
 	return best;
 }
+
+/**
+ * Handles an arrow key pressed on a tile inside `root`: focuses the neighbouring tile and
+ * scrolls it into view. Returns whether the key was used.
+ */
+export function moveTileFocus(root: HTMLElement, event: KeyboardEvent): boolean {
+	if (!isArrowKey(event.key)) return false;
+	const from = (event.target as Element).closest<HTMLElement>('[data-tile]');
+	if (!from) return false;
+	const tiles = Array.from(root.querySelectorAll<HTMLElement>('[data-tile]'));
+	const to = neighbour(
+		tiles.map((tile) => tile.getBoundingClientRect()),
+		tiles.indexOf(from),
+		event.key
+	);
+	if (to < 0) return false;
+	event.preventDefault();
+	tiles[to].focus({ preventScroll: true });
+	tiles[to].scrollIntoView({ block: 'nearest' });
+	return true;
+}
