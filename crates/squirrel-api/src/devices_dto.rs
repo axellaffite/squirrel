@@ -200,6 +200,21 @@ pub struct RefreshResponse {
     pub tokens: TokenPair,
 }
 
+/// The calling device and its account.
+#[derive(Debug, Serialize, ToSchema)]
+pub struct CurrentDeviceResponse {
+    pub device: DeviceDto,
+    pub account: AccountDto,
+    /// `Photos/<device name>`, once `POST /api/sync/folder` created it.
+    pub backup_folder_id: Option<Uuid>,
+}
+
+#[derive(Debug, Deserialize, ToSchema)]
+pub struct RenameDeviceRequest {
+    /// 1–64 characters.
+    pub name: String,
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

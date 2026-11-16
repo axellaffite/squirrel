@@ -696,6 +696,44 @@
         ]
       }
     },
+    "/api/auth/device/logout": {
+      "post": {
+        "tags": [
+          "devices"
+        ],
+        "operationId": "device_logout",
+        "responses": {
+          "204": {
+            "description": "This device is signed out; its tokens no longer work"
+          },
+          "401": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "device_bearer": []
+          }
+        ]
+      }
+    },
     "/api/auth/device/refresh": {
       "post": {
         "tags": [
@@ -842,7 +880,7 @@
         "operationId": "logout_all",
         "responses": {
           "204": {
-            "description": "Every session revoked; `Clear-Site-Data: \"cache\"`"
+            "description": "Every session and device revoked; `Clear-Site-Data: \"cache\"`"
           },
           "401": {
             "description": "",
@@ -903,6 +941,213 @@
         },
         "security": [
           {
+            "session_cookie": []
+          }
+        ]
+      }
+    },
+    "/api/devices": {
+      "get": {
+        "tags": [
+          "devices"
+        ],
+        "operationId": "list_devices",
+        "responses": {
+          "200": {
+            "description": "Live devices first, most recently seen first, then revoked ones",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/DeviceDto"
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "session_cookie": []
+          }
+        ]
+      }
+    },
+    "/api/devices/current": {
+      "get": {
+        "tags": [
+          "devices"
+        ],
+        "operationId": "get_current_device",
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CurrentDeviceResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Not a device",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "device_bearer": []
+          }
+        ]
+      },
+      "patch": {
+        "tags": [
+          "devices"
+        ],
+        "operationId": "rename_current_device",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RenameDeviceRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CurrentDeviceResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "device_bearer": []
+          }
+        ]
+      }
+    },
+    "/api/devices/{id}": {
+      "delete": {
+        "tags": [
+          "devices"
+        ],
+        "operationId": "revoke_device",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "Device id",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Revoked (or already revoked): its tokens no longer work; what it backed up stays"
+          },
+          "401": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "csrf_token": [],
             "session_cookie": []
           }
         ]
@@ -3086,6 +3331,30 @@
           }
         }
       },
+      "CurrentDeviceResponse": {
+        "type": "object",
+        "description": "The calling device and its account.",
+        "required": [
+          "device",
+          "account"
+        ],
+        "properties": {
+          "account": {
+            "$ref": "#/components/schemas/AccountDto"
+          },
+          "backup_folder_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid",
+            "description": "`Photos/<device name>`, once `POST /api/sync/folder` created it."
+          },
+          "device": {
+            "$ref": "#/components/schemas/DeviceDto"
+          }
+        }
+      },
       "DeduplicatedUpload": {
         "type": "object",
         "description": "The content was already in the caller's library: a node was created without\nuploading anything.",
@@ -3782,6 +4051,18 @@
         "properties": {
           "tokens": {
             "$ref": "#/components/schemas/TokenPair"
+          }
+        }
+      },
+      "RenameDeviceRequest": {
+        "type": "object",
+        "required": [
+          "name"
+        ],
+        "properties": {
+          "name": {
+            "type": "string",
+            "description": "1–64 characters."
           }
         }
       },
