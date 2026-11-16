@@ -22,10 +22,12 @@ import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.async
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFailsWith
 import kotlin.test.assertTrue
 
 class SyncEngineTest {
-    private val db = createDatabase(testDriver())
+    private val testDriverHolder = testDriver()
+    private val db = createDatabase(testDriverHolder)
     private val queue = Queue(db)
     private val settings = SettingsStore(db)
     private val source = FakeAssetSource()
@@ -246,5 +248,29 @@ class SyncEngineTest {
         engine().runOnce()
 
         assertEquals(null, settings.value(LAST_RUN_KEY))
+    }
+
+    @Test
+    fun aFailureBeforeTheRunStartsDoesNotKeepTheLock() = runApiTest {
+        val engine = engine()
+        val driver = testDriverHolder
+        driver.execute(null, "DROP TABLE setting", 0) // settings.backup() now throws
+
+        assertFailsWith<Exception> { engine.runOnce() }
+        assertEquals(SyncState.Error(ErrorReason.Unexpected), engine.state.value)
+        // A second run is not refused as "already running".
+        assertFailsWith<Exception> { engine.runOnce() }
+    }
+
+    @Test
+    fun anUnreachableServerIsNotAnUnexpectedError() = runApiTest {
+        source.put("images:1", size = 64)
+        server.onRequest = { _, _ -> throw kotlinx.io.IOException("connection refused") }
+        val engine = engine()
+
+        val summary = engine.runOnce()
+
+        assertEquals(StopCause.Error, summary.stoppedBy)
+        assertEquals(SyncState.Error(ErrorReason.Unreachable), engine.state.value)
     }
 }

@@ -2,13 +2,17 @@ package app.squirrel.shared.sync
 
 import app.squirrel.api.models.SyncCheckItem
 import app.squirrel.api.models.SyncCheckRequest
+import app.squirrel.shared.api.ApiError
 import app.squirrel.shared.api.SignedOut
 import app.squirrel.shared.api.SquirrelApi
 import app.squirrel.shared.api.bodyOrThrow
 import app.squirrel.shared.hash.hashAsset
 import app.squirrel.shared.settings.BackupSettings
 import app.squirrel.shared.settings.SettingsStore
+import io.ktor.serialization.ContentConvertException
 import kotlinx.coroutines.CancellationException
+import kotlinx.io.IOException
+import kotlinx.serialization.SerializationException
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -60,10 +64,27 @@ class SyncEngine(
         }
     }
 
+    /**
+     * Network and server failures end the run as [ErrorReason.Unreachable]; anything else is a
+     * bug and is rethrown after the state says [ErrorReason.Unexpected].
+     */
     suspend fun runOnce(deadline: Long? = null): RunSummary {
         if (!mutex.tryLock()) return RunSummary(stoppedBy = StopCause.AlreadyRunning)
-        val run = Run(deadline, settings.backup())
         try {
+            return runLocked(deadline)
+        } finally {
+            mutex.unlock()
+        }
+    }
+
+    private suspend fun runLocked(deadline: Long?): RunSummary {
+        var run: Run? = null
+        fun stopped(state: SyncState, cause: StopCause): RunSummary {
+            _state.value = state
+            return (run?.summary ?: RunSummary()).copy(stoppedBy = cause)
+        }
+        try {
+            run = Run(deadline, settings.backup())
             if (source.access() == MediaAccess.None) throw Stop(StopCause.Paused, SyncState.Paused(PauseReason.NoPhotoAccess))
             run.checkpoint()
             _state.value = SyncState.Scanning
@@ -75,24 +96,19 @@ class SyncEngine(
             _state.value = SyncState.Idle
             return run.summary
         } catch (e: Stop) {
-            _state.value = e.state
-            return run.summary.copy(stoppedBy = e.stopCause)
+            return stopped(e.state, e.stopCause)
         } catch (e: CancellationException) {
             _state.value = SyncState.Idle
             throw e
         } catch (e: RunStopped) {
-            _state.value = SyncState.Error(
-                if (e.reason == StopReason.QuotaExceeded) ErrorReason.QuotaExceeded else ErrorReason.StorageFull,
-            )
-            return run.summary.copy(stoppedBy = StopCause.Error)
+            val reason = if (e.reason == StopReason.QuotaExceeded) ErrorReason.QuotaExceeded else ErrorReason.StorageFull
+            return stopped(SyncState.Error(reason), StopCause.Error)
         } catch (_: SignedOut) {
-            _state.value = SyncState.Error(ErrorReason.SignedOut)
-            return run.summary.copy(stoppedBy = StopCause.Error)
-        } catch (_: Exception) {
-            _state.value = SyncState.Error(ErrorReason.Unreachable)
-            return run.summary.copy(stoppedBy = StopCause.Error)
-        } finally {
-            mutex.unlock()
+            return stopped(SyncState.Error(ErrorReason.SignedOut), StopCause.Error)
+        } catch (e: Exception) {
+            if (e.isNetworkFailure()) return stopped(SyncState.Error(ErrorReason.Unreachable), StopCause.Error)
+            _state.value = SyncState.Error(ErrorReason.Unexpected)
+            throw e
         }
     }
 
@@ -151,3 +167,7 @@ class SyncEngine(
         }
     }
 }
+
+/** Failures of the network or the server, as opposed to bugs. */
+internal fun Throwable.isNetworkFailure(): Boolean =
+    this is IOException || this is ApiError || this is ContentConvertException || this is SerializationException
