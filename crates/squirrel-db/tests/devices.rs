@@ -394,7 +394,9 @@ async fn revoke_all_counts_the_live_devices_of_one_user(pool: PgPool) {
     devices::revoke(&pool, alice.id, first.id).await.unwrap();
 
     assert_eq!(
-        devices::revoke_all_for_user(&pool, alice.id).await.unwrap(),
+        devices::revoke_all_for_user(&mut pool.acquire().await.unwrap(), alice.id)
+            .await
+            .unwrap(),
         2
     );
     for hash in [b"a2", b"a3"] {
@@ -572,5 +574,30 @@ async fn a_backup_folder_of_another_owner_is_refused(pool: PgPool) {
         devices::set_backup_folder(&pool, device.id, photos.id)
             .await
             .is_err()
+    );
+}
+
+#[sqlx::test(migrator = "squirrel_db::MIGRATOR")]
+async fn revoke_all_follows_the_callers_transaction(pool: PgPool) {
+    let alice = common::admin(&pool).await;
+    devices::create(&pool, &phone(alice.id, b"r1", b"a1"))
+        .await
+        .unwrap();
+    let mut tx = pool.begin().await.unwrap();
+    assert_eq!(
+        devices::revoke_all_for_user(&mut tx, alice.id)
+            .await
+            .unwrap(),
+        1
+    );
+    squirrel_db::sessions::delete_all_for_user(&mut *tx, alice.id)
+        .await
+        .unwrap();
+    tx.rollback().await.unwrap();
+    assert!(
+        devices::find_by_access_hash(&pool, b"a1")
+            .await
+            .unwrap()
+            .is_some()
     );
 }
