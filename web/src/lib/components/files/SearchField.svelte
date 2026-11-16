@@ -45,11 +45,18 @@
 
 <style>
 	/* The text field pill with a leading search icon. */
+	/* Full width on phones (its own line among the page actions); a fixed pill from 768 px. */
 	.search {
 		position: relative;
 		display: flex;
 		align-items: center;
-		min-width: min(100%, var(--menu-w));
+		width: 100%;
+	}
+
+	@media (min-width: 48rem) {
+		.search {
+			width: var(--menu-w);
+		}
 	}
 
 	.search :global(.icon) {
@@ -70,6 +77,11 @@
 		font-size: var(--text-md);
 		line-height: var(--text-md-lh);
 		transition: border-color var(--dur-fast) var(--ease);
+	}
+
+	/* The browser's own clear button cannot take the tokens; Escape clears the field anyway. */
+	input::-webkit-search-cancel-button {
+		appearance: none;
 	}
 
 	input::placeholder {
