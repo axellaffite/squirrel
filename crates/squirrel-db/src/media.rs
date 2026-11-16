@@ -41,7 +41,7 @@ impl MediaState {
         }
     }
 
-    fn parse(s: &str) -> Self {
+    pub(crate) fn parse(s: &str) -> Self {
         match s {
             "pending" => Self::Pending,
             "ready" => Self::Ready,

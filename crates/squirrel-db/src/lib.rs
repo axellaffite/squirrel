@@ -12,6 +12,7 @@ pub mod quota;
 mod retry;
 pub mod sessions;
 pub mod settings;
+pub mod timeline;
 pub mod trash;
 pub mod uploads;
 pub mod users;
