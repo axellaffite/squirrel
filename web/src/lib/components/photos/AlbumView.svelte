@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { goto, replaceState } from '$app/navigation';
 	import { page } from '$app/state';
-	import { onMount } from 'svelte';
+	import { onMount, untrack } from 'svelte';
 	import ConfirmDialog from '#lib/components/ConfirmDialog.svelte';
 	import Breadcrumbs from '#lib/components/files/Breadcrumbs.svelte';
 	import NameDialog from '#lib/components/files/NameDialog.svelte';
@@ -15,16 +15,13 @@
 	import Alert from '#lib/components/ui/Alert.svelte';
 	import Button from '#lib/components/ui/Button.svelte';
 	import EmptyState from '#lib/components/ui/EmptyState.svelte';
-	import { batches, photoCount } from '#lib/photos/albums.ts';
+	import { AlbumData } from '#lib/photos/album.svelte.ts';
+	import { photoCount } from '#lib/photos/albums.ts';
 	import {
 		deleteAlbum,
-		getAlbum,
-		listAlbumPage,
-		removeFromAlbum,
 		renameAlbum,
 		photoDetails,
 		setAlbumCover,
-		type Album,
 		type AssetSummary
 	} from '#lib/photos/api.ts';
 	import { photoInAddress, withPhoto } from '#lib/photos/address.ts';
@@ -33,11 +30,8 @@
 
 	let { albumId }: { albumId: string } = $props();
 
-	let album = $state<Album | null>(null);
-	let items: AssetSummary[] = $state.raw([]);
-	let cursor: string | null = null;
-	let finished = $state(false);
-	let loadingPage = false;
+	const data = new AlbumData(untrack(() => albumId));
+	/** Errors from actions on this page (cover, removal, rename). */
 	let error: string | null = $state(null);
 	let notice: string | null = $state(null);
 	let busy = $state(false);
@@ -48,34 +42,12 @@
 	let grid: PhotoGrid | undefined = $state();
 	const selection = new Selection();
 
-	async function loadAlbum() {
-		const result = await getAlbum(albumId);
-		if (result.ok) album = result.data;
-		else error = result.status === 404 ? 'This album does not exist or was deleted.' : result.error;
-	}
+	const album = $derived(data.album);
+	const items = $derived(data.items);
 
-	async function nextPage() {
-		if (loadingPage || finished) return;
-		loadingPage = true;
-		const result = await listAlbumPage(albumId, cursor);
-		loadingPage = false;
-		if (!result.ok) {
-			error = result.error;
-			finished = true;
-			return;
-		}
-		items = [...items, ...result.data.items];
-		cursor = result.data.next_cursor ?? null;
-		finished = cursor === null;
-	}
-
-	/** After a change: the album (count, cover) and its photos from the start. */
 	async function reload() {
-		items = [];
-		cursor = null;
-		finished = false;
-		await Promise.all([loadAlbum(), nextPage()]);
-		selection.keepOnly(new Set(items.map((item) => item.id)));
+		await data.reload();
+		selection.keepOnly(new Set(data.items.map((item) => item.id)));
 	}
 
 	function toggle(asset: AssetSummary, range: boolean) {
@@ -92,16 +64,11 @@
 
 	const removeSelected = () =>
 		run(async () => {
-			let removed = 0;
-			for (const batch of batches([...selection.ids])) {
-				const result = await removeFromAlbum(albumId, batch);
-				if (!result.ok) return result.error;
-				removed += result.data.changed;
-			}
-			notice = `Removed ${photoCount(removed)} from the album.`;
-			selection.clear();
-			await reload();
-			return null;
+			const result = await data.remove([...selection.ids]);
+			notice = result.message;
+			selection.keepOnly(new Set(data.items.map((item) => item.id)));
+			if (!result.error) selection.clear();
+			return result.error;
 		});
 
 	const makeCover = () =>
@@ -109,7 +76,7 @@
 			const [id] = selection.ids;
 			const result = await setAlbumCover(albumId, id);
 			if (!result.ok) return result.error;
-			album = result.data;
+			data.album = result.data;
 			notice = 'Cover changed.';
 			selection.clear();
 			return null;
@@ -118,7 +85,7 @@
 	async function rename(name: string): Promise<string | null> {
 		const result = await renameAlbum(albumId, name);
 		if (!result.ok) return result.error;
-		album = result.data;
+		data.album = result.data;
 		return null;
 	}
 
@@ -141,7 +108,7 @@
 		const after = neighbourAfterRemoval(items, asset.id);
 		const result = await trashPhotos([asset.id]);
 		if (result.error) return result.error;
-		items = items.filter((item) => item.id !== asset.id);
+		data.drop(asset.id);
 		if (after) open(after);
 		else closeViewer();
 		await reload();
@@ -194,7 +161,8 @@
 	{/snippet}
 
 	<div class="live" aria-live="polite">{#if notice}<Alert tone="success" role="status">{notice}</Alert>{/if}</div>
-	{#if error}<Alert>{error}</Alert>{/if}
+	{#if data.albumError}<Alert>{data.albumError}</Alert>{/if}
+	{#if error ?? data.pageError}<Alert>{error ?? data.pageError}</Alert>{/if}
 
 	{#if album && album.item_count === 0 && items.length === 0}
 		<EmptyState icon="library" title="This album is empty">Select photos in the timeline, then choose Add to album.</EmptyState>
@@ -207,10 +175,10 @@
 				selecting={selection.active}
 				onOpen={open}
 				onToggle={toggle}
-				onNearEnd={nextPage}
+				onNearEnd={() => void data.nextPage()}
 			/>
 		</section>
-	{:else if !error}
+	{:else if !data.albumError && !data.pageError}
 		<p class="muted" aria-live="polite">Loading…</p>
 	{/if}
 </Page>
