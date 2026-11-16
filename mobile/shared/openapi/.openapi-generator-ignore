@@ -1,0 +1,13 @@
+# Only the Kotlin sources are used; they compile inside :shared against our own versions.
+build.gradle.kts
+settings.gradle.kts
+gradle.properties
+gradlew
+gradlew.bat
+gradle/**
+README.md
+docs/**
+src/*Test/**
+src/js*/**
+src/ios*/**
+src/jvm*/**
