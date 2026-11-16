@@ -9,13 +9,15 @@
 		title: string;
 		initial?: string;
 		submitLabel: string;
+		/** Checks the name before sending it (file-name rules by default). */
+		validate?: (name: string) => string | null;
 		/** Resolves to an error message, or null on success. */
 		onSubmit: (name: string) => Promise<string | null>;
 		/** Runs once the dialog closed, however it closed. */
 		onClose: () => void;
 	}
 
-	let { title, initial = '', submitLabel, onSubmit, onClose }: Props = $props();
+	let { title, initial = '', submitLabel, validate = nameProblem, onSubmit, onClose }: Props = $props();
 
 	let dialog: Dialog | undefined = $state();
 	let open = $state(true);
@@ -28,7 +30,7 @@
 
 	async function submit(event: SubmitEvent) {
 		event.preventDefault();
-		error = nameProblem(name);
+		error = validate(name);
 		if (error) return;
 		busy = true;
 		try {

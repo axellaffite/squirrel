@@ -6,7 +6,7 @@
 	import Alert from '#lib/components/ui/Alert.svelte';
 	import Dialog from '#lib/components/ui/Dialog.svelte';
 	import { AlbumAdder } from '#lib/photos/albumAdd.ts';
-	import { photoCount, sortByName } from '#lib/photos/albums.ts';
+	import { albumNameProblem, photoCount, sortByName } from '#lib/photos/albums.ts';
 	import { listAlbums, type Album } from '#lib/photos/api.ts';
 
 	interface Props {
@@ -69,7 +69,7 @@
 </script>
 
 {#if naming}
-	<NameDialog title="New album" submitLabel="Create album" onSubmit={create} onClose={onClose} />
+	<NameDialog title="New album" submitLabel="Create album" validate={albumNameProblem} onSubmit={create} onClose={onClose} />
 {/if}
 
 <Dialog bind:this={dialog} bind:open title="Add to album" onclose={pickerClosed}>

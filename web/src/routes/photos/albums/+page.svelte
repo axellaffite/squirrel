@@ -10,6 +10,7 @@
 	import Alert from '#lib/components/ui/Alert.svelte';
 	import Button from '#lib/components/ui/Button.svelte';
 	import EmptyState from '#lib/components/ui/EmptyState.svelte';
+	import { albumNameProblem } from '#lib/photos/albums.ts';
 	import { createAlbum, listAlbums, type Album } from '#lib/photos/api.ts';
 
 	let albums = $state<Album[] | null>(null);
@@ -59,7 +60,7 @@
 </Page>
 
 {#if naming}
-	<NameDialog title="New album" submitLabel="Create album" onSubmit={create} onClose={() => (naming = false)} />
+	<NameDialog title="New album" submitLabel="Create album" validate={albumNameProblem} onSubmit={create} onClose={() => (naming = false)} />
 {/if}
 
 <style>
