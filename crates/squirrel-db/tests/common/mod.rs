@@ -107,3 +107,86 @@ pub async fn set_quota(pool: &PgPool, user: Uuid, quota: Option<i64>) {
         .await
         .unwrap();
 }
+
+/// Inserts, with raw SQL, an image file node of blob `sha` (created if
+/// missing, with ready thumbnails) and its timeline entry.
+pub async fn photo_of_blob(
+    pool: &PgPool,
+    owner: Uuid,
+    parent: Uuid,
+    name: &str,
+    sha: &str,
+    taken_at: time::PrimitiveDateTime,
+) -> Uuid {
+    sqlx::query(
+        "INSERT INTO blobs (sha256, size, mime) VALUES ($1, 10, 'image/jpeg') \
+         ON CONFLICT DO NOTHING",
+    )
+    .bind(sha)
+    .execute(pool)
+    .await
+    .unwrap();
+    sqlx::query(
+        "INSERT INTO media (sha256, kind, metadata_state, thumbs_state, thumbs_version, \
+                            width, height, blurhash) \
+         VALUES ($1, 'image', 'ready', 'ready', 1, 4, 3, 'LEHV6nWB2yk8') ON CONFLICT DO NOTHING",
+    )
+    .bind(sha)
+    .execute(pool)
+    .await
+    .unwrap();
+    let id: Uuid = sqlx::query_scalar(
+        "INSERT INTO nodes (id, owner_id, parent_id, name, kind, blob_sha256, size, mime) \
+         VALUES (gen_random_uuid(), $1, $2, $3, 'file', $4, 10, 'image/jpeg') RETURNING id",
+    )
+    .bind(owner)
+    .bind(parent)
+    .bind(name)
+    .bind(sha)
+    .fetch_one(pool)
+    .await
+    .unwrap();
+    sqlx::query(
+        "INSERT INTO assets (node_id, owner_id, sha256, kind, taken_at, taken_source) \
+         VALUES ($1, $2, $3, 'photo', $4, 'exif')",
+    )
+    .bind(id)
+    .bind(owner)
+    .bind(sha)
+    .bind(taken_at)
+    .execute(pool)
+    .await
+    .unwrap();
+    id
+}
+
+/// [`photo_of_blob`] with a blob of its own.
+pub async fn photo(
+    pool: &PgPool,
+    owner: Uuid,
+    parent: Uuid,
+    name: &str,
+    taken_at: time::PrimitiveDateTime,
+) -> Uuid {
+    let simple = Uuid::now_v7().simple().to_string();
+    let sha = format!("{simple}{simple}");
+    photo_of_blob(pool, owner, parent, name, &sha, taken_at).await
+}
+
+/// Moves a node to the trash (raw SQL, as its own trash entry).
+pub async fn raw_trash(pool: &PgPool, id: Uuid) {
+    sqlx::query("UPDATE nodes SET deleted_at = now(), trash_root = id WHERE id = $1")
+        .bind(id)
+        .execute(pool)
+        .await
+        .unwrap();
+}
+
+/// Brings a node back from the trash (raw SQL).
+pub async fn raw_restore(pool: &PgPool, id: Uuid) {
+    sqlx::query("UPDATE nodes SET deleted_at = NULL, trash_root = NULL WHERE id = $1")
+        .bind(id)
+        .execute(pool)
+        .await
+        .unwrap();
+}
