@@ -5,6 +5,7 @@
 //! so another user's photos, shared dedup blobs and trashed files never leak.
 
 use sqlx::{FromRow, PgPool, Postgres, QueryBuilder};
+use squirrel_core::MediaKind;
 use time::{Date, Month, PrimitiveDateTime, Time};
 use uuid::Uuid;
 
@@ -213,6 +214,35 @@ pub async fn detail(
         .bind(node_id)
         .fetch_optional(pool)
         .await?)
+}
+
+/// How much of a user's media the worker still has to process.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, FromRow)]
+pub struct StatusCounts {
+    /// Live files of a supported type whose content has no media row yet.
+    pub queued: i64,
+    /// Live files with a processing step still pending.
+    pub processing: i64,
+    /// Live files with a processing step that failed.
+    pub failed: i64,
+}
+
+/// [`StatusCounts`] of `owner_id`'s live files.
+pub async fn status_counts(pool: &PgPool, owner_id: Uuid) -> Result<StatusCounts, DbError> {
+    Ok(sqlx::query_as::<_, StatusCounts>(
+        "SELECT count(*) FILTER (WHERE m.sha256 IS NULL) AS queued, \
+                count(*) FILTER (WHERE 'pending' IN (m.metadata_state, m.thumbs_state, \
+                                                     m.text_state)) AS processing, \
+                count(*) FILTER (WHERE 'failed' IN (m.metadata_state, m.thumbs_state, \
+                                                    m.text_state)) AS failed \
+           FROM nodes n LEFT JOIN media m ON m.sha256 = n.blob_sha256 \
+          WHERE n.owner_id = $1 AND n.kind = 'file' AND n.deleted_at IS NULL \
+            AND n.mime = ANY($2)",
+    )
+    .bind(owner_id)
+    .bind(MediaKind::all_mimes())
+    .fetch_one(pool)
+    .await?)
 }
 
 #[cfg(test)]

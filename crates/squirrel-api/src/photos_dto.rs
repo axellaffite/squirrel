@@ -2,7 +2,7 @@
 
 use serde::{Deserialize, Serialize};
 use squirrel_db::media::MediaState;
-use squirrel_db::timeline::{AssetSummaryRecord, MonthCount};
+use squirrel_db::timeline::{AssetDetailRecord, AssetSummaryRecord, MonthCount, StatusCounts};
 use time::PrimitiveDateTime;
 use time::macros::format_description;
 use utoipa::{IntoParams, ToSchema};
@@ -140,6 +140,127 @@ pub struct TimelineQuery {
     pub cursor: Option<String>,
     /// Default 200, at most 500.
     pub limit: Option<u32>,
+}
+
+/// Where a photo was taken, named from the offline GeoNames dataset.
+#[derive(Debug, Serialize, ToSchema)]
+pub struct PlaceDto {
+    pub name: String,
+    pub admin1: Option<String>,
+    pub country: Option<String>,
+    pub country_code: Option<String>,
+}
+
+#[derive(Debug, Serialize, ToSchema)]
+pub struct LocationDto {
+    pub latitude: f64,
+    pub longitude: f64,
+    /// Metres above sea level.
+    pub altitude: Option<f64>,
+}
+
+#[derive(Debug, Serialize, ToSchema)]
+pub struct CameraDto {
+    pub make: Option<String>,
+    pub model: Option<String>,
+    pub lens: Option<String>,
+    /// As recorded, e.g. `1/250`.
+    pub exposure_time: Option<String>,
+    pub f_number: Option<f32>,
+    pub iso: Option<i32>,
+    pub focal_length_mm: Option<f32>,
+}
+
+/// An album a photo belongs to.
+#[derive(Debug, Serialize, ToSchema)]
+pub struct AlbumRef {
+    pub id: Uuid,
+    pub name: String,
+}
+
+/// Everything the photo viewer shows about one photo.
+#[derive(Debug, Serialize, ToSchema)]
+pub struct AssetDetails {
+    pub asset: AssetSummary,
+    /// Bytes.
+    pub size: i64,
+    /// The folder holding the file.
+    pub parent_id: Option<Uuid>,
+    pub place: Option<PlaceDto>,
+    pub location: Option<LocationDto>,
+    pub camera: Option<CameraDto>,
+    /// Albums of the caller holding this photo, by name.
+    pub albums: Vec<AlbumRef>,
+}
+
+impl AssetDetails {
+    pub fn new(record: &AssetDetailRecord, albums: Vec<AlbumRef>) -> Self {
+        let place = record.place_name.clone().map(|name| PlaceDto {
+            name,
+            admin1: record.place_admin1.clone(),
+            country: record.place_country.clone(),
+            country_code: record.place_country_code.clone(),
+        });
+        let location = record
+            .latitude
+            .zip(record.longitude)
+            .map(|(latitude, longitude)| LocationDto {
+                latitude,
+                longitude,
+                altitude: record.altitude,
+            });
+        let camera = CameraDto {
+            make: record.camera_make.clone(),
+            model: record.camera_model.clone(),
+            lens: record.lens_model.clone(),
+            exposure_time: record.exposure_time.clone(),
+            f_number: record.f_number,
+            iso: record.iso,
+            focal_length_mm: record.focal_length_mm,
+        };
+        Self {
+            asset: AssetSummary::from(&record.summary),
+            size: record.summary.size,
+            parent_id: record.parent_id,
+            place,
+            location,
+            camera: (!camera.is_empty()).then_some(camera),
+            albums,
+        }
+    }
+}
+
+impl CameraDto {
+    fn is_empty(&self) -> bool {
+        self.make.is_none()
+            && self.model.is_none()
+            && self.lens.is_none()
+            && self.exposure_time.is_none()
+            && self.f_number.is_none()
+            && self.iso.is_none()
+            && self.focal_length_mm.is_none()
+    }
+}
+
+/// The caller's files still being processed (drives "Preparing 12 photos…").
+#[derive(Debug, Serialize, ToSchema)]
+pub struct MediaStatus {
+    /// Waiting for their first processing step.
+    pub queued: i64,
+    /// With a step in progress.
+    pub processing: i64,
+    /// With a step that failed.
+    pub failed: i64,
+}
+
+impl From<StatusCounts> for MediaStatus {
+    fn from(counts: StatusCounts) -> Self {
+        Self {
+            queued: counts.queued,
+            processing: counts.processing,
+            failed: counts.failed,
+        }
+    }
 }
 
 #[cfg(test)]

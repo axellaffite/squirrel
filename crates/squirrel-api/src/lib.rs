@@ -138,6 +138,8 @@ fn json_routes() -> OpenApiRouter<AppState> {
         .routes(routes!(routes::trash::delete_forever))
         .routes(routes!(routes::photos::list_photos))
         .routes(routes!(routes::photos::photo_months))
+        .routes(routes!(routes::photos::get_photo))
+        .routes(routes!(routes::photos::media_status))
         .routes(routes!(routes::storage::storage_usage))
         .routes(routes!(routes::uploads::create_upload))
         .routes(routes!(
