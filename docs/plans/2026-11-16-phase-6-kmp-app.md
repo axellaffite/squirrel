@@ -22,15 +22,19 @@ trash, storage, search) switch to it; account, invitation, admin and device-mana
 session-only. `device_assets` records which phone asset became which content, `POST /api/sync/check`
 answers in batches of 500, and `POST /api/uploads` gains `device_asset_id` and `taken_at`.
 Phone side, `mobile/` is one Gradle build: `shared` (Kotlin Multiplatform, no UI: Ktor client,
-token store, SQLDelight queue, streaming SHA-256, chunked uploader, sync engine), `ui` (Compose
-Multiplatform screens and the MASTER.md theme, used by both apps), `androidApp` (MediaStore
-source, permissions, WorkManager) and `iosApp` (an Xcode project: a SwiftUI shell hosting the
-Compose screens, with PhotoKit, `BGTaskScheduler` and a background `URLSession` written in Swift
-behind interfaces the shared engine defines).
+token store, SQLDelight queue, streaming SHA-256, chunked uploader, sync engine, and in `iosMain`
+the iOS integrations: PhotoKit, `BGTaskScheduler` and a background `URLSession`, all through
+Kotlin/Native `platform.*` interop), `theme` (the one Compose Multiplatform design-system module
+derived from MASTER.md: generated tokens, theme, components), `ui` (Compose Multiplatform screens
+and view models, **the same UI on Android and iOS**), `androidApp` (MediaStore source,
+permissions, WorkManager) and `iosApp` (an Xcode project whose only Swift is the entry point
+hosting `ComposeUIViewController` and a few lines of app-delegate glue).
 
 **Tech Stack (all versions checked against Maven Central / Google Maven metadata on 2026-11-16,
-latest stable; listed again under "Open questions"):** Gradle wrapper 9.9.1, Android Gradle Plugin
-9.5.1, Kotlin 2.4.21, Compose Multiplatform 1.12.2 (Jetpack Compose UI 1.12.1 underneath),
+listed again under "Open questions"):** Kotlin 2.4.21 (latest stable) with the newest Gradle and AGP
+lines it is **tested with**: Gradle wrapper 9.7.1 and Android Gradle Plugin 9.3.3 (Kotlin 2.4.21 is
+tested up to Gradle 9.7.0 and AGP 9.3.1; the latest Gradle 9.9.1 and AGP 9.5.1 are untested with it,
+Open question 14), Compose Multiplatform 1.12.2 (Jetpack Compose UI 1.12.1 underneath),
 JetBrains `navigation-compose` 2.10.0 and `lifecycle-viewmodel-compose` 2.11.0, Ktor client 3.6.1
 (OkHttp engine on Android, Darwin on iOS, `ktor-client-mock` for tests), kotlinx.serialization
 1.13.0, kotlinx.coroutines 1.11.0, kotlinx-datetime 0.8.0, SQLDelight 2.4.1, AndroidX WorkManager
@@ -45,8 +49,8 @@ section "How Phase 4 (video) and Phase 5 (ML) plug in" (the device `taken_at` as
 chain). The code is the source of truth, not earlier plans' snippets.
 **Visual design:** `MASTER.md` governs every screen, web and native. Native tokens are generated
 from `web/src/lib/styles/tokens.css` (which implements MASTER.md), never typed in by hand (Task 15,
-Open question 9). Phone-specific additions go into MASTER.md first and need the user's validation
-(Task 15, Open question 10).
+Open question 8). Phone-specific additions go into MASTER.md first and need the user's validation
+(Task 15, Open question 9).
 
 ## Conventions / environment
 
@@ -69,34 +73,41 @@ Open question 9). Phone-specific additions go into MASTER.md first and need the 
 - **Gradle:** never a global Gradle. The wrapper is created once in Task 14 and committed; every
   later command is `./gradlew …` from `mobile/`. Mobile commands in this plan are written as
   `(cd mobile && ./gradlew …)`.
-- **JDK:** the machine's default is OpenJDK 25.0.2. Gradle 9.9.1 runs on JDK 25 and AGP 9.5
-  fixed a JDK 25 warning (Gradle runs on Java 25 since 9.1.0), so the daemon can run on 25; the **compile toolchain is pinned
+- **JDK:** the machine's default is OpenJDK 25.0.2. Gradle runs on Java 25 since 9.1.0 (compatibility
+  matrix), AGP states only a minimum (JDK 17) and its 9.5 line fixed a JDK 25 warning, and Kotlin
+  compiles on whatever JDK runs the daemon, so the daemon can run on 25; the **compile toolchain is pinned
   to JDK 21** (`kotlin { jvmToolchain(21) }`, Android `compileOptions` 17 bytecode), and Temurin
   21.0.9 is **already installed** (`/usr/libexec/java_home -v 21`), so no download is needed
   (`org.gradle.java.installations.auto-download=false` in `mobile/gradle.properties`). If the
   daemon misbehaves on 25, set `org.gradle.java.home` in `~/.gradle/gradle.properties` (not
-  committed) to that JDK 21 (Open question 2).
+  committed) to that JDK 21 (Open question 1).
 - **Android SDK:** `~/Library/Android/sdk` (platforms 34–37.0, build-tools 36.1.0, emulator, AVD
   `Medium_Phone_API_36.1`). `mobile/local.properties` (git-ignored) holds `sdk.dir`. The emulator
   reaches the dev server on the host as `http://10.0.2.2:8080` (debug builds only allow clear text,
   and only to `10.0.2.2` and `localhost`).
-- **iOS:** Xcode 27.0, simulator runtime iOS 27.0. The Kotlin framework is built by the Xcode build
-  phase `./gradlew :ui:embedAndSignAppleFrameworkForXcode`.
+- **iOS:** Xcode 27.0 is installed (simulator runtime iOS 27.0); Kotlin 2.4.x officially supports
+  Xcode 26.4 (Open question 17). The Kotlin framework is built by the Xcode build phase
+  `./gradlew :ui:embedAndSignAppleFrameworkForXcode`.
 - **Mobile tests:** `(cd mobile && ./gradlew :shared:jvmTest)` (fast, every shared task),
   `:shared:iosSimulatorArm64Test` (Milestone H on), `:androidApp:testDebugUnitTest` (Robolectric),
   `:androidApp:connectedDebugAndroidTest` (emulator running), `:androidApp:lintDebug`.
 - Commit messages follow the repo pattern `<type>(<scope>): <description>`; new scopes `mobile`,
   `android`, `ios`; short body optional, ending with
   `Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>`.
-- Keep files under ~400 lines (Kotlin and Swift too); split modules rather than growing one.
+- Keep files under ~400 lines; split modules rather than growing one. Swift is limited to
+  `mobile/iosApp/iosApp/{SquirrelApp,AppDelegate}.swift` and XCTest code (see "iOS through Kotlin/Native").
 
 ### What was verified while writing this plan
 
 - **Versions:** every library version above is the latest non-prerelease in its Maven metadata on
-  2026-11-16 (`repo1.maven.org` / `dl.google.com/dl/android/maven2`), Gradle 9.9.1 from
-  `services.gradle.org/versions/current`. AGP 9.5's release notes give **Gradle 9.6.0** as its
-  minimum (9.9.1 satisfies it) and API 37 as its highest supported level (`android-37.0` is
-  installed here).
+  2026-11-16 (`repo1.maven.org` / `dl.google.com/dl/android/maven2`), except Gradle and AGP, chosen
+  as the newest patch releases of the lines Kotlin 2.4.21 is tested with (Kotlin's compatibility
+  guide: Gradle up to 9.7.0, AGP up to 9.3.1; "newer versions may give deprecation warnings or some
+  features may not work"). Latest overall: Gradle 9.9.1, AGP 9.5.1 (needs Gradle ≥ 9.6.0, supports
+  API 37). Google Play requires target API 36 for new apps and updates from 2026-08-31.
+- **Compose Multiplatform on iOS:** stable since CMP 1.8.0 (JetBrains, May 2025); this plan uses
+  1.12.2. CMP 1.11 (May 2026) added an **opt-in native iOS text input** (Compose's own text input
+  stays the default) and iOS credential autofill prompts.
 - **Server facts from the code:** sessions are cookie + synchronizer CSRF (`X-CSRF-Token`) checked
   in `CurrentUser` (`crates/squirrel-api/src/extract.rs`) for every non-safe method; there is no
   CORS layer, so browsers cannot send `Authorization` cross-site; `MeResponse.csrf_token` is
@@ -109,9 +120,12 @@ Open question 9). Phone-specific additions go into MASTER.md first and need the 
   snippet below (written against the current docs of each library, not compiled); **Kotlin/Native
   and Xcode 27**: Kotlin 2.4.20 (2026-09-07) bundles the iOS 26.4 SDK; Kotlin 2.5.0 (RC on
   2026-11-16) is announced as the first to bundle the 27 SDK, and only a community report says
-  2.4.20 works with Xcode 27 (Open question 18); the KMP Android
+  2.4.20 works with Xcode 27 (Open question 17); the KMP Android
   library plugin id `com.android.kotlin.multiplatform.library` and its test task names on AGP 9.5
-  (the plan adds a `jvm()` target so shared tests never depend on them); Compose's
+  (the plan adds a `jvm()` target so shared tests never depend on them); the minimum Gradle of AGP
+  9.3 (≤ 9.7.1 expected; check its release notes); the CMP 1.12 API for opt-in native text input;
+  that every Kotlin/Native delegate used in `iosMain` compiles without Objective-C selector clashes
+  (`@ObjCSignatureOverride` where needed); Compose's
   `Modifier.dropShadow` API (Compose UI ≥ 1.9) for the MASTER.md diffuse shadow; the exact name of
   the `assets.taken_source` CHECK constraint (`\d assets` on the dev database; Postgres names an
   unnamed column CHECK `assets_taken_source_check`); GitHub-hosted macOS runners shipping Xcode 27.
@@ -123,14 +137,14 @@ Open question 9). Phone-specific additions go into MASTER.md first and need the 
 | Topic | Decision | Why |
 |---|---|---|
 | Cookies or tokens | The phone does **not** use the cookie session. It gets **bearer tokens**: `POST /api/auth/device/login` (username, password, device name/platform/model/app version) creates a `devices` row and returns an access token (15 min) and a refresh token. | Matches the design ("device-bound refresh token, 15-minute access tokens"). A cookie jar plus a CSRF token in a background worker is fragile, and a phone needs per-device revocation. |
-| Token format | Opaque random tokens, 32 bytes base64url, prefixed `sqa_` (access) and `sqr_` (refresh) so they can never be confused or mistaken for a session id, and so secret scanners can find them. Stored as SHA-256 only (`squirrel_auth::hash_token`), like sessions and invitations. Compared by hash lookup. | Revocation is immediate (one indexed lookup per request, as for sessions); no signing key to manage or rotate; no new crate (**Open question 3**). |
+| Token format | Opaque random tokens, 32 bytes base64url, prefixed `sqa_` (access) and `sqr_` (refresh) so they can never be confused or mistaken for a session id, and so secret scanners can find them. Stored as SHA-256 only (`squirrel_auth::hash_token`), like sessions and invitations. Compared by hash lookup. | Revocation is immediate (one indexed lookup per request, as for sessions); no signing key to manage or rotate; no new crate (**Open question 2**). |
 | Access tokens | `device_access_tokens (token_hash PK, device_id, expires_at)`; several may be alive at once (a worker and the UI refreshing concurrently must not kick each other out); expired rows deleted by the maintenance loop. | — |
-| Refresh tokens | One current refresh hash per device, **rotated on every refresh**. The previous token stays usable, so a refresh whose response was lost can be retried; tokens rotated out twice are kept (hashed) as **retired**, and presenting one is **reuse**: the device is revoked and a warning is logged. Idle expiry 90 days, extended on each refresh; no absolute expiry (**Open question 4**). | Phones must keep backing up for months untouched; theft of an old token is detected. |
+| Refresh tokens | One current refresh hash per device, **rotated on every refresh**. The previous token stays usable, so a refresh whose response was lost can be retried; tokens rotated out twice are kept (hashed) as **retired**, and presenting one is **reuse**: the device is revoked and a warning is logged. Idle expiry 90 days, extended on each refresh; no absolute expiry (**Open question 3**). | Phones must keep backing up for months untouched; theft of an old token is detected. |
 | Where tokens live on the phone | Android: an AES-256-GCM key generated in the **Android Keystore** (no user authentication, so background work can use it) encrypts the refresh token; the ciphertext lives in the SQLDelight database. iOS: the **Keychain**, `kSecClassGenericPassword`, `kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly` (readable by background tasks after the first unlock, never in backups or on another device). Access tokens stay in memory. | Matches the design; `EncryptedSharedPreferences` is deprecated. |
-| Which routes accept a bearer | New extractor `Caller` (session **or** bearer). The **data routes** move to it: nodes, folders, uploads (all five), content, thumbnails, trash, storage, photos, media status, albums, document search. **Session-only** (keep `CurrentUser`): `/api/auth/me`, logout, logout-all, invitations, admin settings and jobs, device management. **Bearer-only**: `/api/devices/current*`, `/api/auth/device/logout`, `/api/sync/*`. A route-matrix test pins this (Task 5). | Least privilege: a stolen phone token can read and add files but cannot invite people, change instance settings, or manage other devices (**Open question 5**). |
+| Which routes accept a bearer | New extractor `Caller` (session **or** bearer). The **data routes** move to it: nodes, folders, uploads (all five), content, thumbnails, trash, storage, photos, media status, albums, document search. **Session-only** (keep `CurrentUser`): `/api/auth/me`, logout, logout-all, invitations, admin settings and jobs, device management. **Bearer-only**: `/api/devices/current*`, `/api/auth/device/logout`, `/api/sync/*`. A route-matrix test pins this (Task 5). | Least privilege: a stolen phone token can read and add files but cannot invite people, change instance settings, or manage other devices (**Open question 4**). |
 | CSRF | Not checked for bearer requests. If an `Authorization` header is present, the cookie is ignored entirely (no mixing). | CSRF exploits ambient cookies; a bearer token is never sent automatically, and there is no CORS, so a page cannot set the header cross-origin. |
 | Logout everywhere | `POST /api/auth/logout-all` also revokes every device of the user. Disabling a user makes all their tokens fail at once (the extractor checks `disabled_at`, as for sessions). | "Log out everywhere" must mean everywhere. |
-| Joining by invitation | **v1: on the web.** The app's sign-in screen says "Have an invitation? Open the link in your browser, then sign in here." | The join flow (setup code, password rules, invitation checks) already exists and is E2E-tested on the web; the app gains nothing but surface (**Open question 6**). |
+| Joining by invitation | **v1: on the web.** The app's sign-in screen says "Have an invitation? Open the link in your browser, then sign in here." | The join flow (setup code, password rules, invitation checks) already exists and is E2E-tested on the web; the app gains nothing but surface (**Open question 5**). |
 | Rate limits | Device login shares the login bucket (`login_rate_limit`, per IP and per username with lockout, as `POST /api/auth/login`). Refresh gets its own per-IP bucket (`device_refresh_rate_limit`, 30/min). Both are in `credential_routes` (16 KiB bodies). | Same hardening as the web login. |
 
 ### Sync semantics
@@ -141,8 +155,8 @@ Open question 9). Phone-specific additions go into MASTER.md first and need the 
 | `device_assets` | `(device_id, device_asset_id)` PK, `sha256`, `node_id` (nullable, `ON DELETE SET NULL`), `synced_at`. Written when an upload from that device completes or is deduplicated, and when `sync/check` finds the content already in the caller's library. | The design's table, plus `node_id` for support and later "where did this come from". |
 | `POST /api/sync/check` | Bearer only. `{items: [{device_asset_id, sha256}]}`, 1–500 items, ids unique within the batch → `{missing: [device_asset_id]}`. An item is **present** if this device already recorded that id with that hash, **or** the caller owns any node (live or in the trash) with that hash; present-by-library items are recorded in `device_assets` in the same transaction. Everything else is missing. Own route group: 256 KiB body (500 × ≤ 350 bytes), 30 s timeout, per-device rate limit (2/s, burst 20). | Owner-scoped exactly like the upload probe: it never looks at other users' nodes, so it cannot reveal their content; answering by hash makes a reinstall (new device id) cheap. |
 | Edited photos | Same id, new hash → missing → uploaded as a new file next to the old one (the server names it `IMG_1234 (1).jpg`). The old version stays. | Backup-only; no destructive replace. |
-| Deleted on the server | Once recorded, an asset is never re-uploaded by that device, even if the user later trashes or deletes it on the server. | Respects deliberate deletions; a fresh install (new device) re-checks by hash and only re-uploads content that is truly gone (**Open question 7**). |
-| Where uploads go | `Photos/<device name>/<year>/`, created on demand by `POST /api/sync/folder {year}` (bearer only, idempotent; the device's root folder id is kept on the `devices` row and recreated if the user deleted it). The year is the asset's local capture year. | Keeps the file browser usable for 30 000 photos; the timeline ignores folders anyway (**Open question 8**). |
+| Deleted on the server | Once recorded, an asset is never re-uploaded by that device, even if the user later trashes or deletes it on the server. | Respects deliberate deletions; a fresh install (new device) re-checks by hash and only re-uploads content that is truly gone (**Open question 6**). |
+| Where uploads go | `Photos/<device name>/<year>/`, created on demand by `POST /api/sync/folder {year}` (bearer only, idempotent; the device's root folder id is kept on the `devices` row and recreated if the user deleted it). The year is the asset's local capture year. | Keeps the file browser usable for 30 000 photos; the timeline ignores folders anyway (**Open question 7**). |
 | Capture time from the phone | `POST /api/uploads` gains optional `taken_at` (RFC 3339 **with offset**, e.g. `2024-07-14T18:30:05+02:00`). Stored on the new node (`nodes.client_taken_at` wall clock + `client_taken_offset_min`) both when the upload completes and when it is deduplicated into a new node. `resolve_taken` gains a step: EXIF → file name → **device** → upload time, recorded as a new `taken_source = 'device'` (the CHECK is widened). Values more than a day in the future, or before 1900, are ignored like EXIF ones. | The Phase 3 seam. A distinct source keeps "the phone said so" apart from "we guessed the upload time" for a later "date may be wrong" hint. Android's offset is the device time zone's offset at that instant (`TimeZone.getOffset(dateTaken)`), iOS the same from `PHAsset.creationDate`: right unless the user travelled, and EXIF wins anyway when present. |
 | Videos | Backed up like photos (toggle "Include videos", on by default). The server stores them as files; `MediaKind::for_mime` has no video kind yet, so no `process_media` is queued. **Phase 4's backfill** creates their assets, posters and playback later, and they get `client_taken_at` as step 3 then. | The user decided Phase 6 first; nothing in the app changes when Phase 4 lands. |
 | `device_asset_id` on uploads | Optional on `POST /api/uploads`; accepted only from a bearer caller (a session caller sending it gets `validation_error`). Recorded at completion or dedup. | A browser has no device. |
@@ -151,54 +165,54 @@ Open question 9). Phone-specific additions go into MASTER.md first and need the 
 
 | Topic | Decision | Why |
 |---|---|---|
-| UI toolkit | **Compose Multiplatform for every screen on both platforms** (module `ui`), hosted on iOS by a thin **SwiftUI shell** (`ComposeUIViewController` in a `UIViewControllerRepresentable`). System integration on iOS (PhotoKit, background tasks, background `URLSession`, Keychain) is Swift, behind Kotlin interfaces. | One implementation of MASTER.md instead of two; the design's "SwiftUI shell" is kept literally (**Open question 1**). |
-| API client | **Hand-written** Ktor client for the ~20 endpoints the app uses, with `@Serializable` DTOs, plus a **contract test** that reads `openapi.json` and fails if a DTO's fields, types or required-ness drift from the schema. | `openapi-generator`'s Kotlin multiplatform output is heavy and lags Ktor 3; the contract test gives the same drift guarantee as the web's `pnpm gen:api` diff (**Open question 11**). |
+| UI toolkit (decided 2026-11-16) | **Compose Multiplatform for every screen on both platforms**: module `ui` (screens, view models, navigation) on top of module `theme` (tokens, theme, components derived from MASTER.md). Same code, same look on Android and iOS. On iOS, `ComposeUIViewController` is hosted by a Swift entry point; no SwiftUI screens. | The user's direction: one UI and one theme, MASTER.md implemented once. Trade-offs (iOS feel, accessibility, size, stability) are listed under "Risks of Compose Multiplatform on iOS". |
+| iOS through Kotlin/Native | PhotoKit (`platform.Photos`), `BGTaskScheduler` (`platform.BackgroundTasks`), the background `URLSession` and its delegate (`platform.Foundation`), Keychain (`platform.Security`), CommonCrypto, sharing and opening files (`platform.UIKit`) are written in Kotlin in `shared/src/iosMain` and `ui/src/iosMain`. **Swift only where Kotlin cannot reach cleanly:** (1) `SquirrelApp.swift`, the `@main` entry point hosting `ComposeUIViewController` (an iOS app's entry point and its `UIApplicationDelegate` adaptor are declared in Swift; a Kotlin `main` calling `UIApplicationMain` is possible but unsupported by the Xcode templates and CMP docs); (2) `AppDelegate.swift`, ~30 lines forwarding `application(_:didFinishLaunchingWithOptions:)` (BGTask handlers must be **registered before launch finishes**) and `application(_:handleEventsForBackgroundURLSession:completionHandler:)` (only delivered to the app delegate) to Kotlin; (3) XCTest code, because PhotoKit needs a host app with an `Info.plist` and photo permission, which the Kotlin/Native test runner does not have. | The user's direction: Swift kept to the minimum. Kotlin/Native exposes these frameworks directly; delegates are Kotlin classes extending `NSObject` and implementing the `…Protocol` interfaces. |
+| API client | **Hand-written** Ktor client for the ~20 endpoints the app uses, with `@Serializable` DTOs, plus a **contract test** that reads `openapi.json` and fails if a DTO's fields, types or required-ness drift from the schema. | `openapi-generator`'s Kotlin multiplatform output is heavy and lags Ktor 3; the contract test gives the same drift guarantee as the web's `pnpm gen:api` diff (**Open question 10**). |
 | Local database | SQLDelight 2.4.1, one database `squirrel.db`: `local_asset` (the queue), `scan_state`, `settings` (backup options; avoids DataStore), `secret` (the Android-encrypted refresh token). | One storage mechanism, transactional queue updates, in-memory driver in tests. |
 | Hashing | `expect class Sha256` with `update(bytes, offset, length)` / `digest()`: Android/JVM `java.security.MessageDigest`, iOS CommonCrypto (`CC_SHA256_Init/Update/Final`) via `platform.CommonCrypto`. Files are streamed in 1 MiB buffers; the hash is cached per `(device_asset_id, size, modified_at)` so a file is hashed once. | No dependency, hardware-accelerated on both; constant memory for 4 GB videos. |
-| Reading bytes | `AssetSource` interface (shared): `scan(since)`, `open(asset): AssetReader` with `read(offset, buffer)` and `size`. Android: `ContentResolver.openFileDescriptor` + `FileChannel` positional reads on `MediaStore.setRequireOriginal(uri)` (needs `ACCESS_MEDIA_LOCATION`, or GPS is redacted from the bytes and the hash differs from the original). iOS: the Swift source exports the asset's current resource with `PHAssetResourceManager.writeData` into the app's caches directory, then reads that file. | Chunks need random access to resume; iOS gives only a stream, and background uploads need files anyway. |
-| Upload | 8 MiB chunks (the server's `chunk_size` is authoritative), one asset at a time, up to 2 chunks in flight; resume asks `GET /api/uploads/{id}` for received chunks. Android sends chunks from the `WorkManager` worker with Ktor/OkHttp. iOS sends chunks as **background `URLSession` upload tasks from chunk files**, authorised by a per-upload **upload token** (Milestone H), because the system may run them long after a 15-minute access token expired. | Resumable across process death on both platforms (**Open question 12**). |
+| Reading bytes | `AssetSource` interface (shared): `scan(since)`, `open(asset): AssetReader` with `read(offset, buffer)` and `size`. Android: `ContentResolver.openFileDescriptor` + `FileChannel` positional reads on `MediaStore.setRequireOriginal(uri)` (needs `ACCESS_MEDIA_LOCATION`, or GPS is redacted from the bytes and the hash differs from the original). iOS (Kotlin, `iosMain`): exports the asset's current resource with `PHAssetResourceManager.writeDataForAssetResource(…, toFile:)` into the app's caches directory, then reads that file with `NSFileHandle`. | Chunks need random access to resume; iOS gives only a stream, and background uploads need files anyway. |
+| Upload | 8 MiB chunks (the server's `chunk_size` is authoritative), one asset at a time, up to 2 chunks in flight; resume asks `GET /api/uploads/{id}` for received chunks. Android sends chunks from the `WorkManager` worker with Ktor/OkHttp. iOS sends chunks as **background `URLSession` upload tasks from chunk files**, authorised by a per-upload **upload token** (Milestone H), because the system may run them long after a 15-minute access token expired. | Resumable across process death on both platforms (**Open question 11**). |
 | Android scheduling | `PeriodicWorkRequest` every 6 h plus a **content-URI-triggered** `OneTimeWorkRequest` (`Constraints.Builder().addContentUriTrigger(MediaStore.Images/Video EXTERNAL_CONTENT_URI, true)`, re-armed after each run) that wakes the app for new photos even when it is not running, and a `ContentObserver` while the app is in the foreground. Constraints from settings: unmetered network when "Wi-Fi only" (default on), charging when "Only while charging" (default off), battery not low (always). A long first backup runs as a foreground worker (`setForeground`, type `dataSync`, progress notification). | The design's WorkManager + ContentObserver, using the trigger that survives process death. |
 | iOS scheduling | `BGProcessingTask` (`requiresNetworkConnectivity = true`, `requiresExternalPower` from "Only while charging") and `BGAppRefreshTask` for the check; `PHPhotoLibrary.fetchPersistentChanges(since:)` finds what changed since the last token; a `PHPhotoLibraryChangeObserver` while in the foreground. "Back up now" uses `BGContinuedProcessingTask` on iOS 26+. Wi-Fi only maps to `allowsExpensiveNetworkAccess = false` and `allowsConstrainedNetworkAccess = false` on the background session. | iOS decides when background work runs; the background `URLSession` carries uploads between those windows. |
 | Permissions | Android 13+: `READ_MEDIA_IMAGES`, `READ_MEDIA_VIDEO`, and on 14+ `READ_MEDIA_VISUAL_USER_SELECTED` (declared, so partial access is a supported state); `ACCESS_MEDIA_LOCATION`; `POST_NOTIFICATIONS` (progress); Android ≤ 12: `READ_EXTERNAL_STORAGE`. **Partial access** (Android 14+ "Select photos", iOS "Limited Access") is shown honestly: "Squirrel can see 42 selected photos. Only these are backed up." with "Allow all photos" (opens the system dialog / settings) and "Change selection". iOS: `NSPhotoLibraryUsageDescription`, `PHPhotoLibraryPreventAutomaticLimitedAccessAlert = YES`, `PHPhotoLibrary.shared().presentLimitedLibraryPicker(from:)`. | Partial access silently backing up a subset would betray "backup"; MASTER rule 6 (real data only). |
 | Server URL and TLS | The user types the server URL; the app checks `GET /api/healthz` and `GET /api/setup/status` before showing sign-in. **HTTPS only** in release builds, system CAs only (Tailscale and Caddy DNS-01 certificates are publicly trusted); debug builds also allow `http://10.0.2.2` and `http://localhost`. | Design: "HTTPS required". |
-| Gallery v1 | Timeline grouped by month (`GET /api/photos/months` + `GET /api/photos?month=`), justified-ish fixed-height rows using the server's `width`/`height`, blurhash placeholders, thumbnails via `GET /api/files/{id}/thumbnail` through Coil with the bearer header; tap → full-screen preview (`size=preview`), swipe between photos, share/open original (download via `content`). Albums list and album contents, read-only. **No** selection, deletion, album editing, scrubber or map in v1. | Enough to trust the backup; editing stays on the web (**Open question 13**). |
+| Gallery v1 | Timeline grouped by month (`GET /api/photos/months` + `GET /api/photos?month=`), justified-ish fixed-height rows using the server's `width`/`height`, blurhash placeholders, thumbnails via `GET /api/files/{id}/thumbnail` through Coil with the bearer header; tap → full-screen preview (`size=preview`), swipe between photos, share/open original (download via `content`). Albums list and album contents, read-only. **No** selection, deletion, album editing, scrubber or map in v1. | Enough to trust the backup; editing stays on the web (**Open question 12**). |
 | File browser v1 | Folder listing (`GET /api/nodes`), breadcrumbs, thumbnails in rows, open a file with the system viewer (download to cache, then share intent / `UIDocumentInteractionController`), trash is not shown. Read-only. | Same reasoning. |
 | Navigation | MASTER.md's phone shell: a floating graphite bottom rail with **Photos**, **Files**, **Backup**; the account menu (top row) holds the server, the device name, "Sign out". | — |
-| Minimum OS | Android **minSdk 29** (Android 10: `setRequireOriginal`, scoped storage baseline), targetSdk/compileSdk **36**; iOS **17.0**. | **Open question 14.** |
+| Minimum OS | Android **minSdk 29** (Android 10: `setRequireOriginal`, scoped storage baseline), targetSdk/compileSdk **36**; iOS **17.0**. | **Open question 13.** |
 | Dependency injection | Manual constructor wiring in one `AppGraph` per platform. | ~15 classes; Koin would add a dependency for no gain. |
 
 ### Native design tokens (MASTER.md)
 
 | Topic | Decision | Why |
 |---|---|---|
-| Source | `web/scripts/native-tokens.mjs` (Node, no dependency) reads the custom properties of `tokens.css` for light and dark and writes `mobile/ui/src/commonMain/kotlin/app/squirrel/ui/theme/Tokens.kt` (colours, spacing, radii, type sizes, durations, the easing). A CI step regenerates it and fails on a diff. | CLAUDE.md: native apps derive their theme from MASTER.md and never invent values; a generator makes that mechanical (**Open question 9**). |
+| Source | `web/scripts/native-tokens.mjs` (Node, no dependency) reads the custom properties of `tokens.css` for light and dark and writes `mobile/theme/src/commonMain/kotlin/app/squirrel/theme/Tokens.kt` (colours, spacing, radii, type sizes, durations, the easing). A CI step regenerates it and fails on a diff. | CLAUDE.md: native apps derive their theme from MASTER.md and never invent values; a generator makes that mechanical (**Open question 8**). |
 | What does not translate | CSS gradients become `Brush.verticalGradient` from the two stops; `color-mix` tokens are computed by the generator; diffuse shadows map to `Modifier.dropShadow` with the token's blur/offset/alpha; `svh`/media queries are not tokens. The phone breakpoints are MASTER.md's (375–412 px design width). | — |
 | Font | Geist (OFL), the same variable font the web self-hosts, bundled as `ttf` in Compose resources (the web ships `woff2`, which Android and iOS cannot load). | Same typography everywhere. |
 | Motion | `tween(160/240/360, easing = CubicBezierEasing(.22f, 1f, .36f, 1f))`; arrival animations are skipped on phones exactly as on touch web (MASTER.md "Motion"); reduced motion (Android animator scale 0, iOS `accessibilityReduceMotion`) makes everything instant. | MASTER.md "Motion". |
-| New phone-only pieces | Backup status card (graphite card for the featured figure "1 204 left"), permission notice (Alert, `info` tone), progress (`Progress` component). Values come from existing tokens; anything new (none expected) is added to MASTER.md first. | **Open question 10.** |
+| New phone-only pieces | Backup status card (graphite card for the featured figure "1 204 left"), permission notice (Alert, `info` tone), progress (`Progress` component). Values come from existing tokens; anything new (none expected) is added to MASTER.md first. | **Open question 9.** |
 
 ## Open questions for the user
 
 | # | Question | Recommendation |
 |---|---|---|
-| 1 | **iOS UI:** Compose Multiplatform screens in a thin SwiftUI shell (one UI codebase, Swift only for PhotoKit, background tasks, `URLSession`, Keychain) vs. native SwiftUI screens (two UI codebases, more native feel). | **Compose Multiplatform in a SwiftUI shell.** CMP on iOS has been stable since 1.8; half the UI work; MASTER.md implemented once. |
-| 2 | **JDK:** the Gradle daemon on the default JDK 25, compiling with a JDK 21 toolchain (Temurin 21.0.9 is already installed, nothing to download). If AGP or Kotlin misbehave on 25, pin the daemon to 21 in `~/.gradle/gradle.properties`. CI uses Temurin 21 via `actions/setup-java`. | **Accept** (no installation needed). |
-| 3 | **Token format:** opaque random tokens stored hashed (one DB lookup per request, instant revocation, no new crate) vs. signed JWT access tokens (no lookup, but revocation waits up to 15 min and adds a signing key plus a JWT crate). | **Opaque tokens.** |
-| 4 | **Refresh lifetime:** 90 days idle, sliding, no absolute expiry; rotation with reuse detection. | **Accept** (a phone left alone for three months signs in again). |
-| 5 | **Phone token scope:** data routes only (files, photos, albums, uploads, search); no invitations, admin or device management from the app. | **Accept.** |
-| 6 | **Joining by invitation in the app:** v1 sends people to the web join page, then they sign in in the app. Alternative: `POST /api/join/{token}` gains a `device` field and returns tokens, and the app handles `/join/<token>` links. | **Web join in v1**; app-side join later if inviting phone-only people becomes common. |
-| 7 | **Re-uploading what was deleted on the server:** never, once a device recorded the asset; a reinstall re-checks by hash. | **Accept.** |
-| 8 | **Folder layout:** `Photos/<device name>/<year>/` vs. one flat `Photos/<device name>/` vs. `Photos/<year>/<month>/` shared by all devices. | **`Photos/<device name>/<year>/`.** |
-| 9 | **Native tokens generated from `tokens.css`** by a dependency-free Node script with a CI drift check, vs. hand-written `Theme.kt` / Swift files. | **Generate.** |
-| 10 | **Phone design additions to MASTER.md** (needs re-validation): the backup status card is the screen's one graphite card ("1 204 left · 3.2 GB"); the permission notice is an `info` Alert with two buttons; the phone gallery uses the web's photo tokens (`--photo-row` 112 px, `--radius-tile` 6 px, gaps `--space-1`). No new values. | **Accept** (Task 15 writes the paragraph into MASTER.md before any screen). |
-| 11 | **API client:** hand-written Ktor client + `openapi.json` contract test vs. `openapi-generator` (`kotlin`, `library=multiplatform`) output committed. | **Hand-written + contract test** (deviates from the design's "generated"; same drift guarantee). |
-| 12 | **iOS upload tokens:** `POST /api/uploads` from a bearer caller also returns an `upload_token` (scoped to that one upload, chunk PUTs and status only, expires with the session) so background `URLSession` chunk uploads keep working after the access token expires. Alternative: no token; chunks failing with 401 are re-queued when the app next wakes (slower, more wakeups). | **Upload tokens** (Milestone H, server task first). |
-| 13 | **Gallery scope in v1:** timeline by month, preview, swipe, open original, read-only albums, read-only file browser. No selection, deletion, album editing, scrubber, search or map. | **Accept.** |
-| 14 | **Minimum OS:** Android 10 (minSdk 29), target/compile 36; iOS 17. Android 8–9 would need a different original-bytes path; iOS 16 lacks parts of the Observation stack the shell uses. | **Accept.** |
-| 15 | **Dependencies** (all Apache-2.0 except where noted): Kotlin 2.4.21, AGP 9.5.1, Gradle 9.9.1, Compose Multiplatform 1.12.2, JetBrains navigation-compose 2.10.0 and lifecycle-viewmodel-compose 2.11.0, Ktor 3.6.1, kotlinx.serialization 1.13.0, kotlinx.coroutines 1.11.0, kotlinx-datetime 0.8.0, SQLDelight 2.4.1, WorkManager 2.12.0, activity-compose 1.13.0, core-ktx 1.19.1, Coil 3.6.3; test: Turbine 1.2.1, Robolectric 4.18 (MIT), AndroidX Test 1.7.0 / ext-junit 1.3.0. Geist font (OFL-1.1). Not used: Koin, DataStore, KotlinCrypto, OpenAPI Generator. | **Accept.** |
-| 16 | **App identity:** application id / bundle id `app.squirrel.android` / `app.squirrel.ios`, display name "Squirrel". Signing for real devices needs your Apple team and an Android keystore (not in the repository). | **Accept the ids**; you provide signing when installing on your own phones. |
-| 17 | **Distribution:** sideloaded debug/release builds (Android APK, iOS via Xcode to your own devices) in Phase 6; no store listing. | **Accept**; store publishing is out of scope for v1. |
-| 18 | **Kotlin version vs. Xcode 27:** Kotlin 2.4.21 (latest stable) bundles the iOS 26.4 SDK; 2.5.0, the first with the 27 SDK, is still a release candidate today. | **Start on 2.4.21** (Milestones A–G are Android and server only); at Milestone H move to 2.5.0 if it is stable by then, else try 2.4.21 with Xcode 27 and record the result. |
+| 1 | **JDK:** the Gradle daemon on the default JDK 25, compiling with a JDK 21 toolchain (Temurin 21.0.9 is already installed, nothing to download). If AGP or Kotlin misbehave on 25, pin the daemon to 21 in `~/.gradle/gradle.properties`. CI uses Temurin 21 via `actions/setup-java`. | **Accept** (no installation needed). |
+| 2 | **Token format:** opaque random tokens stored hashed (one DB lookup per request, instant revocation, no new crate) vs. signed JWT access tokens (no lookup, but revocation waits up to 15 min and adds a signing key plus a JWT crate). | **Opaque tokens.** |
+| 3 | **Refresh lifetime:** 90 days idle, sliding, no absolute expiry; rotation with reuse detection. | **Accept** (a phone left alone for three months signs in again). |
+| 4 | **Phone token scope:** data routes only (files, photos, albums, uploads, search); no invitations, admin or device management from the app. | **Accept.** |
+| 5 | **Joining by invitation in the app:** v1 sends people to the web join page, then they sign in in the app. Alternative: `POST /api/join/{token}` gains a `device` field and returns tokens, and the app handles `/join/<token>` links. | **Web join in v1**; app-side join later if inviting phone-only people becomes common. |
+| 6 | **Re-uploading what was deleted on the server:** never, once a device recorded the asset; a reinstall re-checks by hash. | **Accept.** |
+| 7 | **Folder layout:** `Photos/<device name>/<year>/` vs. one flat `Photos/<device name>/` vs. `Photos/<year>/<month>/` shared by all devices. | **`Photos/<device name>/<year>/`.** |
+| 8 | **Native tokens generated from `tokens.css`** by a dependency-free Node script with a CI drift check, vs. a hand-written `Theme.kt`. | **Generate.** |
+| 9 | **Phone design additions to MASTER.md** (needs re-validation): the backup status card is the screen's one graphite card ("1 204 left · 3.2 GB"); the permission notice is an `info` Alert with two buttons; the phone gallery uses the web's photo tokens (`--photo-row` 112 px, `--radius-tile` 6 px, gaps `--space-1`). No new values. | **Accept** (Task 15 writes the paragraph into MASTER.md before any screen). |
+| 10 | **API client:** hand-written Ktor client + `openapi.json` contract test vs. `openapi-generator` (`kotlin`, `library=multiplatform`) output committed. | **Hand-written + contract test** (deviates from the design's "generated"; same drift guarantee). |
+| 11 | **iOS upload tokens:** `POST /api/uploads` from a bearer caller also returns an `upload_token` (scoped to that one upload, chunk PUTs and status only, expires with the session) so background `URLSession` chunk uploads keep working after the access token expires. Alternative: no token; chunks failing with 401 are re-queued when the app next wakes (slower, more wakeups). | **Upload tokens** (Milestone H, server task first). |
+| 12 | **Gallery scope in v1:** timeline by month, preview, swipe, open original, read-only albums, read-only file browser. No selection, deletion, album editing, scrubber, search or map. | **Accept.** |
+| 13 | **Minimum OS:** Android 10 (minSdk 29), target/compile 36; iOS 17. Android 8–9 would need a different original-bytes path; iOS 16 lacks parts of the Observation stack the shell uses. | **Accept.** |
+| 14 | **Dependencies** (all Apache-2.0 except where noted): Kotlin 2.4.21, **AGP 9.3.3 and Gradle 9.7.1** (the newest patches of the lines Kotlin 2.4.21 is tested with; the latest AGP 9.5.1 and Gradle 9.9.1 are untested with it and gain this app nothing, so move up together with Kotlin 2.5), Compose Multiplatform 1.12.2, JetBrains navigation-compose 2.10.0 and lifecycle-viewmodel-compose 2.11.0, Ktor 3.6.1, kotlinx.serialization 1.13.0, kotlinx.coroutines 1.11.0, kotlinx-datetime 0.8.0, SQLDelight 2.4.1, WorkManager 2.12.0, activity-compose 1.13.0, core-ktx 1.19.1, Coil 3.6.3; test: Turbine 1.2.1, Robolectric 4.18 (MIT), AndroidX Test 1.7.0 / ext-junit 1.3.0. Geist font (OFL-1.1). Not used: Koin 4.2.2, DataStore 1.3.0 (now KMP), KotlinCrypto sha2 0.8.0 / Okio 3.18.2 `HashingSink` (common SHA-256), OpenAPI Generator 7.27.0. | **Accept.** |
+| 15 | **App identity:** application id / bundle id `app.squirrel.android` / `app.squirrel.ios`, display name "Squirrel". Signing for real devices needs your Apple team and an Android keystore (not in the repository). | **Accept the ids**; you provide signing when installing on your own phones. |
+| 16 | **Distribution:** sideloaded debug/release builds (Android APK, iOS via Xcode to your own devices) in Phase 6; no store listing. | **Accept**; store publishing is out of scope for v1. |
+| 17 | **Kotlin vs. Xcode:** Kotlin 2.4.20–2.4.21's compatibility guide lists **Xcode 26.4** only; this machine has Xcode 27.0 (latest is 27.2); Kotlin 2.5.0, announced as the first with the 27 SDK, is a release candidate today. Options at Milestone H: (a) Kotlin 2.5.0 if stable by then (with the Gradle/AGP lines it is tested with); (b) Kotlin 2.4.21 with Xcode 27, unsupported (a community report says it works); (c) install Xcode 26.4 beside 27 (needs your approval, ~10 GB). | **Start on 2.4.21** (Milestones A–G are server and Android only); at Milestone H take **(a)**, else try **(b)** and fall back to **(c)** with your approval. Record the outcome. |
 
 ## API added in Phase 6
 
@@ -238,8 +252,9 @@ role}`.
 - **F — Android backup end to end** (Tasks 26–32): permissions, MediaStore, WorkManager, backup
   screens. **Ships: an Android phone backs up its photos.**
 - **G — Android gallery and files** (Tasks 33–36): ships browsing on Android.
-- **H — iOS** (Tasks 37–45): server upload tokens, then the iOS shell, PhotoKit, background tasks
-  and uploads. Ships the iOS app with backup, gallery and files.
+- **H — iOS** (Tasks 37–45): server upload tokens, then the Swift entry point hosting the shared
+  Compose UI, and PhotoKit, background tasks and uploads in Kotlin/Native. Ships the iOS app with
+  backup, gallery and files.
 - **I — CI, docs and device checklist** (Tasks 46–48).
 
 Each milestone ends green (`cargo test --workspace`, the web checks from C on, the mobile checks
@@ -757,12 +772,12 @@ Settings › Devices, see it, revoke it, confirm the bearer now gets 401.
 
 ```
 mobile/
-  settings.gradle.kts          include(":shared", ":ui", ":androidApp")
+  settings.gradle.kts          include(":shared", ":theme", ":ui", ":androidApp")
   build.gradle.kts             plugins declared `apply false`
   gradle.properties            org.gradle.jvmargs, kotlin.code.style=official, android.useAndroidX=true,
                                org.gradle.java.installations.auto-download=false
   gradle/libs.versions.toml    every version in this plan, nowhere else
-  gradle/wrapper/              gradle-wrapper.jar + .properties (9.9.1, distributionSha256Sum pinned)
+  gradle/wrapper/              gradle-wrapper.jar + .properties (9.7.1, distributionSha256Sum pinned)
   gradlew, gradlew.bat
   shared/                      KMP library, no UI: targets jvm() (tests), android, iosArm64, iosSimulatorArm64
     src/commonMain/kotlin/app/squirrel/shared/
@@ -773,13 +788,23 @@ mobile/
       sync/       AssetSource.kt, Queue.kt, Uploader.kt, SyncEngine.kt, SyncState.kt, Backoff.kt
       settings/   BackupSettings.kt
     src/commonMain/sqldelight/app/squirrel/shared/db/  LocalAsset.sq, ScanState.sq, Setting.sq, Secret.sq
-    src/jvmMain, androidMain, iosMain   Sha256 actuals, drivers, TokenStore actuals
+    src/jvmMain, androidMain             Sha256 actuals, drivers, Keystore token store
+    src/iosMain/kotlin/app/squirrel/shared/ios/
+      photos/     PhotoKitSource.kt, AssetExporter.kt, PhotoAccess.kt, LibraryObserver.kt
+      transfer/   BackgroundTransport.kt (NSURLSession delegate), TransportStore.kt
+      background/ BackgroundTasks.kt (BGTaskScheduler), IosConditions.kt (NWPathMonitor, battery)
+      KeychainTokenStore.kt, Sha256.ios.kt, Driver.kt, IosEntry.kt (functions Swift calls)
     src/commonTest, jvmTest, iosTest
-  ui/                          KMP + Compose Multiplatform: theme (generated Tokens.kt), components, screens,
-                               view models, navigation; exports the iOS framework `SquirrelKit`
+  theme/                       KMP + Compose Multiplatform, the one design-system module for both platforms:
+                               generated Tokens.kt and icons, SquirrelTheme, type, shapes, motion, shadows,
+                               components (Button, TextField, ListRow, Card, Well, Alert, …)
     src/commonMain/composeResources/font/Geist[wght].ttf (+ OFL.txt)
+  ui/                          KMP + Compose Multiplatform: screens, view models, navigation (depends on theme,
+                               shared); iosMain: MainViewController, file opening/sharing; exports the iOS
+                               framework `SquirrelKit` (shared + theme + ui)
   androidApp/                  com.android.application: Application, MainActivity, workers, MediaStore source
-  iosApp/                      Xcode project (SwiftUI shell, PhotoKit, BGTasks, background URLSession)
+  iosApp/                      Xcode project: SquirrelApp.swift + AppDelegate.swift (entry and glue only),
+                               Info.plist, iosAppTests/ (XCTest, test code only)
 ```
 
 ### Task 14: Gradle build, wrapper and an empty app that launches
@@ -790,10 +815,10 @@ mobile/
 - Modify: root `.gitignore` if it ignores `*.jar` (the wrapper jar must be committed)
 
 **Steps:**
-1. Generate the wrapper **without** a global Gradle: download `gradle-9.9.1-bin.zip` and its
+1. Generate the wrapper **without** a global Gradle: download `gradle-9.7.1-bin.zip` and its
    published `.sha256` from `services.gradle.org/distributions/` into the scratchpad, check the
    hash, unzip it there, and from `mobile/` run
-   `<scratch>/gradle-9.9.1/bin/gradle wrapper --gradle-version 9.9.1 --gradle-distribution-sha256-sum <sha>`.
+   `<scratch>/gradle-9.7.1/bin/gradle wrapper --gradle-version 9.7.1 --gradle-distribution-sha256-sum <sha>`.
    That writes `gradlew`, `gradlew.bat`, `gradle/wrapper/gradle-wrapper.jar` and the properties
    (with `distributionSha256Sum`); the unzipped distribution is then deleted. The download (~140 MB)
    is the only one Milestone D needs besides Maven dependencies: **ask before running it.**
@@ -802,7 +827,7 @@ mobile/
 ```toml
 [versions]
 kotlin = "2.4.21"
-agp = "9.5.1"
+agp = "9.3.3"
 compose-multiplatform = "1.12.2"
 jb-navigation = "2.10.0"
 jb-lifecycle = "2.11.0"
@@ -864,12 +889,12 @@ androidx-test-ext-junit = { module = "androidx.test.ext:junit", version.ref = "a
 
    (`androidx.work:work-testing` 2.12.0 exists in Google Maven, checked.)
 3. Minimal `shared` (one `expect fun platformName(): String` and a `jvmTest` asserting it),
-   minimal `ui` (`App()` composable showing "Squirrel"), `androidApp` (`MainActivity` with
+   minimal `theme` (an empty `SquirrelTheme {}`), minimal `ui` (`App()` composable showing "Squirrel"), `androidApp` (`MainActivity` with
    `setContent { App() }`, `minSdk = 29`, `compileSdk = 36`, `targetSdk = 36`,
    `applicationId = "app.squirrel.android"`, `versionName = "0.1.0"`).
 4. **Run:** `(cd mobile && ./gradlew :shared:jvmTest :androidApp:assembleDebug)` → BUILD SUCCESSFUL;
    install on the emulator (`adb install -r androidApp/build/outputs/apk/debug/androidApp-debug.apk`)
-   and launch it. If AGP or Kotlin fail on JDK 25, apply Open question 2's fallback and note it in
+   and launch it. If AGP or Kotlin fail on JDK 25, apply Open question 1's fallback and note it in
    the README.
 5. **Commit** — `chore(mobile): Gradle build with shared, ui and Android app modules`.
 
@@ -878,10 +903,10 @@ androidx-test-ext-junit = { module = "androidx.test.ext:junit", version.ref = "a
 ### Task 15: MASTER.md phone additions, generated tokens, theme
 
 **Files:**
-- Modify: `MASTER.md` (a "Phone app" subsection, Open question 10, **after the user validates it**)
+- Modify: `MASTER.md` (a "Phone app" subsection, Open question 9, **after the user validates it**)
 - Create: `web/scripts/native-tokens.mjs`, `web/scripts/native-tokens.test.ts`,
-  `mobile/ui/src/commonMain/kotlin/app/squirrel/ui/theme/{Tokens.kt (generated),Theme.kt,Type.kt,Shapes.kt,Motion.kt,Shadow.kt}`,
-  `mobile/ui/src/commonMain/composeResources/font/` (Geist variable TTF + `OFL.txt`)
+  `mobile/theme/src/commonMain/kotlin/app/squirrel/theme/{Tokens.kt (generated),Theme.kt,Type.kt,Shapes.kt,Motion.kt,Shadow.kt}`,
+  `mobile/theme/src/commonMain/composeResources/font/` (Geist variable TTF + `OFL.txt`)
 - Modify: `web/package.json` (script `gen:native-tokens`)
 
 **Step 1: Failing test** (`native-tokens.test.ts`, Vitest): feeding a small CSS sample with
@@ -899,8 +924,8 @@ visible); `Type.kt` builds the scale from `--text-*` with Geist weights 400/500/
 MASTER.md tracking; `Shapes.kt` the radii (`RoundedCornerShape(percent = 50)` for pills);
 `Motion.kt` the durations and `CubicBezierEasing(0.22f, 1f, 0.36f, 1f)`, returning 0 when
 reduced motion is on; `Shadow.kt` `Modifier.cardShadow()` / `popShadow()` over `Modifier.dropShadow`.
-**Step 4: Run** `pnpm test:unit` and `(cd mobile && ./gradlew :ui:compileKotlinJvm)` (or the
-Android variant). **Commit** — `feat(mobile): derive the native theme from tokens.css`.
+**Step 4: Run** `pnpm test:unit` and `(cd mobile && ./gradlew :theme:jvmTest)` (a smoke test that
+`SquirrelTheme` provides the light and dark token sets). **Commit** — `feat(mobile): derive the native theme from tokens.css`.
 
 ---
 
@@ -1012,10 +1037,12 @@ the database (the keystore key does not travel, so a restored ciphertext is usel
 ### Task 19: Server and sign-in screens
 
 **Files:**
-- Create: `mobile/ui/src/commonMain/kotlin/app/squirrel/ui/{components/*,signin/ServerScreen.kt,signin/SignInScreen.kt,signin/SignInViewModel.kt,App.kt,AppGraph.kt}`,
+- Create: `mobile/theme/src/commonMain/kotlin/app/squirrel/theme/components/*`,
+  `mobile/ui/src/commonMain/kotlin/app/squirrel/ui/{signin/ServerScreen.kt,signin/SignInScreen.kt,signin/SignInViewModel.kt,App.kt,AppGraph.kt}`,
   `mobile/ui/src/commonTest/kotlin/app/squirrel/ui/signin/SignInViewModelTest.kt`
 
-**Components** (Compose versions of `web/src/lib/components/ui/`, same names and states):
+**Components** (in the `theme` module: Compose versions of `web/src/lib/components/ui/`, same
+names and states, used unchanged by both platforms):
 `Button` (primary/secondary/quiet/danger, sm 36 / md 44 / lg 48, 44 dp minimum touch target),
 `TextField` (pill, edge, invalid state with icon and message), `Card`, `Well`, `ListRow`, `Alert`,
 `Badge`, `Progress`, `EmptyState`, `Toggle`, `IconButton`, the floating `BottomRail`.
@@ -1253,6 +1280,9 @@ the test grants permissions with `GrantPermissionRule`). **Commit** — `feat(an
   enqueuing the one-time work.
 - `AndroidConditions`: `ConnectivityManager.getNetworkCapabilities(active).hasCapability(NET_CAPABILITY_NOT_METERED)`,
   `BatteryManager.isCharging`, checked before each chunk.
+- Android 16+: WorkManager runtime quotas apply even to work started in the foreground, so a run
+  can be stopped early; the engine's deadline and resumability make that harmless (see "Platform
+  risks").
 
 **Tests:** the scheduler enqueues the expected requests with the expected constraints for each
 setting combination (`WorkManagerTestInitHelper`, `TestDriver.setAllConstraintsMet`); the worker
@@ -1407,121 +1437,189 @@ bound to the path's upload id; the device must be live). **Commit** — `feat(ap
 ### Task 38: iOS targets, framework and the Xcode project
 
 **Files:**
-- Modify: `mobile/shared/build.gradle.kts`, `mobile/ui/build.gradle.kts` (`iosArm64()`,
-  `iosSimulatorArm64()`, `binaries.framework { baseName = "SquirrelKit"; isStatic = true; export(project(":shared")) }`)
-- Create: `mobile/iosApp/iosApp.xcodeproj` (created with Xcode 27's iOS App template, SwiftUI, Swift 6,
-  bundle id `app.squirrel.ios`, deployment target 17.0), `mobile/iosApp/iosApp/{SquirrelApp.swift,ContentView.swift,Info.plist}`
+- Modify: `mobile/{shared,theme,ui}/build.gradle.kts` (`iosArm64()`, `iosSimulatorArm64()`; in `ui`:
+  `binaries.framework { baseName = "SquirrelKit"; isStatic = true; export(project(":shared")) }`)
+- Create: `mobile/ui/src/iosMain/kotlin/app/squirrel/ui/MainViewController.kt`
+  (`fun MainViewController(): UIViewController = ComposeUIViewController { App(IosGraph.instance) }`),
+  `mobile/shared/src/iosMain/kotlin/app/squirrel/shared/ios/IosEntry.kt` (the functions Swift calls:
+  `onLaunch()`, `onBackgroundUrlSessionEvents(identifier, completionHandler)`),
+  `mobile/iosApp/iosApp.xcodeproj` (Xcode's iOS App template, bundle id `app.squirrel.ios`,
+  deployment target 17.0, Swift 6), `mobile/iosApp/iosApp/{SquirrelApp.swift,AppDelegate.swift,Info.plist}`
 
-Build phase "Compile Kotlin" before "Compile Sources":
-`cd "$SRCROOT/.." && ./gradlew :ui:embedAndSignAppleFrameworkForXcode`; framework search path
-`$(SRCROOT)/../ui/build/xcode-frameworks/$(CONFIGURATION)/$(SDK_NAME)`; `ContentView` wraps
-`MainViewControllerKt.MainViewController(graph:)` in a `UIViewControllerRepresentable`.
+The only Swift in the app:
+
+```swift
+import SwiftUI
+import SquirrelKit
+
+@main
+struct SquirrelApp: App {
+    @UIApplicationDelegateAdaptor(AppDelegate.self) var appDelegate
+    var body: some Scene {
+        WindowGroup { ComposeView().ignoresSafeArea() }   // Compose handles insets itself
+    }
+}
+
+struct ComposeView: UIViewControllerRepresentable {
+    func makeUIViewController(context: Context) -> UIViewController { MainViewControllerKt.MainViewController() }
+    func updateUIViewController(_ controller: UIViewController, context: Context) {}
+}
+```
+
+```swift
+import UIKit
+import SquirrelKit
+
+/// Glue only: these two callbacks reach the app delegate and nothing else.
+final class AppDelegate: NSObject, UIApplicationDelegate {
+    func application(_ application: UIApplication,
+                     didFinishLaunchingWithOptions options: [UIApplication.LaunchOptionsKey: Any]? = nil) -> Bool {
+        IosEntryKt.onLaunch()   // registers BGTask handlers: must happen before launch finishes
+        return true
+    }
+    func application(_ application: UIApplication,
+                     handleEventsForBackgroundURLSession identifier: String,
+                     completionHandler: @escaping () -> Void) {
+        IosEntryKt.onBackgroundUrlSessionEvents(identifier: identifier, completionHandler: completionHandler)
+    }
+}
+```
+
+Build phase "Compile Kotlin" before "Compile Sources": `cd "$SRCROOT/.." && ./gradlew :ui:embedAndSignAppleFrameworkForXcode`;
+framework search path `$(SRCROOT)/../ui/build/xcode-frameworks/$(CONFIGURATION)/$(SDK_NAME)`.
 `Info.plist`: `NSPhotoLibraryUsageDescription` ("Squirrel backs up your photos and videos to your
 own server."), `PHPhotoLibraryPreventAutomaticLimitedAccessAlert = YES`,
 `BGTaskSchedulerPermittedIdentifiers = [app.squirrel.backup.processing, app.squirrel.backup.refresh, app.squirrel.backup.now]`,
-`UIBackgroundModes = [fetch, processing]`. Release builds keep App Transport Security on; debug adds
-an `NSExceptionDomains` entry for `localhost` only (the simulator reaches the host as `localhost`).
-**Verify:** `xcodebuild -project mobile/iosApp/iosApp.xcodeproj -scheme iosApp -destination 'platform=iOS Simulator,name=iPhone 17' build`
-(pick a simulator from `xcrun simctl list devices available`), then run it: the server and sign-in
-screens work against `http://localhost:8080`. Run `(cd mobile && ./gradlew :shared:iosSimulatorArm64Test)`
-(Sha256 vectors and the database on Kotlin/Native). **Commit** — `feat(ios): Xcode shell hosting the shared screens`.
+`UIBackgroundModes = [fetch, processing]`, `CADisableMinimumFrameDurationOnPhone = YES` (120 Hz
+scrolling for Compose on ProMotion screens). Release builds keep App Transport Security on; debug
+adds an `NSExceptionDomains` entry for `localhost` only (the simulator reaches the host as `localhost`).
+**Verify:** `xcodebuild -project mobile/iosApp/iosApp.xcodeproj -scheme iosApp -destination 'platform=iOS Simulator,name=<a device from xcrun simctl list devices available>' build`,
+run it: the shared server and sign-in screens work against `http://localhost:8080`;
+`(cd mobile && ./gradlew :shared:iosSimulatorArm64Test)` runs the Sha256 vectors and the database on
+Kotlin/Native. **Measure and record** the app's size (Xcode's App Thinning Size Report for an
+`iPhone` variant), see "Risks of Compose Multiplatform on iOS".
+**Commit** — `feat(ios): Xcode entry point hosting the shared Compose UI`.
 
-### Task 39: Keychain token store and iOS graph
+### Task 39: Keychain token store and the iOS graph (Kotlin)
 
-`KeychainTokenStore` (Task 18) tested in `iosTest` on the simulator (store, read, overwrite,
-delete; accessibility attribute set). `IosGraph` built in Swift at launch and passed into
-`MainViewController`. **Commit** — `feat(ios): keychain token storage`.
+`KeychainTokenStore` (Task 18, `platform.Security`: `SecItemAdd`, `SecItemCopyMatching`,
+`SecItemUpdate`, `SecItemDelete` with a `CFDictionary` built through `CFDictionaryCreateMutable`,
+service `app.squirrel`, `kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly`). `IosGraph` (Kotlin)
+wires the API, database, token store, source, transport and engine. Tested in `iosTest` on the
+simulator (store, read, overwrite, delete, accessibility attribute). **Note:** Keychain calls from
+the Kotlin/Native test executable may fail with `errSecMissingEntitlement` because it is not a
+signed app; if so, these tests move to the XCTest target (Task 44), calling the Kotlin class.
+**Commit** — `feat(ios): keychain token storage`.
 
-### Task 40: PhotoKit asset source (Swift)
+### Task 40: PhotoKit asset source (Kotlin/Native)
 
-**Files:** `mobile/iosApp/iosApp/Photos/{PhotoKitSource.swift,AssetExporter.swift,PhotoAccess.swift}`,
-`mobile/iosApp/iosAppTests/PhotoKitSourceTests.swift`
+**Files:** `mobile/shared/src/iosMain/kotlin/app/squirrel/shared/ios/photos/{PhotoKitSource.kt,AssetExporter.kt,PhotoAccess.kt,LibraryObserver.kt,AssetMapping.kt}`,
+`mobile/shared/src/iosTest/kotlin/app/squirrel/shared/ios/photos/AssetMappingTest.kt`,
+`mobile/iosApp/iosAppTests/PhotoKitSourceTests.swift` (test code)
 
-Implements the Kotlin `AssetSource` protocol exported in `SquirrelKit`:
-- `changes(token:)`: `nil` → `PHAsset.fetchAssets(with: options)` (images, and videos when
-  enabled; `includeHiddenAssets = false`; album filter via `PHAssetCollection` fetches) ; otherwise
-  `PHPhotoLibrary.shared().fetchPersistentChanges(since: PHPersistentChangeToken)` and the
-  inserted/updated identifiers (`changeDetails(for: .asset)`); an expired token
-  (`PHPhotosError.persistentChangeTokenExpired`) → full rescan. Token = `NSKeyedArchiver` data,
-  base64. Deleted identifiers are ignored (backup only).
-- Name/size/mime: the asset's primary resource (`PHAssetResource.assetResources(for:)`): for an
-  edited photo the `.fullSizePhoto` resource (what the user sees), else `.photo` / `.video`;
-  `originalFilename`, `uniformTypeIdentifier` → MIME, size from `value(forKey: "fileSize")` is
-  private API, so the size is known only after export: the source reports `size = -1` until
-  `open` exports the file, and the queue's change detection uses `modificationDate` alone on iOS.
-  Live Photos: the still only (the paired video is out of scope, see "Not in Phase 6").
-- `taken_at`: `creationDate` with `TimeZone.current.secondsFromGMT(for:)`.
-- `open(id)`: `PHAssetResourceManager.default().writeData(for:toFile:options:)` with
-  `isNetworkAccessAllowed = true` (iCloud originals are downloaded; only on Wi-Fi when "Only on
-  Wi-Fi") into `Caches/export/<sha-of-id>`; returns a file-backed `AssetReader`. Exports are
+`PhotoKitSource : AssetSource`, all through `platform.Photos`:
+- `changes(token = null)` → `PHAsset.fetchAssetsWithOptions` (images, and videos when enabled;
+  `includeHiddenAssets = false`; album filter via `PHAssetCollection` fetches). With a token →
+  `PHPhotoLibrary.sharedPhotoLibrary().fetchPersistentChangesSinceToken(token, error)` and each
+  change's `changeDetailsForObjectType(PHObjectTypeAsset)` inserted/updated identifiers; an expired
+  token (`PHPhotosErrorPersistentChangeTokenExpired`) → full rescan. Token = `NSKeyedArchiver`
+  data, base64. Deleted identifiers are ignored (backup only).
+- Name and type from the primary `PHAssetResource` (`.fullSizePhoto` for an edited photo, what the
+  user sees; else `.photo` / `.video`): `originalFilename`, `uniformTypeIdentifier` → MIME. The
+  size is known only after export, so the source reports `size = -1` and iOS change detection uses
+  `modificationDate` alone. Live Photos: the still only.
+- `taken_at`: `creationDate` with `NSTimeZone.localTimeZone.secondsFromGMTForDate(date)`.
+- `open(id)` (`AssetExporter`): `PHAssetResourceManager.defaultManager().writeDataForAssetResource(resource, toFile = url, options, completionHandler)`
+  wrapped in `suspendCancellableCoroutine`, `networkAccessAllowed = true` (iCloud originals are
+  downloaded; only on Wi-Fi when "Only on Wi-Fi"), into `Caches/export/<sha-of-id>`; reads it with
+  `NSFileHandle.fileHandleForReadingFromURL` + `seekToOffset`/`readDataUpToLength`. Exports are
   deleted after a successful upload and by a size-capped sweep (2 GB).
-- `PhotoAccess`: `PHPhotoLibrary.authorizationStatus(for: .readWrite)` → Full / Partial(count of
-  `fetchAssets` under limited access) / None; `requestAuthorization`, and
-  `presentLimitedLibraryPicker(from:)` for "Change selection".
-**Tests** (XCTest on the simulator, after adding photos with `xcrun simctl addmedia booted <files>`):
-a full scan finds them; a persistent-change scan after adding one more returns only it; export
-produces the original bytes. **Commit** — `feat(ios): read the photo library with PhotoKit`.
+- `PhotoAccess`: `PHPhotoLibrary.authorizationStatusForAccessLevel(PHAccessLevelReadWrite)` → Full /
+  Partial (count under limited access) / None; `requestAuthorizationForAccessLevel`, and
+  `presentLimitedLibraryPickerFromViewController` (the Compose host's view controller).
+- `LibraryObserver`: a Kotlin class extending `NSObject` and implementing
+  `PHPhotoLibraryChangeObserverProtocol`, registered while the app is active, debounced 5 s.
 
-### Task 41: Background URLSession chunk transport (Swift)
+**Tests:** `AssetMappingTest` (pure functions: resource choice, MIME, `taken_at` formatting, token
+round trip) on the K/N simulator runner. PhotoKit itself needs a host app with photo permission, so
+`PhotoKitSourceTests.swift` (XCTest, test code only) grants it
+(`xcrun simctl privacy booted grant photos app.squirrel.ios`), adds photos
+(`xcrun simctl addmedia booted <files>`), and calls the Kotlin `PhotoKitSource`: a full scan finds
+them, a persistent-change scan after adding one more returns only it, export produces the original
+bytes. **Commit** — `feat(ios): read the photo library with PhotoKit from Kotlin`.
 
-**Files:** `mobile/iosApp/iosApp/Sync/{BackgroundTransport.swift,TransportStore.swift}`,
-`mobile/iosApp/iosAppTests/BackgroundTransportTests.swift`
+### Task 41: Background URLSession chunk transport (Kotlin/Native)
 
-Implements `ChunkTransport`. One `URLSession(configuration: .background(withIdentifier: "app.squirrel.upload"))`,
-`sessionSendsLaunchEvents = true`, `isDiscretionary = false` for "Back up now" (true for scheduled
-runs), `allowsExpensiveNetworkAccess`/`allowsConstrainedNetworkAccess = !wifiOnly`.
+**Files:** `mobile/shared/src/iosMain/kotlin/app/squirrel/shared/ios/transfer/{BackgroundTransport.kt,TransportDelegate.kt,TransportStore.kt}`,
+`mobile/shared/src/iosTest/kotlin/app/squirrel/shared/ios/transfer/TransportStoreTest.kt`,
+`mobile/iosApp/iosAppTests/BackgroundTransportTests.swift` (test code)
+
+`BackgroundTransport : ChunkTransport`. One `NSURLSession.sessionWithConfiguration(NSURLSessionConfiguration.backgroundSessionConfigurationWithIdentifier("app.squirrel.upload"), delegate = TransportDelegate, delegateQueue = null)`;
+`sessionSendsLaunchEvents = true`; `discretionary = false` for "Back up now" (true for scheduled
+runs); `allowsExpensiveNetworkAccess` / `allowsConstrainedNetworkAccess = !wifiOnly`.
 `put(session, index, reader)` writes chunk `index` to `Caches/chunks/<upload>-<index>` and starts
-`uploadTask(with: request, fromFile:)` with `PUT /api/uploads/{id}/chunks/{index}`,
-`Authorization: Upload <upload_token>`, `Content-Length`; the task's `taskDescription` holds
-`<upload_id>:<index>`. Completion (`urlSession(_:task:didCompleteWithError:)`) records the result
-in `TransportStore` (the shared database through a Kotlin call) and deletes the chunk file. The
-`AppDelegate` (`@UIApplicationDelegateAdaptor`) implements
-`application(_:handleEventsForBackgroundURLSession:completionHandler:)`: re-attach the session,
-let the engine schedule the next chunks and `complete` finished uploads, then call the handler.
-**Tests:** with a local `URLProtocol` stub (foreground session in tests): chunk file written,
-request headers, completion recorded, file removed; an upload token rejected (401) marks the upload
-for a fresh `POST /api/uploads`. **Commit** — `feat(ios): background chunk uploads`.
+`uploadTaskWithRequest(request, fromFile = url)` (`PUT /api/uploads/{id}/chunks/{index}`,
+`Authorization: Upload <upload_token>`, `Content-Length`), `taskDescription = "<upload_id>:<index>"`.
+`TransportDelegate` (Kotlin `NSObject` implementing `NSURLSessionTaskDelegateProtocol` and
+`NSURLSessionDelegateProtocol`; overloaded selectors annotated with `@ObjCSignatureOverride`):
+`URLSession(_, task, didCompleteWithError)` records the result in `TransportStore` (SQLDelight),
+deletes the chunk file and resumes the waiting coroutine if the engine is running;
+`URLSessionDidFinishEventsForBackgroundURLSession` calls the completion handler that
+`onBackgroundUrlSessionEvents` stored (on the main queue), after the engine scheduled the next
+chunks and completed finished uploads.
+**Tests:** `TransportStoreTest` (K/N): results recorded and consumed exactly once. XCTest: with a
+`URLProtocol` stub (foreground session in tests, same Kotlin delegate) the chunk file is written,
+headers are right, the completion is recorded and the file removed; a 401 on an upload token marks
+the upload for a fresh `POST /api/uploads`. **Commit** — `feat(ios): background chunk uploads from Kotlin`.
 
-### Task 42: Background tasks and the photo library observer
+### Task 42: Background tasks (Kotlin/Native)
 
-**Files:** `mobile/iosApp/iosApp/Sync/{BackgroundScheduler.swift,LibraryObserver.swift}`
+**Files:** `mobile/shared/src/iosMain/kotlin/app/squirrel/shared/ios/background/{BackgroundTasks.kt,IosConditions.kt}`
 
-- Register at launch: `BGProcessingTaskRequest("app.squirrel.backup.processing")`
-  (`requiresNetworkConnectivity = true`, `requiresExternalPower = chargingOnly`,
-  `earliestBeginDate` +1 h) and `BGAppRefreshTaskRequest("app.squirrel.backup.refresh")` (+6 h).
-  Each handler runs `SyncEngine.runOnce(deadline:)` and sets `expirationHandler` to cancel it;
-  re-submits itself on completion.
-- "Back up now" on iOS 26+: `BGContinuedProcessingTaskRequest("app.squirrel.backup.now", title:
-  "Backing up photos", subtitle: "…")` reporting progress through the task's `progress`; on 17–25,
-  the run happens in the foreground with `beginBackgroundTask` for the last ~30 s and the background
+- `onLaunch()` → `BGTaskScheduler.sharedScheduler.registerForTaskWithIdentifier(id, usingQueue = null) { task -> … }`
+  for `app.squirrel.backup.processing` (`BGProcessingTaskRequest`: `requiresNetworkConnectivity = true`,
+  `requiresExternalPower = chargingOnly`, `earliestBeginDate` +1 h) and `app.squirrel.backup.refresh`
+  (`BGAppRefreshTaskRequest`, +6 h). Each handler launches `SyncEngine.runOnce(deadline)` in a
+  coroutine, sets `expirationHandler` to cancel it, calls `setTaskCompletedWithSuccess`, and
+  re-submits itself.
+- "Back up now": on iOS 26+ `BGContinuedProcessingTaskRequest("app.squirrel.backup.now", title, subtitle)`
+  with progress reported through the task's `progress` (available in the iOS 26.4 SDK Kotlin 2.4.21
+  bundles; guarded by an OS version check); on 17–25 the run happens in the foreground with
+  `UIApplication.beginBackgroundTaskWithExpirationHandler` for the last seconds, and the background
   session carries the queued chunks.
-- `LibraryObserver` (`PHPhotoLibraryChangeObserver`) while active: debounced 5 s, triggers a run.
-**Verify** with the debugger command documented by Apple:
+- `IosConditions`: `nw_path_monitor` (`platform.Network`) for "expensive"/"constrained" paths,
+  `UIDevice.currentDevice.batteryState` for charging.
+**Verify** in the debugger:
 `e -l objc -- (void)[[BGTaskScheduler sharedScheduler] _simulateLaunchForTaskWithIdentifier:@"app.squirrel.backup.processing"]`.
-**Commit** — `feat(ios): schedule backups in the background`.
+**Commit** — `feat(ios): schedule backups in the background from Kotlin`.
 
-### Task 43: iOS screens and permissions polish
+### Task 43: iOS specifics of the shared screens
 
-The shared screens already render; add the iOS specifics: the permission flow (`PhotoAccess`
-requests from the Compose button through an interface), "Allow all photos" opens
-`UIApplication.openSettingsURLString`, "Change selection" presents the limited picker; "Open file"
-uses a `UIDocumentInteractionController` (Swift, behind `FileOpener`); share uses
-`UIActivityViewController`. Safe areas: the floating rail respects the home indicator (MASTER.md
-"safe-area aware"). Dynamic Type maps to the Compose font scale. VoiceOver labels checked.
-**Commit** — `feat(ios): photo access, sharing and opening files`.
+All screens are the shared Compose ones; only these iOS pieces are added, in Kotlin
+(`ui/src/iosMain`): the permission flow calls `PhotoAccess`; "Allow all photos" opens
+`UIApplicationOpenSettingsURLString`; "Change selection" presents the limited picker; "Open file"
+uses `UIDocumentInteractionController`, share uses `UIActivityViewController` (both presented from
+the Compose host view controller). Opt in to CMP's **native iOS text input** for the server,
+username and password fields if the 1.12 API allows it per field (so password autofill, the iOS
+selection loupe and keyboard behave natively); otherwise keep Compose's input and enable the
+credential autofill prompts. Safe areas: the floating rail respects the home indicator (MASTER.md
+"safe-area aware"). Dynamic Type maps to the font scale. **Check with VoiceOver** that every rail
+item, tile and button reads its name and that focus order follows the layout; fix with
+`Modifier.semantics` (shared with TalkBack).
+**Commit** — `feat(ios): photo access, sharing and native text input`.
 
 ### Task 44: iOS end-to-end on the simulator
 
-`iosAppTests/BackupEndToEndTests.swift` (skipped unless `SQUIRREL_SERVER` is set in the scheme's
-test environment): with `scripts/mobile-e2e-server.sh` running on the host and three photos added
-with `xcrun simctl addmedia`, sign in, run the engine (foreground transport in tests), assert via
-the API as in Task 31. Run:
-`xcodebuild test -project mobile/iosApp/iosApp.xcodeproj -scheme iosApp -destination 'platform=iOS Simulator,name=iPhone 17'`.
+`iosAppTests/BackupEndToEndTests.swift` (XCTest, test code only; skipped unless `SQUIRREL_SERVER`
+is set in the scheme's test environment): with `scripts/mobile-e2e-server.sh` running on the host
+and three photos added with `xcrun simctl addmedia`, it calls the Kotlin `IosGraph` to sign in and
+run the engine (foreground transport in tests), then asserts through the API as in Task 31. Run:
+`xcodebuild test -project mobile/iosApp/iosApp.xcodeproj -scheme iosApp -destination 'platform=iOS Simulator,name=<device>'`.
 **Commit** — `test(ios): back up photos from the simulator end to end`.
 
 ### Task 45: Milestone H manual pass (physical iPhone)
 
-Needs your Apple team for signing (Open question 16). First backup of ≥ 500 photos including HEIC,
+Needs your Apple team for signing (Open question 15). First backup of ≥ 500 photos including HEIC,
 Live Photos and an edited photo; lock the phone mid-backup (uploads continue in the background
 session; the next processing task completes them); "Limited Access" with 10 photos; iCloud-only
 originals on Wi-Fi; revoke on the web. **No commit unless fixes.**
@@ -1534,10 +1632,10 @@ originals on Wi-Fi; revoke on the web. **No commit unless fixes.**
 
 **Files:** `.github/workflows/ci.yml`
 
-- `mobile-tokens` (in the existing `web` job): `pnpm gen:native-tokens && git diff --exit-code mobile/ui/src/commonMain/kotlin/app/squirrel/ui/theme/Tokens.kt` (and the icons file).
+- `mobile-tokens` (in the existing `web` job): `pnpm gen:native-tokens && git diff --exit-code mobile/theme/src/commonMain/kotlin/app/squirrel/theme/Tokens.kt` (and the icons file).
 - `mobile-android` (`ubuntu-latest`): `actions/setup-java@v4` (Temurin 21),
   `gradle/actions/setup-gradle@v4` (wrapper validation included), then
-  `./gradlew :shared:jvmTest :ui:jvmTest :androidApp:testDebugUnitTest :androidApp:lintDebug :androidApp:assembleDebug`
+  `./gradlew :shared:jvmTest :theme:jvmTest :ui:jvmTest :androidApp:testDebugUnitTest :androidApp:lintDebug :androidApp:assembleDebug`
   in `mobile/`; upload the debug APK as an artifact. The contract test reads the committed
   `openapi.json`, so API drift fails here too.
 - `mobile-ios` (`macos-latest`, or the newest image with Xcode ≥ the version Kotlin supports;
@@ -1574,8 +1672,30 @@ final gate, deferred manual checks). **Commit** — `docs: record Phase 6 as bui
 | Shared (KMP) | kotlin.test on `jvm()` (every task) and `iosSimulatorArm64` (from H), Ktor `MockEngine`, SQLDelight in-memory drivers, Turbine | API client and refresh single-flight, contract vs `openapi.json`, queue SQL, hashing vectors, uploader error branches, engine batching/pausing/deadlines, status formatting |
 | UI view models | kotlin.test on `jvm()` | Sign-in, backup, settings, photos and files state machines |
 | Android | Robolectric (permissions, scheduler, worker), instrumented on the AVD (MediaStore source, Keystore, end to end against the dev server) | — |
-| iOS | XCTest on the simulator (PhotoKit source with `simctl addmedia`, transport with a `URLProtocol` stub, end to end) | — |
+| iOS | Kotlin/Native `iosTest` on the simulator (hashing, database, mappings, transport store); XCTest as test code only where a host app is needed (the Kotlin PhotoKit source with `simctl addmedia`, the Kotlin transport with a `URLProtocol` stub, end to end) | — |
 | Manual | Tasks 32, 36, 45 | Real devices, background behaviour, partial access, revocation |
+
+## Risks of Compose Multiplatform on iOS
+
+The UI is shared Compose on iOS by decision (key decisions, "UI toolkit"). These are the costs,
+checked against JetBrains' docs on 2026-11-16, and what the plan does about each.
+
+| Risk | Status today | Mitigation in this plan |
+|---|---|---|
+| **Stability** | Compose Multiplatform for iOS has been **Stable** since 1.8.0 (May 2025); this plan pins 1.12.2 (1.13 is in beta). Kotlin/Native, the layer under it, ties the app to the Xcode versions each Kotlin release supports (Open question 17). | Pin exact versions in `libs.versions.toml`; upgrade CMP and Kotlin together, deliberately; the iOS milestone comes last, so Android is unaffected by iOS toolchain lag. |
+| **iOS feel: scrolling** | Compose draws its own lists (Skia via Skiko), so scroll physics, overscroll bounce and the scroll-to-top tap on the status bar are Compose's iOS imitations, not UIKit's. | 120 Hz enabled (`CADisableMinimumFrameDurationOnPhone`); the 5 000-photo timeline is checked on a real iPhone (Task 45); no custom scroll physics. |
+| **iOS feel: text fields** | Compose's own text input is the default; CMP 1.11 added an **opt-in native iOS text input** and credential autofill prompts. | Sign-in fields opt in to native input where the API allows (Task 43); the app has only three text fields and no long-form editing. |
+| **Accessibility (VoiceOver)** | Compose semantics are exposed to the iOS accessibility tree, but the whole UI lives in one `UIViewController`, so behaviour depends on the semantics we write; UI testing tools see less than with UIKit. | Every interactive element gets semantics (shared with TalkBack); a VoiceOver pass is part of Tasks 43 and 45; MASTER.md rules 2 and 3 (focus, contrast) apply as on the web. |
+| **Binary size** | Shipping the Skia renderer and the Kotlin/Native runtime makes the app larger than an equivalent SwiftUI one (JetBrains publishes no current figure). | Measured in Task 38 (App Thinning Size Report) and recorded in "As built"; static framework, release builds with dead-code elimination; acceptable for a sideloaded personal app (Open question 16). |
+| **Interop gaps** | Some Objective-C delegate protocols have overloaded selectors that clash in Kotlin; app-delegate callbacks are only delivered to a Swift/Objective-C app delegate. | `@ObjCSignatureOverride`; the two app-delegate callbacks are forwarded by `AppDelegate.swift` (key decisions, "iOS through Kotlin/Native"). |
+
+## Platform risks (Android)
+
+| Risk | Mitigation |
+|---|---|
+| Android 16 applies JobScheduler/WorkManager runtime quotas also to work started in the foreground or alongside a foreground service. | Runs are bounded (`deadline`) and resumable; the first big backup may take several runs. If it is too slow, "Back up now" moves to a **user-initiated data transfer job** (JobScheduler, API 34+), as Google recommends for user-started transfers (follow-up, not in Phase 6). |
+| Android 17 (target API 37) requires the `ACCESS_LOCAL_NETWORK` runtime permission to reach a server on the LAN, and turns on certificate transparency by default. | Phase 6 targets API 36 (what Play requires). Moving to 37 means requesting `ACCESS_LOCAL_NETWORK` for LAN addresses; Tailscale addresses and publicly trusted certificates are unaffected by certificate transparency. |
+| Partial photo access expires ("access to selected items expires eventually"). | The access state is re-read before each run; the backup screen shows the notice again when it shrinks. |
 
 ## Security considerations
 
@@ -1589,6 +1709,7 @@ final gate, deferred manual checks). **Commit** — `docs: record Phase 6 as bui
 | **Cross-user content probing** | `sync/check` and upload dedup consider only the caller's own nodes (and the device's own records); another user's content is reported missing and uploaded again, never linked. |
 | **Token leakage in logs** | Tokens are never logged (only device and user ids); prefixes let secret scanners spot accidental commits; the app never logs tokens (a debug-only HTTP log filter redacts `Authorization`). |
 | **Network** | HTTPS only in release builds, system CAs only, no user-installed CAs, no certificate pinning (Tailscale/Let's Encrypt rotate); clear text only in debug builds to `10.0.2.2`/`localhost`. |
+| **Shared UI on iOS** | Compose renders inside one view controller with no web view and no remote content; the password field is a secure entry (native iOS input where CMP allows it, Task 43, so iOS treats it as a password field for autofill and the keyboard); no token or password is ever kept in Compose state beyond the sign-in call. |
 | **Malicious server** | The app sends only what the user chose to back up to the URL they typed; responses are parsed with bounded sizes (Ktor `ignoreUnknownKeys`, no reflection), image decoding by the platform. |
 | **Location privacy** | GPS stays in the bytes only when the user grants `ACCESS_MEDIA_LOCATION` (it is their own server); nothing is sent anywhere else; no analytics or crash reporting SDK. |
 | **Local data at rest** | The queue database holds names, hashes and ids (no photo bytes beyond transient exports/chunks in the cache, deleted after upload); Android `allowBackup=false`; iOS data protection default (complete until first unlock) suits background work. |
@@ -1598,7 +1719,7 @@ final gate, deferred manual checks). **Commit** — `docs: record Phase 6 as bui
 
 - Video processing, posters and playback in the app — **Phase 4** (videos are backed up now and
   processed by its backfill). ML search and faces — **Phase 5**.
-- Joining with an invitation inside the app (Open question 6), QR-code pairing.
+- Joining with an invitation inside the app (Open question 5), QR-code pairing.
 - Editing on the phone: delete, move, rename, album editing, selection, uploads of arbitrary files
   from the phone (share-sheet "Save to Squirrel"), offline copies.
 - Live Photo motion parts, iOS edit history (only the current rendition is backed up), RAW+JPEG
@@ -1606,11 +1727,12 @@ final gate, deferred manual checks). **Commit** — `docs: record Phase 6 as bui
 - Custom CAs, client certificates, certificate pinning; store distribution; push notifications;
   widgets; a Wear/watch app; tablets beyond what the phone layout gives.
 - Instrumented Android tests and iOS UI tests in CI (local only for now).
+- Targeting Android API 37 (`ACCESS_LOCAL_NETWORK`), user-initiated data transfer jobs.
 
 ## Done when
 
 - `cargo test --workspace`, `pnpm check`, `pnpm test:unit`, `SQUIRREL_E2E_PORT=8199 pnpm test:e2e`,
-  `(cd mobile && ./gradlew :shared:jvmTest :ui:jvmTest :androidApp:testDebugUnitTest :androidApp:lintDebug :shared:iosSimulatorArm64Test)`
+  `(cd mobile && ./gradlew :shared:jvmTest :theme:jvmTest :ui:jvmTest :androidApp:testDebugUnitTest :androidApp:lintDebug :shared:iosSimulatorArm64Test)`
   and the iOS `xcodebuild test` all green; `openapi.json`, `schema.d.ts` and `Tokens.kt` regenerated
   with no diff.
 - The Android end-to-end test (Task 31) and the iOS one (Task 44) pass against a local server.
