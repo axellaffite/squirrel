@@ -1,0 +1,110 @@
+-- One row per phone asset the app knows about: the backup queue.
+CREATE TABLE local_asset (
+    device_asset_id TEXT NOT NULL PRIMARY KEY,
+    kind TEXT NOT NULL,                    -- 'photo' | 'video'
+    name TEXT NOT NULL,
+    mime TEXT,
+    size INTEGER NOT NULL,
+    modified_at INTEGER NOT NULL,          -- epoch ms, change detection
+    taken_at TEXT,                         -- RFC 3339 with offset, sent with the upload
+    album TEXT,                            -- bucket / album name, for the settings filter
+    sha256 TEXT,                           -- NULL until hashed for (size, modified_at)
+    state TEXT NOT NULL DEFAULT 'new',     -- new | hashed | missing | uploading | done | skipped | failed
+    upload_id TEXT,
+    attempts INTEGER NOT NULL DEFAULT 0,
+    next_attempt_at INTEGER NOT NULL DEFAULT 0,
+    last_error TEXT,
+    scan_generation INTEGER NOT NULL DEFAULT 0  -- the full scan that last saw it
+);
+CREATE INDEX local_asset_state ON local_asset (state, next_attempt_at);
+
+-- Scanning is insertScanned then updateScanned, in one transaction (no UPSERT before SQLite 3.24).
+insertScanned:
+INSERT OR IGNORE INTO local_asset (device_asset_id, kind, name, mime, size, modified_at, taken_at, album, scan_generation)
+VALUES (:id, :kind, :name, :mime, :size, :modifiedAt, :takenAt, :album, :generation);
+
+updateScanned:
+UPDATE local_asset SET
+    kind = :kind, name = :name, mime = :mime, album = :album, taken_at = :takenAt,
+    scan_generation = :generation,
+    -- A changed file is hashed and checked again; a skipped one that is selected again resumes.
+    upload_id = CASE WHEN size = :size AND modified_at = :modifiedAt THEN upload_id ELSE NULL END,
+    attempts  = CASE WHEN size = :size AND modified_at = :modifiedAt THEN attempts ELSE 0 END,
+    state = CASE
+        WHEN size != :size OR modified_at != :modifiedAt THEN 'new'
+        WHEN state = 'skipped' AND sha256 IS NULL THEN 'new'
+        WHEN state = 'skipped' THEN 'hashed'
+        ELSE state END,
+    sha256 = CASE WHEN size = :size AND modified_at = :modifiedAt THEN sha256 ELSE NULL END,
+    size = :size, modified_at = :modifiedAt
+WHERE device_asset_id = :id;
+
+byId:
+SELECT * FROM local_asset WHERE device_asset_id = ?;
+
+skipUnseen:
+UPDATE local_asset SET state = 'skipped', upload_id = NULL
+WHERE scan_generation != ? AND state != 'done';
+
+skip:
+UPDATE local_asset SET state = 'skipped', upload_id = NULL
+WHERE device_asset_id IN ? AND state != 'done';
+
+nextToHash:
+SELECT * FROM local_asset WHERE state = 'new' ORDER BY modified_at DESC LIMIT ?;
+
+setHash:
+UPDATE local_asset SET sha256 = ?, state = 'hashed' WHERE device_asset_id = ? AND state = 'new';
+
+hashedBatch:
+SELECT * FROM local_asset WHERE state = 'hashed' ORDER BY modified_at DESC LIMIT ?;
+
+markMissing:
+UPDATE local_asset SET state = 'missing', attempts = 0, next_attempt_at = 0, last_error = NULL
+WHERE device_asset_id IN ? AND state = 'hashed';
+
+markPresent:
+UPDATE local_asset SET state = 'done', upload_id = NULL, last_error = NULL
+WHERE device_asset_id IN ? AND state = 'hashed';
+
+nextToUpload:
+SELECT * FROM local_asset
+WHERE state IN ('missing', 'uploading') AND next_attempt_at <= ?
+ORDER BY state DESC, modified_at DESC LIMIT 1;
+
+markUploading:
+UPDATE local_asset SET state = 'uploading', upload_id = ? WHERE device_asset_id = ?;
+
+markDone:
+UPDATE local_asset SET state = 'done', upload_id = NULL, last_error = NULL WHERE device_asset_id = ?;
+
+recordAttempt:
+UPDATE local_asset SET attempts = attempts + 1, last_error = ?, next_attempt_at = ? WHERE device_asset_id = ?;
+
+markFailed:
+UPDATE local_asset SET state = 'failed', upload_id = NULL, last_error = ? WHERE device_asset_id = ?;
+
+markSkipped:
+UPDATE local_asset SET state = 'skipped', upload_id = NULL WHERE device_asset_id = ?;
+
+resetHash:
+UPDATE local_asset SET sha256 = NULL, state = 'new', upload_id = NULL WHERE device_asset_id = ?;
+
+forgetUpload:
+UPDATE local_asset SET upload_id = NULL, state = 'missing' WHERE device_asset_id = ?;
+
+retryFailed:
+UPDATE local_asset SET state = 'missing', attempts = 0, next_attempt_at = 0 WHERE state = 'failed';
+
+counts:
+SELECT state, COUNT(*) AS n FROM local_asset GROUP BY state;
+
+bytesLeft:
+SELECT CAST(COALESCE(SUM(size), 0) AS INTEGER) FROM local_asset
+WHERE state IN ('new', 'hashed', 'missing', 'uploading', 'failed');
+
+failures:
+SELECT * FROM local_asset WHERE state = 'failed' ORDER BY modified_at DESC;
+
+deleteAll:
+DELETE FROM local_asset;
