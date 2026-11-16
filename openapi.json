@@ -3369,7 +3369,7 @@
               "null"
             ],
             "format": "uuid",
-            "description": "Must be a photo of the album."
+            "description": "A photo of the album to show as its cover; `null` goes back to the\nnewest photo; absent keeps the current choice."
           },
           "name": {
             "type": [

@@ -4,7 +4,7 @@ use common::{admin, invited, photo, raw_restore, raw_trash, root};
 use sqlx::PgPool;
 use squirrel_core::AlbumName;
 use squirrel_db::DbError;
-use squirrel_db::albums::{self, AlbumUpdate, UpdateOutcome};
+use squirrel_db::albums::{self, AlbumUpdate, CoverChange, UpdateOutcome};
 use time::macros::datetime;
 use uuid::Uuid;
 
@@ -254,7 +254,7 @@ async fn covers_follow_choices_trash_and_deletion(pool: PgPool) {
         .await
         .unwrap();
     let cover = |id| AlbumUpdate {
-        cover_node_id: Some(id),
+        cover: CoverChange::Set(id),
         ..AlbumUpdate::default()
     };
     assert_eq!(
@@ -277,6 +277,34 @@ async fn covers_follow_choices_trash_and_deletion(pool: PgPool) {
             .cover_id
     };
     assert_eq!(cover_id(pool.clone()).await, Some(old));
+
+    // Clearing the choice shows the newest item; keeping leaves it alone.
+    let clear = AlbumUpdate {
+        cover: CoverChange::Clear,
+        ..AlbumUpdate::default()
+    };
+    albums::update(&pool, album, alice.id, &clear)
+        .await
+        .unwrap();
+    let found = albums::find(&pool, alice.id, album).await.unwrap().unwrap();
+    assert_eq!((found.cover_node_id, found.cover_id), (None, Some(new)));
+    albums::update(&pool, album, alice.id, &cover(old))
+        .await
+        .unwrap();
+    albums::update(&pool, album, alice.id, &AlbumUpdate::default())
+        .await
+        .unwrap();
+    assert_eq!(cover_id(pool.clone()).await, Some(old));
+
+    // Only the owner's albums exist for them.
+    let bob = invited(&pool, &alice, "bob").await;
+    assert!(albums::exists(&pool, alice.id, album).await.unwrap());
+    assert!(!albums::exists(&pool, bob.id, album).await.unwrap());
+    assert!(
+        !albums::exists(&pool, alice.id, Uuid::now_v7())
+            .await
+            .unwrap()
+    );
 
     // A trashed cover is hidden (newest live item instead) and comes back on restore.
     raw_trash(&pool, old).await;

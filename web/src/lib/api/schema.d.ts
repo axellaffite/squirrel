@@ -971,7 +971,8 @@ export interface components {
         UpdateAlbumRequest: {
             /**
              * Format: uuid
-             * @description Must be a photo of the album.
+             * @description A photo of the album to show as its cover; `null` goes back to the
+             *     newest photo; absent keeps the current choice.
              */
             cover_node_id?: string | null;
             name?: string | null;

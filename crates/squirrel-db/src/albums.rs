@@ -73,6 +73,17 @@ pub async fn find(pool: &PgPool, owner_id: Uuid, id: Uuid) -> Result<Option<Albu
         .await?)
 }
 
+/// Whether `id` is one of `owner_id`'s albums (cheaper than [`find`]).
+pub async fn exists(pool: &PgPool, owner_id: Uuid, id: Uuid) -> Result<bool, DbError> {
+    Ok(
+        sqlx::query_scalar("SELECT EXISTS (SELECT 1 FROM albums WHERE id = $1 AND owner_id = $2)")
+            .bind(id)
+            .bind(owner_id)
+            .fetch_one(pool)
+            .await?,
+    )
+}
+
 /// Creates an album holding those of `node_ids` that are the owner's live photos.
 pub async fn create(
     pool: &PgPool,
@@ -191,12 +202,22 @@ pub async fn remove_items(
     Ok(removed)
 }
 
-/// What [`update`] changes; `None` fields stay as they are.
+/// What [`update`] does to the chosen cover.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub enum CoverChange {
+    #[default]
+    Keep,
+    /// No chosen cover: the newest photo is shown.
+    Clear,
+    /// Must be a live item of the album.
+    Set(Uuid),
+}
+
+/// What [`update`] changes; `None` / `Keep` fields stay as they are.
 #[derive(Debug, Clone, Default)]
 pub struct AlbumUpdate {
     pub name: Option<AlbumName>,
-    /// Must be a live item of the album.
-    pub cover_node_id: Option<Uuid>,
+    pub cover: CoverChange,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -218,7 +239,7 @@ pub async fn update(
         Err(DbError::NotFound) => return Ok(UpdateOutcome::NotFound),
         other => other?,
     }
-    if let Some(cover) = changes.cover_node_id {
+    if let CoverChange::Set(cover) = changes.cover {
         let is_item: bool = sqlx::query_scalar(
             "SELECT EXISTS (SELECT 1 FROM album_items i \
                               JOIN nodes n ON n.id = i.node_id AND n.deleted_at IS NULL \
@@ -233,14 +254,21 @@ pub async fn update(
             return Ok(UpdateOutcome::CoverNotInAlbum);
         }
     }
+    let (change_cover, cover) = match changes.cover {
+        CoverChange::Keep => (false, None),
+        CoverChange::Clear => (true, None),
+        CoverChange::Set(id) => (true, Some(id)),
+    };
     sqlx::query(
         "UPDATE albums SET name = COALESCE($2, name), \
-                cover_node_id = COALESCE($3, cover_node_id), updated_at = now() \
+                cover_node_id = CASE WHEN $4 THEN $3 ELSE cover_node_id END, \
+                updated_at = now() \
           WHERE id = $1",
     )
     .bind(album_id)
     .bind(changes.name.as_ref().map(AlbumName::as_str))
-    .bind(changes.cover_node_id)
+    .bind(cover)
+    .bind(change_cover)
     .execute(&mut *tx)
     .await?;
     tx.commit().await?;
@@ -258,7 +286,7 @@ pub async fn delete(pool: &PgPool, album_id: Uuid, owner_id: Uuid) -> Result<boo
 }
 
 /// A page of the album's live photos, newest capture first. Callers check
-/// the album is the owner's first ([`find`]); another user's album is empty.
+/// the album is the owner's first ([`exists`]); another user's album is empty.
 pub async fn items(
     pool: &PgPool,
     owner_id: Uuid,

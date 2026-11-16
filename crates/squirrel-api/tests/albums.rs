@@ -88,6 +88,39 @@ async fn an_album_lives_and_dies(pool: PgPool) {
     );
     assert_eq!(patched["item_count"], 3);
 
+    // Renaming alone keeps the chosen cover; an explicit null clears it.
+    let renamed: Value = browser
+        .patch(&format!("/api/albums/{id}"))
+        .add_header(CSRF, csrf(&me))
+        .json(&json!({ "name": "Summer 24" }))
+        .await
+        .json();
+    assert_eq!(renamed["cover"]["id"], json!(b));
+    let cleared = browser
+        .patch(&format!("/api/albums/{id}"))
+        .add_header(CSRF, csrf(&me))
+        .json(&json!({ "cover_node_id": null }))
+        .await;
+    cleared.assert_status_ok();
+    assert_eq!(
+        cleared.json::<Value>()["cover"]["id"],
+        c.to_string(),
+        "back to the newest photo"
+    );
+    let chosen: Option<uuid::Uuid> =
+        sqlx::query_scalar("SELECT cover_node_id FROM albums WHERE id = $1")
+            .bind(uuid::Uuid::parse_str(&id).unwrap())
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+    assert_eq!(chosen, None);
+    browser
+        .patch(&format!("/api/albums/{id}"))
+        .add_header(CSRF, csrf(&me))
+        .json(&json!({ "name": "Summer 2024", "cover_node_id": b }))
+        .await
+        .assert_status_ok();
+
     let removed = post(
         &browser,
         &me,
