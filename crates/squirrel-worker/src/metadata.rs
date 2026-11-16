@@ -24,7 +24,30 @@ const MAX_EXIF_BYTES: u64 = 64 * 1024 * 1024;
 pub async fn run(ctx: &MediaContext, job: JobContext) -> Result<(), JobError> {
     let ShaPayload { sha256 } = job.payload()?;
     let hash = ContentHash::parse(&sha256).map_err(JobError::permanent)?;
-    let Some(media) = media::find(&ctx.pool, &sha256)
+    match attempt(ctx, &sha256, &hash).await {
+        // Whatever failed (reading the file, the database), the last attempt
+        // leaves a terminal state rather than "pending" forever.
+        Err(JobError::Retry(err)) if job.is_last_attempt() => {
+            let reason = format!("{err:#}");
+            if let Err(state_err) = media::set_state(
+                &ctx.pool,
+                &sha256,
+                Step::Metadata,
+                MediaState::Failed,
+                Some(&reason),
+            )
+            .await
+            {
+                tracing::error!(sha256, error = %state_err, "could not record failed metadata");
+            }
+            Err(JobError::Retry(err))
+        }
+        other => other,
+    }
+}
+
+async fn attempt(ctx: &MediaContext, sha256: &str, hash: &ContentHash) -> Result<(), JobError> {
+    let Some(media) = media::find(&ctx.pool, sha256)
         .await
         .map_err(JobError::retry)?
     else {
@@ -33,32 +56,15 @@ pub async fn run(ctx: &MediaContext, job: JobContext) -> Result<(), JobError> {
     if media.kind() != MediaKind::Image {
         return Ok(());
     }
-    let path = ctx.storage.blob_path(&hash);
+    let path = ctx.storage.blob_path(hash);
     let extracted = tokio::task::spawn_blocking(move || extract(&path))
         .await
+        .map_err(JobError::retry)?
         .map_err(JobError::retry)?;
-    let extracted = match extracted {
-        Ok(found) => found,
-        Err(err) => {
-            if job.is_last_attempt() {
-                let reason = err.to_string();
-                media::set_state(
-                    &ctx.pool,
-                    &sha256,
-                    Step::Metadata,
-                    MediaState::Failed,
-                    Some(&reason),
-                )
-                .await
-                .map_err(JobError::retry)?;
-            }
-            return Err(JobError::retry(err));
-        }
-    };
-    settle(ctx, &sha256, &extracted.update()).await?;
+    settle(ctx, sha256, &extracted.update()).await?;
     if extracted.meta.gps.is_some() {
         let mut conn = ctx.pool.acquire().await.map_err(JobError::retry)?;
-        squirrel_jobs::enqueue(&mut conn, &jobs::geocode(&sha256, false))
+        squirrel_jobs::enqueue(&mut conn, &jobs::geocode(sha256, false))
             .await
             .map_err(JobError::retry)?;
     }

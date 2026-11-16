@@ -172,3 +172,38 @@ async fn huge_declared_exif_chunks_are_not_read_whole(pool: PgPool) {
     let row = media::find(fx.pool(), &sha).await.unwrap().unwrap();
     assert_eq!(row.metadata_state(), MediaState::Ready);
 }
+
+#[sqlx::test(migrator = "squirrel_db::MIGRATOR")]
+async fn persistent_database_errors_end_in_failed_on_the_last_attempt(pool: PgPool) {
+    let fx = Fixture::new(pool);
+    let node = processed(&fx, "a.jpg", &jpeg_with_exif(&ExifSpec::default())).await;
+    let sha = node.blob_sha256.clone().unwrap();
+    // Recording metadata as ready fails every time; recording a failure does not.
+    sqlx::query(
+        "CREATE FUNCTION refuse_ready() RETURNS trigger LANGUAGE plpgsql AS \
+         $$ BEGIN RAISE EXCEPTION 'database trouble'; END $$",
+    )
+    .execute(fx.pool())
+    .await
+    .unwrap();
+    sqlx::query(
+        "CREATE TRIGGER refuse_ready BEFORE UPDATE ON media FOR EACH ROW \
+         WHEN (NEW.metadata_state = 'ready') EXECUTE FUNCTION refuse_ready()",
+    )
+    .execute(fx.pool())
+    .await
+    .unwrap();
+
+    let first = metadata::run(&fx.ctx, job("extract_metadata", json!({"sha256": sha}))).await;
+    assert!(matches!(first, Err(squirrel_jobs::JobError::Retry(_))));
+    let row = media::find(fx.pool(), &sha).await.unwrap().unwrap();
+    assert_eq!(row.metadata_state(), MediaState::Pending, "retries remain");
+
+    let mut last = job("extract_metadata", json!({"sha256": sha}));
+    last.attempt = last.max_attempts;
+    let last = metadata::run(&fx.ctx, last).await;
+    assert!(matches!(last, Err(squirrel_jobs::JobError::Retry(_))));
+    let row = media::find(fx.pool(), &sha).await.unwrap().unwrap();
+    assert_eq!(row.metadata_state(), MediaState::Failed);
+    assert!(row.last_error.unwrap().contains("database trouble"));
+}
