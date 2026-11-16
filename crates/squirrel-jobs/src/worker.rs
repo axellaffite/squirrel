@@ -11,6 +11,7 @@ use sqlx::PgPool;
 use sqlx::postgres::PgListener;
 use tokio::sync::{Semaphore, watch};
 use tokio::task::{JoinHandle, JoinSet};
+use tokio::time::Instant;
 
 use crate::backoff::{jitter, retry_delay};
 use crate::job::{JobContext, JobError};
@@ -98,8 +99,8 @@ impl Worker {
     /// (see [`WorkerConfig::shutdown_grace`]).
     pub async fn run(self, mut stop: watch::Receiver<bool>) -> anyhow::Result<()> {
         let kinds = self.registry.kinds();
-        let mut listener = PgListener::connect_with(&self.pool).await?;
-        listener.listen(CHANNEL).await?;
+        let mut wakeups = Wakeups::default();
+        wakeups.connect(&self.pool, self.config.poll_interval).await;
         let slots = Arc::new(Semaphore::new(self.config.concurrency.max(1)));
         let mut running = JoinSet::new();
         tracing::info!(
@@ -113,11 +114,15 @@ impl Worker {
             if let Err(err) = self.fill(&kinds, &slots, &mut running).await {
                 tracing::error!(error = %err, "claiming jobs failed");
             }
+            if wakeups.should_reconnect() {
+                wakeups.connect(&self.pool, self.config.poll_interval).await;
+            }
+            let listening = wakeups.is_listening();
             tokio::select! {
-                note = listener.recv() => {
+                note = wakeups.recv(), if listening => {
                     if let Err(err) = note {
                         tracing::warn!(error = %err, "job notifications interrupted; polling");
-                        tokio::time::sleep(self.config.poll_interval).await;
+                        wakeups.pause(self.config.poll_interval);
                     }
                 }
                 () = tokio::time::sleep(self.config.poll_interval) => {}
@@ -204,6 +209,69 @@ impl Worker {
             }
         }
         tracing::info!(worker = %self.config.name, "worker stopped");
+    }
+}
+
+/// `LISTEN` on the jobs channel, best effort: while it is unavailable the
+/// worker only polls, and it tries again on later loop turns. Never sleeps
+/// itself, so a stop request or a finished job is never kept waiting.
+#[derive(Default)]
+struct Wakeups {
+    listener: Option<PgListener>,
+    /// No `recv` (nor reconnection) before this instant: the poll interval is the backoff.
+    paused_until: Option<Instant>,
+}
+
+impl Wakeups {
+    async fn connect(&mut self, pool: &PgPool, timeout: Duration) {
+        let attempt = async {
+            let mut listener = PgListener::connect_with(pool).await?;
+            listener.listen(CHANNEL).await?;
+            Ok::<_, sqlx::Error>(listener)
+        };
+        match tokio::time::timeout(timeout, attempt).await {
+            Ok(Ok(listener)) => {
+                if self.paused_until.is_some() {
+                    tracing::info!("job notifications restored");
+                }
+                self.listener = Some(listener);
+                self.paused_until = None;
+            }
+            Ok(Err(err)) => {
+                tracing::warn!(error = %err, "cannot listen for job notifications; polling");
+                self.pause(timeout);
+            }
+            Err(_) => {
+                tracing::warn!("listening for job notifications timed out; polling");
+                self.pause(timeout);
+            }
+        }
+    }
+
+    fn pause(&mut self, delay: Duration) {
+        self.paused_until = Some(Instant::now() + delay);
+    }
+
+    fn is_paused(&self) -> bool {
+        self.paused_until
+            .is_some_and(|until| Instant::now() < until)
+    }
+
+    fn should_reconnect(&self) -> bool {
+        self.listener.is_none() && !self.is_paused()
+    }
+
+    fn is_listening(&self) -> bool {
+        self.listener.is_some() && !self.is_paused()
+    }
+
+    /// Pending forever without a listener (the `select!` guard disables it then).
+    async fn recv(&mut self) -> Result<(), sqlx::Error> {
+        match &mut self.listener {
+            // `PgListener` reconnects and listens again by itself on the next call.
+            Some(listener) => listener.recv().await.map(drop),
+            None => std::future::pending().await,
+        }
     }
 }
 
