@@ -44,6 +44,11 @@
 	let layouts: ReadonlyMap<string, MonthLayout<AssetSummary>> = $state.raw(new Map());
 	let viewTop = $state(0);
 	let viewHeight = $state(0);
+	/**
+	 * The month last jumped to (scrubber) and where that left the page. Near the end a short page
+	 * cannot bring the month to the top, so it stays "current" until the user scrolls elsewhere.
+	 */
+	let jumped: { index: number; scrollY: number } | null = $state(null);
 	/** Set on unmount: late month answers must not scroll whatever page is shown by then. */
 	let destroyed = false;
 
@@ -53,7 +58,8 @@
 	);
 
 	$effect(() => {
-		geometry = { boxes, total, current: monthAt(boxes, Math.max(0, viewTop)) };
+		const shown = monthAt(boxes, Math.max(0, viewTop));
+		geometry = { boxes, total, current: jumped?.index ?? shown };
 	});
 
 	// Months, width or token sizes changed: lay everything out again, keeping the view in place.
@@ -116,6 +122,7 @@
 
 	function measure() {
 		if (!root) return;
+		if (jumped && Math.abs(window.scrollY - jumped.scrollY) > 1) jumped = null;
 		viewTop = -root.getBoundingClientRect().top;
 		viewHeight = window.innerHeight;
 		pump();
@@ -126,6 +133,7 @@
 		const box = boxes[index];
 		if (!root || !box) return;
 		window.scrollTo({ top: window.scrollY + root.getBoundingClientRect().top + box.top, behavior: 'instant' });
+		jumped = { index, scrollY: window.scrollY };
 		measure();
 	}
 
