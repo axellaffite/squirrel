@@ -9,7 +9,6 @@ use common::files;
 use serde_json::Value;
 use sqlx::PgPool;
 use squirrel_api::{ApiConfig, UploadLimits, UserRate};
-use squirrel_storage::BlobStore;
 use uuid::Uuid;
 
 fn limited(limits: UploadLimits) -> ApiConfig {
@@ -209,25 +208,17 @@ async fn creating_uploads_is_rate_limited_per_user(pool: PgPool) {
         .assert_status(StatusCode::CREATED);
 }
 
-/// Free space on the filesystem holding the test data directories.
-fn free_space() -> u64 {
-    let dir = tempfile::tempdir().unwrap();
-    BlobStore::open(dir.path())
-        .unwrap()
-        .available_space()
-        .unwrap()
-}
+const MIB: u64 = 1024 * 1024;
 
 #[sqlx::test(migrator = "squirrel_db::MIGRATOR")]
 async fn open_sessions_reserve_disk_space(pool: PgPool) {
-    const MIB: u64 = 1024 * 1024;
     let config = ApiConfig {
-        // Leaves ~100 MiB usable; each session declares 60 MiB.
-        min_free_bytes: free_space().saturating_sub(100 * MIB),
+        // Leaves 100 MiB usable; each session declares 60 MiB.
+        min_free_bytes: 1024 * MIB,
         upload_chunk_size: MIB,
         ..common::test_config()
     };
-    let instance = common::Instance::with_config(pool, config);
+    let instance = common::Instance::with_config(pool, config).with_free_space(1124 * MIB);
     let (browser, me, parent) = alice(&instance).await;
     let declare = |name: &'static str| {
         let body = serde_json::json!({
@@ -247,15 +238,13 @@ async fn open_sessions_reserve_disk_space(pool: PgPool) {
 
 #[sqlx::test(migrator = "squirrel_db::MIGRATOR")]
 async fn one_user_cannot_reserve_most_of_the_free_space(pool: PgPool) {
-    const MIB: u64 = 1024 * 1024;
     let config = ApiConfig {
-        // Leaves ~1 GiB usable; each session declares 300 MiB (wide margins, so
-        // other processes changing the free space do not matter).
-        min_free_bytes: free_space().saturating_sub(1000 * MIB),
+        // Leaves 1000 MiB usable; each session declares 300 MiB.
+        min_free_bytes: 1024 * MIB,
         upload_chunk_size: MIB,
         ..common::test_config()
     };
-    let instance = common::Instance::with_config(pool, config);
+    let instance = common::Instance::with_config(pool, config).with_free_space(2024 * MIB);
     let ((alice, alice_me), (bob, bob_me)) = common::two_users(&instance).await;
     let declare = |browser: &axum_test::TestServer, me: &Value, parent: Uuid, name: &str| {
         let body = serde_json::json!({
@@ -291,10 +280,12 @@ async fn chunks_are_refused_below_the_free_space_floor(pool: PgPool) {
         .json();
     let id = session["upload_id"].as_str().unwrap();
 
-    let full_disk = instance.sharing(ApiConfig {
-        min_free_bytes: u64::MAX / 2,
-        ..common::test_config()
-    });
+    let full_disk = instance
+        .sharing(ApiConfig {
+            min_free_bytes: MIB,
+            ..common::test_config()
+        })
+        .with_free_space(MIB + 2);
     let other = full_disk.browser();
     let me = common::login(&other, "alice").await;
     let refused = files::put_chunk(&other, &me, id, 0, b"abc").await;

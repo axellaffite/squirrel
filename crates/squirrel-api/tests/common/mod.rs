@@ -57,6 +57,15 @@ impl Instance {
         }
     }
 
+    /// This server, reporting `bytes` free on its data disk whatever the
+    /// real disk holds.
+    pub fn with_free_space(self, bytes: u64) -> Self {
+        Self {
+            state: self.state.with_free_space(move || Ok(bytes)),
+            data: self.data,
+        }
+    }
+
     /// Another server over the same database and data directory, with `config`.
     pub fn sharing(&self, config: ApiConfig) -> Self {
         Self {

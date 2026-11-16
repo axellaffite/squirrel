@@ -84,16 +84,30 @@ async fn quota_is_checked_before_any_byte_is_sent(pool: PgPool) {
 #[sqlx::test(migrator = "squirrel_db::MIGRATOR")]
 async fn uploads_that_would_fill_the_disk_are_refused(pool: PgPool) {
     let config = squirrel_api::ApiConfig {
-        min_free_bytes: u64::MAX,
+        min_free_bytes: 1024,
         ..common::test_config()
     };
-    let instance = common::Instance::with_config(pool, config);
+    // 1026 bytes free: a 3-byte upload would leave less than 1024.
+    let instance = common::Instance::with_config(pool, config).with_free_space(1026);
     let browser = instance.browser();
     let me = common::setup_admin(&browser, "alice").await;
     let parent = files::root_id(&instance, &me, "Files").await;
     let response = files::start_upload(&browser, &me, parent, "a.bin", b"abc").await;
     response.assert_status(StatusCode::INSUFFICIENT_STORAGE);
     assert_eq!(files::code(&response), "storage_full");
+
+    // One byte more and it fits exactly.
+    let roomier = instance
+        .sharing(squirrel_api::ApiConfig {
+            min_free_bytes: 1024,
+            ..common::test_config()
+        })
+        .with_free_space(1027);
+    let other = roomier.browser();
+    let me = common::login(&other, "alice").await;
+    files::start_upload(&other, &me, parent, "a.bin", b"abc")
+        .await
+        .assert_status(StatusCode::CREATED);
 }
 
 #[sqlx::test(migrator = "squirrel_db::MIGRATOR")]

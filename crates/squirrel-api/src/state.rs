@@ -97,6 +97,10 @@ impl Default for ApiConfig {
     }
 }
 
+/// Free bytes on the data disk (the blob store's filesystem by default;
+/// tests pin it). Blocking: called on the blocking pool.
+pub type FreeSpace = Arc<dyn Fn() -> squirrel_storage::Result<u64> + Send + Sync>;
+
 #[derive(Clone)]
 pub struct AppState {
     pub pool: PgPool,
@@ -109,17 +113,37 @@ pub struct AppState {
     pub uploads: Arc<UploadRuntime>,
     /// Streaming file bodies; a slot lives as long as its body.
     pub downloads: Slots,
+    pub free_space: FreeSpace,
 }
 
 impl AppState {
     pub fn new(pool: PgPool, storage: BlobStore, config: ApiConfig) -> Self {
+        let store = storage.clone();
         Self {
             pool,
             storage,
+            free_space: Arc::new(move || store.available_space()),
             hash_permits: Arc::new(Semaphore::new(config.hash_concurrency)),
             uploads: Arc::new(UploadRuntime::new(&config.upload_limits)),
             downloads: config.download_limits.slots(),
             config: Arc::new(config),
         }
+    }
+
+    /// This state, measuring free disk space with `free_space` instead.
+    pub fn with_free_space(
+        self,
+        free_space: impl Fn() -> squirrel_storage::Result<u64> + Send + Sync + 'static,
+    ) -> Self {
+        Self {
+            free_space: Arc::new(free_space),
+            ..self
+        }
+    }
+
+    /// Free bytes on the data disk now.
+    pub async fn available_space(&self) -> Result<u64, crate::ApiError> {
+        let free_space = self.free_space.clone();
+        crate::blocking::run_storage(move || free_space()).await
     }
 }
