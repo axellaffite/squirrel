@@ -100,6 +100,40 @@ describe('createPoller after uploads', () => {
 	});
 });
 
+describe('createPoller progress', () => {
+	it('refreshes when some files are done, at most every 15 s', async () => {
+		let clock = 0;
+		const timers: (() => void)[] = [];
+		const answers = [status(5), status(4), status(3), status(2)];
+		const onProgress = vi.fn();
+		const poller = createPoller({
+			fetch: async () => answers.shift() ?? status(2),
+			onCount: () => {},
+			onSettled: () => {},
+			onProgress,
+			now: () => clock,
+			schedule: (run) => {
+				timers.push(run);
+				return () => {};
+			}
+		});
+		poller.start();
+		await flush();
+		clock = 5000;
+		timers.shift()?.();
+		await flush();
+		expect(onProgress).toHaveBeenCalledTimes(1);
+		clock = 10_000;
+		timers.shift()?.();
+		await flush();
+		expect(onProgress).toHaveBeenCalledTimes(1);
+		clock = 20_000;
+		timers.shift()?.();
+		await flush();
+		expect(onProgress).toHaveBeenCalledTimes(2);
+	});
+});
+
 describe('preparingText', () => {
 	it('counts files', () => {
 		expect(preparingText(1)).toBe('Preparing 1 photo or document…');

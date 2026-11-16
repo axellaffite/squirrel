@@ -3,6 +3,8 @@ import type { MediaStatus, Outcome } from '#lib/photos/api.ts';
 
 /** How often the status is asked again while something is pending. */
 export const STATUS_POLL_MS = 5000;
+/** Lists refresh at most this often while files are still being prepared. */
+export const PROGRESS_REFRESH_MS = 15_000;
 
 /** Files still waiting for, or going through, processing. */
 export const pendingCount = (status: MediaStatus): number => status.queued + status.processing;
@@ -17,6 +19,12 @@ export interface PollerOptions {
 	onCount: (count: number) => void;
 	/** Called when the count drops from something to zero. */
 	onSettled: () => void;
+	/**
+	 * Called when the count drops but files are still pending (some finished), at most once every
+	 * `PROGRESS_REFRESH_MS`, so lists show what is ready without waiting for the whole batch.
+	 */
+	onProgress?: () => void;
+	now?: () => number;
 	/** Whether the page is visible; polling pauses (without stopping) while it is not. */
 	visible?: () => boolean;
 	schedule?: (run: () => void, ms: number) => () => void;
@@ -42,6 +50,8 @@ export function createPoller(options: PollerOptions): { start: (opts?: StartOpti
 			return () => clearTimeout(handle);
 		});
 	const visible = options.visible ?? (() => true);
+	const now = options.now ?? (() => Date.now());
+	let lastProgress = -Infinity;
 	let cancel: (() => void) | null = null;
 	let last = 0;
 	let stopped = false;
@@ -61,6 +71,10 @@ export function createPoller(options: PollerOptions): { start: (opts?: StartOpti
 		const count = result.ok ? pendingCount(result.data) : last;
 		options.onCount(count);
 		if (last > 0 && count === 0) options.onSettled();
+		else if (count > 0 && count < last && options.onProgress && now() - lastProgress >= PROGRESS_REFRESH_MS) {
+			lastProgress = now();
+			options.onProgress();
+		}
 		last = count;
 		if (count > 0 || !result.ok) cancel = schedule(tick, STATUS_POLL_MS);
 	}
