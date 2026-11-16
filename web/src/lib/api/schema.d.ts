@@ -52,6 +52,70 @@ export interface paths {
         patch: operations["update_settings"];
         trace?: never;
     };
+    "/api/albums": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["list_albums"];
+        put?: never;
+        post: operations["create_album"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/albums/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["get_album"];
+        put?: never;
+        post?: never;
+        delete: operations["delete_album"];
+        options?: never;
+        head?: never;
+        patch: operations["update_album"];
+        trace?: never;
+    };
+    "/api/albums/{id}/items": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["list_album_items"];
+        put?: never;
+        post: operations["add_album_items"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/albums/{id}/items/remove": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["remove_album_items"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/auth/login": {
         parameters: {
             query?: never;
@@ -498,6 +562,23 @@ export interface components {
             password: string;
             username: string;
         };
+        AlbumDto: {
+            cover?: null | components["schemas"]["AssetSummary"];
+            /** Format: uuid */
+            id: string;
+            /**
+             * Format: int64
+             * @description Photos in the album (trashed ones are not counted).
+             */
+            item_count: number;
+            name: string;
+            /** Format: date-time */
+            updated_at: string;
+        };
+        AlbumItemsRequest: {
+            /** @description 1–500 photo (file node) ids; ids that are not the caller's photos are skipped. */
+            node_ids: string[];
+        };
         /** @description An album a photo belongs to. */
         AlbumRef: {
             /** Format: uuid */
@@ -564,6 +645,15 @@ export interface components {
             lens?: string | null;
             make?: string | null;
             model?: string | null;
+        };
+        CreateAlbumRequest: {
+            /** @description 1–100 characters. */
+            name: string;
+            /**
+             * @description Photos to put in it right away (at most 500); ids that are not the
+             *     caller's photos are skipped.
+             */
+            node_ids?: string[];
         };
         CreateFolderRequest: {
             name: string;
@@ -644,6 +734,13 @@ export interface components {
         };
         /** @enum {string} */
         InvitationStatusDto: "active" | "used" | "expired" | "revoked";
+        ItemsChanged: {
+            /**
+             * Format: int64
+             * @description Photos actually added or removed.
+             */
+            changed: number;
+        };
         JobSummaryDto: {
             /** Format: int64 */
             failed: number;
@@ -833,6 +930,15 @@ export interface components {
             /** @description Pass back as `cursor` for the next page; `null` on the last page. */
             next_cursor?: string | null;
         };
+        /** @description Rename and/or choose the cover. At least one field is required. */
+        UpdateAlbumRequest: {
+            /**
+             * Format: uuid
+             * @description Must be a photo of the album.
+             */
+            cover_node_id?: string | null;
+            name?: string | null;
+        };
         /** @description Rename and/or move. At least one field is required. */
         UpdateNodeRequest: {
             name?: string | null;
@@ -978,6 +1084,285 @@ export interface operations {
                 };
             };
             403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    list_albums: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Most recently changed first, at most 1000 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AlbumDto"][];
+                };
+            };
+        };
+    };
+    create_album: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateAlbumRequest"];
+            };
+        };
+        responses: {
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AlbumDto"];
+                };
+            };
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    get_album: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Album id */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AlbumDto"];
+                };
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    delete_album: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Album id */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Deleted; its photos stay */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    update_album: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Album id */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpdateAlbumRequest"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AlbumDto"];
+                };
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    list_album_items: {
+        parameters: {
+            query?: {
+                /** @description `next_cursor` of the previous page. */
+                cursor?: string;
+                /** @description Default 200, at most 500. */
+                limit?: number;
+            };
+            header?: never;
+            path: {
+                /** @description Album id */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TimelinePage"];
+                };
+            };
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    add_album_items: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Album id */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AlbumItemsRequest"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ItemsChanged"];
+                };
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    remove_album_items: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Album id */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AlbumItemsRequest"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ItemsChanged"];
+                };
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            422: {
                 headers: {
                     [name: string]: unknown;
                 };

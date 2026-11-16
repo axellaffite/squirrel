@@ -2,6 +2,7 @@
 
 use axum::Json;
 use axum::extract::State;
+use squirrel_db::albums;
 use squirrel_db::timeline::{self, Filter, month_bounds};
 use uuid::Uuid;
 
@@ -10,7 +11,7 @@ use crate::error::{ApiError, ErrorBody};
 use crate::extract::CurrentUser;
 use crate::input::{ApiPath, ApiQuery};
 use crate::photos_dto::{
-    AssetDetails, AssetSummary, MediaStatus, MonthCountDto, TimelinePage, TimelineQuery,
+    AlbumRef, AssetDetails, AssetSummary, MediaStatus, MonthCountDto, TimelinePage, TimelineQuery,
 };
 use crate::state::AppState;
 
@@ -108,7 +109,15 @@ pub async fn get_photo(
     let record = timeline::detail(&state.pool, current.user.id, id)
         .await?
         .ok_or(ApiError::NotFound)?;
-    Ok(Json(AssetDetails::new(&record, Vec::new())))
+    let albums = albums::albums_for_node(&state.pool, current.user.id, id)
+        .await?
+        .into_iter()
+        .map(|album| AlbumRef {
+            id: album.id,
+            name: album.name,
+        })
+        .collect();
+    Ok(Json(AssetDetails::new(&record, albums)))
 }
 
 #[utoipa::path(get, path = "/api/media/status", tag = "photos",

@@ -4,7 +4,7 @@ use axum::response::{IntoResponse, Response};
 use serde::Serialize;
 use squirrel_auth::HashError;
 use squirrel_core::{
-    ContentHashError, DisplayNameError, NodeNameError, PasswordError, UsernameError,
+    AlbumNameError, ContentHashError, DisplayNameError, NodeNameError, PasswordError, UsernameError,
 };
 use squirrel_db::DbError;
 use squirrel_storage::StorageError;
@@ -178,6 +178,7 @@ macro_rules! validation_from {
     )*};
 }
 validation_from!(
+    AlbumNameError,
     UsernameError,
     PasswordError,
     DisplayNameError,
