@@ -19,7 +19,7 @@ import app.squirrel.theme.SquirrelIcon
 import app.squirrel.theme.SquirrelTheme
 import app.squirrel.theme.Tokens
 
-/** A 36 dp round button with a 44 dp hit area; [label] names its subject ("Account menu"). */
+/** A 36 dp round button with a 48 dp hit area; [label] names its subject ("Account menu"). */
 @Composable
 fun IconButton(
     icon: SquirrelIcon,
@@ -29,11 +29,12 @@ fun IconButton(
     tinted: Boolean = false,
     enabled: Boolean = true,
 ) {
+    require(label.isNotBlank()) { "An icon-only button needs an accessible name" }
     val scheme = SquirrelTheme.scheme
     val interaction = remember { MutableInteractionSource() }
     Box(
         modifier = modifier
-            .sizeIn(minWidth = Tokens.tap, minHeight = Tokens.tap)
+            .sizeIn(minWidth = MinTouchTarget, minHeight = MinTouchTarget)
             .clickable(interaction, indication = null, enabled = enabled, role = Role.Button, onClick = onClick)
             .semantics { contentDescription = label },
         contentAlignment = Alignment.Center,

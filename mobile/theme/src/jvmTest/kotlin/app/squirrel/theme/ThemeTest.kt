@@ -43,4 +43,10 @@ class ThemeTest {
         assertEquals(Tokens.weightStrong, type.strong.fontWeight)
         assertEquals("tnum", type.caption.tabular().fontFeatureSettings)
     }
+
+    @Test
+    fun touchTargetsAreAtLeast48dp() {
+        assertTrue(app.squirrel.theme.components.MinTouchTarget >= 48.dp)
+        assertTrue(Tokens.rowMin >= app.squirrel.theme.components.MinTouchTarget)
+    }
 }

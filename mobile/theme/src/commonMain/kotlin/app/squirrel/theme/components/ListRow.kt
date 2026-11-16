@@ -45,7 +45,7 @@ fun ListRow(
                 if (onClick != null) Modifier.clickable(interaction, indication = null, role = Role.Button, onClick = onClick)
                 else Modifier,
             )
-            .heightIn(min = Tokens.rowMin)
+            .heightIn(min = maxOf(Tokens.rowMin, MinTouchTarget))
             .padding(horizontal = Tokens.space3, vertical = Tokens.space2),
         horizontalArrangement = Arrangement.spacedBy(Tokens.space3),
         verticalAlignment = Alignment.CenterVertically,

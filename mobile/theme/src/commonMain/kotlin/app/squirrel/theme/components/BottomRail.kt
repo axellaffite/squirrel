@@ -10,6 +10,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.sizeIn
 import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.selection.selectableGroup
 import androidx.compose.foundation.interaction.MutableInteractionSource
@@ -59,6 +60,7 @@ private fun RailButton(item: RailItem, active: Boolean, onClick: () -> Unit) {
     val well by animateColorAsState(if (active) scheme.railActive else scheme.railWell, SquirrelTheme.motion.fast())
     Column(
         modifier = Modifier
+            .sizeIn(minWidth = MinTouchTarget, minHeight = MinTouchTarget)
             .selectable(active, interaction, indication = null, role = Role.Tab, onClick = onClick)
             .padding(horizontal = Tokens.space3, vertical = Tokens.space1),
         horizontalAlignment = Alignment.CenterHorizontally,
