@@ -1838,3 +1838,28 @@ checked against JetBrains' docs on 2026-11-16, and what the plan does about each
   revocation), with any deferred item listed in "As built".
 - Settings › Devices shows both phones; revoking one signs it out within its next request.
 - Then add an **"As built"** section at the top of this plan, as Phases 1–3 did.
+
+## As built: Milestones A–C (2026-11-16)
+
+Server and web parts of Phase 6 (Tasks 1–13) are done; Milestones D–I are not started.
+
+- **Contract:** `openapi.json` declares `session_cookie`, `csrf_token` and `device_bearer`, and every
+  operation lists the ones it accepts (`[{}]` for public routes). `tests/route_auth_matrix.rs` checks
+  them against the router (anonymous, bearer only, session + CSRF) and fails on an unlisted route.
+  New schemas: `DeviceDto`, `DevicePlatform`, `TokenPair`, `AccountDto`, `DeviceLoginRequest`/`Response`,
+  `RefreshRequest`/`Response`, `CurrentDeviceResponse`, `RenameDeviceRequest`, `SyncCheckRequest`/`Item`/
+  `Response`, `SyncFolderRequest`/`Response`; device and sync operations have explicit `operation_id`s.
+- **Deviations from the plan text:**
+  - `device_retired_refresh` gained `retired_at`; maintenance prunes retired tokens older than the
+    refresh lifetime (otherwise one row per refresh would accumulate forever). Maintenance also
+    deletes devices revoked or expired for 30 days (`device_retention`) and expired access tokens.
+  - `upload_sessions_device_asset_shape` is `device_id IS NULL OR device_asset_id IS NOT NULL`, not an
+    equality: `device_id … ON DELETE SET NULL` would otherwise make deleting a device fail.
+  - `Principal::Session` carries no session record (nothing reads it); `DeviceCaller` replaces
+    `Caller::require_device`. A revoked device's refresh answers `Unknown` (401).
+  - The sync check's per-device limiter runs in the handler (`ApiConfig::sync_check_rate`, 2/s, burst 20);
+    `POST /api/sync/folder` serialises on the owner lock and reuses a live folder of the device's name;
+    a device name that cannot name a folder (`/` → `-`, `.`/`..` → "Phone") is adapted.
+  - `taken_at` accepts `Z` (offset 0); offsets beyond ±18 h are refused.
+  - The web's Settings › Devices is reached from the account menu ("Devices"); the e2e project
+    `devices` covers listing, revoking (desktop) and the phone actions sheet.
