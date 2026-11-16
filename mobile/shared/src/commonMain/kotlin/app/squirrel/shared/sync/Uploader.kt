@@ -8,7 +8,10 @@ import app.squirrel.shared.api.SquirrelApi
 import app.squirrel.shared.api.UploadOutcome
 import app.squirrel.shared.api.bodyOrThrow
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.joinAll
+import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Semaphore
 import kotlinx.datetime.TimeZone
@@ -61,6 +64,8 @@ class Uploader(
     private val random: () -> Double = { Random.nextDouble() },
     private val parallelChunks: Int = 2,
     private val timeZone: TimeZone = TimeZone.currentSystemDefault(),
+    private val pollMillis: Long = 1_000,
+    private val stopGraceMillis: Long = 10_000,
 ) {
     private val folders = mutableMapOf<Int, String>()
 
@@ -141,29 +146,45 @@ class Uploader(
         throw ApiError(409, "upload_incomplete", "The server kept missing chunks")
     }
 
-    /** Sends the missing chunks; false when [shouldContinue] stopped it between chunks. */
-    private suspend fun send(session: UploadSession, reader: AssetReader, shouldContinue: () -> Boolean): Boolean {
-        val gate = Semaphore(parallelChunks)
-        var completed = true
+    /**
+     * Sends the missing chunks, [parallelChunks] at a time; false when [shouldContinue] turned
+     * false. It is checked before each chunk and every [pollMillis] while chunks are in flight;
+     * those get [stopGraceMillis] to finish, then are cancelled (the server keeps what arrived).
+     */
+    private suspend fun send(session: UploadSession, reader: AssetReader, shouldContinue: () -> Boolean): Boolean =
         coroutineScope {
-            for (index in session.missing) {
-                gate.acquire()
-                if (!shouldContinue()) {
-                    gate.release()
-                    completed = false
-                    break
-                }
-                launch {
-                    try {
-                        transport.put(session, index, reader)
-                    } finally {
+            val gate = Semaphore(parallelChunks)
+            val chunks = mutableListOf<Job>()
+            val producer = launch {
+                for (index in session.missing) {
+                    gate.acquire()
+                    if (!shouldContinue()) {
                         gate.release()
+                        return@launch
+                    }
+                    chunks += this@coroutineScope.launch {
+                        try {
+                            transport.put(session, index, reader)
+                        } finally {
+                            gate.release()
+                        }
                     }
                 }
             }
+            while (producer.isActive || chunks.any { it.isActive }) {
+                if (!shouldContinue()) {
+                    producer.cancel()
+                    withTimeoutOrNull(stopGraceMillis) { chunks.toList().joinAll() }
+                    chunks.forEach { it.cancel() }
+                    return@coroutineScope false
+                }
+                withTimeoutOrNull(pollMillis) {
+                    producer.join()
+                    chunks.toList().joinAll()
+                }
+            }
+            session.missing.size == chunks.size
         }
-        return completed
-    }
 
     /** The file on the phone is no longer the one that was hashed (edited between hash and upload). */
     private fun changedSinceHashing(asset: QueuedAsset, reader: AssetReader): Boolean {
