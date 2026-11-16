@@ -3,10 +3,10 @@
 	import MonthSection from '#lib/components/photos/MonthSection.svelte';
 	import type { AssetSummary, MonthCount } from '#lib/photos/api.ts';
 	import { moveTileFocus } from '#lib/photos/keyboard.ts';
+	import { currentMonthIndex, jumpHolds, type Jump } from '#lib/photos/scrubber.ts';
 	import { readMetrics, sameMetrics } from '#lib/photos/metrics.ts';
 	import {
 		layoutMonth,
-		monthAt,
 		monthPlaceholders,
 		monthsToLoad,
 		reanchor,
@@ -48,7 +48,7 @@
 	 * The month last jumped to (scrubber) and where that left the page. Near the end a short page
 	 * cannot bring the month to the top, so it stays "current" until the user scrolls elsewhere.
 	 */
-	let jumped: { index: number; scrollY: number } | null = $state(null);
+	let jumped: Jump | null = $state(null);
 	/** Set on unmount: late month answers must not scroll whatever page is shown by then. */
 	let destroyed = false;
 
@@ -58,8 +58,7 @@
 	);
 
 	$effect(() => {
-		const shown = monthAt(boxes, Math.max(0, viewTop));
-		geometry = { boxes, total, current: jumped?.index ?? shown };
+		geometry = { boxes, total, current: currentMonthIndex(boxes, viewTop, jumped?.month ?? null) };
 	});
 
 	// Months, width or token sizes changed: lay everything out again, keeping the view in place.
@@ -72,6 +71,8 @@
 	});
 
 	function rebuild(months: readonly MonthCount[], w: number, m: Metrics) {
+		// Months moved: a remembered jump no longer describes the view.
+		jumped = null;
 		const before = boxes;
 		const top = viewTop;
 		const next = new Map<string, MonthLayout<AssetSummary>>();
@@ -122,7 +123,7 @@
 
 	function measure() {
 		if (!root) return;
-		if (jumped && Math.abs(window.scrollY - jumped.scrollY) > 1) jumped = null;
+		if (!jumpHolds(jumped, window.scrollY)) jumped = null;
 		viewTop = -root.getBoundingClientRect().top;
 		viewHeight = window.innerHeight;
 		pump();
@@ -133,7 +134,7 @@
 		const box = boxes[index];
 		if (!root || !box) return;
 		window.scrollTo({ top: window.scrollY + root.getBoundingClientRect().top + box.top, behavior: 'instant' });
-		jumped = { index, scrollY: window.scrollY };
+		jumped = { month: box.month, scrollY: window.scrollY };
 		measure();
 	}
 

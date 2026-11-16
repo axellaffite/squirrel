@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { monthAtFraction, positions, stepMonth, yearLabels } from '#lib/photos/scrubber.ts';
+import { currentMonthIndex, jumpHolds, monthAtFraction, positions, stepMonth, yearLabels } from '#lib/photos/scrubber.ts';
 
 const marks = [
 	{ month: '2024-07', top: 0 },
@@ -53,5 +53,24 @@ describe('stepMonth', () => {
 		expect(stepMonth(4, 'PageDown', months)).toBe(4);
 		expect(stepMonth(0, 'Enter', months)).toBeNull();
 		expect(stepMonth(0, 'ArrowDown', [])).toBeNull();
+	});
+});
+
+describe('the current month', () => {
+	it('follows the view, or the month jumped to while the jump holds', () => {
+		expect(currentMonthIndex(marks, 0, null)).toBe(0);
+		expect(currentMonthIndex(marks, 510, null)).toBe(2);
+		expect(currentMonthIndex(marks, 0, '2021-02')).toBe(4);
+		// A month that is gone (e.g. emptied by a delete) falls back to the view.
+		expect(currentMonthIndex(marks, 260, '1999-01')).toBe(1);
+		expect(currentMonthIndex([], 0, null)).toBe(-1);
+	});
+
+	it('keeps a jump until the page scrolls elsewhere', () => {
+		const jump = { month: '2021-02', scrollY: 800 };
+		expect(jumpHolds(jump, 800)).toBe(true);
+		expect(jumpHolds(jump, 801)).toBe(true);
+		expect(jumpHolds(jump, 760)).toBe(false);
+		expect(jumpHolds(null, 800)).toBe(false);
 	});
 });
