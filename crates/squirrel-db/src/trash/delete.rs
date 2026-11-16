@@ -1,4 +1,5 @@
-//! Permanent deletion. Every path deletes whole batches in one statement (so
+//! Permanent deletion. Content a phone backed up is tombstoned first
+//! (`deleted_hashes`). Every path deletes whole batches in one statement (so
 //! the blob reference triggers see all rows at once and lock blobs in sha256
 //! order), after moving nested entries out of the doomed batches.
 //!
@@ -144,6 +145,7 @@ async fn delete_entries(
     .bind(RESTORE_FALLBACK_ROOT)
     .execute(&mut *conn)
     .await?;
+    record_deleted_hashes(conn, ids, owner_id).await?;
     let deleted: i64 = sqlx::query_scalar(
         "WITH doomed AS ( \
              SELECT id, owner_id FROM nodes \
@@ -160,4 +162,34 @@ async fn delete_entries(
     .fetch_one(conn)
     .await?;
     Ok(u64::try_from(deleted).unwrap_or(0))
+}
+
+/// Tombstones the content of the doomed batches that a device of their owner
+/// had backed up (`device_assets`), so no phone of that owner uploads it again
+/// (see `device_assets::missing`). Runs in the deleting transaction.
+async fn record_deleted_hashes(
+    conn: &mut PgConnection,
+    ids: &[Uuid],
+    owner_id: Option<Uuid>,
+) -> Result<(), DbError> {
+    sqlx::query(
+        "WITH doomed AS ( \
+             SELECT id, owner_id FROM nodes \
+             WHERE id = ANY($1) AND trash_root = id AND ($2::uuid IS NULL OR owner_id = $2) \
+         ), content AS ( \
+             SELECT DISTINCT n.owner_id, n.blob_sha256 AS sha256 FROM nodes n \
+             JOIN doomed d ON n.owner_id = d.owner_id AND n.trash_root = d.id \
+             WHERE n.blob_sha256 IS NOT NULL \
+         ) \
+         INSERT INTO deleted_hashes (owner_id, sha256) \
+         SELECT c.owner_id, c.sha256 FROM content c \
+          WHERE EXISTS (SELECT 1 FROM device_assets a JOIN devices v ON v.id = a.device_id \
+                         WHERE a.sha256 = c.sha256 AND v.owner_id = c.owner_id) \
+         ON CONFLICT (owner_id, sha256) DO NOTHING",
+    )
+    .bind(ids)
+    .bind(owner_id)
+    .execute(conn)
+    .await?;
+    Ok(())
 }
