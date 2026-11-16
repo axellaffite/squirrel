@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
+	import NodeVisual from '#lib/components/files/NodeVisual.svelte';
 	import Icon from '#lib/components/icons/Icon.svelte';
 	import type { IconName } from '#lib/components/icons/paths.ts';
 	import ListRow from '#lib/components/ui/ListRow.svelte';
@@ -7,7 +8,6 @@
 	import { listFolder, storageUsage, type FileNode, type StorageUsage } from '#lib/files/api.ts';
 	import { formatBytes, formatDate, storageSummary } from '#lib/files/format.ts';
 	import { latestOnly } from '#lib/files/latest.ts';
-	import { nodeIcon } from '#lib/files/nodeIcon.ts';
 	import { recentItems, uploadTarget } from '#lib/home.ts';
 	import { session } from '#lib/session.svelte.ts';
 	import { enqueue, onUploadsSettled } from '#lib/upload/uploads.svelte.ts';
@@ -161,7 +161,7 @@
 				<ul class="rows">
 					{#each recent as node, index (node.id)}
 						<ListRow arrive={index + 4}>
-							{#snippet icon()}<Icon name={nodeIcon(node)} />{/snippet}
+							{#snippet icon()}<NodeVisual {node} />{/snippet}
 							{#snippet title()}
 								<a class="row-link" href={`/files/${node.kind === 'folder' ? node.id : node.parent_id}`}>{node.name}</a>
 							{/snippet}
