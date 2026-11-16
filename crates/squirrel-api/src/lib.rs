@@ -15,6 +15,7 @@ pub mod maintenance;
 mod photos_dto;
 mod rate_limit;
 mod routes;
+mod search_dto;
 mod security_headers;
 mod session;
 mod setup_token;
@@ -57,7 +58,8 @@ const CHUNK_TIMEOUT: Duration = Duration::from_secs(5 * 60);
     tags(
         (name = "system"), (name = "setup"), (name = "auth"), (name = "invitations"),
         (name = "admin"), (name = "files"), (name = "uploads"), (name = "trash"),
-        (name = "storage"), (name = "jobs"), (name = "photos"), (name = "albums")
+        (name = "storage"), (name = "jobs"), (name = "photos"), (name = "albums"),
+        (name = "search")
     )
 )]
 struct ApiDoc;
@@ -155,6 +157,7 @@ fn json_routes() -> OpenApiRouter<AppState> {
             routes::albums::add_album_items
         ))
         .routes(routes!(routes::albums::remove_album_items))
+        .routes(routes!(routes::search::search_documents))
         .routes(routes!(routes::storage::storage_usage))
         .routes(routes!(routes::uploads::create_upload))
         .routes(routes!(

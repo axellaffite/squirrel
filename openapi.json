@@ -1558,6 +1558,69 @@
         }
       }
     },
+    "/api/search/documents": {
+      "get": {
+        "tags": [
+          "search"
+        ],
+        "operationId": "search_documents",
+        "parameters": [
+          {
+            "name": "q",
+            "in": "query",
+            "description": "Words to find (1–200 characters): each must start a word of the\nfile's name or text, accents and case ignored.",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "offset",
+            "in": "query",
+            "description": "Results to skip, at most 200.",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "format": "int32",
+              "minimum": 0
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "description": "Page size, 1–50, default 20.",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "format": "int32",
+              "minimum": 0
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DocumentResults"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Invalid q, offset or limit",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/setup/admin": {
       "post": {
         "tags": [
@@ -2570,6 +2633,53 @@
           }
         }
       },
+      "DocumentHit": {
+        "type": "object",
+        "required": [
+          "node",
+          "snippet"
+        ],
+        "properties": {
+          "node": {
+            "$ref": "#/components/schemas/NodeDto"
+          },
+          "page_count": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32",
+            "description": "Pages of a PDF; `null` for other files or before it is processed."
+          },
+          "snippet": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/SnippetPart"
+            },
+            "description": "Passages of the text around the matches; empty when only the name matched."
+          }
+        }
+      },
+      "DocumentResults": {
+        "type": "object",
+        "required": [
+          "items",
+          "has_more"
+        ],
+        "properties": {
+          "has_more": {
+            "type": "boolean",
+            "description": "Whether `offset + limit` would return more (never past 200 results)."
+          },
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/DocumentHit"
+            },
+            "description": "Name matches first, then by relevance."
+          }
+        }
+      },
       "ErrorBody": {
         "type": "object",
         "required": [
@@ -3098,6 +3208,22 @@
           }
         }
       },
+      "SnippetPart": {
+        "type": "object",
+        "description": "A piece of a snippet; `highlight` marks a matched word.",
+        "required": [
+          "text",
+          "highlight"
+        ],
+        "properties": {
+          "highlight": {
+            "type": "boolean"
+          },
+          "text": {
+            "type": "string"
+          }
+        }
+      },
       "StorageUsageDto": {
         "type": "object",
         "required": [
@@ -3351,6 +3477,9 @@
     },
     {
       "name": "albums"
+    },
+    {
+      "name": "search"
     }
   ]
 }
