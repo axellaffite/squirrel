@@ -42,8 +42,9 @@ describe('TimelineData', () => {
 		await data.reload();
 		const pending = data.loadMonth('2024-07');
 		await data.reload();
-		expect(await pending).toBeNull();
+		expect(await pending).toEqual({ status: 'stale' });
 		expect(data.loaded.size).toBe(0);
+		expect(data.settled.size).toBe(0);
 	});
 
 	it('reports errors', async () => {
@@ -54,6 +55,29 @@ describe('TimelineData', () => {
 		await data.reload();
 		expect(data.error).toBe('down');
 		expect(data.months).toBeNull();
-		expect(await data.loadMonth('2024-07')).toBeNull();
+		expect(await data.loadMonth('2024-07')).toEqual({ status: 'failed' });
+	});
+
+	it('skips a failed month until the next reload', async () => {
+		const src = source();
+		src.listMonth.mockResolvedValueOnce({ ok: false, error: 'boom', status: 500 } as never);
+		const data = new TimelineData(src);
+		await data.reload();
+		await data.loadMonth('2024-07');
+		expect(data.settled.has('2024-07')).toBe(true);
+		expect(data.loaded.has('2024-07')).toBe(false);
+		await data.reload();
+		expect(data.settled.has('2024-07')).toBe(false);
+	});
+
+	it('removes photos and their counts at once', async () => {
+		const data = new TimelineData(source());
+		await data.reload();
+		await data.loadMonth('2024-07');
+		await data.loadMonth('2024-06');
+		data.remove(['a', 'c']);
+		expect(data.ordered.map((p) => (p as { id: string }).id)).toEqual(['b']);
+		expect(data.months).toEqual([{ month: '2024-07', count: 1 }]);
+		expect(data.total).toBe(1);
 	});
 });

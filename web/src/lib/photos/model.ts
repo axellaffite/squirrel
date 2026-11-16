@@ -154,15 +154,16 @@ export function monthAt(boxes: readonly MonthBox[], y: number): number {
 }
 
 /**
- * Months to request now: those within one viewport of [viewTop, viewBottom], not loaded or
- * loading, nearest to the view first, keeping at most `maxInFlight` requests running.
+ * Months to request now: those within one viewport of [viewTop, viewBottom], not loading and not
+ * `settled` (loaded, or failed until the next reload), nearest to the view first, keeping at most
+ * `maxInFlight` requests running.
  */
 export function monthsToLoad(
 	boxes: readonly MonthBox[],
 	viewTop: number,
 	viewBottom: number,
 	loading: ReadonlySet<string>,
-	loaded: ReadonlySet<string>,
+	settled: ReadonlySet<string>,
 	maxInFlight = 2
 ): string[] {
 	const free = maxInFlight - loading.size;
@@ -174,7 +175,7 @@ export function monthsToLoad(
 		box.top + box.height < viewTop ? viewTop - (box.top + box.height) : Math.max(0, box.top - viewBottom);
 	return boxes
 		.filter((box) => box.top <= to && box.top + box.height >= from)
-		.filter((box) => !loading.has(box.month) && !loaded.has(box.month))
+		.filter((box) => !loading.has(box.month) && !settled.has(box.month))
 		.sort((a, b) => distance(a) - distance(b))
 		.slice(0, free)
 		.map((box) => box.month);

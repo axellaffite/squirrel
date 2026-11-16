@@ -6,6 +6,14 @@ export interface TimelineSource {
 	listMonth: (month: string) => Promise<Outcome<AssetSummary[]>>;
 }
 
+/** What became of one month request. */
+export type MonthLoad =
+	| { status: 'loaded'; items: readonly AssetSummary[] }
+	/** A reload overtook it (or it was already loading): its answer was dropped. */
+	| { status: 'stale' }
+	/** It failed; the month is not asked again until the next `reload`. */
+	| { status: 'failed' };
+
 export class TimelineData {
 	/** Null until the first answer. */
 	months: MonthCount[] | null = $state.raw(null);
@@ -16,6 +24,7 @@ export class TimelineData {
 	readonly #source: TimelineSource;
 	#loading = new Set<string>();
 	#loaded = new Set<string>();
+	#failed = new Set<string>();
 	#generation = 0;
 
 	constructor(source: TimelineSource = { listMonths, listMonth }) {
@@ -29,6 +38,11 @@ export class TimelineData {
 	/** Months whose current items arrived (cleared by `reload`, so they are fetched again). */
 	get loaded(): ReadonlySet<string> {
 		return this.#loaded;
+	}
+
+	/** Months not to request now: loaded, or failed since the last reload. */
+	get settled(): ReadonlySet<string> {
+		return new Set([...this.#loaded, ...this.#failed]);
 	}
 
 	get total(): number | null {
@@ -51,28 +65,48 @@ export class TimelineData {
 		}
 		this.error = null;
 		this.#loaded = new Set();
+		this.#failed = new Set();
 		const present = new Set(result.data.map((entry) => entry.month));
 		this.items = Object.fromEntries(Object.entries(this.items).filter(([month]) => present.has(month)));
 		this.months = result.data;
 	}
 
-	/** Fetches one month; resolves its items, or null if it failed or a reload overtook it. */
-	async loadMonth(month: string): Promise<readonly AssetSummary[] | null> {
-		if (this.#loading.has(month)) return null;
+	/** Fetches one month. */
+	async loadMonth(month: string): Promise<MonthLoad> {
+		if (this.#loading.has(month)) return { status: 'stale' };
 		const generation = this.#generation;
 		this.#loading.add(month);
 		try {
 			const result = await this.#source.listMonth(month);
-			if (generation !== this.#generation) return null;
+			if (generation !== this.#generation) return { status: 'stale' };
 			if (!result.ok) {
 				this.error = result.error;
-				return null;
+				this.#failed.add(month);
+				return { status: 'failed' };
 			}
 			this.#loaded.add(month);
 			this.items = { ...this.items, [month]: result.data };
-			return result.data;
+			return { status: 'loaded', items: result.data };
 		} finally {
 			this.#loading.delete(month);
 		}
+	}
+
+	/** Takes photos out at once (e.g. moved to the trash), counts included; empty months go. */
+	remove(ids: Iterable<string>): void {
+		const gone = new Set(ids);
+		if (gone.size === 0 || !this.months) return;
+		const removed = new Map<string, number>();
+		const items: Record<string, readonly AssetSummary[]> = {};
+		for (const [month, list] of Object.entries(this.items)) {
+			const kept = list.filter((item) => !gone.has(item.id));
+			items[month] = kept;
+			if (kept.length !== list.length) removed.set(month, list.length - kept.length);
+		}
+		if (removed.size === 0) return;
+		this.items = items;
+		this.months = this.months
+			.map((entry) => ({ ...entry, count: entry.count - (removed.get(entry.month) ?? 0) }))
+			.filter((entry) => entry.count > 0);
 	}
 }
