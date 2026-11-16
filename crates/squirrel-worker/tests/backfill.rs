@@ -102,4 +102,12 @@ async fn processed_files_are_skipped_and_old_thumbnails_redone(pool: PgPool) {
     let jobs = queued(fx.pool()).await;
     assert_eq!(jobs.len(), 1, "{jobs:?}");
     assert_eq!((jobs[0].0.as_str(), jobs[0].1), ("thumbnails", 30));
+    let sha = jpeg.blob_sha256.as_deref().unwrap();
+    let expected = squirrel_worker::jobs::thumbnails(sha, true);
+    assert_eq!(jobs[0].2, expected.payload);
+    let key: Option<String> = sqlx::query_scalar("SELECT dedupe_key FROM jobs")
+        .fetch_one(fx.pool())
+        .await
+        .unwrap();
+    assert_eq!(key, expected.dedupe_key);
 }

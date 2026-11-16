@@ -4,7 +4,7 @@
 use serde::Deserialize;
 use sqlx::PgConnection;
 use squirrel_core::MediaKind;
-use squirrel_jobs::{JobContext, JobError, kinds};
+use squirrel_jobs::{JobContext, JobError, kinds, priority};
 use squirrel_media::render::THUMBS_VERSION;
 use uuid::Uuid;
 
@@ -44,6 +44,11 @@ pub async fn run_page(ctx: &MediaContext, job: JobContext, page: i64) -> Result<
     .fetch_all(&ctx.pool)
     .await
     .map_err(JobError::retry)?;
+    // Loaded (once per process) before the transaction opens.
+    let dataset = match after {
+        None => ctx.geo.installed_dataset_id().await,
+        Some(_) => None,
+    };
     let mut tx = ctx.pool.begin().await.map_err(JobError::retry)?;
     for id in &ids {
         squirrel_jobs::enqueue(&mut tx, &kinds::process_media(*id, true))
@@ -51,7 +56,7 @@ pub async fn run_page(ctx: &MediaContext, job: JobContext, page: i64) -> Result<
             .map_err(JobError::retry)?;
     }
     if after.is_none() {
-        requeue_stale_steps(&mut tx, ctx.geo.dataset_id().as_deref()).await?;
+        requeue_stale_steps(&mut tx, dataset.as_deref()).await?;
         if ctx.pdfium_dir.is_some() {
             requeue_pdfs_awaiting_pdfium(&mut tx).await?;
         }
@@ -65,77 +70,88 @@ pub async fn run_page(ctx: &MediaContext, job: JobContext, page: i64) -> Result<
     tx.commit().await.map_err(JobError::retry)
 }
 
+/// `INSERT … SELECT` of one per-blob job (same payload, dedupe key and
+/// priority as [`jobs::thumbnails`] and its siblings) for every `sha256`
+/// that `blobs` (a fixed SQL fragment reading `$3`) selects: one statement,
+/// however many blobs.
+fn per_blob_insert(blobs: &str) -> String {
+    format!(
+        "INSERT INTO jobs (kind, payload, priority, dedupe_key, run_at) \
+         SELECT $1, jsonb_build_object('sha256', b.sha256), $2, $1 || ':' || b.sha256, now() \
+           FROM ({blobs}) AS b \
+         ON CONFLICT (dedupe_key) \
+            WHERE dedupe_key IS NOT NULL AND status IN ('queued', 'running') DO NOTHING"
+    )
+}
+
 /// Thumbnails made with older settings are regenerated, and geotagged blobs
-/// not yet geocoded with the current dataset are geocoded (again).
+/// not yet geocoded with the installed dataset are geocoded (again).
 async fn requeue_stale_steps(
     conn: &mut PgConnection,
     dataset: Option<&str>,
 ) -> Result<(), JobError> {
-    let stale: Vec<String> = sqlx::query_scalar(
-        "SELECT sha256 FROM media WHERE thumbs_state = 'ready' AND thumbs_version < $1",
-    )
-    .bind(THUMBS_VERSION)
-    .fetch_all(&mut *conn)
-    .await
-    .map_err(JobError::retry)?;
-    for sha in &stale {
-        squirrel_jobs::enqueue(conn, &jobs::thumbnails(sha, true))
-            .await
-            .map_err(JobError::retry)?;
-    }
+    let stale = per_blob_insert(
+        "SELECT sha256 FROM media WHERE thumbs_state = 'ready' AND thumbs_version < $3",
+    );
+    sqlx::query(&stale)
+        .bind(jobs::THUMBNAILS)
+        .bind(priority::background(priority::THUMBNAILS))
+        .bind(THUMBS_VERSION)
+        .execute(&mut *conn)
+        .await
+        .map_err(JobError::retry)?;
     let Some(dataset) = dataset else {
         return Ok(());
     };
-    let ungeocoded: Vec<String> = sqlx::query_scalar(
+    let ungeocoded = per_blob_insert(
         "SELECT sha256 FROM media \
-          WHERE latitude IS NOT NULL AND geocoded_with IS DISTINCT FROM $1",
-    )
-    .bind(dataset)
-    .fetch_all(&mut *conn)
-    .await
-    .map_err(JobError::retry)?;
-    for sha in &ungeocoded {
-        squirrel_jobs::enqueue(conn, &jobs::geocode(sha, true))
-            .await
-            .map_err(JobError::retry)?;
-    }
+          WHERE latitude IS NOT NULL AND geocoded_with IS DISTINCT FROM $3",
+    );
+    sqlx::query(&ungeocoded)
+        .bind(jobs::GEOCODE)
+        .bind(priority::background(priority::GEOCODE))
+        .bind(dataset)
+        .execute(&mut *conn)
+        .await
+        .map_err(JobError::retry)?;
     Ok(())
 }
 
 /// PDF steps skipped because no pdfium was configured go back to `pending`
 /// and are queued again, now that one is.
 async fn requeue_pdfs_awaiting_pdfium(conn: &mut PgConnection) -> Result<(), JobError> {
-    let rows: Vec<(String, String, String)> = sqlx::query_as(
-        "UPDATE media \
-            SET thumbs_state = CASE WHEN thumbs_state = 'unsupported' THEN 'pending' \
-                                    ELSE thumbs_state END, \
-                text_state = CASE WHEN text_state = 'unsupported' THEN 'pending' \
-                                  ELSE text_state END, \
-                last_error = NULL, updated_at = now() \
-          WHERE kind = 'pdf' AND last_error = $1 \
-            AND 'unsupported' IN (thumbs_state, text_state) \
-         RETURNING sha256, thumbs_state, text_state",
-    )
-    .bind(NO_PDFIUM)
-    .fetch_all(&mut *conn)
-    .await
-    .map_err(JobError::retry)?;
-    for (sha, thumbs, text) in &rows {
-        if thumbs == "pending" {
-            squirrel_jobs::enqueue(conn, &jobs::thumbnails(sha, true))
-                .await
-                .map_err(JobError::retry)?;
-        }
-        if text == "pending" {
-            squirrel_jobs::enqueue(conn, &jobs::extract_text(sha, true))
-                .await
-                .map_err(JobError::retry)?;
-        }
-    }
-    if !rows.is_empty() {
+    let reset = "WITH reset AS ( \
+             UPDATE media \
+                SET thumbs_state = CASE WHEN thumbs_state = 'unsupported' THEN 'pending' \
+                                        ELSE thumbs_state END, \
+                    text_state = CASE WHEN text_state = 'unsupported' THEN 'pending' \
+                                      ELSE text_state END, \
+                    last_error = NULL, updated_at = now() \
+              WHERE kind = 'pdf' AND last_error = $1 \
+                AND 'unsupported' IN (thumbs_state, text_state) \
+             RETURNING sha256, thumbs_state, text_state) \
+         INSERT INTO jobs (kind, payload, priority, dedupe_key, run_at) \
+         SELECT step.kind, jsonb_build_object('sha256', reset.sha256), step.priority, \
+                step.kind || ':' || reset.sha256, now() \
+           FROM reset, LATERAL (VALUES ($2, $3, reset.thumbs_state), \
+                                       ($4, $5, reset.text_state)) \
+                AS step (kind, priority, state) \
+          WHERE step.state = 'pending' \
+         ON CONFLICT (dedupe_key) \
+            WHERE dedupe_key IS NOT NULL AND status IN ('queued', 'running') DO NOTHING";
+    let queued = sqlx::query(reset)
+        .bind(NO_PDFIUM)
+        .bind(jobs::THUMBNAILS)
+        .bind(priority::background(priority::THUMBNAILS))
+        .bind(jobs::EXTRACT_TEXT)
+        .bind(priority::background(priority::TEXT))
+        .execute(&mut *conn)
+        .await
+        .map_err(JobError::retry)?;
+    if queued.rows_affected() > 0 {
         tracing::info!(
-            pdfs = rows.len(),
-            "queued PDFs skipped while pdfium was not configured"
+            jobs = queued.rows_affected(),
+            "queued PDF steps skipped while pdfium was not configured"
         );
     }
     Ok(())

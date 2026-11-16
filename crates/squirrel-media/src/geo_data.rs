@@ -103,34 +103,53 @@ impl GeoSource {
         }
     }
 
-    /// Recorded in `media.geocoded_with`: a different id means "geocode again".
-    pub fn dataset_id(&self) -> Option<String> {
-        match self {
-            Self::Disabled => None,
-            Self::Pinned(_) => Some(PINNED.file_name.to_owned()),
-            Self::Explicit(path) => Some(format!(
-                "custom:{}",
-                path.file_name()
-                    .map(|name| name.to_string_lossy().into_owned())
-                    .unwrap_or_default()
-            )),
-        }
+    /// Whether geocoding is on at all (a dataset may still be missing).
+    pub fn is_enabled(&self) -> bool {
+        !matches!(self, Self::Disabled)
     }
 
-    /// The index; `Ok(None)` when there is nothing to load yet (disabled, or
+    /// The dataset; `Ok(None)` when there is nothing to load yet (disabled, or
     /// the pinned snapshot is not installed). Slow (reads and parses ~16 MB):
     /// call it off the async runtime and cache the result.
-    pub fn load(&self) -> Result<Option<GeoIndex>, GeoDataError> {
+    pub fn load(&self) -> Result<Option<Dataset>, GeoDataError> {
         match self {
             Self::Disabled => Ok(None),
             Self::Pinned(path) if !path.exists() => Ok(None),
-            Self::Pinned(path) => load_verified(path, &PINNED).map(Some),
+            Self::Pinned(path) => Ok(Some(Dataset {
+                index: load_verified(path, &PINNED)?,
+                id: PINNED.file_name.to_owned(),
+            })),
             Self::Explicit(path) => {
                 let bytes = read_bounded(path)?;
-                Ok(Some(GeoIndex::load(bytes.as_slice())?))
+                let id = custom_id(path, &bytes);
+                Ok(Some(Dataset {
+                    index: GeoIndex::load(bytes.as_slice())?,
+                    id,
+                }))
             }
         }
     }
+}
+
+/// A loaded dataset and what `media.geocoded_with` records for it: a
+/// different id means "geocode again".
+pub struct Dataset {
+    pub index: GeoIndex,
+    pub id: String,
+}
+
+/// Hex digits of the content hash in a custom dataset's id.
+const CUSTOM_HASH_CHARS: usize = 12;
+
+/// `custom:<file name>:<short content hash>`: editing the file in place
+/// changes the id too.
+fn custom_id(path: &Path, bytes: &[u8]) -> String {
+    let name = path
+        .file_name()
+        .map(|name| name.to_string_lossy().into_owned())
+        .unwrap_or_default();
+    let hash = sha256_hex(bytes);
+    format!("custom:{name}:{}", &hash[..CUSTOM_HASH_CHARS])
 }
 
 #[cfg(test)]
@@ -177,20 +196,27 @@ mod tests {
 
     #[test]
     fn sources_resolve_and_name_their_dataset() {
-        let data_dir = Path::new("/srv/squirrel");
-        let pinned = GeoSource::resolve(None, data_dir);
+        let dir = tempfile::tempdir().unwrap();
+        let pinned = GeoSource::resolve(None, dir.path());
         assert_eq!(
             pinned,
-            GeoSource::Pinned(data_dir.join("geo").join(PINNED.file_name))
+            GeoSource::Pinned(dir.path().join("geo").join(PINNED.file_name))
         );
-        assert_eq!(pinned.dataset_id().as_deref(), Some(PINNED.file_name));
-        let explicit = GeoSource::resolve(Some("/x/geo-sample.tsv".into()), data_dir);
-        assert_eq!(explicit, GeoSource::Explicit("/x/geo-sample.tsv".into()));
-        assert_eq!(
-            explicit.dataset_id().as_deref(),
-            Some("custom:geo-sample.tsv")
+        assert!(pinned.is_enabled());
+        assert!(!GeoSource::Disabled.is_enabled());
+        let path = write(dir.path(), "geo-sample.tsv", SAMPLE);
+        let explicit = GeoSource::resolve(Some(path.clone()), dir.path());
+        assert_eq!(explicit, GeoSource::Explicit(path.clone()));
+        let id = explicit.load().unwrap().unwrap().id;
+        let hash = sha256_hex(SAMPLE.as_bytes());
+        assert_eq!(id, format!("custom:geo-sample.tsv:{}", &hash[..12]));
+        // Edited in place: another dataset.
+        write(
+            dir.path(),
+            "geo-sample.tsv",
+            &SAMPLE.replace("Paris", "Lutèce"),
         );
-        assert_eq!(GeoSource::Disabled.dataset_id(), None);
+        assert_ne!(explicit.load().unwrap().unwrap().id, id);
     }
 
     #[test]
@@ -206,7 +232,7 @@ mod tests {
         let missing = GeoSource::Explicit(dir.path().join("nope.tsv"));
         assert!(matches!(missing.load(), Err(GeoDataError::Io { .. })));
         let present = GeoSource::Explicit(write(dir.path(), "s.tsv", SAMPLE));
-        assert_eq!(present.load().unwrap().unwrap().len(), 1);
+        assert_eq!(present.load().unwrap().unwrap().index.len(), 1);
     }
 
     #[test]
