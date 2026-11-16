@@ -19,7 +19,9 @@ sealed interface ChunkAuth {
     data object Bearer : ChunkAuth
 
     /** `Authorization: Upload <token>`, scoped to one upload (iOS background transfers, Milestone H). */
-    data class UploadToken(val token: String) : ChunkAuth
+    data class UploadToken(val token: String) : ChunkAuth {
+        override fun toString(): String = "UploadToken(<redacted>)"
+    }
 }
 
 /** The operation in openapi.json this call implements (ContractTest checks it). */

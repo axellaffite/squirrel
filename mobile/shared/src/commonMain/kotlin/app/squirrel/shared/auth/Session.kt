@@ -15,7 +15,9 @@ sealed interface SessionState {
 }
 
 /** A fresh token pair, as returned by device login and refresh. */
-data class Tokens(val accessToken: String, val refreshToken: String)
+data class Tokens(val accessToken: String, val refreshToken: String) {
+    override fun toString(): String = "Tokens(<redacted>)"
+}
 
 /** What a refresh call answered. */
 sealed interface RefreshOutcome {
