@@ -93,3 +93,32 @@ export function stepMonth(index: number, key: string, months: readonly string[])
 			return null;
 	}
 }
+
+/** A month jumped to with the scrubber, and where that left the page. */
+export interface Jump {
+	month: string;
+	scrollY: number;
+}
+
+/** A jump holds until the page scrolls elsewhere (the user, or a layout change moving it). */
+export const jumpHolds = (jump: Jump | null, scrollY: number): jump is Jump =>
+	jump !== null && Math.abs(scrollY - jump.scrollY) <= 1;
+
+/**
+ * The scrubber's current month: the month jumped to while it still holds (near the end a short
+ * page cannot bring it to the top), else the month at the top of the view.
+ */
+export function currentMonthIndex(
+	boxes: readonly { month: string; top: number }[],
+	viewTop: number,
+	jumped: string | null
+): number {
+	if (jumped !== null) {
+		const index = boxes.findIndex((box) => box.month === jumped);
+		if (index >= 0) return index;
+	}
+	if (boxes.length === 0) return -1;
+	let current = 0;
+	for (let i = 0; i < boxes.length && boxes[i].top <= Math.max(0, viewTop); i++) current = i;
+	return current;
+}
