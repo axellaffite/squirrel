@@ -1,0 +1,278 @@
+<script lang="ts">
+	import { onMount } from 'svelte';
+	import LightboxPhoto from '#lib/components/photos/LightboxPhoto.svelte';
+	import PhotoInfo from '#lib/components/photos/PhotoInfo.svelte';
+	import StageButton from '#lib/components/photos/StageButton.svelte';
+	import Alert from '#lib/components/ui/Alert.svelte';
+	import Button from '#lib/components/ui/Button.svelte';
+	import Dialog from '#lib/components/ui/Dialog.svelte';
+	import { contentUrl } from '#lib/files/format.ts';
+	import { latestOnly } from '#lib/files/latest.ts';
+	import { photoDetails, thumbnailUrl, type AssetDetails, type AssetSummary } from '#lib/photos/api.ts';
+	import { tileDateTime } from '#lib/photos/dates.ts';
+
+	/** A horizontal finger move longer than this (px) goes to the neighbouring photo. */
+	const SWIPE_MIN = 50;
+
+	interface Props {
+		asset: AssetSummary;
+		/** The photos to step through, in timeline order. */
+		items: readonly AssetSummary[];
+		onNavigate: (asset: AssetSummary) => void;
+		onClose: () => void;
+		/** Moves the photo to the trash; resolves an error message, or null on success. */
+		onDelete: (asset: AssetSummary) => Promise<string | null>;
+	}
+
+	let { asset, items, onNavigate, onClose, onDelete }: Props = $props();
+
+	let dialog: HTMLDialogElement | undefined = $state();
+	let infoOpen = $state(false);
+	let details: AssetDetails | null = $state(null);
+	let detailsError: string | null = $state(null);
+	let confirming = $state(false);
+	let deleting = $state(false);
+	let deleteError: string | null = $state(null);
+	let swipe: { x: number; y: number } | null = null;
+	const track = latestOnly();
+
+	const index = $derived(items.findIndex((item) => item.id === asset.id));
+	const previous = $derived(index > 0 ? items[index - 1] : null);
+	const next = $derived(index >= 0 && index < items.length - 1 ? items[index + 1] : null);
+	const when = $derived(tileDateTime(asset.taken_at));
+
+	$effect(() => {
+		const id = asset.id;
+		details = null;
+		detailsError = null;
+		void track(photoDetails(id)).then((result) => {
+			if (result.stale) return;
+			if (result.value.ok) details = result.value.data;
+			else detailsError = result.value.error;
+		});
+	});
+
+	// Neighbours' previews are fetched ahead, so stepping through feels instant.
+	$effect(() => {
+		for (const neighbour of [previous, next]) {
+			if (neighbour?.thumbnail.state !== 'ready') continue;
+			new Image().src = thumbnailUrl(neighbour.id, 'preview', neighbour.thumbnail.version);
+		}
+	});
+
+	function go(target: AssetSummary | null) {
+		if (target) onNavigate(target);
+	}
+
+	function keydown(event: KeyboardEvent) {
+		if (confirming || event.defaultPrevented) return;
+		if (event.key === 'ArrowLeft') go(previous);
+		else if (event.key === 'ArrowRight') go(next);
+		else return;
+		event.preventDefault();
+	}
+
+	function pointerdown(event: PointerEvent) {
+		swipe = event.pointerType === 'touch' ? { x: event.clientX, y: event.clientY } : null;
+	}
+
+	function pointerup(event: PointerEvent) {
+		if (!swipe) return;
+		const dx = event.clientX - swipe.x;
+		const dy = event.clientY - swipe.y;
+		swipe = null;
+		if (Math.abs(dx) < SWIPE_MIN || Math.abs(dx) < Math.abs(dy)) return;
+		go(dx > 0 ? previous : next);
+	}
+
+	async function confirmDelete() {
+		deleting = true;
+		deleteError = null;
+		const error = await onDelete(asset);
+		deleting = false;
+		if (error) deleteError = error;
+		else confirming = false;
+	}
+
+	onMount(() => {
+		dialog?.showModal();
+	});
+</script>
+
+<dialog bind:this={dialog} class="lightbox" class:with-info={infoOpen} aria-label={`Photo taken ${when}`} onclose={onClose} onkeydown={keydown}>
+	<div class="stage" onpointerdown={pointerdown} onpointerup={pointerup} role="presentation">
+		<LightboxPhoto {asset} />
+		<div class="bar">
+			<StageButton icon="x" label="Close the photo viewer" tooltip="Close" onclick={() => dialog?.close()} />
+			<div class="tools">
+				<StageButton
+					icon="info"
+					label={`Details of the photo taken ${when}`}
+					tooltip="Details"
+					aria-expanded={infoOpen}
+					aria-controls="photo-info"
+					onclick={() => (infoOpen = !infoOpen)}
+				/>
+				<StageButton icon="download" label={`Download the photo taken ${when}`} tooltip="Download" href={contentUrl(asset.id, true)} download />
+				<StageButton icon="trash" label={`Move the photo taken ${when} to the trash`} tooltip="Move to trash" onclick={() => (confirming = true)} />
+			</div>
+		</div>
+		{#if previous}
+			<StageButton class="nav prev" icon="chevron-left" label={`Previous photo, taken ${tileDateTime(previous.taken_at)}`} tooltip="Previous" onclick={() => go(previous)} />
+		{/if}
+		{#if next}
+			<StageButton class="nav next" icon="chevron-right" label={`Next photo, taken ${tileDateTime(next.taken_at)}`} tooltip="Next" onclick={() => go(next)} />
+		{/if}
+	</div>
+	{#if infoOpen}
+		<aside class="sheet" id="photo-info" aria-label="Photo details">
+			<PhotoInfo {asset} {details} error={detailsError} />
+		</aside>
+	{/if}
+
+	{#if confirming}
+		<Dialog open title="Move this photo to the trash?" onclose={() => (confirming = false)}>
+			<div class="confirm">
+				<p class="muted">{asset.name} stays in the trash for 30 days before it is deleted for good.</p>
+				{#if deleteError}<Alert>{deleteError}</Alert>{/if}
+			</div>
+			{#snippet actions()}
+				<Button variant="secondary" onclick={() => (confirming = false)}>Cancel</Button>
+				<Button variant="danger-solid" onclick={confirmDelete} disabled={deleting}>Move to trash</Button>
+			{/snippet}
+		</Dialog>
+	{/if}
+</dialog>
+
+<style>
+	/* A full-viewport graphite stage; the dialog's standard fade on arrival, instant steps. */
+	.lightbox {
+		position: fixed;
+		inset: 0;
+		z-index: 40;
+		display: grid;
+		grid-template-rows: minmax(0, 1fr);
+		width: 100vw;
+		max-width: none;
+		height: 100dvh;
+		max-height: none;
+		margin: 0;
+		padding: 0;
+		border: 0;
+		background: var(--rail);
+		color: var(--rail-ink);
+		opacity: 0;
+		transition:
+			opacity var(--dur-fast) var(--ease),
+			overlay var(--dur-fast) allow-discrete,
+			display var(--dur-fast) allow-discrete;
+	}
+
+	.lightbox:not([open]) {
+		display: none;
+	}
+
+	.lightbox[open] {
+		opacity: 1;
+		transition-duration: var(--dur-slow);
+	}
+
+	@starting-style {
+		.lightbox[open] {
+			opacity: 0;
+		}
+	}
+
+	.lightbox::backdrop {
+		background: var(--scrim);
+	}
+
+	.with-info {
+		grid-template-rows: minmax(0, 1fr) minmax(0, 1fr);
+	}
+
+	.stage {
+		position: relative;
+		display: grid;
+		min-height: 0;
+		padding: calc(var(--control-md) + 2 * var(--space-4)) var(--space-4)
+			calc(var(--space-4) + env(safe-area-inset-bottom));
+		touch-action: pan-y pinch-zoom;
+	}
+
+	.bar {
+		position: absolute;
+		top: calc(var(--space-4) + env(safe-area-inset-top));
+		left: var(--space-4);
+		right: var(--space-4);
+		display: flex;
+		justify-content: space-between;
+		gap: var(--space-2);
+	}
+
+	.tools {
+		display: flex;
+		gap: var(--space-2);
+	}
+
+	.stage :global(.nav) {
+		position: absolute;
+		top: 50%;
+		transform: translateY(-50%);
+	}
+
+	.stage :global(.nav:active) {
+		transform: translateY(calc(-50% + var(--press)));
+	}
+
+	.stage :global(.prev) {
+		left: var(--space-4);
+	}
+
+	.stage :global(.next) {
+		right: var(--space-4);
+	}
+
+	.sheet {
+		overflow-y: auto;
+		padding: var(--space-5) var(--space-4) calc(var(--space-5) + env(safe-area-inset-bottom));
+		border-radius: var(--radius-panel) var(--radius-panel) 0 0;
+		background: var(--card);
+		box-shadow: var(--shadow-pop);
+		color: var(--ink);
+		overscroll-behavior: contain;
+	}
+
+	.confirm {
+		display: grid;
+		gap: var(--space-3);
+	}
+
+	/* From 768 px the photo gets side room for the arrows. */
+	@media (min-width: 48rem) {
+		.stage {
+			padding-left: calc(var(--control-md) + 2 * var(--space-4));
+			padding-right: calc(var(--control-md) + 2 * var(--space-4));
+		}
+	}
+
+	/* From 1024 px the details are a panel on the right. */
+	@media (min-width: 64rem) {
+		.with-info {
+			grid-template-rows: minmax(0, 1fr);
+			grid-template-columns: minmax(0, 1fr) var(--info-w);
+		}
+
+		.sheet {
+			margin: var(--space-3);
+			border-radius: var(--radius-panel);
+		}
+	}
+
+	@media (forced-colors: active) {
+		.lightbox,
+		.sheet {
+			border: 1px solid CanvasText;
+		}
+	}
+</style>
