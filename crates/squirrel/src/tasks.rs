@@ -1,5 +1,6 @@
 //! Periodic maintenance: expired login sessions, abandoned uploads, old trash,
-//! unreferenced blobs, blob files without a catalogue row and old failed jobs.
+//! unreferenced blobs, blob files and derived files without a catalogue row
+//! and old failed jobs.
 
 use std::future::Future;
 use std::time::Duration;
@@ -103,7 +104,7 @@ fn spawn_storage_job(state: &AppState) {
     });
 }
 
-/// Removes blob files without a catalogue row, first after [`FIRST_SWEEP_DELAY`].
+/// Removes blob files and derived directories without a catalogue row, first after [`FIRST_SWEEP_DELAY`].
 fn spawn_orphan_sweep(state: &AppState) {
     let sweep_state = state.clone();
     spawn_periodic_after(FIRST_SWEEP_DELAY, STORAGE_INTERVAL, move || {
@@ -113,6 +114,11 @@ fn spawn_orphan_sweep(state: &AppState) {
                 Ok(sweep) if sweep.is_empty() => {}
                 Ok(sweep) => tracing::info!(?sweep, "swept blob files without a catalogue row"),
                 Err(err) => tracing::error!(error = %err, "orphan blob sweep failed"),
+            }
+            match maintenance::sweep_orphan_derived(&state).await {
+                Ok(sweep) if sweep.is_empty() => {}
+                Ok(sweep) => tracing::info!(?sweep, "swept derived files without a catalogue row"),
+                Err(err) => tracing::error!(error = %err, "orphan derived sweep failed"),
             }
         }
     });

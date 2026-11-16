@@ -1,5 +1,6 @@
 //! Periodic housekeeping, run by the `squirrel` binary (see its `tasks.rs`):
-//! expired uploads, old trash, unreferenced blobs and blob files without a row.
+//! expired uploads, old trash, unreferenced blobs (with their derived files),
+//! and blob files or derived directories without a row.
 
 use std::collections::HashSet;
 use std::time::SystemTime;
@@ -143,7 +144,11 @@ async fn delete_row_then_file(
     }
     // Row first: a crash between the two leaves an orphan file, never a row without its file.
     let (store, blob) = (state.storage.clone(), hash.clone());
-    run_storage(move || store.remove_blob(&blob)).await?;
+    run_storage(move || {
+        store.remove_blob(&blob)?;
+        store.derived().remove_all(&blob)
+    })
+    .await?;
     tracing::debug!(%hash, "blob deleted");
     Ok(true)
 }
@@ -171,12 +176,35 @@ impl OrphanSweep {
 /// rename until its row commits. Deletes nothing when the orphans look like a
 /// catalogue/data-directory mismatch rather than crash leftovers.
 pub async fn sweep_orphan_blobs(state: &AppState) -> Result<OrphanSweep, ApiError> {
-    let cutoff = SystemTime::now()
-        .checked_sub(state.config.blob_gc_grace.unsigned_abs())
-        .unwrap_or(SystemTime::UNIX_EPOCH);
+    let cutoff = sweep_cutoff(state);
     let store = state.storage.clone();
     let on_disk = run_storage(move || store.list_blobs_older_than(cutoff)).await?;
-    let orphans = uncatalogued(state, &on_disk).await?;
+    sweep_orphans(state, &on_disk, Leftover::BlobFile).await
+}
+
+/// Removes derived directories (thumbnails) whose blob has no catalogue row
+/// (a crash between deleting the blob and its derived files, or a worker
+/// finishing after the blob was collected), last modified before the grace
+/// period. Same lock, re-check and brake as [`sweep_orphan_blobs`].
+pub async fn sweep_orphan_derived(state: &AppState) -> Result<OrphanSweep, ApiError> {
+    let cutoff = sweep_cutoff(state);
+    let store = state.storage.clone();
+    let on_disk = run_storage(move || store.derived().list_older_than(cutoff)).await?;
+    sweep_orphans(state, &on_disk, Leftover::DerivedFiles).await
+}
+
+fn sweep_cutoff(state: &AppState) -> SystemTime {
+    SystemTime::now()
+        .checked_sub(state.config.blob_gc_grace.unsigned_abs())
+        .unwrap_or(SystemTime::UNIX_EPOCH)
+}
+
+async fn sweep_orphans(
+    state: &AppState,
+    on_disk: &[ContentHash],
+    leftover: Leftover,
+) -> Result<OrphanSweep, ApiError> {
+    let orphans = uncatalogued(state, on_disk).await?;
     if orphans.is_empty() {
         return Ok(OrphanSweep::default());
     }
@@ -186,7 +214,8 @@ pub async fn sweep_orphan_blobs(state: &AppState) -> Result<OrphanSweep, ApiErro
             listed = on_disk.len(),
             orphans = orphans.len(),
             catalogue_empty,
-            "not sweeping orphan blob files: far too many files have no catalogue row; \
+            ?leftover,
+            "not sweeping orphan files: far too many have no catalogue row; \
              is the server using the right database for this data directory?"
         );
         return Ok(OrphanSweep {
@@ -196,11 +225,11 @@ pub async fn sweep_orphan_blobs(state: &AppState) -> Result<OrphanSweep, ApiErro
     }
     let mut sweep = OrphanSweep::default();
     for hash in &orphans {
-        match remove_if_orphan(state, hash).await {
+        match remove_if_orphan(state, hash, leftover).await {
             Ok(true) => sweep.removed += 1,
             Ok(false) => {}
             Err(err) => {
-                tracing::warn!(%hash, error = %err, "could not remove an orphan blob file");
+                tracing::warn!(%hash, ?leftover, error = %err, "could not remove orphan files");
                 sweep.failed += 1;
             }
         }
@@ -240,10 +269,21 @@ fn sweep_looks_wrong(catalogue_empty: bool, listed: usize, orphans: usize) -> bo
             && orphans.saturating_mul(100) > listed.saturating_mul(SWEEP_BRAKE_MAX_PERCENT))
 }
 
-async fn remove_if_orphan(state: &AppState, hash: &ContentHash) -> Result<bool, ApiError> {
+/// What an orphan sweep removes for a hash without a catalogue row.
+#[derive(Debug, Clone, Copy)]
+enum Leftover {
+    BlobFile,
+    DerivedFiles,
+}
+
+async fn remove_if_orphan(
+    state: &AppState,
+    hash: &ContentHash,
+    leftover: Leftover,
+) -> Result<bool, ApiError> {
     let mut conn = state.pool.acquire().await.map_err(DbError::from)?;
     blobs::lock_session(&mut conn, hash).await?;
-    let result = remove_unless_catalogued(state, &mut conn, hash).await;
+    let result = remove_unless_catalogued(state, &mut conn, hash, leftover).await;
     unlock(conn, hash).await;
     result
 }
@@ -252,13 +292,18 @@ async fn remove_unless_catalogued(
     state: &AppState,
     conn: &mut PgConnection,
     hash: &ContentHash,
+    leftover: Leftover,
 ) -> Result<bool, ApiError> {
     if blobs::exists(conn, hash).await? {
         return Ok(false);
     }
     let (store, blob) = (state.storage.clone(), hash.clone());
-    run_storage(move || store.remove_blob(&blob)).await?;
-    tracing::debug!(%hash, "orphan blob file deleted");
+    run_storage(move || match leftover {
+        Leftover::BlobFile => store.remove_blob(&blob),
+        Leftover::DerivedFiles => store.derived().remove_all(&blob),
+    })
+    .await?;
+    tracing::debug!(%hash, ?leftover, "orphan files deleted");
     Ok(true)
 }
 

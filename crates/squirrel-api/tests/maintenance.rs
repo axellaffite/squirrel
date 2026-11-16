@@ -204,3 +204,81 @@ async fn the_sweep_deletes_nothing_when_too_many_files_look_orphaned(pool: PgPoo
     assert_eq!((sweep.removed, sweep.held_back), (0, orphans.len()));
     assert!(orphans.iter().all(|hash| store.contains(hash)));
 }
+
+/// Installs a thumbnail for `hash` as the worker would.
+fn install_thumbnail(store: &squirrel_storage::BlobStore, hash: &ContentHash) {
+    let derived = store.derived();
+    let scratch = derived.scratch().unwrap();
+    std::fs::write(scratch.path().join("thumb.webp"), b"webp").unwrap();
+    derived.install(hash, 1, &scratch).unwrap();
+}
+
+#[sqlx::test(migrator = "squirrel_db::MIGRATOR")]
+async fn collecting_a_blob_removes_its_derived_files(pool: PgPool) {
+    let config = squirrel_api::ApiConfig {
+        trash_retention: Duration::ZERO,
+        blob_gc_grace: Duration::ZERO,
+        ..common::test_config()
+    };
+    let instance = common::Instance::with_config(pool, config);
+    let browser = instance.browser();
+    let me = common::setup_admin(&browser, "alice").await;
+    let parent = files::root_id(&instance, &me, "Files").await;
+    let gone = files::upload(&browser, &me, parent, "gone.jpg", b"gone").await;
+    let store = &instance.state.storage;
+    let hash = ContentHash::parse(&files::sha256_hex(b"gone")).unwrap();
+    install_thumbnail(store, &hash);
+    browser
+        .delete(&format!("/api/nodes/{}", gone["id"].as_str().unwrap()))
+        .add_header(common::CSRF, common::csrf(&me))
+        .await
+        .assert_status(axum::http::StatusCode::NO_CONTENT);
+    maintenance::purge_old_trash(&instance.state).await.unwrap();
+
+    assert_eq!(
+        maintenance::collect_garbage(&instance.state).await.unwrap(),
+        1
+    );
+    assert!(!store.derived().dir(&hash).exists());
+}
+
+#[sqlx::test(migrator = "squirrel_db::MIGRATOR")]
+async fn derived_files_without_a_blob_row_are_swept(pool: PgPool) {
+    let instance = common::Instance::with_config(pool, no_grace());
+    let browser = instance.browser();
+    let me = common::setup_admin(&browser, "alice").await;
+    let parent = files::root_id(&instance, &me, "Files").await;
+    files::upload(&browser, &me, parent, "kept.jpg", b"kept").await;
+    let store = &instance.state.storage;
+    let kept = ContentHash::parse(&files::sha256_hex(b"kept")).unwrap();
+    let orphan = ContentHash::parse(&files::sha256_hex(b"collected long ago")).unwrap();
+    install_thumbnail(store, &kept);
+    install_thumbnail(store, &orphan);
+    let past = std::time::SystemTime::now() - std::time::Duration::from_secs(3600);
+    for hash in [&kept, &orphan] {
+        std::fs::File::open(store.derived().dir(hash))
+            .unwrap()
+            .set_modified(past)
+            .unwrap();
+    }
+
+    let sweep = maintenance::sweep_orphan_derived(&instance.state)
+        .await
+        .unwrap();
+    assert_eq!((sweep.removed, sweep.failed, sweep.held_back), (1, 0, 0));
+    assert!(!store.derived().dir(&orphan).exists());
+    assert!(store.derived().dir(&kept).is_dir());
+}
+
+#[sqlx::test(migrator = "squirrel_db::MIGRATOR")]
+async fn recent_derived_files_are_kept(pool: PgPool) {
+    let instance = common::Instance::new(pool);
+    let store = &instance.state.storage;
+    let fresh = ContentHash::parse(&files::sha256_hex(b"being processed")).unwrap();
+    install_thumbnail(store, &fresh);
+    let sweep = maintenance::sweep_orphan_derived(&instance.state)
+        .await
+        .unwrap();
+    assert!(sweep.is_empty());
+    assert!(store.derived().dir(&fresh).is_dir());
+}
