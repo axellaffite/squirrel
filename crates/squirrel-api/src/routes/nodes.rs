@@ -12,7 +12,7 @@ use uuid::Uuid;
 
 use crate::cursor;
 use crate::error::{ApiError, ErrorBody};
-use crate::extract::CurrentUser;
+use crate::extract::Caller;
 use crate::files_dto::{
     CreateFolderRequest, ListNodesQuery, NodeDetails, NodeDto, NodeListing, PathSegmentDto,
     UpdateNodeRequest,
@@ -25,10 +25,10 @@ use crate::state::AppState;
               (status = 404, body = ErrorBody)))]
 pub async fn list_nodes(
     State(state): State<AppState>,
-    current: CurrentUser,
+    caller: Caller,
     ApiQuery(query): ApiQuery<ListNodesQuery>,
 ) -> Result<Json<NodeListing>, ApiError> {
-    let owner_id = current.user.id;
+    let owner_id = caller.user.id;
     // `list_children` answers an empty page for a foreign or trashed parent.
     if let Some(parent) = query.parent_id {
         nodes::find_live_folder(&state.pool, owner_id, parent)
@@ -70,10 +70,10 @@ pub async fn list_nodes(
     responses((status = 200, body = NodeDetails), (status = 404, body = ErrorBody)))]
 pub async fn get_node(
     State(state): State<AppState>,
-    current: CurrentUser,
+    caller: Caller,
     ApiPath(id): ApiPath<Uuid>,
 ) -> Result<Json<NodeDetails>, ApiError> {
-    let owner_id = current.user.id;
+    let owner_id = caller.user.id;
     let node = nodes::find_live(&state.pool, owner_id, id)
         .await?
         .ok_or(ApiError::NotFound)?;
@@ -108,11 +108,11 @@ async fn thumbnails_of(
               (status = 409, body = ErrorBody), (status = 422, body = ErrorBody)))]
 pub async fn create_folder(
     State(state): State<AppState>,
-    current: CurrentUser,
+    caller: Caller,
     ApiJson(request): ApiJson<CreateFolderRequest>,
 ) -> Result<(StatusCode, Json<NodeDto>), ApiError> {
     let name = NodeName::parse(&request.name)?;
-    let node = nodes::create_folder(&state.pool, current.user.id, request.parent_id, &name).await?;
+    let node = nodes::create_folder(&state.pool, caller.user.id, request.parent_id, &name).await?;
     Ok((StatusCode::CREATED, Json((&node).into())))
 }
 
@@ -123,7 +123,7 @@ pub async fn create_folder(
               (status = 409, body = ErrorBody), (status = 422, body = ErrorBody)))]
 pub async fn update_node(
     State(state): State<AppState>,
-    current: CurrentUser,
+    caller: Caller,
     ApiPath(id): ApiPath<Uuid>,
     ApiJson(request): ApiJson<UpdateNodeRequest>,
 ) -> Result<Json<NodeDto>, ApiError> {
@@ -136,7 +136,7 @@ pub async fn update_node(
         name: request.name.as_deref().map(NodeName::parse).transpose()?,
         parent_id: request.parent_id,
     };
-    let node = nodes::update(&state.pool, current.user.id, id, &change).await?;
+    let node = nodes::update(&state.pool, caller.user.id, id, &change).await?;
     Ok(Json((&node).into()))
 }
 
@@ -146,9 +146,9 @@ pub async fn update_node(
               (status = 404, body = ErrorBody), (status = 422, body = ErrorBody)))]
 pub async fn trash_node(
     State(state): State<AppState>,
-    current: CurrentUser,
+    caller: Caller,
     ApiPath(id): ApiPath<Uuid>,
 ) -> Result<StatusCode, ApiError> {
-    squirrel_db::trash::trash(&state.pool, current.user.id, id).await?;
+    squirrel_db::trash::trash(&state.pool, caller.user.id, id).await?;
     Ok(StatusCode::NO_CONTENT)
 }

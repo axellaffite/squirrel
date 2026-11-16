@@ -3759,6 +3759,25 @@
           }
         }
       }
+    },
+    "securitySchemes": {
+      "csrf_token": {
+        "type": "apiKey",
+        "in": "header",
+        "name": "X-CSRF-Token",
+        "description": "The session's `csrf_token` (from `GET /api/auth/me`), required with the session cookie on every non-GET request."
+      },
+      "device_bearer": {
+        "type": "http",
+        "scheme": "bearer",
+        "description": "Device access token, `sqa_…` (`POST /api/auth/device/login`)."
+      },
+      "session_cookie": {
+        "type": "apiKey",
+        "in": "cookie",
+        "name": "squirrel_session",
+        "description": "Browser session, set by `POST /api/auth/login`."
+      }
     }
   },
   "tags": [
