@@ -117,7 +117,7 @@ async fn install(
         }
         Err(err) => return Err(JobError::retry(err)),
     }
-    media::set_thumbnails(
+    let recorded = media::set_thumbnails(
         &ctx.pool,
         hash.as_str(),
         THUMBS_VERSION,
@@ -126,7 +126,16 @@ async fn install(
         &rendered.blurhash,
     )
     .await
-    .map_err(JobError::retry)
+    .map_err(JobError::retry)?;
+    if !recorded {
+        // Collected while rendering: what was just installed belongs to nothing.
+        let (derived, blob) = (ctx.storage.derived().clone(), hash.clone());
+        tokio::task::spawn_blocking(move || derived.remove_all(&blob))
+            .await
+            .map_err(JobError::retry)?
+            .map_err(JobError::retry)?;
+    }
+    Ok(())
 }
 
 /// A terminal state for this blob's thumbnails: the job itself succeeded.
