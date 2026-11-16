@@ -9,6 +9,8 @@
 	import { formatBytes, formatDate, storageSummary } from '#lib/files/format.ts';
 	import { latestOnly } from '#lib/files/latest.ts';
 	import { recentItems, uploadTarget } from '#lib/home.ts';
+	import { mediaStatus } from '#lib/photos/api.ts';
+	import { createPoller } from '#lib/photos/status.ts';
 	import { session } from '#lib/session.svelte.ts';
 	import { enqueue, onUploadsSettled } from '#lib/upload/uploads.svelte.ts';
 
@@ -83,13 +85,26 @@
 		if (target && files.length > 0) enqueue(files, target.id);
 	}
 
+	// After uploads, thumbnails appear once processing is done: refresh the list then, once.
+	const poller = createPoller({
+		fetch: mediaStatus,
+		onCount: () => {},
+		onSettled: () => void loadRecent(),
+		visible: () => document.visibilityState === 'visible'
+	});
+
 	onMount(() => {
 		void loadUsage();
 		void loadRecent();
-		return onUploadsSettled(() => {
+		const unsubscribe = onUploadsSettled(() => {
 			void loadUsage();
 			void loadRecent();
+			poller.start({ assumePending: true });
 		});
+		return () => {
+			unsubscribe();
+			poller.stop();
+		};
 	});
 </script>
 

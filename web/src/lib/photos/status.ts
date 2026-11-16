@@ -26,7 +26,15 @@ export interface PollerOptions {
  * Asks once, then every `STATUS_POLL_MS` while the count is above zero. `start()` (re)starts it,
  * e.g. after uploads; the returned function stops it for good.
  */
-export function createPoller(options: PollerOptions): { start: () => void; stop: () => void } {
+export interface StartOptions {
+	/**
+	 * Treat files as pending already (e.g. uploads just finished): the first answer of zero then
+	 * counts as "done" and calls `onSettled`, even if processing was over before the first poll.
+	 */
+	assumePending?: boolean;
+}
+
+export function createPoller(options: PollerOptions): { start: (opts?: StartOptions) => void; stop: () => void } {
 	const schedule =
 		options.schedule ??
 		((run: () => void, ms: number) => {
@@ -58,8 +66,10 @@ export function createPoller(options: PollerOptions): { start: () => void; stop:
 	}
 
 	return {
-		start() {
-			if (stopped || running) return;
+		start(opts: StartOptions = {}) {
+			if (stopped) return;
+			if (opts.assumePending) last = Math.max(last, 1);
+			if (running) return;
 			cancel?.();
 			void tick();
 		},
