@@ -2,6 +2,7 @@
 
 mod content_hash;
 mod display_name;
+mod media_kind;
 mod node_kind;
 mod node_name;
 mod password;
@@ -11,6 +12,7 @@ mod username;
 
 pub use content_hash::{ContentHash, ContentHashError};
 pub use display_name::{DisplayName, DisplayNameError};
+pub use media_kind::MediaKind;
 pub use node_kind::{NodeKind, UnknownNodeKind};
 pub use node_name::{NodeName, NodeNameError};
 pub use password::{Password, PasswordError, normalize_password};
