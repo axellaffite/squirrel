@@ -1,0 +1,60 @@
+use std::time::Duration;
+
+use squirrel_media::exec::{ExecRequest, ExecResponse};
+use squirrel_media::testutil::{ExifSpec, jpeg_sized_with_exif};
+use squirrel_media::thumbs::DecodeLimits;
+use squirrel_worker::exec::{ExecError, Executor, SubprocessConfig};
+
+fn executor(timeout: Duration) -> Executor {
+    Executor::Subprocess(SubprocessConfig {
+        program: env!("CARGO_BIN_EXE_squirrel").into(),
+        max_memory_mb: 2048,
+        max_cpu_secs: 60,
+        timeout,
+    })
+}
+
+#[tokio::test]
+async fn renders_in_a_child_process() {
+    let dir = tempfile::tempdir().unwrap();
+    let input = dir.path().join("in.jpg");
+    std::fs::write(&input, jpeg_sized_with_exif(400, 300, &ExifSpec::default())).unwrap();
+    let out = tempfile::tempdir().unwrap();
+    let request = ExecRequest::Image {
+        input,
+        out_dir: out.path().into(),
+        limits: DecodeLimits::default(),
+    };
+    match executor(Duration::from_secs(60))
+        .run(request)
+        .await
+        .unwrap()
+    {
+        ExecResponse::Image { rendered } => {
+            assert_eq!((rendered.width, rendered.height), (400, 300))
+        }
+        other => panic!("unexpected {other:?}"),
+    }
+    assert!(out.path().join("thumb.webp").is_file());
+}
+
+#[tokio::test]
+async fn a_child_that_overruns_its_time_is_killed() {
+    let dir = tempfile::tempdir().unwrap();
+    let input = dir.path().join("in.jpg");
+    std::fs::write(
+        &input,
+        jpeg_sized_with_exif(4000, 3000, &ExifSpec::default()),
+    )
+    .unwrap();
+    let request = ExecRequest::Image {
+        input,
+        out_dir: dir.path().into(),
+        limits: DecodeLimits::default(),
+    };
+    let err = executor(Duration::from_millis(1))
+        .run(request)
+        .await
+        .unwrap_err();
+    assert!(matches!(err, ExecError::TimedOut(_)), "{err}");
+}

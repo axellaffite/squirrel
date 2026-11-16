@@ -3,6 +3,7 @@
 //! come from and where results go.
 
 pub mod capture;
+pub mod exec;
 #[cfg(feature = "heic")]
 pub mod heic;
 pub mod metadata;

@@ -28,7 +28,7 @@ mime_guess = "2"
 percent-encoding = "2"
 rand = "0.8"
 rust-embed = { version = "8", features = ["mime-guess"] }
-rustix = { version = "1", features = ["fs"] }
+rustix = { version = "1", features = ["fs", "process"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 sha2 = "0.10"
@@ -57,3 +57,4 @@ squirrel-api = { path = "crates/squirrel-api" }
 squirrel-storage = { path = "crates/squirrel-storage" }
 squirrel-jobs = { path = "crates/squirrel-jobs" }
 squirrel-media = { path = "crates/squirrel-media" }
+squirrel-worker = { path = "crates/squirrel-worker" }
