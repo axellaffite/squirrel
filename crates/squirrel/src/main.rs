@@ -1,5 +1,6 @@
 mod admin;
 mod data_dir;
+mod media_exec;
 mod tasks;
 mod worker;
 
@@ -45,6 +46,10 @@ enum Command {
     /// Administrative commands (run on the server). Never migrates: fails if
     /// migrations are pending (run `squirrel migrate` or start the server first).
     Admin(AdminArgs),
+    /// Internal: decode one untrusted media input under resource limits
+    /// (spawned by the worker; JSON on stdin and stdout).
+    #[command(hide = true)]
+    MediaExec(media_exec::MediaExecArgs),
 }
 
 #[derive(Args)]
@@ -109,9 +114,22 @@ struct ServeArgs {
     worker_options: worker::WorkerOptions,
 }
 
-#[tokio::main]
-async fn main() -> anyhow::Result<()> {
+fn main() -> anyhow::Result<()> {
     match Cli::parse().command {
+        // Before any runtime thread exists, and without logging to stdout,
+        // which carries the response.
+        Command::MediaExec(args) => media_exec::run(&args),
+        command => tokio::runtime::Builder::new_multi_thread()
+            .enable_all()
+            .build()
+            .context("starting the async runtime")?
+            .block_on(run(command)),
+    }
+}
+
+async fn run(command: Command) -> anyhow::Result<()> {
+    match command {
+        Command::MediaExec(args) => media_exec::run(&args),
         Command::Openapi => print_openapi(),
         Command::Migrate(args) => {
             init_tracing(false);
