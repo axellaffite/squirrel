@@ -18,3 +18,14 @@ pub mod thumbs;
 
 /// Whether this build decodes HEIC/HEIF/AVIF (cargo feature `heic`).
 pub const HEIC_SUPPORTED: bool = cfg!(feature = "heic");
+
+/// Registers the optional decoders compiled into this build (HEIC/HEIF/AVIF with `heic`).
+/// Call it before decoding, in whatever process decodes: the sandbox child, or the worker
+/// itself in in-process mode. Runs once per process; a no-op in default builds.
+pub fn register_decoders() {
+    #[cfg(feature = "heic")]
+    {
+        static ONCE: std::sync::Once = std::sync::Once::new();
+        ONCE.call_once(heic::register);
+    }
+}

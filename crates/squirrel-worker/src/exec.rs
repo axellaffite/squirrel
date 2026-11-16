@@ -42,12 +42,16 @@ pub enum ExecError {
 impl Executor {
     pub async fn run(&self, request: ExecRequest) -> Result<ExecResponse, ExecError> {
         match self {
-            Self::InProcess => tokio::task::spawn_blocking(move || execute(&request))
-                .await
-                .map_err(|err| ExecError::Crashed {
-                    status: "panic".into(),
-                    stderr: err.to_string(),
-                }),
+            // The same decoders as the sandbox child registers (HEIC with `heic`).
+            Self::InProcess => tokio::task::spawn_blocking(move || {
+                squirrel_media::register_decoders();
+                execute(&request)
+            })
+            .await
+            .map_err(|err| ExecError::Crashed {
+                status: "panic".into(),
+                stderr: err.to_string(),
+            }),
             Self::Subprocess(config) => run_child(config, &request).await,
         }
     }

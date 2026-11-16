@@ -9,7 +9,7 @@ use squirrel_core::{ContentHash, MediaKind};
 use squirrel_db::media::{self, MediaRecord, MediaState};
 use squirrel_jobs::{JobContext, JobError};
 use squirrel_media::render::THUMBS_VERSION;
-use squirrel_media::testutil::{ExifSpec, jpeg_sized_with_exif};
+use squirrel_media::testutil::{ExifSpec, ci_fixture, jpeg_sized_with_exif};
 use squirrel_storage::Variant;
 use squirrel_worker::exec::{Executor, SubprocessConfig};
 use squirrel_worker::thumbnails;
@@ -82,18 +82,39 @@ async fn garbage_fails_without_a_retry(pool: PgPool) {
 }
 
 #[sqlx::test(migrator = "squirrel_db::MIGRATOR")]
-async fn heic_depends_on_the_build(pool: PgPool) {
+async fn heic_is_unsupported_without_the_feature(pool: PgPool) {
+    if squirrel_media::HEIC_SUPPORTED {
+        return;
+    }
     let fx = Fixture::new(pool);
     let heic = std::fs::read("../squirrel-media/tests/fixtures/exif.heic").unwrap();
     let sha = pending(&fx, "a.heic", &heic).await;
     thumbnails::run(&fx.ctx, thumbs_job(&sha)).await.unwrap();
     let media = row(&fx, &sha).await;
-    if squirrel_media::HEIC_SUPPORTED {
-        assert_ne!(media.thumbs_state(), MediaState::Pending);
-    } else {
-        assert_eq!(media.thumbs_state(), MediaState::Unsupported);
-        assert_eq!(media.last_error.as_deref(), Some(thumbnails::NO_HEIC));
+    assert_eq!(media.thumbs_state(), MediaState::Unsupported);
+    assert_eq!(media.last_error.as_deref(), Some(thumbnails::NO_HEIC));
+}
+
+/// With `heic`: a real HEIC (`rotated.heic`, generated in CI) gets thumbnails, rotated once.
+#[sqlx::test(migrator = "squirrel_db::MIGRATOR")]
+async fn heic_gets_thumbnails_with_the_feature(pool: PgPool) {
+    if !squirrel_media::HEIC_SUPPORTED {
+        return;
     }
+    let Some(heic) = ci_fixture("../squirrel-media/tests/fixtures/rotated.heic") else {
+        return;
+    };
+    let fx = Fixture::new(pool);
+    let sha = pending(&fx, "rotated.heic", &heic).await;
+    thumbnails::run(&fx.ctx, thumbs_job(&sha)).await.unwrap();
+    let media = row(&fx, &sha).await;
+    assert_eq!(
+        media.thumbs_state(),
+        MediaState::Ready,
+        "{:?}",
+        media.last_error
+    );
+    assert_eq!((media.width, media.height), (Some(32), Some(64)));
 }
 
 #[sqlx::test(migrator = "squirrel_db::MIGRATOR")]

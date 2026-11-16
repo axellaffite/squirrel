@@ -165,6 +165,38 @@ pub fn test_pdfium_dir() -> Option<std::path::PathBuf> {
     None
 }
 
+/// A fixture that only some machines can produce (e.g. `rotated.heic`, encoded with libheif's
+/// `heif-enc` in CI). Missing, the test is skipped (`None`), except on CI (`CI` set), where
+/// skipping would hide a broken setup: it panics.
+pub fn ci_fixture(path: impl AsRef<std::path::Path>) -> Option<Vec<u8>> {
+    let path = path.as_ref();
+    match std::fs::read(path) {
+        Ok(bytes) => Some(bytes),
+        Err(err) => {
+            assert!(
+                std::env::var_os("CI").is_none(),
+                "CI is set but {} is missing ({err}): see crates/squirrel-media/tests/fixtures/README.md",
+                path.display()
+            );
+            eprintln!("skipped: {} is missing", path.display());
+            None
+        }
+    }
+}
+
+/// The JPEG `rotated.heic` is encoded from: 64 × 32 with EXIF orientation 6
+/// (`tests/fixtures/rotated-source.jpg`), so a correct decode is 32 × 64.
+pub fn rotated_source_jpeg() -> Vec<u8> {
+    jpeg_sized_with_exif(
+        64,
+        32,
+        &ExifSpec {
+            orientation: Some(6),
+            ..ExifSpec::default()
+        },
+    )
+}
+
 /// A valid one-page PDF (A4 portrait) whose page shows `text` in Helvetica.
 pub fn pdf_with_text(text: &str) -> Vec<u8> {
     pdf_with_pages(&[text], "")
