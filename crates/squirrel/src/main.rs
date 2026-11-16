@@ -18,10 +18,21 @@ use tokio::sync::watch;
 use tower_http::trace::TraceLayer;
 use tracing_subscriber::EnvFilter;
 
+/// Docker's default `stop` timeout: SIGKILL follows SIGTERM after this long.
+/// Every shutdown step below finishes within it.
+const STOP_TIMEOUT: Duration = Duration::from_secs(10);
 /// In-flight requests get this long to finish after a shutdown signal.
-const SHUTDOWN_DEADLINE: Duration = Duration::from_secs(10);
-/// Time for the embedded worker to release its jobs after its grace period.
-const WORKER_RELEASE_MARGIN: Duration = Duration::from_secs(5);
+const SHUTDOWN_DEADLINE: Duration = Duration::from_secs(9);
+/// Time for the embedded worker to release its jobs after its grace period
+/// (a few single-row updates). The embedded worker drains at the same time as
+/// HTTP, so the server is done within `max(SHUTDOWN_DEADLINE,
+/// worker::SHUTDOWN_GRACE + WORKER_RELEASE_MARGIN)` of the signal.
+const WORKER_RELEASE_MARGIN: Duration = Duration::from_secs(1);
+const _: () = assert!(SHUTDOWN_DEADLINE.as_millis() < STOP_TIMEOUT.as_millis());
+const _: () = assert!(
+    worker::SHUTDOWN_GRACE.as_millis() + WORKER_RELEASE_MARGIN.as_millis()
+        < STOP_TIMEOUT.as_millis()
+);
 /// A configured setup token shorter than this is guessable; warn about it.
 const MIN_SETUP_TOKEN_LEN: usize = 16;
 
