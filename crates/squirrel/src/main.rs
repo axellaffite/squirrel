@@ -245,7 +245,7 @@ async fn serve(args: ServeArgs) -> anyhow::Result<()> {
     let (stopping_tx, mut stopping_rx) = watch::channel(false);
     let embedded_worker = args.embedded_worker.then(|| {
         tracing::info!("running the job worker inside the server");
-        tokio::spawn(worker::run(
+        worker::spawn_logged(worker::run(
             pool.clone(),
             storage,
             args.worker_options.clone(),
@@ -283,11 +283,11 @@ async fn serve(args: ServeArgs) -> anyhow::Result<()> {
 
 /// The worker saw the same stop signal as the server (or its sender is gone):
 /// wait for it to drain and release its jobs, bounded by its grace period.
-async fn stop_embedded_worker(worker: tokio::task::JoinHandle<anyhow::Result<()>>) {
+/// Its failure, if any, was already logged when it happened ([`worker::spawn_logged`]).
+async fn stop_embedded_worker(worker: tokio::task::JoinHandle<()>) {
     let bound = worker::SHUTDOWN_GRACE + WORKER_RELEASE_MARGIN;
     match tokio::time::timeout(bound, worker).await {
-        Ok(Ok(Ok(()))) => {}
-        Ok(Ok(Err(err))) => tracing::error!(error = %format!("{err:#}"), "the job worker failed"),
+        Ok(Ok(())) => {}
         Ok(Err(err)) => tracing::error!(error = %err, "the job worker panicked"),
         Err(_) => tracing::warn!("the job worker did not stop in time; its leases will expire"),
     }
