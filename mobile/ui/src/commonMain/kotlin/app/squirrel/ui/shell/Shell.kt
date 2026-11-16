@@ -1,0 +1,116 @@
+package app.squirrel.ui.shell
+
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.safeDrawing
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.windowInsetsPadding
+import androidx.compose.foundation.text.BasicText
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.semantics.heading
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.window.Popup
+import androidx.compose.ui.window.PopupProperties
+import app.squirrel.theme.Shapes
+import app.squirrel.theme.SquirrelIcon
+import app.squirrel.theme.SquirrelTheme
+import app.squirrel.theme.Tokens
+import app.squirrel.theme.components.Button
+import app.squirrel.theme.components.ButtonVariant
+import app.squirrel.theme.components.EmptyState
+import app.squirrel.theme.components.IconButton
+import app.squirrel.theme.components.RailItem
+import app.squirrel.theme.components.BottomRail
+import app.squirrel.theme.popShadow
+import app.squirrel.theme.tabular
+import app.squirrel.ui.AccountInfo
+
+private enum class Tab(val label: String, val icon: SquirrelIcon, val title: String, val line: String) {
+    Photos("Photos", SquirrelIcon.Images, "Photos are not in the app yet", "Your timeline arrives in a later version of the app."),
+    Files("Files", SquirrelIcon.Folder, "Files are not in the app yet", "Browsing your folders arrives in a later version."),
+    Backup("Backup", SquirrelIcon.Upload, "Backup is not in the app yet", "Backing up this phone arrives in the next version."),
+}
+
+/** MASTER.md phone shell: top row with the wordmark and account menu, the floating bottom rail. */
+@Composable
+fun Shell(account: AccountInfo, onSignOut: () -> Unit, onRefresh: () -> Unit) {
+    var tab by rememberSaveable { mutableStateOf(Tab.Photos.name) }
+    var menuOpen by rememberSaveable { mutableStateOf(false) }
+    LaunchedEffect(Unit) { onRefresh() }
+    val current = Tab.valueOf(tab)
+    Box(Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.safeDrawing)) {
+        Column(Modifier.fillMaxSize().padding(horizontal = Tokens.gutter)) {
+            Row(
+                modifier = Modifier.fillMaxWidth().padding(vertical = Tokens.space2),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                BasicText("Squirrel", style = SquirrelTheme.type.wordmark, modifier = Modifier.weight(1f))
+                Box {
+                    IconButton(SquirrelIcon.User, label = "Account menu", onClick = {
+                        menuOpen = !menuOpen
+                        if (menuOpen) onRefresh()
+                    })
+                    if (menuOpen) {
+                        Popup(
+                            alignment = Alignment.TopEnd,
+                            onDismissRequest = { menuOpen = false },
+                            properties = PopupProperties(focusable = true),
+                        ) {
+                            AccountMenu(account, onSignOut = {
+                                menuOpen = false
+                                onSignOut()
+                            })
+                        }
+                    }
+                }
+            }
+            BasicText(
+                current.label,
+                style = SquirrelTheme.type.pageTitle,
+                modifier = Modifier.padding(vertical = Tokens.space3).semantics { heading() },
+            )
+            EmptyState(current.icon, current.title, current.line)
+        }
+        BottomRail(
+            items = Tab.entries.map { RailItem(it.name, it.label, it.icon) },
+            selected = tab,
+            onSelect = { tab = it },
+            modifier = Modifier.align(Alignment.BottomCenter).padding(Tokens.frame),
+        )
+    }
+}
+
+@Composable
+private fun AccountMenu(account: AccountInfo, onSignOut: () -> Unit) {
+    val type = SquirrelTheme.type
+    Column(
+        modifier = Modifier
+            .padding(top = Tokens.tap)
+            .width(Tokens.menuW)
+            .popShadow(Shapes.card)
+            .background(SquirrelTheme.scheme.card, Shapes.card)
+            .padding(Tokens.cardPad),
+        verticalArrangement = Arrangement.spacedBy(Tokens.space1),
+    ) {
+        BasicText(account.displayName, style = type.label)
+        if (account.username.isNotEmpty()) BasicText(account.username, style = type.caption)
+        BasicText(account.serverUrl, style = type.caption.tabular(), maxLines = 1, overflow = TextOverflow.Ellipsis)
+        BasicText("This phone: ${account.deviceName}", style = type.caption)
+        Button("Sign out", onClick = onSignOut, variant = ButtonVariant.Secondary, full = true, icon = SquirrelIcon.LogOut)
+    }
+}

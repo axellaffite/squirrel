@@ -68,6 +68,13 @@ class SettingsStore(private val db: SquirrelDatabase) {
         if (url == null) q.remove(Keys.SERVER_URL) else q.put(Keys.SERVER_URL, url)
     }
 
+    /** A plain stored value (the signed-in account's names, cached for offline start-up). */
+    fun value(key: String): String? = q.get(key).executeAsOneOrNull()
+
+    fun setValue(key: String, value: String?) {
+        if (value == null) q.remove(key) else q.put(key, value)
+    }
+
     private fun decode(values: Map<String, String>): BackupSettings {
         val defaults = BackupSettings()
         if (values.keys.none { it in Keys.BACKUP }) return defaults
