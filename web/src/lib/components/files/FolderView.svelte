@@ -1,5 +1,6 @@
 <script lang="ts">
-	import { goto } from '$app/navigation';
+	import { goto, replaceState } from '$app/navigation';
+	import { page } from '$app/state';
 	import { onMount } from 'svelte';
 	import Breadcrumbs from '#lib/components/files/Breadcrumbs.svelte';
 	import DropZone from '#lib/components/files/DropZone.svelte';
@@ -7,6 +8,7 @@
 	import MoveDialog from '#lib/components/files/MoveDialog.svelte';
 	import NameDialog from '#lib/components/files/NameDialog.svelte';
 	import NodeActions from '#lib/components/files/NodeActions.svelte';
+	import SearchField from '#lib/components/files/SearchField.svelte';
 	import Preview from '#lib/components/files/Preview.svelte';
 	import StorageMeter from '#lib/components/files/StorageMeter.svelte';
 	import Icon from '#lib/components/icons/Icon.svelte';
@@ -82,7 +84,19 @@
 		if (listing.ok) {
 			items = listing.data;
 			error = null;
+			openRequested();
 		} else error = listing.error;
+	}
+
+	/** `?open=<id>` (from search results): previews that file once, then leaves the address clean. */
+	function openRequested() {
+		const id = page.url.searchParams.get('open');
+		if (!id) return;
+		const url = new URL(page.url.href);
+		url.searchParams.delete('open');
+		replaceState(url, {});
+		const node = items.find((item) => item.id === id);
+		if (node) open(node);
 	}
 
 	function changed() {
@@ -137,6 +151,7 @@
 			{items.length === 1 ? 'item' : 'items'}{/if}
 	{/snippet}
 	{#snippet actions()}
+		<SearchField />
 		{#if canWrite}
 			<Button variant="secondary" onclick={() => (dialog = { kind: 'new-folder' })}>
 				<Icon name="folder-plus" />New folder

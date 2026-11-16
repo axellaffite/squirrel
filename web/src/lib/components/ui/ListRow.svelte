@@ -8,6 +8,8 @@
 		title: Snippet;
 		/** Secondary line: sizes, dates, status (tabular figures). */
 		meta?: Snippet;
+		/** Wrapping text under the metadata, e.g. a search snippet. */
+		detail?: Snippet;
 		/** Quiet action buttons on the right. */
 		actions?: Snippet;
 		/** Highlights the row (e.g. the item a dialog is acting on). */
@@ -18,7 +20,7 @@
 		nodeId?: string;
 	}
 
-	let { icon, title, meta, actions, selected = false, arrive, testId, nodeId }: Props =
+	let { icon, title, meta, detail, actions, selected = false, arrive, testId, nodeId }: Props =
 		$props();
 </script>
 
@@ -34,6 +36,7 @@
 	<div class="main">
 		<div class="title">{@render title()}</div>
 		{#if meta}<div class="meta">{@render meta()}</div>{/if}
+		{#if detail}<div class="detail">{@render detail()}</div>{/if}
 	</div>
 	{#if actions}<div class="actions">{@render actions()}</div>{/if}
 </li>
@@ -95,6 +98,14 @@
 		font-size: var(--text-sm);
 		line-height: var(--text-sm-lh);
 		font-variant-numeric: tabular-nums;
+	}
+
+	.detail {
+		margin-top: var(--space-1);
+		color: var(--ink-muted);
+		font-size: var(--text-sm);
+		line-height: var(--text-sm-lh);
+		overflow-wrap: anywhere;
 	}
 
 	/* Separators between metadata parts: <span class="sep" aria-hidden="true">·</span> */
