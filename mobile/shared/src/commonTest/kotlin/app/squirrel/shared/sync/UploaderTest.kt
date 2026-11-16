@@ -11,6 +11,7 @@ import io.ktor.client.engine.mock.respond
 import io.ktor.http.HttpHeaders
 import io.ktor.http.HttpStatusCode
 import io.ktor.http.headersOf
+import kotlinx.coroutines.awaitCancellation
 import kotlinx.io.IOException
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -180,8 +181,8 @@ class UploaderTest {
     @Test
     fun anInterruptedUploadKeepsItsSession() = runApiTest {
         val uploader = Uploader(server.api(), server.transport, source, queue, now = { now }, random = { 0.5 }, parallelChunks = 1)
-        var allowed = 1
-        val result = uploader.upload(missing(), shouldContinue = { allowed-- > 0 })
+        // Conditions stop holding once the first chunk is in.
+        val result = uploader.upload(missing(), shouldContinue = { server.sent.isEmpty() })
         assertEquals(UploadResult.Interrupted, result)
         val asset = queue.get("images:1")!!
         assertEquals(QueueState.Uploading, asset.state)
@@ -278,5 +279,35 @@ class UploaderTest {
         source.put(asset.deviceAssetId, size = asset.size, modifiedAt = 7) // same size, rewritten
 
         assertEquals(UploadResult.Changed, uploader().upload(queue.get(asset.deviceAssetId)!!))
+    }
+
+    @Test
+    fun aStopCancelsAHangingChunkAfterTheGrace() = runApiTest {
+        var stop = false
+        var cancelled = false
+        val transport = object : ChunkTransport {
+            override suspend fun put(session: UploadSession, index: Int, reader: AssetReader) {
+                if (index == 0) {
+                    server.transport.put(session, index, reader)
+                    stop = true // Wi-Fi lost once the first chunk is in
+                } else {
+                    try {
+                        awaitCancellation()
+                    } finally {
+                        cancelled = true
+                    }
+                }
+            }
+        }
+        val uploader = Uploader(
+            server.api(), transport, source, queue, now = { now }, random = { 0.5 },
+            parallelChunks = 2, pollMillis = 10, stopGraceMillis = 50,
+        )
+
+        val result = uploader.upload(missing(), shouldContinue = { !stop })
+
+        assertEquals(UploadResult.Interrupted, result)
+        assertTrue(cancelled)
+        assertEquals(QueueState.Uploading, queue.get("images:1")!!.state)
     }
 }
