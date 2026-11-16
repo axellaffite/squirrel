@@ -168,6 +168,7 @@ fn json_routes() -> OpenApiRouter<AppState> {
         ))
         .routes(routes!(routes::devices::list_devices))
         .routes(routes!(routes::devices::revoke_device))
+        .routes(routes!(routes::sync::sync_folder))
         .routes(routes!(
             routes::invitations::create_invitation,
             routes::invitations::list_invitations
