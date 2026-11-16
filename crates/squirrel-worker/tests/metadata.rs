@@ -140,3 +140,35 @@ async fn a_collected_blob_is_nothing_to_do(pool: PgPool) {
     let bad = metadata::run(&fx.ctx, job("extract_metadata", json!({"sha256": "nope"}))).await;
     assert!(matches!(bad, Err(squirrel_jobs::JobError::Permanent(_))));
 }
+
+#[sqlx::test(migrator = "squirrel_db::MIGRATOR")]
+async fn huge_declared_exif_chunks_are_not_read_whole(pool: PgPool) {
+    let fx = Fixture::new(pool);
+    let sha = "d".repeat(64);
+    let path = fx.ctx.storage.blob_path(&ContentHash::parse(&sha).unwrap());
+    std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+    // A 1 GiB sparse PNG whose eXIf chunk claims 4 GiB.
+    let mut header = b"\x89PNG\r\n\x1a\n".to_vec();
+    header.extend_from_slice(&0xFFFF_FFF0_u32.to_be_bytes());
+    header.extend_from_slice(b"eXIf");
+    std::fs::write(&path, &header).unwrap();
+    std::fs::OpenOptions::new()
+        .write(true)
+        .open(&path)
+        .unwrap()
+        .set_len(1024 * 1024 * 1024)
+        .unwrap();
+    sqlx::query("INSERT INTO blobs (sha256, size, mime) VALUES ($1, $2, 'image/png')")
+        .bind(&sha)
+        .bind(1024_i64 * 1024 * 1024)
+        .execute(fx.pool())
+        .await
+        .unwrap();
+    let mut conn = fx.pool().acquire().await.unwrap();
+    media::ensure(&mut conn, &sha, squirrel_core::MediaKind::Image)
+        .await
+        .unwrap();
+    extract(&fx, &sha).await;
+    let row = media::find(fx.pool(), &sha).await.unwrap().unwrap();
+    assert_eq!(row.metadata_state(), MediaState::Ready);
+}
