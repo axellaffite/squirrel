@@ -119,6 +119,15 @@ async fn requeue_stale_steps(
 
 /// PDF steps skipped because no pdfium was configured go back to `pending`
 /// and are queued again, now that one is.
+///
+/// The only record of *why* a step is unsupported is `media.last_error`, so
+/// this matches its exact text ([`NO_PDFIUM`]): changing that message strands
+/// PDFs skipped under the old one. Workers with different pdfium settings on
+/// one database can flip a PDF back and forth (one marks it unsupported, the
+/// next one's start queues it again); run them alike.
+///
+/// It runs once per worker start, as one statement; a sequential scan of
+/// `media` is cheap at a home library's size, so no partial index was added.
 async fn requeue_pdfs_awaiting_pdfium(conn: &mut PgConnection) -> Result<(), JobError> {
     let reset = "WITH reset AS ( \
              UPDATE media \
