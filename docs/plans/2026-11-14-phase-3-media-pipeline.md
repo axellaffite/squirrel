@@ -12,6 +12,76 @@
 **Phase 2 reference:** `docs/plans/2026-11-13-phase-2-storage-files.md` — read its "Upload hardening" and "Download and maintenance hardening" sections; the code is the source of truth, not that plan's snippets.
 **Visual design:** `MASTER.md` governs every screen in this plan. Milestone F starts by recording the few photo-specific additions in MASTER.md (Task 31), which needs the user's validation first (see Open question 8).
 
+## As built (summary, 2026-11-16)
+
+Phase 3 shipped as planned in scope; the code is the source of truth and the task code below is
+the plan as written. 105 commits from `2ed0a26` to this summary (40 of them fixes), never pushed: the
+repository has no remote yet.
+
+**Milestones and their main commits**
+
+| Milestone | Main commits |
+|---|---|
+| A — Job queue & worker | `2ed0a26` jobs table · `b3b2e32` claim/lease/fencing · `9254f5b` worker runtime · `eb753cc` `squirrel worker` / `serve --worker` · `993fad5` admin queue API |
+| B — Media & thumbnails | `ed036a4` EXIF · `6765b84` capture chain, screenshots · `d3023e5` WebP + blurhash · `1c1a82f` derived files · `53006e2` sandbox · `87020b6` `media`/`assets` · `77777d6` thumbnails handler · `fceffae` enqueue on upload, backfill · `4172ec2` thumbnail endpoint |
+| C — Geocoding | `26153ed` reverse geocoder · `9f8da60` pinned snapshot · `2fa561a` geocode handler |
+| D — Timeline & albums API | `f6d3ecf` timeline keyset · `edb7d90` months · `4f34b40` details, media status · `87aa1c2` / `b2493bc` albums |
+| E — Documents | `ebb29a5` text index · `89a5d4f` pdfium · `4b4fd7c` extract_text, PDF thumbnails · `82ee586` search API |
+| F — Photos web UI | `6bda30d` MASTER.md additions · `f51d5fc` client plumbing · `b4d3675` virtualized timeline · `4d8d867` scrubber · `ec77d71` lightbox, multi-select |
+| G — Albums, thumbnails, search UI | `4c1d1e7` albums and picker · `910928d` list thumbnails · `fb50506` document search · `7c4b0f7` refresh after processing |
+| H — E2E, CI, docs | `97df1bf` fixtures + worker in E2E · `6db327f` 9 scenarios · `1524241` CI · `2afc8a0` README |
+
+**Deviations from the plan**
+
+- *Review hardening (A–E):* the media sandbox gets no environment, bounded output, its own
+  process group and refuses to run without its limits; only regular, bounded files are installed
+  from its output; EXIF is read from a bounded prefix; decodes over the memory budget are refused;
+  timeline writers are serialised per media row; thumbnails are immutable only under their
+  current version; search is bounded to 5 s (`statement_timeout`, then 503), 20 requests then 1/s
+  per client, and 200 results; timeline cursors outside years 1–9999 are refused; the worker
+  finishes shutting down within Docker's 10 s; pdfium tests fail (not skip) when `CI` is set.
+- *Web (F–G):* no dependency added (blurhash, justified layout, virtualization, locator map are
+  hand-written). Months load from the scroll position (`model.monthsToLoad`) rather than per-month
+  `IntersectionObserver`s; failed months wait for the next reload. Extra tokens beyond Task 31
+  (`--photo-month-head`, `--photo-day-head`, `--scrubber-w`, `--scrub-tick`, `--info-w`,
+  `--locator-dot`, `--photo-ring`, `--photo-shade`, `--album-ratio`, `--picker-max`) and an `info`
+  Alert tone are recorded in MASTER.md. The lightbox has no "date from the file name" hint (the
+  details API does not expose `taken_source`); day headers show no place (summaries carry none).
+  Selection, deletion and album logic live in tested modules (`selection`, `timeline`,
+  `album`, `albumAdd`, `searcher`); album names follow the server's album rules, not file-name
+  rules; deletes confirm through `ConfirmDialog`; `?photo=<id>` is kept on album pages too.
+  Search waits 300 ms between keys, aborts stale requests and retries once after a 429.
+  Thumbnails in rows come from `NodeVisual` in ListRow's icon slot (no `media` snippet); the
+  polling helper is `lib/photos/status.ts` (not `poll.ts`).
+- *E2E (H):* photo scenarios run as fresh users invited through the API (alice's drive already
+  holds the file specs' images) and the isolation check uses a second fresh user rather than
+  bob. No test-only search rate limit was needed. One app bug found and fixed (`a6751f1`: the
+  scrubber kept the first month after End on a short page).
+- *HEIC:* both executors register the optional decoders; the HEIC fixture `rotated.heic` is
+  encoded in CI (`heif-enc`) from the committed, generated `rotated-source.jpg`.
+
+**Final gate (local, macOS, 2026-11-16)**
+
+| Check | Result |
+|---|---|
+| `cargo fmt --check`, `cargo clippy --workspace --all-targets -D warnings` | clean |
+| `cargo test --workspace` (with pdfium, temporary master database on 55432) | 657 passed, 0 failed, 0 ignored, 75 suites |
+| `pnpm gen:api` (no diff), `pnpm check`, `pnpm build` | clean |
+| `pnpm test:unit` | 335 passed (44 files) |
+| `SQUIRREL_E2E_PORT=8199 pnpm test:e2e` | 20 passed (PDF scenario included) |
+
+**Deferred manual checks (from "Done when")**
+
+| Check | Why it is deferred |
+|---|---|
+| A real phone export (≥ 500 photos, HEIC included) | libheif is broken on the dev machine (`brew reinstall libheif` needed), so `--features heic` does not build here |
+| Real PDFs in Firefox and Safari | Only headless Chromium is automated, and it has no PDF viewer |
+| Timeline scrolling at 375 px on a real phone (Firefox for Android, Chrome) | Needs a physical device; only emulated phone widths were checked |
+| `kill -9` of a worker mid-batch, then recovery after the lease | Not run yet; lease reaping is covered by the queue tests |
+| Resuming a > 1 GB upload after killing the tab | Carried over from Phase 2, still manual |
+| The Linux `RLIMIT_AS` test and the `rust-heic` job | Linux-only; CI runs them, macOS cannot |
+| CI itself | Never run: the repository has no remote |
+
 ## Conventions / environment
 
 - Run commands from the repo root unless stated. Never `cd` outside the worktree; never `git stash` (use a WIP commit).
