@@ -35,7 +35,12 @@ class Session(private val store: TokenStore) {
 
     /** Reads the store once at start-up. */
     suspend fun restore(): SessionState = mutex.withLock {
-        val next = if (store.load() != null) SessionState.SignedIn else SessionState.SignedOut
+        val stored = try {
+            store.load() != null
+        } catch (_: TokenStoreUnavailable) {
+            true // A token is there but unreadable now; the next refresh tries again.
+        }
+        val next = if (stored) SessionState.SignedIn else SessionState.SignedOut
         _state.value = next
         next
     }
