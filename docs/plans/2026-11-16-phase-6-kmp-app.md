@@ -1863,3 +1863,43 @@ Server and web parts of Phase 6 (Tasks 1–13) are done; Milestones D–I are no
   - `taken_at` accepts `Z` (offset 0); offsets beyond ±18 h are refused.
   - The web's Settings › Devices is reached from the account menu ("Devices"); the e2e project
     `devices` covers listing, revoking (desktop) and the phone actions sheet.
+
+### Security review fixes (2026-11-17)
+
+- **Migrations:** `20261116000003_refresh_grace.sql` and `20261116000004_deleted_hashes.sql` are
+  taken, so Milestone H's upload tokens become `20261116000005_upload_tokens.sql`.
+- **Other `Authorization` schemes** (`Basic` from a proxy) fall back to the session cookie, with
+  CSRF still checked. A `Bearer` header never does: if it is malformed, the answer is 401.
+- **Refresh grace:**
+  - Presenting the previous refresh token within 30 s of its rotation (`devices.rotated_at`)
+    adds an access token and returns the same current refresh token. The device does not rotate
+    again, so two refreshes racing, or a retry after a lost response, end up holding one token.
+  - The server can return that token without storing it in clear because it is derived:
+    `sqr_` + SHA-256(context, presented token, `rotation_salt`).
+  - After 30 s, the previous token counts as reuse and revokes the device, like a retired one.
+  - The app must still make its refreshes single-flight.
+- **Never re-uploading deleted content:**
+  - Deleting forever, emptying the trash and the 30-day trash purge write a tombstone
+    (`deleted_hashes`, per owner and SHA-256) for every file whose content a device of that owner
+    had recorded in `device_assets`.
+  - The sync check reports tombstoned hashes as present and records them for the asking device.
+    This survives sign-out, a reinstall, a new device id and the deletion of old devices.
+  - Maintenance never deletes tombstones.
+  - Trashed (not purged) content was already present: the library lookup includes the trash.
+- **Session-only deletion:** `DELETE /api/nodes/{id}` (trash), `DELETE /api/trash/{id}` and
+  `DELETE /api/trash` are session-only now. A phone token reads and backs up but cannot destroy
+  anything. The route matrix accepts `METHOD /path` entries for this.
+- **Logout everywhere** deletes sessions and revokes devices in one transaction.
+- **Sync check recording:** the sync check writes its records with one statement, in
+  `device_asset_id` order, so overlapping checks cannot deadlock.
+- **Device deleted mid-upload:** recording a device asset locks the device row
+  (`FOR KEY SHARE`), so a device deleted in the meantime records nothing instead of failing the
+  completion.
+- **Same-named phones:**
+  - A phone without a live backup folder takes the first of `<name>`, `<name> (2)`, … under
+    `Photos` that is free, or a folder no other signed-in device of the owner uses.
+  - So two phones signed in at once with the same name get separate folders, and a phone that
+    signed out and signs in again gets its folder back.
+  - A reinstall without signing out first gets `<name> (2)` until the old device expires.
+- **Redacted Debug:** `LoginRequest`, `SetupRequest`, `AccountRequest`, `DeviceLoginRequest`,
+  `RefreshRequest` and `TokenPair` show `<redacted>` instead of secrets in `Debug` output.
