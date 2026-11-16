@@ -1,11 +1,10 @@
 <script lang="ts">
 	import { untrack } from 'svelte';
-	import Icon from '#lib/components/icons/Icon.svelte';
+	import NodeVisual from '#lib/components/files/NodeVisual.svelte';
 	import IconButton from '#lib/components/ui/IconButton.svelte';
 	import ListRow from '#lib/components/ui/ListRow.svelte';
 	import type { FileNode } from '#lib/files/api.ts';
 	import { contentUrl, formatBytes, formatDate } from '#lib/files/format.ts';
-	import { nodeIcon } from '#lib/files/nodeIcon.ts';
 
 	interface Props {
 		items: FileNode[];
@@ -33,7 +32,7 @@
 			selected={node.id === selectedId}
 			arrive={arrival(node, index)}
 		>
-			{#snippet icon()}<Icon name={nodeIcon(node)} />{/snippet}
+			{#snippet icon()}<NodeVisual {node} />{/snippet}
 			{#snippet title()}
 				<button type="button" class="row-link" onclick={() => onOpen(node)}>{node.name}</button>
 			{/snippet}

@@ -8,6 +8,7 @@
 	import type { FileNode } from '#lib/files/api.ts';
 	import { contentUrl, formatBytes, formatDate, previewKind } from '#lib/files/format.ts';
 	import { fetchTextPreview, TEXT_PREVIEW_BYTES } from '#lib/files/textPreview.ts';
+	import { thumbnailUrl } from '#lib/photos/api.ts';
 
 	interface Props {
 		node: FileNode;
@@ -20,6 +21,8 @@
 	let open = $state(true);
 	const kind = $derived(previewKind(node.mime));
 	const url = $derived(contentUrl(node.id));
+	/** Images show the 1440 px preview once it exists; "Open in new tab" keeps the original. */
+	const imageUrl = $derived(node.thumbnail ? thumbnailUrl(node.id, 'preview', node.thumbnail.version) : url);
 	let text: string | null = $state(null);
 	let textError: string | null = $state(null);
 
@@ -49,7 +52,7 @@
 		<p class="meta tabular">{formatBytes(node.size)} <span aria-hidden="true">·</span> {formatDate(node.modified_at)}</p>
 		<div class="stage">
 			{#if kind === 'image'}
-				<img src={url} alt={node.name} />
+				<img src={imageUrl} alt={node.name} />
 			{:else if kind === 'pdf'}
 				<!--
 					The server sends PDFs inline with a strict CSP but without `sandbox` (built-in PDF viewers
