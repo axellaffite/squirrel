@@ -210,7 +210,7 @@ mod tests {
             text.contains("48.85341\t2.3488\tParis\tÎle-de-France\tFR\tFrance\tEurope/Paris\n")
         );
         let index = GeoIndex::load(text.as_bytes()).unwrap();
-        assert_eq!(index.nearest(-33.9, 151.2).unwrap().country, "Australia");
+        assert_eq!(&*index.nearest(-33.9, 151.2).unwrap().country, "Australia");
     }
 
     #[test]
