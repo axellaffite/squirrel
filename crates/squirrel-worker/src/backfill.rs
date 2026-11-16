@@ -8,7 +8,7 @@ use squirrel_jobs::{JobContext, JobError, kinds};
 use squirrel_media::render::THUMBS_VERSION;
 use uuid::Uuid;
 
-use crate::context::MediaContext;
+use crate::context::{MediaContext, NO_PDFIUM};
 use crate::jobs;
 
 /// Nodes examined per run.
@@ -52,6 +52,9 @@ pub async fn run_page(ctx: &MediaContext, job: JobContext, page: i64) -> Result<
     }
     if after.is_none() {
         requeue_stale_steps(&mut tx, ctx.geo.dataset_id().as_deref()).await?;
+        if ctx.pdfium_dir.is_some() {
+            requeue_pdfs_awaiting_pdfium(&mut tx).await?;
+        }
     }
     if i64::try_from(ids.len()).unwrap_or(0) == page {
         let next = jobs::backfill(ids.last().copied()).delay(jobs::BACKFILL_PAGE_DELAY);
@@ -95,6 +98,45 @@ async fn requeue_stale_steps(
         squirrel_jobs::enqueue(conn, &jobs::geocode(sha, true))
             .await
             .map_err(JobError::retry)?;
+    }
+    Ok(())
+}
+
+/// PDF steps skipped because no pdfium was configured go back to `pending`
+/// and are queued again, now that one is.
+async fn requeue_pdfs_awaiting_pdfium(conn: &mut PgConnection) -> Result<(), JobError> {
+    let rows: Vec<(String, String, String)> = sqlx::query_as(
+        "UPDATE media \
+            SET thumbs_state = CASE WHEN thumbs_state = 'unsupported' THEN 'pending' \
+                                    ELSE thumbs_state END, \
+                text_state = CASE WHEN text_state = 'unsupported' THEN 'pending' \
+                                  ELSE text_state END, \
+                last_error = NULL, updated_at = now() \
+          WHERE kind = 'pdf' AND last_error = $1 \
+            AND 'unsupported' IN (thumbs_state, text_state) \
+         RETURNING sha256, thumbs_state, text_state",
+    )
+    .bind(NO_PDFIUM)
+    .fetch_all(&mut *conn)
+    .await
+    .map_err(JobError::retry)?;
+    for (sha, thumbs, text) in &rows {
+        if thumbs == "pending" {
+            squirrel_jobs::enqueue(conn, &jobs::thumbnails(sha, true))
+                .await
+                .map_err(JobError::retry)?;
+        }
+        if text == "pending" {
+            squirrel_jobs::enqueue(conn, &jobs::extract_text(sha, true))
+                .await
+                .map_err(JobError::retry)?;
+        }
+    }
+    if !rows.is_empty() {
+        tracing::info!(
+            pdfs = rows.len(),
+            "queued PDFs skipped while pdfium was not configured"
+        );
     }
     Ok(())
 }

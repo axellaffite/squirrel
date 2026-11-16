@@ -1,6 +1,6 @@
 //! `squirrel worker` and `squirrel serve --worker`: the job queue's executor.
 
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -62,6 +62,11 @@ pub struct WorkerOptions {
     /// installed in `<data_dir>/geo/` (trusted as is: no checksum).
     #[arg(long, env = "SQUIRREL_GEODATA_FILE")]
     pub geodata_file: Option<PathBuf>,
+    /// Directory holding the pdfium library (`scripts/fetch-pdfium.sh`):
+    /// PDF thumbnails and text. Without it, PDFs are left unsupported until
+    /// it is set (the next start queues them again).
+    #[arg(long, env = "SQUIRREL_PDFIUM_DIR")]
+    pub pdfium_dir: Option<PathBuf>,
 }
 
 /// `(min(cores, 4) / 2).max(1)`: the mini PC also serves HTTP.
@@ -104,6 +109,25 @@ fn executor(mode: MediaExecMode) -> anyhow::Result<Executor> {
             timeout: SANDBOX_TIMEOUT,
         }),
     })
+}
+
+/// The pdfium directory as an absolute path, refused unless it holds the
+/// library: a typo should stop the worker, not silently skip every PDF.
+pub fn pdfium_dir(configured: Option<&Path>) -> anyhow::Result<Option<PathBuf>> {
+    let Some(dir) = configured else {
+        return Ok(None);
+    };
+    let dir = std::fs::canonicalize(dir)
+        .with_context(|| format!("SQUIRREL_PDFIUM_DIR {}", dir.display()))?;
+    let library = squirrel_media::pdf::library_path(&dir);
+    if !library.is_file() {
+        anyhow::bail!(
+            "SQUIRREL_PDFIUM_DIR {} has no {} (run scripts/fetch-pdfium.sh)",
+            dir.display(),
+            library.file_name().unwrap_or_default().to_string_lossy()
+        );
+    }
+    Ok(Some(dir))
 }
 
 /// The job kinds this binary executes.
@@ -178,11 +202,15 @@ pub async fn run(
     stop: watch::Receiver<bool>,
 ) -> anyhow::Result<()> {
     let geo = GeoSource::resolve(options.geodata_file.clone(), &data_dir);
+    let pdfium_dir = pdfium_dir(options.pdfium_dir.as_deref())?;
+    if let Some(dir) = &pdfium_dir {
+        tracing::info!(dir = %dir.display(), "PDF thumbnails and text use pdfium");
+    }
     let media = Arc::new(MediaContext {
         pool: pool.clone(),
         storage,
         executor: executor(options.media_exec)?,
-        pdfium_dir: None,
+        pdfium_dir,
         decode_limits: DecodeLimits::default(),
         geo: GeoCache::new(geo),
     });
@@ -255,6 +283,18 @@ mod tests {
         assert!(logged.contains("listener gone"), "{logged}");
     }
 
+    #[test]
+    fn a_pdfium_dir_without_the_library_is_refused() {
+        assert!(pdfium_dir(None).unwrap().is_none());
+        let dir = tempfile::tempdir().unwrap();
+        let err = pdfium_dir(Some(dir.path())).unwrap_err();
+        assert!(format!("{err:#}").contains("fetch-pdfium"), "{err:#}");
+        assert!(pdfium_dir(Some(&dir.path().join("missing"))).is_err());
+        std::fs::write(squirrel_media::pdf::library_path(dir.path()), b"").unwrap();
+        let found = pdfium_dir(Some(dir.path())).unwrap().unwrap();
+        assert!(found.is_absolute());
+    }
+
     #[sqlx::test(migrator = "squirrel_db::MIGRATOR")]
     async fn a_migrated_database_needs_no_wait(pool: PgPool) {
         tokio::time::timeout(Duration::from_secs(5), wait_for_migrations(&pool))
@@ -270,6 +310,7 @@ mod tests {
             concurrency: None,
             media_exec: MediaExecMode::InProcess,
             geodata_file: None,
+            pdfium_dir: None,
         };
         let dir = tempfile::tempdir().unwrap();
         let storage = BlobStore::open(dir.path()).unwrap();
