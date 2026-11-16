@@ -31,6 +31,7 @@ async fn link(
             blob: &hash,
             size: 5,
             mime: "text/plain",
+            client_taken: None,
         },
     )
     .await

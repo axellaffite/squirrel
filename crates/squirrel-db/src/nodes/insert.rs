@@ -2,6 +2,7 @@ use std::collections::HashSet;
 
 use sqlx::PgConnection;
 use squirrel_core::{ContentHash, NodeName};
+use time::PrimitiveDateTime;
 use uuid::Uuid;
 
 use super::{NODE_COLUMNS, NodeRecord};
@@ -9,6 +10,14 @@ use crate::DbError;
 
 /// Give up looking for a free "name (n).ext" after this many tries.
 const MAX_NAME_VARIANTS: u32 = 1000;
+
+/// The capture time an uploading client reported (a phone's photo date):
+/// wall clock and, when known, its UTC offset in minutes.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ClientTaken {
+    pub local: PrimitiveDateTime,
+    pub offset_min: Option<i16>,
+}
 
 #[derive(Debug, Clone)]
 pub struct NewFile<'a> {
@@ -18,6 +27,7 @@ pub struct NewFile<'a> {
     pub blob: &'a ContentHash,
     pub size: i64,
     pub mime: &'a str,
+    pub client_taken: Option<ClientTaken>,
 }
 
 /// The first free variant of `name` among the live children of `parent_id`
@@ -74,8 +84,9 @@ pub async fn insert_file(
 ) -> Result<NodeRecord, DbError> {
     let name = free_name(conn, file.owner_id, file.parent_id, file.name).await?;
     let sql = format!(
-        "INSERT INTO nodes (id, owner_id, parent_id, name, kind, blob_sha256, size, mime) \
-         VALUES ($1, $2, $3, $4, 'file', $5, $6, $7) RETURNING {NODE_COLUMNS}"
+        "INSERT INTO nodes (id, owner_id, parent_id, name, kind, blob_sha256, size, mime, \
+                            client_taken_at, client_taken_offset_min) \
+         VALUES ($1, $2, $3, $4, 'file', $5, $6, $7, $8, $9) RETURNING {NODE_COLUMNS}"
     );
     Ok(sqlx::query_as::<_, NodeRecord>(&sql)
         .bind(Uuid::now_v7())
@@ -85,6 +96,8 @@ pub async fn insert_file(
         .bind(file.blob.as_str())
         .bind(file.size)
         .bind(file.mime)
+        .bind(file.client_taken.map(|taken| taken.local))
+        .bind(file.client_taken.and_then(|taken| taken.offset_min))
         .fetch_one(conn)
         .await?)
 }

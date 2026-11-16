@@ -203,6 +203,7 @@ async fn store_and_link(
         blob: hash,
         size: session.size,
         mime,
+        client_taken: None,
     };
     let node = nodes::insert_file(&mut tx, &file).await.map_err(discard)?;
     super::enqueue_media(&mut tx, &node)

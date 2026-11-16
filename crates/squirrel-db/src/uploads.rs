@@ -4,15 +4,16 @@
 use sqlx::postgres::PgExecutor;
 use sqlx::{FromRow, PgPool};
 use squirrel_core::{ContentHash, NodeName};
-use time::OffsetDateTime;
+use time::{OffsetDateTime, PrimitiveDateTime};
 use uuid::Uuid;
 
 use crate::DbError;
-use crate::nodes::find_live_folder;
+use crate::nodes::{ClientTaken, find_live_folder};
 use crate::quota::{self, Pending};
 
 const UPLOAD_COLUMNS: &str = "id, owner_id, parent_id, name, sha256, size, chunk_size, \
-     chunk_count, status, created_at, expires_at";
+     chunk_count, status, created_at, expires_at, client_taken_at, client_taken_offset_min, \
+     device_id, device_asset_id";
 const STATUS_OPEN: &str = "open";
 /// A claim keeps the session at least this long, so a slow completion (hashing
 /// a large file) never sees its session expire under it.
@@ -38,9 +39,28 @@ pub struct UploadRecord {
     status: String,
     pub created_at: OffsetDateTime,
     pub expires_at: OffsetDateTime,
+    client_taken_at: Option<PrimitiveDateTime>,
+    client_taken_offset_min: Option<i16>,
+    /// The phone that opened the session, if any (`NULL` once it was deleted).
+    pub device_id: Option<Uuid>,
+    /// The phone's id for the asset being uploaded.
+    pub device_asset_id: Option<String>,
 }
 
 impl UploadRecord {
+    /// The capture time the client reported when opening the session.
+    pub fn client_taken(&self) -> Option<ClientTaken> {
+        self.client_taken_at.map(|local| ClientTaken {
+            local,
+            offset_min: self.client_taken_offset_min,
+        })
+    }
+
+    /// The phone and its asset id, while the phone still exists.
+    pub fn device_asset(&self) -> Option<(Uuid, &str)> {
+        self.device_id.zip(self.device_asset_id.as_deref())
+    }
+
     /// `false` while a request is completing the upload.
     pub fn is_open(&self) -> bool {
         self.status == STATUS_OPEN
@@ -59,6 +79,9 @@ pub struct NewUpload<'a> {
     pub expires_at: OffsetDateTime,
     /// The owner may have at most this many unexpired sessions.
     pub max_open: i64,
+    pub client_taken: Option<ClientTaken>,
+    /// The uploading phone and its id for the asset.
+    pub device_asset: Option<(Uuid, &'a str)>,
 }
 
 /// Why [`record_chunk`] did or did not record a chunk.
@@ -99,8 +122,9 @@ pub async fn create(pool: &PgPool, new: &NewUpload<'_>) -> Result<UploadRecord, 
     .await?;
     let sql = format!(
         "INSERT INTO upload_sessions \
-           (id, owner_id, parent_id, name, sha256, size, chunk_size, chunk_count, expires_at) \
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) RETURNING {UPLOAD_COLUMNS}"
+           (id, owner_id, parent_id, name, sha256, size, chunk_size, chunk_count, expires_at, \
+            client_taken_at, client_taken_offset_min, device_id, device_asset_id) \
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13) RETURNING {UPLOAD_COLUMNS}"
     );
     let record = sqlx::query_as::<_, UploadRecord>(&sql)
         .bind(Uuid::now_v7())
@@ -112,6 +136,10 @@ pub async fn create(pool: &PgPool, new: &NewUpload<'_>) -> Result<UploadRecord, 
         .bind(new.chunk_size)
         .bind(new.chunk_count)
         .bind(new.expires_at)
+        .bind(new.client_taken.map(|taken| taken.local))
+        .bind(new.client_taken.and_then(|taken| taken.offset_min))
+        .bind(new.device_asset.map(|(device, _)| device))
+        .bind(new.device_asset.map(|(_, asset)| asset))
         .fetch_one(&mut *tx)
         .await?;
     tx.commit().await?;

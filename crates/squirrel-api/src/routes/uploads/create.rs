@@ -87,6 +87,7 @@ pub async fn link_existing(
             blob: &input.hash,
             size: blob.size,
             mime: &blob.mime,
+            client_taken: None,
         },
     )
     .await?;
@@ -150,6 +151,8 @@ async fn create_session(
         chunk_count,
         expires_at: OffsetDateTime::now_utc() + state.config.upload_ttl,
         max_open: state.config.upload_limits.max_open_per_user,
+        client_taken: None,
+        device_asset: None,
     };
     Ok(uploads::create(&state.pool, &new).await?)
 }
