@@ -124,6 +124,21 @@ pub fn jpeg_sized_with_exif(width: u32, height: u32, spec: &ExifSpec) -> Vec<u8>
     out
 }
 
+/// The pdfium for tests that need one (`scripts/fetch-pdfium.sh`):
+/// `SQUIRREL_PDFIUM_DIR`. Unset, the test is skipped (`None`), except on CI
+/// (`CI` set), where skipping would hide a broken setup: it panics.
+pub fn test_pdfium_dir() -> Option<std::path::PathBuf> {
+    if let Some(dir) = std::env::var_os("SQUIRREL_PDFIUM_DIR") {
+        return Some(dir.into());
+    }
+    assert!(
+        std::env::var_os("CI").is_none(),
+        "CI is set but SQUIRREL_PDFIUM_DIR is not: run scripts/fetch-pdfium.sh"
+    );
+    eprintln!("skipped: SQUIRREL_PDFIUM_DIR is not set");
+    None
+}
+
 /// A valid one-page PDF (A4 portrait) whose page shows `text` in Helvetica.
 pub fn pdf_with_text(text: &str) -> Vec<u8> {
     pdf_with_pages(&[text], "")

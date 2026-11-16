@@ -277,11 +277,7 @@ mod tests {
     }
 
     fn pdfium_dir() -> Option<PathBuf> {
-        let dir = std::env::var_os("SQUIRREL_PDFIUM_DIR");
-        if dir.is_none() {
-            eprintln!("skipped: SQUIRREL_PDFIUM_DIR is not set");
-        }
-        dir.map(PathBuf::from)
+        crate::testutil::test_pdfium_dir()
     }
 
     #[test]

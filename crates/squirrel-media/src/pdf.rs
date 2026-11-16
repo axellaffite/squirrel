@@ -133,11 +133,8 @@ mod tests {
 
     /// `scripts/fetch-pdfium.sh` prints the value to export.
     fn pdfium() -> Option<&'static Pdfium> {
-        let Some(dir) = std::env::var_os("SQUIRREL_PDFIUM_DIR") else {
-            eprintln!("skipped: SQUIRREL_PDFIUM_DIR is not set");
-            return None;
-        };
-        Some(bind(Path::new(&dir)).expect("pdfium loads"))
+        let dir = crate::testutil::test_pdfium_dir()?;
+        Some(bind(&dir).expect("pdfium loads"))
     }
 
     #[test]
