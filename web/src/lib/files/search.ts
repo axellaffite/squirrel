@@ -1,7 +1,6 @@
 /** Document search: query rules, snippet shaping, wording, and the request itself. */
 import { api, errorMessage } from '#lib/api/client.ts';
 import type { components } from '#lib/api/schema.d.ts';
-import type { Outcome } from '#lib/files/pages.ts';
 
 export type SearchHit = components['schemas']['DocumentHit'];
 export type SnippetPart = components['schemas']['SnippetPart'];
@@ -12,7 +11,13 @@ export const MIN_QUERY = 2;
 /** The server's limit on the query's length. */
 export const MAX_QUERY = 200;
 /** Typing pauses this long before a search is sent (the API allows 20 at once, then 1/s). */
-export const SEARCH_DEBOUNCE_MS = 250;
+export const SEARCH_DEBOUNCE_MS = 300;
+/** After a 429 without Retry-After, the search is retried once after this long. */
+export const RETRY_AFTER_MS = 1000;
+/** A Retry-After longer than this is not waited for: the user is told to try again instead. */
+export const MAX_RETRY_WAIT_MS = 10_000;
+/** Shown when the retry after a 429 was rate-limited again. */
+export const STILL_TOO_FAST = 'The server is still busy with searches. Wait a moment, then search again.';
 export const PAGE_SIZE = 20;
 /** The server never goes past this many results (`offset + limit ≤ 200`). */
 export const MAX_RESULTS = 200;
@@ -58,7 +63,7 @@ export function snippetParts(parts: readonly SnippetPart[], max: number = SNIPPE
 
 /** Calm wording for what can go wrong while typing. */
 export function searchError(status: number, fallback: string): string {
-	if (status === 429) return 'Searching a little too fast. Wait a moment, and the search will run again.';
+	if (status === 429) return 'Searching a little too fast. Trying again in a moment…';
 	if (status === 503) return 'The search took too long. Try more precise words.';
 	if (status === 422) return `Searches use ${MIN_QUERY} to ${MAX_QUERY} characters.`;
 	return fallback;
@@ -82,7 +87,16 @@ export function kindLabel(mime: string | null | undefined): string | null {
 export const pagesLabel = (count: number | null | undefined): string | null =>
 	count ? (count === 1 ? '1 page' : `${count} pages`) : null;
 
-export type SearchOutcome = Outcome<SearchResults> | { ok: false; aborted: true };
+export type SearchOutcome =
+	| { ok: true; data: SearchResults }
+	| { ok: false; error: string; status: number; retryAfterMs?: number }
+	| { ok: false; aborted: true };
+
+/** Milliseconds from a `Retry-After` header in seconds; the default when absent or unreadable. */
+export function retryDelay(header: string | null): number {
+	const seconds = header === null ? NaN : Number(header.trim());
+	return Number.isFinite(seconds) && seconds >= 0 ? seconds * 1000 : RETRY_AFTER_MS;
+}
 
 /** One page of results; resolves `{aborted}` when `signal` fired (a newer search replaced it). */
 export async function searchDocuments(query: string, offset: number, signal: AbortSignal): Promise<SearchOutcome> {
@@ -92,7 +106,9 @@ export async function searchDocuments(query: string, offset: number, signal: Abo
 			signal
 		});
 		if (response.ok && data) return { ok: true, data };
-		return { ok: false, error: searchError(response.status, errorMessage(error, response)), status: response.status };
+		const failure = { ok: false as const, error: searchError(response.status, errorMessage(error, response)), status: response.status };
+		if (response.status !== 429) return failure;
+		return { ...failure, retryAfterMs: retryDelay(response.headers.get('Retry-After')) };
 	} catch (cause) {
 		if (signal.aborted) return { ok: false, aborted: true };
 		void cause;
