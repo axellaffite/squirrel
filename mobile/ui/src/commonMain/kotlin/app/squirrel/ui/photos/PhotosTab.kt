@@ -40,9 +40,9 @@ fun PhotosTab(graph: AppGraph) {
             PageHeader("Photos")
             SegmentedControl(listOf("Timeline", "Albums"), mode, onSelect = { mode = it })
             if (mode == 0) {
-                TimelineList(api, viewModel(key = "timeline-${api.baseUrl}") { PhotosViewModel(api) }, open)
+                TimelineList(api, viewModel(key = "timeline") { PhotosViewModel(api) }, open)
             } else {
-                AlbumsGrid(api, viewModel(key = "albums-${api.baseUrl}") { AlbumsViewModel(api) }) { album = it.id to it.name }
+                AlbumsGrid(api, viewModel(key = "albums") { AlbumsViewModel(api) }) { album = it.id to it.name }
             }
         }
     }

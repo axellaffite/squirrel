@@ -113,4 +113,40 @@ class AppGraphTest {
         assertEquals(1, cleared)
         assertEquals(false, cached.exists())
     }
+
+    @Test
+    fun anotherAccountGetsFreshViewModels(): Unit = runBlocking {
+        val graph = graph(InMemoryTokenStore())
+        withTimeout(5_000) { graph.state.first { it is AppState.NeedsSignIn } }
+        val api = graph.newApi("https://home.example")
+        fun signedIn(name: String) = app.squirrel.shared.api.SignedIn(
+            app.squirrel.api.models.AccountDto(displayName = name, id = name, role = app.squirrel.api.models.Role.user, username = name),
+            app.squirrel.api.models.DeviceDto(
+                appVersion = "0.1.0",
+                createdAt = kotlin.time.Instant.fromEpochMilliseconds(0),
+                current = true,
+                id = "d",
+                lastSeenAt = kotlin.time.Instant.fromEpochMilliseconds(0),
+                name = "Pixel",
+                platform = app.squirrel.api.models.DevicePlatform.android,
+            ),
+        )
+        graph.onSignedIn("https://home.example", api, signedIn("ada"))
+        val first = (graph.state.value as AppState.SignedIn).scope
+        var cleared = false
+        val photos = object : androidx.lifecycle.ViewModel() {
+            override fun onCleared() { cleared = true }
+        }
+        first.viewModelStore.put("timeline", photos)
+
+        graph.signOut()
+        withTimeout(5_000) { graph.state.first { it is AppState.NeedsSignIn } }
+        graph.onSignedIn("https://home.example", graph.newApi("https://home.example"), signedIn("bob"))
+
+        val second = (graph.state.value as AppState.SignedIn).scope
+        assertEquals(true, cleared) // Ada's view models are gone ...
+        kotlin.test.assertNotSame(first, second)
+        assertEquals(emptySet(), second.viewModelStore.keys()) // ... and Bob starts with none
+    }
+
 }
