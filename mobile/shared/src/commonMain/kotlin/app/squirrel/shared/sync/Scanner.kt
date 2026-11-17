@@ -51,6 +51,21 @@ class Scanner(
         return ScanSummary(seen = accepted.size, removed = if (full) 0 else result.removed.size, full = full)
     }
 
+    /**
+     * Marks waiting or failed assets that no longer exist on the phone as skipped, so they stop
+     * counting as "left". Never touches what is done: the phone never deletes server files.
+     */
+    suspend fun reconcile(): Int {
+        val waiting = db.localAssetQueries.waitingIds().executeAsList()
+        var gone = 0
+        waiting.chunked(SKIP_CHUNK).forEach { batch ->
+            val missing = batch - source.existing(batch)
+            if (missing.isNotEmpty()) db.localAssetQueries.skip(missing)
+            gone += missing.size
+        }
+        return gone
+    }
+
     private companion object {
         const val SKIP_CHUNK = 500
     }

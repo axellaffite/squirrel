@@ -53,6 +53,9 @@ interface AssetSource {
     /** Null when the asset is gone from the phone. */
     suspend fun open(deviceAssetId: String): AssetReader?
 
+    /** Which of [ids] still exist on the phone (a cheap id lookup, no file access). */
+    suspend fun existing(ids: List<String>): Set<String> = ids.toSet()
+
     fun access(): MediaAccess
 
     /**

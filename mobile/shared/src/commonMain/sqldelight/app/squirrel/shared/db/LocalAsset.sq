@@ -111,6 +111,10 @@ UPDATE local_asset SET upload_id = NULL, state = 'missing' WHERE device_asset_id
 retryFailed:
 UPDATE local_asset SET state = 'missing', attempts = 0, next_attempt_at = 0 WHERE state = 'failed';
 
+-- Assets that would still be sent (or were given up on): checked against the phone now and then.
+waitingIds:
+SELECT device_asset_id FROM local_asset WHERE state IN ('new', 'hashed', 'missing', 'uploading', 'failed');
+
 counts:
 SELECT state, COUNT(*) AS n FROM local_asset GROUP BY state;
 

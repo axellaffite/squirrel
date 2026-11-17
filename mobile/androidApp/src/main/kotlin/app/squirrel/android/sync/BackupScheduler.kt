@@ -46,6 +46,7 @@ class BackupScheduler(context: Context) {
             // UPDATE keeps a running period running; the new constraints apply from the next one.
             val request = PeriodicWorkRequestBuilder<BackupWorker>(PERIOD.inWholeHours, TimeUnit.HOURS, FLEX.inWholeHours, TimeUnit.HOURS)
                 .setConstraints(constraints(settings))
+                .addTag(PERIODIC_TAG)
                 .build()
             work.enqueueUniquePeriodicWork(PERIODIC, ExistingPeriodicWorkPolicy.UPDATE, request)
         }
@@ -152,6 +153,7 @@ class BackupScheduler(context: Context) {
         const val NOW = "backup-now"
         const val CONTINUE = "backup-continue"
         private const val MANUAL_TAG = "backup-manual"
+        const val PERIODIC_TAG = "backup-periodic-run"
         val ALL = listOf(PERIODIC, ON_NEW_MEDIA, ON_CHANGE, NOW, CONTINUE)
         private val PERIOD = 6.hours
         private val FLEX = 1.hours

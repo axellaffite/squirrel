@@ -67,6 +67,8 @@ class FakeAssetSource : AssetSource {
         return readers[deviceAssetId]
     }
 
+    override suspend fun existing(ids: List<String>): Set<String> = ids.filter { it in assets }.toSet()
+
     override fun access(): MediaAccess = access
     var fingerprint: String = "full"
     override fun accessFingerprint(): String = fingerprint
