@@ -23,7 +23,7 @@ data class UploadSession(
     }
 }
 
-/** The server refused this upload's token (replaced by a newer one): open the session again. */
+/** The server refused this upload's token (older than the two latest, or the session is gone). */
 class UploadTokenRefused : Exception("The upload token was refused")
 
 /**
