@@ -107,6 +107,7 @@ class AppGraph(
     fun newApi(serverUrl: String): SquirrelApi = SquirrelApi(serverUrl, httpEngine(), session)
 
     /** Waits until start-up decided between signed in and sign-in. */
+    @Throws(Exception::class)
     suspend fun awaitReady(): AppState = state.first { it != AppState.Loading }
 
     /** The live backup status for the screens. */

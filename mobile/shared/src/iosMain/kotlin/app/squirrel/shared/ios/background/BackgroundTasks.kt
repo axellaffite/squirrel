@@ -38,6 +38,7 @@ private const val REFRESH_BUDGET_MS = 25_000L
 /** What a background task runs: the engine, until [deadline] (epoch ms) or cancelled. */
 interface BackgroundRunner {
     /** One run; [progress] gets (done, total) when known. */
+    @Throws(Exception::class)
     suspend fun run(deadline: Long?, manual: Boolean, progress: (Long, Long) -> Unit = { _, _ -> })
 
     /** The current settings (read from the database). */
