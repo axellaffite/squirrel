@@ -29,8 +29,8 @@ import io.ktor.client.plugins.auth.Auth
 import io.ktor.client.plugins.auth.authProvider
 import io.ktor.client.plugins.auth.providers.BearerAuthProvider
 import io.ktor.client.plugins.auth.providers.BearerTokens
-import io.ktor.client.plugins.auth.providers.bearer
 import io.ktor.client.plugins.contentnegotiation.ContentNegotiation
+import io.ktor.http.Url
 import io.ktor.http.encodeURLPathPart
 import io.ktor.serialization.kotlinx.json.json
 import kotlinx.serialization.json.Json
@@ -60,6 +60,11 @@ class SquirrelApi(
     engine: HttpClientEngine,
     private val session: Session,
 ) {
+    private val base = Url(baseUrl)
+
+    /** Same scheme, host and port as [baseUrl]. */
+    private fun ours(url: Url) = url.protocol == base.protocol && url.host == base.host && url.port == base.port
+
     private val public: HttpClient = HttpClient(engine) { base() }
 
     private val authed: HttpClient = HttpClient(engine) {
@@ -68,13 +73,17 @@ class SquirrelApi(
             onRequest { request, _ -> request.attributes.put(AuthenticatedCall, session) }
         })
         install(Auth) {
-            bearer {
-                loadTokens { session.accessToken()?.let { BearerTokens(it, null) } }
-                refreshTokens {
+            val bearer = BearerAuthProvider(
+                refreshTokens = {
+                    // A 401 from another host never spends this device's refresh token.
+                    if (!ours(response.call.request.url)) return@BearerAuthProvider null
                     session.refresh(oldTokens?.accessToken, ::callRefresh)?.let { BearerTokens(it, null) }
-                }
-                sendWithoutRequest { true }
-            }
+                },
+                loadTokens = { session.accessToken()?.let { BearerTokens(it, null) } },
+                sendWithoutRequestCallback = { true },
+                realm = null,
+            )
+            providers += OwnHostOnly(bearer) { ours(it) }
         }
     }
 
@@ -151,7 +160,7 @@ class SquirrelApi(
 
     /** Ktor caches what `loadTokens` returned; a new sign-in must not reuse it. */
     private fun resetCachedTokens() {
-        authed.authProvider<BearerAuthProvider>()?.clearToken()
+        authed.authProvider<OwnHostOnly>()?.clearToken()
     }
 
     fun close() {
