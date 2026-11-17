@@ -2,6 +2,7 @@ package app.squirrel.android
 
 import android.content.Context
 import android.os.Build
+import app.squirrel.android.files.AndroidFileOpener
 import app.squirrel.android.sync.AndroidBackup
 import app.squirrel.api.models.DevicePlatform
 import app.squirrel.shared.api.DeviceDetails
@@ -28,6 +29,7 @@ object AndroidGraph {
             scope = scope,
             backup = backup,
             images = AndroidImages(context),
+            files = AndroidFileOpener(context),
         )
     }
 }
