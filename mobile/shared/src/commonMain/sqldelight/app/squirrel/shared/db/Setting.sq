@@ -20,4 +20,4 @@ SELECT * FROM setting;
 -- address and the backup preferences (they describe this phone, not the account).
 removeDeviceState:
 DELETE FROM setting
-WHERE key != 'server.url' AND (key NOT LIKE 'backup.%' OR key = 'backup.last_run');
+WHERE key != 'server.url' AND key != 'session.clear_pending' AND (key NOT LIKE 'backup.%' OR key = 'backup.last_run');

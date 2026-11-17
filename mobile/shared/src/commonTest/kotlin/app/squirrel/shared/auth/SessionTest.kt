@@ -119,4 +119,43 @@ class SessionTest {
         assertEquals(SessionState.SignedIn, session.state.value)
         assertEquals(false, session.refused()) // transient: the device stays signed in
     }
+
+    /** A Keychain that is locked: reads work from memory, deleting fails. */
+    private class LockedStore(var token: String?) : TokenStore {
+        var locked = true
+        override suspend fun load(): String? = token
+        override suspend fun save(refreshToken: String) { token = refreshToken }
+        override suspend fun clear() {
+            if (locked) throw TokenStoreUnavailable(IllegalStateException("locked"))
+            token = null
+        }
+    }
+
+    private class FlagPendingClear : PendingClear {
+        var pending = false
+        override suspend fun isPending() = pending
+        override suspend fun set(pending: Boolean) { this.pending = pending }
+    }
+
+    @Test
+    fun aSignOutTheStoreRefusesStillSignsOutAndIsRetriedAtTheNextLaunch() = runTest {
+        val locked = LockedStore("sqr_1")
+        val flag = FlagPendingClear()
+        val first = Session(locked, flag)
+        first.signedIn(Tokens("sqa_1", "sqr_1"))
+
+        first.signOut()
+
+        assertEquals(SessionState.SignedOut, first.state.value)
+        assertNull(first.accessToken())
+        assertEquals(true, flag.pending)
+        // Next launch, still locked: the leftover token never signs the app back in.
+        assertEquals(SessionState.SignedOut, Session(locked, flag).restore())
+        assertEquals(true, flag.pending)
+        // Unlocked: the leftover is deleted and the flag dropped.
+        locked.locked = false
+        assertEquals(SessionState.SignedOut, Session(locked, flag).restore())
+        assertNull(locked.token)
+        assertEquals(false, flag.pending)
+    }
 }
