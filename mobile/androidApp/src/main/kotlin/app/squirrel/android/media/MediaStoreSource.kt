@@ -30,8 +30,8 @@ private const val DATE_OVERLAP_SECONDS = 2L
 
 /**
  * The phone's photos and videos. Ids are `images:<_ID>` / `video:<_ID>` (two id spaces).
- * Incremental scans use MediaStore generations (API 30+; a new volume version means a full
- * rescan) or modification times (API 29). Deletions are not listed: an asset gone from the
+ * Incremental scans keep one cursor per volume: the MediaStore generation (API 30+; a new volume
+ * version rescans that volume) or max(DATE_ADDED, DATE_MODIFIED) (API 29). Deletions are not listed: an asset gone from the
  * phone is skipped when it cannot be opened. Pending and trashed items are excluded by default.
  * `taken_at` is DATE_TAKEN, or the modification time when MediaStore has none.
  */
@@ -39,19 +39,34 @@ class MediaStoreSource(context: Context, private val access: MediaAccessReader) 
     private val app = context.applicationContext
     private val resolver: ContentResolver = app.contentResolver
 
-    private data class Kind(val prefix: String, val kind: String, val uri: Uri)
+    private data class Kind(val prefix: String, val kind: String, val uri: Uri, val uriFor: (String) -> Uri)
 
-    private val images = Kind(IMAGES, SourceFilter.KIND_PHOTO, MediaStore.Images.Media.getContentUri(MediaStore.VOLUME_EXTERNAL))
-    private val videos = Kind(VIDEO, SourceFilter.KIND_VIDEO, MediaStore.Video.Media.getContentUri(MediaStore.VOLUME_EXTERNAL))
+    private val images = Kind(IMAGES, SourceFilter.KIND_PHOTO, MediaStore.Images.Media.getContentUri(MediaStore.VOLUME_EXTERNAL)) {
+        MediaStore.Images.Media.getContentUri(it)
+    }
+    private val videos = Kind(VIDEO, SourceFilter.KIND_VIDEO, MediaStore.Video.Media.getContentUri(MediaStore.VOLUME_EXTERNAL)) {
+        MediaStore.Video.Media.getContentUri(it)
+    }
 
     override suspend fun changes(token: String?, filter: SourceFilter): ScanResult = withContext(Dispatchers.IO) {
-        val since = token?.let(::parseToken)?.takeIf { it.version == volumeVersion() }
+        val previous = decodeCursors(token)
+        val generations = Build.VERSION.SDK_INT >= Build.VERSION_CODES.R
         val kinds = if (filter.includeVideos) listOf(images, videos) else listOf(images)
-        var newest = since?.position ?: 0L
-        val assets = kinds.flatMap { kind ->
-            query(kind, since).also { rows -> rows.forEach { newest = maxOf(newest, it.position) } }.map { it.asset }
+        val assets = mutableListOf<ScannedAsset>()
+        val next = mutableMapOf<String, VolumeCursor>()
+        var everyVolumeFull = true
+        for (volume in MediaStore.getExternalVolumeNames(app).sorted()) {
+            val version = if (generations) MediaStore.getVersion(app, volume) else API29_VERSION
+            val since = previous[volume]?.takeIf { it.version == version }
+            if (since != null) everyVolumeFull = false
+            // The snapshot comes first: both kinds are read up to it, and anything newer is
+            // picked up by the next scan (no change slips between the images and videos queries).
+            val upTo = if (generations) MediaStore.getGeneration(app, volume) else null
+            val rows = kinds.flatMap { kind -> query(kind, volume, since?.position, upTo) }
+            assets += rows.map { it.asset }
+            next[volume] = VolumeCursor(version, nextPosition(since?.position, upTo, rows.map { it.position }))
         }
-        ScanResult(assets.toList(), removed = emptyList(), token = Token(volumeVersion(), newest).encode(), full = since == null)
+        ScanResult(assets, removed = emptyList(), token = encodeCursors(next), full = everyVolumeFull)
     }
 
     override suspend fun open(deviceAssetId: String): AssetReader? = withContext(Dispatchers.IO) {
@@ -99,19 +114,26 @@ class MediaStoreSource(context: Context, private val access: MediaAccessReader) 
 
     private data class Row(val asset: ScannedAsset, val position: Long)
 
-    private fun query(kind: Kind, since: Token?): List<Row> {
+    private fun query(kind: Kind, volume: String, since: Long?, upTo: Long?): List<Row> {
         val generations = Build.VERSION.SDK_INT >= Build.VERSION_CODES.R
         val projection = buildList {
             addAll(listOf(MediaColumns._ID, MediaColumns.DISPLAY_NAME, MediaColumns.MIME_TYPE, MediaColumns.SIZE,
-                MediaColumns.DATE_TAKEN, MediaColumns.DATE_MODIFIED, MediaColumns.BUCKET_DISPLAY_NAME))
+                MediaColumns.DATE_TAKEN, MediaColumns.DATE_MODIFIED, MediaColumns.BUCKET_DISPLAY_NAME, MediaColumns.DATE_ADDED))
             if (generations) add(MediaColumns.GENERATION_MODIFIED)
         }.toTypedArray()
         val (selection, args) = when {
-            since == null -> null to null
-            generations -> "${MediaColumns.GENERATION_MODIFIED} > ?" to arrayOf(since.position.toString())
-            else -> "${MediaColumns.DATE_MODIFIED} >= ?" to arrayOf((since.position - DATE_OVERLAP_SECONDS).toString())
+            generations && since != null ->
+                "${MediaColumns.GENERATION_MODIFIED} > ? AND ${MediaColumns.GENERATION_MODIFIED} <= ?" to
+                    arrayOf(since.toString(), checkNotNull(upTo).toString())
+            generations -> "${MediaColumns.GENERATION_MODIFIED} <= ?" to arrayOf(checkNotNull(upTo).toString())
+            since != null -> {
+                // API 29: DATE_ADDED catches files copied in with an old modification time.
+                val from = (since - DATE_OVERLAP_SECONDS).toString()
+                "(${MediaColumns.DATE_ADDED} >= ? OR ${MediaColumns.DATE_MODIFIED} >= ?)" to arrayOf(from, from)
+            }
+            else -> null to null
         }
-        return resolver.query(kind.uri, projection, selection, args, null)?.use { cursor ->
+        return resolver.query(kind.uriFor(volume), projection, selection, args, null)?.use { cursor ->
             buildList { while (cursor.moveToNext()) row(kind, cursor, generations)?.let(::add) }
         }.orEmpty()
     }
@@ -133,7 +155,7 @@ class MediaStoreSource(context: Context, private val access: MediaAccessReader) 
             takenAt = takenAt(if (c.isNull(4) || c.getLong(4) <= 0) modifiedSeconds * MILLIS else c.getLong(4)),
             album = c.getString(6),
         )
-        return Row(asset, if (generations) c.getLong(7) else modifiedSeconds)
+        return Row(asset, if (generations) c.getLong(8) else maxOf(c.getLong(7), modifiedSeconds))
     }
 
     private fun uriOf(id: String): Uri? {
@@ -146,18 +168,6 @@ class MediaStoreSource(context: Context, private val access: MediaAccessReader) 
         return ContentUris.withAppendedId(base, number)
     }
 
-    private fun volumeVersion(): String =
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) MediaStore.getVersion(app) else "dm"
-
-    private data class Token(val version: String, val position: Long) {
-        fun encode() = "$version|$position"
-    }
-
-    private fun parseToken(token: String): Token? {
-        val version = token.substringBeforeLast('|', missingDelimiterValue = "")
-        val position = token.substringAfterLast('|').toLongOrNull() ?: return null
-        return Token(version, position)
-    }
 }
 
 /** DATE_TAKEN (epoch ms) as RFC 3339 with the phone's offset at that instant; null when unknown. */
@@ -167,3 +177,26 @@ fun takenAt(epochMillis: Long, zone: ZoneId = ZoneId.systemDefault()): String? {
         .truncatedTo(ChronoUnit.SECONDS)
         .format(DateTimeFormatter.ISO_OFFSET_DATE_TIME)
 }
+
+private const val API29_VERSION = "dm"
+
+/** Where a volume's last scan stopped: its MediaStore version and generation (API 29: seconds). */
+data class VolumeCursor(val version: String, val position: Long)
+
+/** `volume=version|position;…`; anything unreadable means "scan everything again". */
+fun encodeCursors(cursors: Map<String, VolumeCursor>): String =
+    cursors.entries.sortedBy { it.key }.joinToString(";") { (volume, c) -> "$volume=${c.version}|${c.position}" }
+
+fun decodeCursors(token: String?): Map<String, VolumeCursor> {
+    if (token.isNullOrBlank() || '=' !in token) return emptyMap()
+    return token.split(';').mapNotNull { part ->
+        val volume = part.substringBefore('=', "").takeIf { it.isNotEmpty() } ?: return@mapNotNull null
+        val value = part.substringAfter('=')
+        val position = value.substringAfterLast('|').toLongOrNull() ?: return@mapNotNull null
+        volume to VolumeCursor(value.substringBeforeLast('|'), position)
+    }.toMap()
+}
+
+/** The next cursor: the generation snapshot (API 30+), else the newest time seen (API 29). */
+fun nextPosition(since: Long?, snapshot: Long?, seen: List<Long>): Long =
+    snapshot ?: maxOf(since ?: 0L, seen.maxOrNull() ?: 0L)
