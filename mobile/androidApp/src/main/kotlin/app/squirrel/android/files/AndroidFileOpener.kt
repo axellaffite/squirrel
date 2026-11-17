@@ -27,7 +27,10 @@ import java.io.File
  */
 class AndroidFileOpener(context: Context) : FileHandoff {
     private val app = context.applicationContext
-    private val dir = File(app.cacheDir, "open")
+    private val cache = OpenCache(File(app.cacheDir, "open"))
+
+    /** At app start: drop what earlier sessions left behind. */
+    fun prune() = cache.prune()
 
     override suspend fun open(
         api: SquirrelApi,
@@ -37,17 +40,22 @@ class AndroidFileOpener(context: Context) : FileHandoff {
         share: Boolean,
         onProgress: (Float) -> Unit,
     ): HandoffResult {
-        val target = File(File(dir, id.filter { it.isLetterOrDigit() || it == '-' }), safeName(name))
+        val target = cache.target(id, name)
+        val temp = cache.temp(target)
         try {
-            withContext(Dispatchers.IO) { download(api, id, target, onProgress) }
+            withContext(Dispatchers.IO) {
+                cache.prune(keepId = id)
+                download(api, id, temp, onProgress)
+                cache.commit(temp, target)
+            }
         } catch (e: CancellationException) {
-            target.delete()
+            temp.delete()
             throw e
         } catch (e: ApiError) {
-            target.delete()
+            temp.delete()
             return HandoffResult.Failed(e.message ?: UNREACHABLE)
         } catch (_: Exception) {
-            target.delete()
+            temp.delete()
             return HandoffResult.Failed(UNREACHABLE)
         }
         val uri = FileProvider.getUriForFile(app, "${app.packageName}.files", target)
@@ -91,14 +99,9 @@ class AndroidFileOpener(context: Context) : FileHandoff {
         }
     }
 
-    override fun clear() {
-        dir.deleteRecursively()
-    }
+    override fun clear() = cache.clear()
 
     private companion object {
         const val BUFFER = 64 * 1024
-
-        /** A file name other apps can show; never a path. */
-        fun safeName(name: String): String = name.replace('/', '_').replace('\\', '_').ifBlank { "file" }.take(120)
     }
 }
