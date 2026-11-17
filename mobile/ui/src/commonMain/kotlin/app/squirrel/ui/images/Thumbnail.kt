@@ -5,19 +5,18 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.remember
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.produceState
 import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Canvas
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.FilterQuality
 import androidx.compose.ui.graphics.ImageBitmap
-import androidx.compose.ui.graphics.Paint
-import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.graphics.painter.BitmapPainter
 import androidx.compose.ui.layout.ContentScale
 import coil3.ImageLoader
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import coil3.compose.AsyncImage
 import app.squirrel.theme.SquirrelIcon
 import app.squirrel.theme.SquirrelTheme
@@ -31,23 +30,15 @@ private const val HASH_H = 12
 private const val HASH_CACHE = 256
 
 /** Small decoded previews, bounded: a 16 × 12 bitmap per hash, scaled behind the tile. */
-private val previews = object : LinkedHashMap<String, ImageBitmap>() {}
+private val previews = LruCache<String, ImageBitmap>(HASH_CACHE)
 
-fun blurhashBitmap(hash: String): ImageBitmap? {
-    if (!Blurhash.isValid(hash)) return null
-    previews[hash]?.let { return it }
-    val pixels = Blurhash.decode(hash, HASH_W, HASH_H)
-    val bitmap = ImageBitmap(HASH_W, HASH_H)
-    val canvas = Canvas(bitmap)
-    val paint = Paint()
-    pixels.forEachIndexed { i, argb ->
-        paint.color = Color(argb)
-        val x = (i % HASH_W).toFloat()
-        val y = (i / HASH_W).toFloat()
-        canvas.drawRect(Rect(x, y, x + 1, y + 1), paint)
-    }
-    if (previews.size >= HASH_CACHE) previews.remove(previews.keys.first())
-    previews[hash] = bitmap
+/** The preview for [hash], decoded off the main thread; null for an invalid hash. */
+suspend fun blurhashBitmap(hash: String): ImageBitmap? {
+    previews.get(hash)?.let { return it }
+    val bitmap = withContext(Dispatchers.Default) {
+        if (!Blurhash.isValid(hash)) null else imageBitmapOf(Blurhash.decode(hash, HASH_W, HASH_H), HASH_W, HASH_H)
+    } ?: return null
+    previews.put(hash, bitmap)
     return bitmap
 }
 
@@ -66,7 +57,8 @@ fun Thumbnail(
     fit: Boolean = false,
 ) {
     val scheme = SquirrelTheme.scheme
-    val preview = remember(blurhash) { blurhash?.let(::blurhashBitmap) }
+    val decoded by produceState<ImageBitmap?>(null, blurhash) { value = blurhash?.let { blurhashBitmap(it) } }
+    val preview = decoded
     Box(if (fit) modifier else modifier.background(scheme.tint), contentAlignment = Alignment.Center) {
         if (preview != null && !fit) {
             Image(
