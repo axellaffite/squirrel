@@ -22,14 +22,35 @@ fun pauseReason(settings: BackupSettings, state: DeviceState): PauseReason? = wh
     else -> null
 }
 
-/** Checked before each run and between chunks (WorkManager's constraints only gate the start). */
+/** Remembers a value for [ttlMillis]; the clock is injectable for tests. */
+class Cached<T>(private val ttlMillis: Long, private val now: () -> Long, private val load: () -> T) {
+    private var value: T? = null
+    private var at = 0L
+
+    @Synchronized
+    fun get(): T {
+        val time = now()
+        val cached = value
+        if (cached != null && time - at < ttlMillis) return cached
+        return load().also {
+            value = it
+            at = time
+        }
+    }
+}
+
+/**
+ * Checked before each run and between chunks (WorkManager's constraints only gate the start).
+ * The device state is read at most every 5 s: chunks check it often.
+ */
 class AndroidConditions(context: Context) : Conditions {
     private val app = context.applicationContext
     private val connectivity = app.getSystemService(ConnectivityManager::class.java)
+    private val state = Cached(CACHE_MS, System::currentTimeMillis, ::read)
 
-    override fun check(settings: BackupSettings): PauseReason? = pauseReason(settings, current())
+    override fun check(settings: BackupSettings): PauseReason? = pauseReason(settings, state.get())
 
-    private fun current(): DeviceState {
+    private fun read(): DeviceState {
         val caps = connectivity.getNetworkCapabilities(connectivity.activeNetwork)
         val battery: Intent? = app.registerReceiver(null, IntentFilter(Intent.ACTION_BATTERY_CHANGED))
         return DeviceState(
@@ -40,3 +61,5 @@ class AndroidConditions(context: Context) : Conditions {
         )
     }
 }
+
+private const val CACHE_MS = 5_000L
