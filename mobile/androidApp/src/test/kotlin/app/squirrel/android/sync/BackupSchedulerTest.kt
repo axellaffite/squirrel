@@ -100,7 +100,8 @@ class BackupSchedulerTest {
 
         scheduler.apply(BackupSettings(wifiOnly = false, chargingOnly = true))
 
-        listOf(BackupScheduler.PERIODIC, BackupScheduler.ON_NEW_MEDIA, BackupScheduler.ON_CHANGE, BackupScheduler.CONTINUE).forEach {
+        assertEquals(NetworkType.CONNECTED, checkNotNull(info(BackupScheduler.CONTINUE)).constraints.requiredNetworkType)
+        listOf(BackupScheduler.PERIODIC, BackupScheduler.ON_NEW_MEDIA, BackupScheduler.ON_CHANGE).forEach {
             val name = it
             val constraints = checkNotNull(info(name)) { name }.constraints
             assertEquals(NetworkType.CONNECTED, constraints.requiredNetworkType, it)

@@ -120,4 +120,11 @@ class BackupWorkerTest {
         }
         assertNull(app.fake.deadline) // foreground: no 9-minute deadline
     }
+
+    @Test
+    fun foregroundRefusalsAreRecognised() {
+        kotlin.test.assertTrue(isForegroundRefusal(IllegalStateException("ForegroundServiceStartNotAllowedException")))
+        kotlin.test.assertTrue(isForegroundRefusal(SecurityException("missing FOREGROUND_SERVICE_DATA_SYNC")))
+        kotlin.test.assertFalse(isForegroundRefusal(IllegalArgumentException()))
+    }
 }

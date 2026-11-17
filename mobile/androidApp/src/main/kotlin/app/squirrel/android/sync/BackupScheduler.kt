@@ -40,7 +40,7 @@ class BackupScheduler(context: Context) {
             return
         }
         updateQueued(ON_CHANGE, constraints(settings))
-        updateQueued(CONTINUE, constraints(settings))
+        updateQueued(CONTINUE, continuationConstraints(settings))
         val periodic = infos(PERIODIC).firstOrNull { !it.state.isFinished }
         if (periodic == null || periodic.constraints != constraints(settings)) {
             // UPDATE keeps a running period running; the new constraints apply from the next one.
@@ -95,9 +95,11 @@ class BackupScheduler(context: Context) {
     fun continueLater(settings: BackupSettings, manual: Boolean) {
         if (!manual && !settings.autoBackup) return
         val request = OneTimeWorkRequestBuilder<BackupWorker>()
-            .setConstraints(constraints(settings))
+            .setConstraints(continuationConstraints(settings))
             .setInputData(manual(manual))
             .apply { if (manual) addTag(MANUAL_TAG) }
+            // Expedited where the quota allows, so a long first backup can promote to the foreground.
+            .setExpedited(OutOfQuotaPolicy.RUN_AS_NON_EXPEDITED_WORK_REQUEST)
             .build()
         work.enqueueUniqueWork(CONTINUE, ExistingWorkPolicy.APPEND_OR_REPLACE, request)
     }
@@ -168,6 +170,13 @@ class BackupScheduler(context: Context) {
             .setTriggerContentUpdateDelay(UPDATE_DELAY.toJavaDuration())
             .setTriggerContentMaxDelay(MAX_DELAY.toJavaDuration())
             .build()
+
+        /**
+         * Expedited work takes network constraints only; charging and battery are still enforced by
+         * the engine's own checks (the run pauses with a visible reason).
+         */
+        fun continuationConstraints(settings: BackupSettings): Constraints =
+            Constraints.Builder().setRequiredNetworkType(network(settings)).build()
 
         fun constraints(settings: BackupSettings): Constraints = Constraints.Builder()
             .setRequiredNetworkType(network(settings))
