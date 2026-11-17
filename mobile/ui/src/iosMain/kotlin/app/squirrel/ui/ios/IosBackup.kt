@@ -34,8 +34,8 @@ class IosBackup(
 
     /** One background session per process (the system keys it by identifier). */
     val transfers: TransferSession by lazy {
-        TransferSession(backgroundConfiguration(), TransportStore(database(), now), "${cachesPath()}/chunks")
-            .also { TransportStore(database(), now).prune() }
+        TransportStore(database(), now).prune()
+        TransferSession(backgroundConfiguration(), TransportStore(database(), now), "${cachesPath()}/chunks", ::backgroundEventsFinished)
     }
 
     override val source: AssetSource = photoKit

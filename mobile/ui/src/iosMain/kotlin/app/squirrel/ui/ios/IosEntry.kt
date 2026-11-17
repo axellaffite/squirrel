@@ -1,6 +1,7 @@
 package app.squirrel.ui.ios
 
 import app.squirrel.shared.ios.photos.LibraryObserver
+import app.squirrel.shared.ios.transfer.SessionCompletion
 import kotlinx.coroutines.MainScope
 import kotlinx.coroutines.launch
 import platform.Foundation.NSNotificationCenter
@@ -37,23 +38,36 @@ fun onLaunch() {
     }
 }
 
+/** The system's handler for a background relaunch, called once the engine is done. */
+private val sessionCompletion = SessionCompletion()
+
 /**
  * `application(_:handleEventsForBackgroundURLSession:completionHandler:)`: the system relaunched the
- * app for finished chunk transfers. The delegate records them; then the engine completes what it
- * can and queues the next chunks, and the system gets its completion handler back.
+ * app for finished chunk transfers. The handler is stored first, then the session is recreated: its
+ * delegate records the results and calls [backgroundEventsFinished].
  */
 fun onBackgroundUrlSessionEvents(identifier: String, completionHandler: () -> Unit) {
-    val backup = IosGraph.backup
-    backup.transfers.onEventsFinished = {
-        entryScope.launch {
-            try {
-                GraphRunner { IosGraph.instance }.run(
-                    deadline = kotlin.time.Clock.System.now().toEpochMilliseconds() + RELAUNCH_BUDGET_MS,
-                    manual = false,
-                )
-            } finally {
-                dispatch_async(dispatch_get_main_queue()) { completionHandler() }
-            }
+    sessionCompletion.onEvents(
+        identifier,
+        handler = { dispatch_async(dispatch_get_main_queue()) { completionHandler() } },
+        createSession = { IosGraph.backup.transfers },
+    )
+}
+
+/**
+ * Every event was delivered: the engine completes what it can and queues the next chunks, then the
+ * system gets its handler back. Nothing to do when the app was not relaunched for these events.
+ */
+internal fun backgroundEventsFinished() {
+    if (!sessionCompletion.isPending) return
+    entryScope.launch {
+        try {
+            GraphRunner { IosGraph.instance }.run(
+                deadline = kotlin.time.Clock.System.now().toEpochMilliseconds() + RELAUNCH_BUDGET_MS,
+                manual = false,
+            )
+        } finally {
+            sessionCompletion.finish()
         }
     }
 }
