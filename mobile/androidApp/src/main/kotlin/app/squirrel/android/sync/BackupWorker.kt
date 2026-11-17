@@ -40,6 +40,13 @@ interface BackupHost {
  * Android 15's 6-hour dataSync limit) cancel the run; what was done is kept and WorkManager
  * reschedules. Paused runs succeed: the constraints re-trigger them.
  */
+/**
+ * Android's ways of refusing a foreground promotion: ForegroundServiceStartNotAllowedException (an
+ * IllegalStateException, Android 12+ from the background) and SecurityException (Android 14+, a
+ * foreground-service type whose permission is missing).
+ */
+fun isForegroundRefusal(e: Throwable): Boolean = e is IllegalStateException || e is SecurityException
+
 class BackupWorker(context: Context, params: WorkerParameters) : CoroutineWorker(context, params) {
     private val notifications = ForegroundInfoFactory(context)
 
@@ -77,8 +84,11 @@ class BackupWorker(context: Context, params: WorkerParameters) : CoroutineWorker
     private suspend fun tryForeground(): Boolean = try {
         setForeground(notifications.create(SyncState.Scanning))
         true
-    } catch (e: IllegalStateException) {
-        // Not allowed from the background on this Android version: run with a deadline instead.
+    } catch (e: CancellationException) {
+        throw e
+    } catch (e: Exception) {
+        if (!isForegroundRefusal(e)) throw e
+        // Not allowed now (started from the background, missing FGS type permission): run with a deadline.
         Log.w(TAG, "Foreground not allowed: ${e.message}")
         false
     }
