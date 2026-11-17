@@ -8,19 +8,9 @@ import android.net.NetworkCapabilities
 import android.os.BatteryManager
 import app.squirrel.shared.settings.BackupSettings
 import app.squirrel.shared.sync.Conditions
+import app.squirrel.shared.sync.DeviceState
 import app.squirrel.shared.sync.PauseReason
-
-/** The phone's network and power, as backup sees them. */
-data class DeviceState(val online: Boolean, val unmetered: Boolean, val charging: Boolean, val batteryLow: Boolean)
-
-/** Pure: why a run must wait under [settings] in [state], or null. */
-fun pauseReason(settings: BackupSettings, state: DeviceState): PauseReason? = when {
-    !state.online -> PauseReason.NoNetwork
-    settings.wifiOnly && !state.unmetered -> PauseReason.WifiRequired
-    settings.chargingOnly && !state.charging -> PauseReason.ChargingRequired
-    state.batteryLow && !state.charging -> PauseReason.BatteryLow
-    else -> null
-}
+import app.squirrel.shared.sync.pauseReason
 
 /** Remembers a value for [ttlMillis]; the clock is injectable for tests. */
 class Cached<T>(private val ttlMillis: Long, private val now: () -> Long, private val load: () -> T) {

@@ -2,7 +2,9 @@ package app.squirrel.ui.backup
 
 import app.squirrel.shared.settings.BackupSettings
 import app.squirrel.shared.sync.AssetSource
+import app.squirrel.shared.sync.ChunkTransport
 import app.squirrel.shared.sync.Conditions
+import app.squirrel.shared.api.SquirrelApi
 
 /** What backup needs from the platform: the photo library, its conditions, its scheduler. */
 interface BackupPlatform {
@@ -26,6 +28,9 @@ interface BackupPlatform {
 
     /** Signed out: no more background work. */
     fun cancel()
+
+    /** How chunks travel for [api] (iOS: the background session); null: Ktor with the bearer token. */
+    fun transport(api: SquirrelApi): ChunkTransport? = null
 }
 
 /** One album: [id] is what the filter stores (Android BUCKET_ID), [name] what is shown. */

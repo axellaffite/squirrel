@@ -145,7 +145,7 @@ class AppGraph(
             api = api,
             queue = queue,
             scanner = Scanner(platform.source, database, queue, settings, now = clock),
-            transport = KtorChunkTransport(api.chunks),
+            transport = platform.transport(api) ?: KtorChunkTransport(api.chunks),
             conditions = platform.conditions,
             settings = settings,
             now = clock,

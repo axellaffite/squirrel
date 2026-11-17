@@ -1,7 +1,9 @@
 package app.squirrel.android.sync
 
 import app.squirrel.shared.settings.BackupSettings
+import app.squirrel.shared.sync.DeviceState
 import app.squirrel.shared.sync.PauseReason
+import app.squirrel.shared.sync.pauseReason
 import org.junit.Test
 import kotlin.test.assertEquals
 
