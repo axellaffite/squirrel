@@ -2,6 +2,7 @@ package app.squirrel.shared.ios.transfer
 
 import kotlinx.cinterop.BetaInteropApi
 import kotlinx.cinterop.ExperimentalForeignApi
+import kotlin.concurrent.AtomicInt
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
@@ -43,14 +44,20 @@ class TransferSession(
     /** Called once the system delivered every event for a background relaunch. */
     var onEventsFinished: () -> Unit = {}
 
+    /** Set by [cancelAll] (sign-out): results arriving afterwards are not kept. */
+    private val closed = AtomicInt(0)
+
     private val delegate = TransportDelegate(
-        onComplete = { task, result ->
-            store.record(task, result)
-            NSFileManager.defaultManager.removeItemAtPath(chunkPath(task), null)
-            scope.launch { lock.withLock { waiters.remove(task) }?.complete(result) }
-        },
+        onComplete = { task, result -> completed(task, result) },
         onEventsFinished = { onEventsFinished() },
     )
+
+    /** A task ended: its result is kept for whoever asks later, unless nobody can use it. */
+    internal fun completed(task: String, result: ChunkResult) {
+        if (!result.cancelled && closed.value == 0) store.record(task, result)
+        NSFileManager.defaultManager.removeItemAtPath(chunkPath(task), null)
+        scope.launch { lock.withLock { waiters.remove(task) }?.complete(result) }
+    }
     private val session = NSURLSession.sessionWithConfiguration(configuration, delegate, delegateQueue = null)
 
     /** Where the bytes of [task] wait for their upload. */
@@ -61,7 +68,9 @@ class TransferSession(
      * is already running, e.g. since before a relaunch), and waits for its result.
      */
     suspend fun send(task: String, request: NSURLRequest, write: suspend (path: String) -> Unit): ChunkResult {
-        store.take(task)?.let { return it } // finished while nobody was waiting
+        closed.value = 0
+        // Finished while nobody was waiting. Only a success is reused: a failure is sent again.
+        store.take(task)?.takeIf { it.succeeded }?.let { return it }
         val (waiter, start) = lock.withLock {
             val existing = waiters[task]
             if (existing != null) existing to false
@@ -103,6 +112,7 @@ class TransferSession(
 
     /** Signed out: stops every transfer and forgets the chunk files. */
     fun cancelAll() {
+        closed.value = 1
         session.getAllTasksWithCompletionHandler { tasks -> tasks.orEmpty().forEach { (it as NSURLSessionTask).cancel() } }
         NSFileManager.defaultManager.removeItemAtPath(chunkDir, null)
     }

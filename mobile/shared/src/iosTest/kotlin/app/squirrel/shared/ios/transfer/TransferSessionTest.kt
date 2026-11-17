@@ -17,11 +17,13 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
 import kotlin.test.assertFalse
+import kotlin.test.assertNull
 
 class TransferSessionTest {
+    private val store = TransportStore(createDatabase(testDriver())) { 0L }
     private val transfers = TransferSession(
         NSURLSessionConfiguration.ephemeralSessionConfiguration,
-        TransportStore(createDatabase(testDriver())) { 0L },
+        store,
         "${NSTemporaryDirectory()}chunks-${NSUUID().UUIDString}",
     )
     private val request = NSMutableURLRequest(NSURL(string = "http://127.0.0.1:9/api/uploads/u/chunks/0"))
@@ -54,5 +56,33 @@ class TransferSessionTest {
         sender.cancel()
         sender.join()
         assertFalse(transfers.isWaiting("u:1"))
+    }
+
+    @Test
+    fun aStoredFailureIsSentAgainNotReused() = runBlocking {
+        store.record("u:2", ChunkResult(500, null))
+        var writes = 0
+        assertFailsWith<IOException> { transfers.send("u:2", request) { writes++; throw IOException("stop here") } }
+        assertEquals(1, writes)
+        assertNull(store.take("u:2"))
+    }
+
+    @Test
+    fun aStoredSuccessIsReused() = runBlocking {
+        store.record("u:3", ChunkResult(204, null))
+        assertEquals(204, transfers.send("u:3", request) { error("not written again") }.status)
+    }
+
+    @Test
+    fun aCancelledTaskLeavesNoResult() {
+        transfers.completed("u:4", ChunkResult(0, "cancelled", cancelled = true))
+        assertNull(store.take("u:4"))
+    }
+
+    @Test
+    fun resultsArrivingAfterSignOutAreNotKept() {
+        transfers.cancelAll()
+        transfers.completed("u:5", ChunkResult(204, null))
+        assertNull(store.take("u:5"))
     }
 }
