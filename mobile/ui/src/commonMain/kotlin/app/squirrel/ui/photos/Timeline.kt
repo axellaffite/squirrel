@@ -1,5 +1,6 @@
 package app.squirrel.ui.photos
 
+import androidx.compose.runtime.Immutable
 import androidx.compose.ui.geometry.Offset
 
 import app.squirrel.api.models.AssetSummary
@@ -63,6 +64,7 @@ fun clampPan(offset: Offset, scale: Float, width: Float, height: Float): Offset 
     return Offset(offset.x.coerceIn(-maxX, maxX), offset.y.coerceIn(-maxY, maxY))
 }
 
+@Immutable
 data class TileSlot(val item: AssetSummary, val left: Int, val width: Int)
 
 /** What the timeline's LazyColumn shows, in order. */
@@ -74,6 +76,7 @@ sealed interface TimelineBlock {
         override val key get() = "h:$month"
     }
 
+    @Immutable
     data class Row(override val month: String, val index: Int, val height: Int, val tiles: List<TileSlot>) : TimelineBlock {
         override val key get() = "r:$month:$index"
     }
@@ -96,16 +99,43 @@ fun timelineBlocks(
     width: Int,
     rowHeight: Int = Tokens.photoRow.value.toInt(),
     gap: Int = Tokens.space1.value.toInt(),
-): List<TimelineBlock> = buildList {
-    for (page in months) {
-        add(TimelineBlock.Header(page.month, page.label))
-        val layout = justify(page.items.map { it.aspect() }, width, rowHeight, gap)
-        layout.rows.forEachIndexed { n, row ->
-            add(TimelineBlock.Row(page.month, n, row.height, row.tiles.map { TileSlot(page.items[it.index], it.left, it.width) }))
+): List<TimelineBlock> = months.flatMap { monthBlocks(it, width, rowHeight, gap) }
+
+private fun monthBlocks(page: MonthPage, width: Int, rowHeight: Int, gap: Int): List<TimelineBlock> = buildList {
+    add(TimelineBlock.Header(page.month, page.label))
+    val layout = justify(page.items.map { it.aspect() }, width, rowHeight, gap)
+    layout.rows.forEachIndexed { n, row ->
+        add(TimelineBlock.Row(page.month, n, row.height, row.tiles.map { TileSlot(page.items[it.index], it.left, it.width) }))
+    }
+    val remaining = (page.count - page.items.size).coerceAtLeast(0).toInt()
+    if (!page.complete) {
+        repeat(placeholderRows(remaining, width, rowHeight, gap)) { add(TimelineBlock.Placeholder(page.month, it, rowHeight)) }
+    }
+}
+
+/**
+ * [timelineBlocks], laid out again only for the months whose photos changed: a month's loading
+ * flag or another month's page keeps the same block instances, so their rows skip recomposition.
+ */
+class TimelineLayout(
+    private val rowHeight: Int = Tokens.photoRow.value.toInt(),
+    private val gap: Int = Tokens.space1.value.toInt(),
+) {
+    private var width = -1
+    private val done = HashMap<String, Pair<MonthPage, List<TimelineBlock>>>()
+
+    fun blocks(months: List<MonthPage>, width: Int): List<TimelineBlock> {
+        if (width != this.width) {
+            done.clear()
+            this.width = width
         }
-        val remaining = (page.count - page.items.size).coerceAtLeast(0).toInt()
-        if (!page.complete) {
-            repeat(placeholderRows(remaining, width, rowHeight, gap)) { add(TimelineBlock.Placeholder(page.month, it, rowHeight)) }
+        return months.flatMap { page ->
+            val (before, blocks) = done[page.month] ?: (null to emptyList())
+            if (before != null && before.items === page.items && before.count == page.count && before.complete == page.complete) {
+                blocks
+            } else {
+                monthBlocks(page, width, rowHeight, gap).also { done[page.month] = page to it }
+            }
         }
     }
 }

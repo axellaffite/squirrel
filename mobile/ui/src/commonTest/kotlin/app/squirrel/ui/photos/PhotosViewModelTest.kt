@@ -184,4 +184,21 @@ class PhotosViewModelTest {
         assertEquals(1, viewerIndex(listOf("a", "b"), anchor = "c", current = 2)) // gone: the last one left
         assertEquals(0, viewerIndex(emptyList(), anchor = "c", current = 2))
     }
+
+    @Test
+    fun aMonthIsLaidOutAgainOnlyWhenItsPhotosChange() = run {
+        val vm = PhotosViewModel(api(), pageSize = 100)
+        vm.settled()
+        vm.ensure("2024-07")
+        val layout = TimelineLayout(rowHeight = 112, gap = 4)
+        val first = layout.blocks(vm.settled().months, 375)
+        assertEquals(timelineBlocks(vm.state.value.months, 375, 112, 4), first)
+
+        // June loads: July's blocks are the very same instances.
+        vm.ensure("2024-06")
+        val second = layout.blocks(vm.settled().months, 375)
+        val julyRow = first.first { it is TimelineBlock.Row }
+        kotlin.test.assertSame(julyRow, second.first { it is TimelineBlock.Row && it.month == "2024-07" })
+        assertTrue(second.count { it is TimelineBlock.Row && it.month == "2024-06" } > 0)
+    }
 }
