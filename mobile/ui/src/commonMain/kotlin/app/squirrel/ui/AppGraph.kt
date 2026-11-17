@@ -239,9 +239,11 @@ class AppGraph(
     private suspend fun toSignIn() {
         (_state.value as? AppState.SignedIn)?.scope?.close()
         backup?.cancel()
-        // Thumbnails, previews and downloaded files are this account's private data.
-        _imageLoader.value?.forgetEverything()
+        // Thumbnails, previews and downloaded files are this account's private data. Screens
+        // lose the loader first, so none of them loads into the caches while they are cleared.
+        val loader = _imageLoader.value
         _imageLoader.value = null
+        loader?.forgetEverything()
         withContext(io) {
             images?.clearFiles()
             files?.clear()
