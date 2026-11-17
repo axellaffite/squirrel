@@ -6,34 +6,35 @@ import app.squirrel.api.models.AlbumDto
 import app.squirrel.api.models.AssetSummary
 import app.squirrel.shared.api.SquirrelApi
 import app.squirrel.shared.api.bodyOrThrow
-import kotlinx.coroutines.CancellationException
+import app.squirrel.ui.attempt
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 
-data class AlbumsState(val albums: List<AlbumDto>? = null, val error: String? = null)
+data class AlbumsState(val albums: List<AlbumDto>? = null, val loading: Boolean = true, val error: String? = null)
 
 /** The read-only album list. */
 class AlbumsViewModel(private val api: SquirrelApi) : ViewModel() {
     private val _state = MutableStateFlow(AlbumsState())
     val state: StateFlow<AlbumsState> = _state.asStateFlow()
+    private var job: Job? = null
 
     init {
         load()
     }
 
     fun load() {
-        _state.update { it.copy(error = null) }
-        viewModelScope.launch {
+        if (job?.isActive == true) return
+        _state.update { it.copy(loading = true, error = null) }
+        job = viewModelScope.launch {
             try {
-                val albums = api.albums.listAlbums().bodyOrThrow()
-                _state.value = AlbumsState(albums)
-            } catch (e: CancellationException) {
-                throw e
-            } catch (_: Exception) {
-                _state.update { it.copy(error = UNREACHABLE) }
+                val albums = attempt { api.albums.listAlbums().bodyOrThrow() }
+                _state.update { if (albums == null) it.copy(error = UNREACHABLE) else it.copy(albums = albums) }
+            } finally {
+                _state.update { it.copy(loading = false) }
             }
         }
     }
@@ -65,12 +66,13 @@ class AlbumViewModel(private val api: SquirrelApi, private val albumId: String, 
         _state.update { it.copy(loading = true, error = null) }
         viewModelScope.launch {
             try {
-                val page = api.albums.listAlbumItems(albumId, cursor = current.nextCursor, limit = pageSize).bodyOrThrow()
-                _state.update { it.copy(items = it.items + page.items, nextCursor = page.nextCursor, started = true, loading = false) }
-            } catch (e: CancellationException) {
-                throw e
-            } catch (_: Exception) {
-                _state.update { it.copy(loading = false, error = UNREACHABLE) }
+                val page = attempt { api.albums.listAlbumItems(albumId, cursor = current.nextCursor, limit = pageSize).bodyOrThrow() }
+                _state.update {
+                    if (page == null) it.copy(error = UNREACHABLE)
+                    else it.copy(items = (it.items + page.items).distinctBy { item -> item.id }, nextCursor = page.nextCursor, started = true)
+                }
+            } finally {
+                _state.update { it.copy(loading = false) }
             }
         }
     }

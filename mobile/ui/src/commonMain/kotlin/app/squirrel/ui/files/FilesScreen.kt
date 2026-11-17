@@ -33,6 +33,7 @@ import app.squirrel.theme.components.Button
 import app.squirrel.theme.components.ButtonSize
 import app.squirrel.theme.components.ButtonVariant
 import app.squirrel.theme.components.EmptyState
+import app.squirrel.theme.components.Loading
 import app.squirrel.theme.components.Icon
 import app.squirrel.theme.components.ListRow
 import app.squirrel.theme.components.Progress
@@ -60,6 +61,7 @@ fun FilesTab(graph: AppGraph) {
         state.message?.let { Alert(it) }
         when {
             state.error != null && state.items.isEmpty() -> ErrorRetry(checkNotNull(state.error), vm::retry)
+            state.firstLoad -> Loading()
             state.complete && state.items.isEmpty() ->
                 EmptyState(SquirrelIcon.Folder, "Nothing here yet", "Files you add on the web or back up from this phone appear here.")
             else -> LazyColumn(

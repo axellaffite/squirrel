@@ -33,6 +33,7 @@ import app.squirrel.theme.components.Button
 import app.squirrel.theme.components.ButtonSize
 import app.squirrel.theme.components.ButtonVariant
 import app.squirrel.theme.components.EmptyState
+import app.squirrel.theme.components.Loading
 
 /** Bottom space so the last row clears the floating rail. */
 val RailClearance = Tokens.railBarH + Tokens.frame * 2
@@ -42,7 +43,7 @@ val RailClearance = Tokens.railBarH + Tokens.frame * 2
 fun TimelineList(api: SquirrelApi, vm: PhotosViewModel, onOpen: (List<AssetSummary>, Int) -> Unit) {
     val state by vm.state.collectAsStateWithLifecycle()
     when {
-        state.loadingMonths -> return
+        state.loadingMonths -> return Loading()
         state.months.isEmpty() && state.error != null -> {
             ErrorRetry(state.error!!, vm::retry)
             return

@@ -36,6 +36,7 @@ import app.squirrel.theme.SquirrelTheme
 import app.squirrel.theme.Tokens
 import app.squirrel.theme.cardShadow
 import app.squirrel.theme.components.EmptyState
+import app.squirrel.theme.components.Loading
 import app.squirrel.theme.tabular
 import app.squirrel.ui.images.Thumbnail
 
@@ -44,7 +45,7 @@ import app.squirrel.ui.images.Thumbnail
 fun AlbumsGrid(api: SquirrelApi, vm: AlbumsViewModel, onOpen: (AlbumDto) -> Unit) {
     val state by vm.state.collectAsStateWithLifecycle()
     state.error?.let { return ErrorRetry(it, vm::load) }
-    val albums = state.albums ?: return
+    val albums = state.albums ?: return Loading()
     if (albums.isEmpty()) return EmptyState(SquirrelIcon.Library, "No albums yet", "Albums you make on the web appear here.")
     LazyVerticalGrid(
         columns = GridCells.Fixed(2),
@@ -90,6 +91,7 @@ private fun AlbumCard(api: SquirrelApi, album: AlbumDto, onClick: () -> Unit) {
 fun AlbumPhotos(api: SquirrelApi, vm: AlbumViewModel, onOpen: (List<AssetSummary>, Int) -> Unit) {
     val state by vm.state.collectAsStateWithLifecycle()
     if (state.complete && state.items.isEmpty()) return EmptyState(SquirrelIcon.Images, "This album is empty", "Add photos to it on the web.")
+    if (!state.started && state.loading) return Loading()
     BoxWithConstraints(Modifier.fillMaxSize()) {
         val width = maxWidth.value.toInt()
         val rowHeight = Tokens.photoRow.value.toInt()

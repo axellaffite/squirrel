@@ -1,11 +1,19 @@
 package app.squirrel.shared.auth
 
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.TimeoutCancellationException
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
+import kotlinx.coroutines.withTimeout
+
+/** How long a refresh may hold every other request waiting for it. */
+const val REFRESH_TIMEOUT_MS = 45_000L
+
+/** The refresh call did not answer within [REFRESH_TIMEOUT_MS]: a transient failure. */
+class RefreshTimedOut : Exception("The token refresh timed out")
 
 sealed interface SessionState {
     /** Not read from the [TokenStore] yet. */
@@ -76,7 +84,10 @@ class Session(private val store: TokenStore) {
             // Never the store's copy while a newer token waits to be saved: the old one was rotated out.
             val refreshToken = pendingRefresh ?: store.load() ?: return@withLock signOutLocked()
             val outcome = try {
-                call(refreshToken)
+                withTimeout(REFRESH_TIMEOUT_MS) { call(refreshToken) }
+            } catch (_: TimeoutCancellationException) {
+                refreshFailedTransiently = true
+                throw RefreshTimedOut()
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
