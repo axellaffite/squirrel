@@ -7,6 +7,7 @@ import android.content.Context
 import android.content.pm.ServiceInfo
 import androidx.core.app.NotificationCompat
 import androidx.work.ForegroundInfo
+import app.squirrel.android.R
 import app.squirrel.shared.sync.SyncState
 import app.squirrel.shared.sync.formatCount
 
@@ -20,16 +21,18 @@ class ForegroundInfoFactory(private val context: Context) {
     fun notification(state: SyncState): Notification {
         val builder = NotificationCompat.Builder(context, CHANNEL)
             .setSmallIcon(android.R.drawable.stat_sys_upload)
-            .setContentTitle("Backing up your photos")
+            .setContentTitle(context.getString(R.string.backup_title))
             .setOngoing(true)
             .setOnlyAlertOnce(true)
             .setSilent(true)
         when (state) {
             is SyncState.Uploading -> builder
-                .setContentText("Backing up ${formatCount(state.done + 1L)} of ${formatCount(state.of.toLong())}")
+                .setContentText(context.getString(R.string.backup_progress, formatCount(state.done + 1L), formatCount(state.of.toLong())))
                 .setProgress(state.of, state.done, false)
-            is SyncState.Hashing -> builder.setContentText("Preparing ${formatCount(state.of.toLong())} items").setProgress(0, 0, true)
-            else -> builder.setContentText("Checking what is new").setProgress(0, 0, true)
+            is SyncState.Hashing -> builder
+                .setContentText(context.resources.getQuantityString(R.plurals.backup_preparing, state.of, formatCount(state.of.toLong())))
+                .setProgress(0, 0, true)
+            else -> builder.setContentText(context.getString(R.string.backup_checking)).setProgress(0, 0, true)
         }
         return builder.build()
     }
@@ -37,7 +40,7 @@ class ForegroundInfoFactory(private val context: Context) {
     private fun ensureChannel() {
         val manager = context.getSystemService(NotificationManager::class.java)
         if (manager.getNotificationChannel(CHANNEL) == null) {
-            manager.createNotificationChannel(NotificationChannel(CHANNEL, "Backup", NotificationManager.IMPORTANCE_LOW))
+            manager.createNotificationChannel(NotificationChannel(CHANNEL, context.getString(R.string.backup_channel), NotificationManager.IMPORTANCE_LOW))
         }
     }
 
