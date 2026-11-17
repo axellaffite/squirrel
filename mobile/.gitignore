@@ -5,3 +5,8 @@ local.properties
 iosApp/**/xcuserdata/
 *.iml
 .idea/
+# Xcode per-user state and build output
+xcuserdata/
+*.xcuserstate
+DerivedData/
+.DS_Store
