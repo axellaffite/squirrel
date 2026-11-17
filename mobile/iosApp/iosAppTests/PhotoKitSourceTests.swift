@@ -26,8 +26,12 @@ final class PhotoKitSourceTests: XCTestCase {
         let added = try await addPhoto()
         let changed = try await source.changes(token: full.token, filter: filter)
         XCTAssertFalse(changed.full)
-        XCTAssertEqual(changed.assets.map { $0.deviceAssetId }, [added])
-        let asset = try XCTUnwrap(changed.assets.first)
+        // The new photo, plus any the system touched meanwhile (media analysis updates freshly
+        // added photos): never a rescan of the whole library.
+        let ids = changed.assets.map { $0.deviceAssetId }
+        XCTAssertTrue(ids.contains(added), "\(ids)")
+        XCTAssertLessThan(ids.count, full.assets.count + 1)
+        let asset = try XCTUnwrap(changed.assets.first { $0.deviceAssetId == added })
         XCTAssertEqual(asset.kind, "photo")
         XCTAssertEqual(asset.size, -1) // known after export
         XCTAssertNotNil(asset.takenAt)
