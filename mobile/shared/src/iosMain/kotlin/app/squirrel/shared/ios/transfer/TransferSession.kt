@@ -36,20 +36,19 @@ class TransferSession(
     configuration: NSURLSessionConfiguration,
     private val store: TransportStore,
     private val chunkDir: String,
+    /** Called once the system delivered every event for a background relaunch; set before the session exists. */
+    private val onEventsFinished: () -> Unit = {},
 ) {
     private val lock = Mutex()
     private val waiters = mutableMapOf<String, CompletableDeferred<ChunkResult>>()
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
-
-    /** Called once the system delivered every event for a background relaunch. */
-    var onEventsFinished: () -> Unit = {}
 
     /** Set by [cancelAll] (sign-out): results arriving afterwards are not kept. */
     private val closed = AtomicInt(0)
 
     private val delegate = TransportDelegate(
         onComplete = { task, result -> completed(task, result) },
-        onEventsFinished = { onEventsFinished() },
+        onEventsFinished = onEventsFinished,
     )
 
     /** A task ended: its result is kept for whoever asks later, unless nobody can use it. */

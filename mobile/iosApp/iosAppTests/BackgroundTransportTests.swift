@@ -32,7 +32,7 @@ final class BackgroundTransportTests: XCTestCase {
         store = TransportStore(db: database, now: { KotlinLong(value: Int64(Date().timeIntervalSince1970 * 1000)) })
         let configuration = URLSessionConfiguration.ephemeral
         configuration.protocolClasses = [StubProtocol.self]
-        transfers = TransferSession(configuration: configuration, store: store, chunkDir: chunkDir)
+        transfers = TransferSession(configuration: configuration, store: store, chunkDir: chunkDir, onEventsFinished: {})
     }
 
     private func session(token: String?) -> UploadSession {
