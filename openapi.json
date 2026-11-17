@@ -2683,7 +2683,7 @@
             }
           },
           "201": {
-            "description": "Session opened or resumed: send the missing chunks",
+            "description": "Session opened or resumed: send the missing chunks. A device also gets a new `upload_token` (the previous one stops working)",
             "content": {
               "application/json": {
                 "schema": {
@@ -2787,6 +2787,9 @@
         "security": [
           {
             "device_bearer": []
+          },
+          {
+            "upload_token": []
           },
           {
             "session_cookie": []
@@ -2959,6 +2962,9 @@
         "security": [
           {
             "device_bearer": []
+          },
+          {
+            "upload_token": []
           },
           {
             "csrf_token": [],
@@ -4584,6 +4590,13 @@
           "upload_id": {
             "type": "string",
             "format": "uuid"
+          },
+          "upload_token": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Devices only, when the session is opened or resumed: `squ_…`, sent as\n`Authorization: Upload <token>` for this upload's chunks and status\n(background transfers that outlive the access token). Shown once."
           }
         }
       }
@@ -4605,6 +4618,12 @@
         "in": "cookie",
         "name": "squirrel_session",
         "description": "Browser session, set by `POST /api/auth/login`."
+      },
+      "upload_token": {
+        "type": "apiKey",
+        "in": "header",
+        "name": "Authorization",
+        "description": "Per-upload token `squ_…` from `POST /api/uploads`, sent as `Authorization: Upload squ_…`, for this upload's chunks and status only."
       }
     }
   },

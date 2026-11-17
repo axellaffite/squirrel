@@ -117,6 +117,11 @@ pub struct UploadSessionDto {
     #[serde(with = "time::serde::rfc3339")]
     #[schema(value_type = String, format = DateTime)]
     pub expires_at: OffsetDateTime,
+    /// Devices only, when the session is opened or resumed: `squ_…`, sent as
+    /// `Authorization: Upload <token>` for this upload's chunks and status
+    /// (background transfers that outlive the access token). Shown once.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub upload_token: Option<String>,
 }
 
 impl UploadSessionDto {
@@ -130,6 +135,7 @@ impl UploadSessionDto {
                 .filter_map(|&i| u32::try_from(i).ok())
                 .collect(),
             expires_at: record.expires_at,
+            upload_token: None,
         }
     }
 }

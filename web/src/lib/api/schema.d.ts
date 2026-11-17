@@ -1259,6 +1259,12 @@ export interface components {
             received_chunks: number[];
             /** Format: uuid */
             upload_id: string;
+            /**
+             * @description Devices only, when the session is opened or resumed: `squ_…`, sent as
+             *     `Authorization: Upload <token>` for this upload's chunks and status
+             *     (background transfers that outlive the access token). Shown once.
+             */
+            upload_token?: string | null;
         };
     };
     responses: never;
@@ -3105,7 +3111,7 @@ export interface operations {
                     "application/json": components["schemas"]["DeduplicatedUpload"];
                 };
             };
-            /** @description Session opened or resumed: send the missing chunks */
+            /** @description Session opened or resumed: send the missing chunks. A device also gets a new `upload_token` (the previous one stops working) */
             201: {
                 headers: {
                     [name: string]: unknown;

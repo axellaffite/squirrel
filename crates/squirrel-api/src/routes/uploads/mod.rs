@@ -9,6 +9,7 @@ use axum::extract::State;
 use axum::http::StatusCode;
 use axum::response::{IntoResponse, Response};
 use sqlx::PgConnection;
+use squirrel_auth::{DeviceToken, hash_token};
 use squirrel_core::MediaKind;
 use squirrel_db::nodes::NodeRecord;
 use squirrel_db::{DbError, uploads};
@@ -16,7 +17,7 @@ use uuid::Uuid;
 
 use crate::blocking::run_storage;
 use crate::error::{ApiError, ErrorBody};
-use crate::extract::Caller;
+use crate::extract::{Caller, UploadCaller};
 use crate::files_dto::{CreateUploadRequest, DeduplicatedUpload, UploadSessionDto};
 use crate::input::{ApiJson, ApiPath};
 use crate::state::AppState;
@@ -37,7 +38,7 @@ pub(crate) async fn enqueue_media(
     request_body = CreateUploadRequest,
     responses(
         (status = 200, body = DeduplicatedUpload, description = "Content already in your library: linked, nothing to upload"),
-        (status = 201, body = UploadSessionDto, description = "Session opened or resumed: send the missing chunks"),
+        (status = 201, body = UploadSessionDto, description = "Session opened or resumed: send the missing chunks. A device also gets a new `upload_token` (the previous one stops working)"),
         (status = 404, body = ErrorBody, description = "Destination folder not found"),
         (status = 422, body = ErrorBody),
         (status = 429, body = ErrorBody, description = "rate_limited, or too_many_uploads: too many open sessions, or they would reserve more than half the free space"),
@@ -65,19 +66,34 @@ pub async fn create_upload(
     }
     let session = create::open_session(&state, owner_id, &input).await?;
     let received = uploads::received_chunks(&state.pool, session.id).await?;
-    let body = UploadSessionDto::new(&session, &received);
+    let mut body = UploadSessionDto::new(&session, &received);
+    if let Some(device) = caller.device() {
+        // A fresh token on every open or resume: the previous one stops working.
+        let token = DeviceToken::upload();
+        if uploads::set_upload_token(
+            &state.pool,
+            owner_id,
+            session.id,
+            device.id,
+            &hash_token(&token),
+        )
+        .await?
+        {
+            body.upload_token = Some(token);
+        }
+    }
     Ok((StatusCode::CREATED, Json(body)).into_response())
 }
 
-#[utoipa::path(get, path = "/api/uploads/{id}", security(("device_bearer" = []), ("session_cookie" = [])), tag = "uploads",
+#[utoipa::path(get, path = "/api/uploads/{id}", security(("device_bearer" = []), ("upload_token" = []), ("session_cookie" = [])), tag = "uploads",
     params(("id" = Uuid, Path, description = "Upload id")),
     responses((status = 200, body = UploadSessionDto), (status = 404, body = ErrorBody)))]
 pub async fn upload_status(
     State(state): State<AppState>,
-    caller: Caller,
+    caller: UploadCaller,
     ApiPath(id): ApiPath<Uuid>,
 ) -> Result<Json<UploadSessionDto>, ApiError> {
-    let session = uploads::find(&state.pool, caller.user.id, id)
+    let session = uploads::find(&state.pool, caller.owner_id, id)
         .await?
         .ok_or(ApiError::NotFound)?;
     let received = uploads::received_chunks(&state.pool, id).await?;

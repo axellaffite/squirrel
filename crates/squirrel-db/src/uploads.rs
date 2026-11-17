@@ -378,3 +378,56 @@ pub async fn existing(pool: &PgPool, ids: &[Uuid]) -> Result<Vec<Uuid>, DbError>
             .await?,
     )
 }
+
+/// The upload a per-upload token opens, while it is usable: the session is
+/// unexpired and the device it was issued to is signed in (not revoked, not
+/// deleted) and its owner not disabled.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, FromRow)]
+pub struct UploadTokenGrant {
+    pub upload_id: Uuid,
+    pub owner_id: Uuid,
+    pub device_id: Uuid,
+}
+
+/// Issues (replaces) the per-upload token of the owner's session for `device_id`;
+/// any earlier token of that session stops working. `false` if there is no
+/// such unexpired session.
+pub async fn set_upload_token(
+    pool: &PgPool,
+    owner_id: Uuid,
+    id: Uuid,
+    device_id: Uuid,
+    token_hash: &[u8],
+) -> Result<bool, DbError> {
+    let result = sqlx::query(
+        "UPDATE upload_sessions SET upload_token_hash = $4, upload_token_device_id = $3 \
+         WHERE id = $1 AND owner_id = $2 AND expires_at > now()",
+    )
+    .bind(id)
+    .bind(owner_id)
+    .bind(device_id)
+    .bind(token_hash)
+    .execute(pool)
+    .await?;
+    Ok(result.rows_affected() == 1)
+}
+
+/// What a per-upload token grants, looked up by its SHA-256 (an index probe:
+/// the lookup never compares secrets byte by byte).
+pub async fn find_by_upload_token(
+    pool: &PgPool,
+    token_hash: &[u8],
+) -> Result<Option<UploadTokenGrant>, DbError> {
+    Ok(sqlx::query_as::<_, UploadTokenGrant>(
+        "SELECT s.id AS upload_id, s.owner_id, d.id AS device_id \
+           FROM upload_sessions s \
+           JOIN devices d ON d.id = s.upload_token_device_id AND d.owner_id = s.owner_id \
+           JOIN users u ON u.id = s.owner_id \
+          WHERE s.upload_token_hash = $1 AND s.expires_at > now() \
+            AND d.revoked_at IS NULL AND d.refresh_expires_at > now() \
+            AND u.disabled_at IS NULL",
+    )
+    .bind(token_hash)
+    .fetch_optional(pool)
+    .await?)
+}
