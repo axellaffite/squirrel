@@ -46,6 +46,8 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         enableEdgeToEdge()
         super.onCreate(savedInstanceState)
+        // Private photos and files: no snapshot of them in the recent apps screen.
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) setRecentsScreenshotEnabled(false)
         val app = application as SquirrelApp
         observer = MediaObserver(this) {
             scope.launch(Dispatchers.IO) { app.backup.scheduler.onNewMedia(app.graph.settings.backup()) }
