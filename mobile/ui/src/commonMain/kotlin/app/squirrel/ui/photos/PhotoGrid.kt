@@ -33,9 +33,9 @@ fun PhotoTile(api: SquirrelApi, item: AssetSummary, modifier: Modifier, onOpen: 
     Thumbnail(
         url = if (ready) api.thumbnailUrl(item.id, item.thumbnail.version) else null,
         blurhash = item.blurhash,
-        contentDescription = "Photo taken ${dayLabel(item.takenAt)}",
+        contentDescription = photoLabel(item),
         unsupported = item.thumbnail.state == ThumbnailStatus.unsupported || item.thumbnail.state == ThumbnailStatus.failed,
-        modifier = modifier.clip(Shapes.tile).clickable(role = Role.Image) { onOpen(item) },
+        modifier = modifier.clip(Shapes.tile).clickable(role = Role.Button, onClickLabel = "Open") { onOpen(item) },
     )
 }
 

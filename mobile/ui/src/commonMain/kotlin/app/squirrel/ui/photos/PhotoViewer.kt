@@ -40,7 +40,11 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.LiveRegionMode
+import androidx.compose.ui.semantics.liveRegion
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.unit.IntSize
 import app.squirrel.api.models.AssetDetails
 import app.squirrel.api.models.AssetSummary
 import app.squirrel.api.models.ThumbnailStatus
@@ -135,10 +139,15 @@ fun PhotoViewer(
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 StageButton(SquirrelIcon.X, "Close", onClose)
+                val position = "${pager.currentPage.coerceAtMost(items.lastIndex) + 1} of ${items.size}"
                 BasicText(
                     dayLabel(current.takenAt),
                     style = SquirrelTheme.type.label.copy(color = scheme.railInk).tabular(),
-                    modifier = Modifier.weight(1f),
+                    modifier = Modifier.weight(1f).semantics {
+                        // Read on every page turn: "Photo, 12 October 2026, 19:59, 3 of 120".
+                        contentDescription = "${photoLabel(current)}, $position"
+                        liveRegion = LiveRegionMode.Polite
+                    },
                 )
                 if (original != null) {
                     StageButton(SquirrelIcon.ExternalLink, "Open ${current.name} in another app") { original.request(current) }
@@ -189,16 +198,18 @@ private fun StageButton(icon: SquirrelIcon, label: String, onClick: () -> Unit) 
 private fun ZoomablePhoto(api: SquirrelApi, item: AssetSummary, onZoom: (Boolean) -> Unit) {
     var scale by remember { mutableFloatStateOf(1f) }
     var offset by remember { mutableStateOf(Offset.Zero) }
+    var stage by remember { mutableStateOf(IntSize.Zero) }
     LaunchedEffect(scale > 1f) { onZoom(scale > 1f) }
     val ready = item.thumbnail.state == ThumbnailStatus.ready
     Thumbnail(
         url = if (ready) api.thumbnailUrl(item.id, item.thumbnail.version, preview = true) else null,
         blurhash = item.blurhash,
-        contentDescription = "Photo taken ${dayLabel(item.takenAt)}",
+        contentDescription = photoLabel(item),
         unsupported = !ready && item.thumbnail.state != ThumbnailStatus.pending,
         fit = true,
         modifier = Modifier
             .fillMaxSize()
+            .onSizeChanged { stage = it }
             .pointerInput(Unit) {
                 detectTapGestures(onDoubleTap = {
                     scale = if (scale > 1f) 1f else DOUBLE_TAP_ZOOM
@@ -212,7 +223,7 @@ private fun ZoomablePhoto(api: SquirrelApi, item: AssetSummary, onZoom: (Boolean
                         val event = awaitPointerEvent()
                         if (event.changes.size >= 2 || scale > 1f) {
                             scale = (scale * event.calculateZoom()).coerceIn(1f, MAX_ZOOM)
-                            offset = if (scale == 1f) Offset.Zero else offset + event.calculatePan()
+                            offset = if (scale == 1f) Offset.Zero else clampPan(offset + event.calculatePan(), scale, stage.width.toFloat(), stage.height.toFloat())
                             event.changes.forEach { it.consume() }
                         }
                     } while (event.changes.any { it.pressed })
