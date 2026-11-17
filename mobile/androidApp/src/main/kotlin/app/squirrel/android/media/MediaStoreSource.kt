@@ -102,14 +102,23 @@ class MediaStoreSource(context: Context, private val access: MediaAccessReader) 
         }.orEmpty()
     }
 
-    /** Buckets with their photo and video counts, for the album filter. */
+    /** Buckets with their photo and video counts, for the album filter (by id, per volume). */
     suspend fun albums(): List<Album> = withContext(Dispatchers.IO) {
-        listOf(images, videos).flatMap { kind ->
-            resolver.query(kind.uri, arrayOf(MediaColumns.BUCKET_DISPLAY_NAME), null, null, null)?.use { cursor ->
-                buildList { while (cursor.moveToNext()) add(cursor.getString(0) ?: "") }
-            }.orEmpty()
-        }.filter { it.isNotEmpty() }.groupingBy { it }.eachCount()
-            .map { (name, count) -> Album(name, count) }.sortedBy { it.name.lowercase() }
+        val found = mutableMapOf<String, Album>()
+        for (volume in MediaStore.getExternalVolumeNames(app)) {
+            for (kind in listOf(images, videos)) {
+                val projection = arrayOf(MediaColumns.BUCKET_ID, MediaColumns.BUCKET_DISPLAY_NAME)
+                resolver.query(kind.uriFor(volume), projection, null, null, null)?.use { c ->
+                    while (c.moveToNext()) {
+                        val id = c.getString(0) ?: continue
+                        val name = c.getString(1)?.takeIf { it.isNotEmpty() } ?: continue
+                        val current = found[id] ?: Album(id, name, volume, 0)
+                        found[id] = current.copy(count = current.count + 1)
+                    }
+                }
+            }
+        }
+        labelled(found.values.toList())
     }
 
     private data class Row(val asset: ScannedAsset, val position: Long)
@@ -118,7 +127,7 @@ class MediaStoreSource(context: Context, private val access: MediaAccessReader) 
         val generations = Build.VERSION.SDK_INT >= Build.VERSION_CODES.R
         val projection = buildList {
             addAll(listOf(MediaColumns._ID, MediaColumns.DISPLAY_NAME, MediaColumns.MIME_TYPE, MediaColumns.SIZE,
-                MediaColumns.DATE_TAKEN, MediaColumns.DATE_MODIFIED, MediaColumns.BUCKET_DISPLAY_NAME, MediaColumns.DATE_ADDED))
+                MediaColumns.DATE_TAKEN, MediaColumns.DATE_MODIFIED, MediaColumns.BUCKET_ID, MediaColumns.DATE_ADDED))
             if (generations) add(MediaColumns.GENERATION_MODIFIED)
         }.toTypedArray()
         val (selection, args) = when {
@@ -153,7 +162,7 @@ class MediaStoreSource(context: Context, private val access: MediaAccessReader) 
             // without EXIF (screenshots, downloads): the file's time is then the phone's best guess.
             // The server prefers the photo's own EXIF date whenever it has one.
             takenAt = takenAt(if (c.isNull(4) || c.getLong(4) <= 0) modifiedSeconds * MILLIS else c.getLong(4)),
-            album = c.getString(6),
+            album = c.getString(6), // BUCKET_ID: the filter's key (names repeat across volumes)
         )
         return Row(asset, if (generations) c.getLong(8) else maxOf(c.getLong(7), modifiedSeconds))
     }

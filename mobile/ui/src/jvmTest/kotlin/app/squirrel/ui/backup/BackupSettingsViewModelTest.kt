@@ -31,7 +31,7 @@ class BackupSettingsViewModelTest {
     private fun vm() = BackupSettingsViewModel(
         store = store,
         applySchedule = { schedules++ },
-        loadAlbums = { listOf("Camera" to 120, "Screenshots" to 8) },
+        loadAlbums = { listOf(AlbumChoice("-1739773001", "Camera", 120), AlbumChoice("54321", "Screenshots", 8)) },
         rename = { name -> renameFailure?.let { throw it }; renamed += name; name },
         deviceName = "Pixel 8",
         io = Dispatchers.Unconfined,
@@ -57,15 +57,15 @@ class BackupSettingsViewModelTest {
     fun albumSelectionPersists() {
         val vm = vm()
         vm.openAlbums()
-        assertEquals(listOf("Camera" to 120, "Screenshots" to 8), vm.state.value.albums)
+        assertEquals(listOf("Camera", "Screenshots"), vm.state.value.albums?.map { it.name })
 
-        vm.toggleAlbum("Camera")
-        assertEquals(AlbumFilter.Selected(setOf("Camera")), store.backup().albums)
-        assertEquals("Camera", vm.state.value.albumsLabel)
-        vm.toggleAlbum("Screenshots")
+        vm.toggleAlbum("-1739773001")
+        assertEquals(AlbumFilter.Selected(setOf("-1739773001")), store.backup().albums) // kept by id
+        assertEquals("Camera", vm.state.value.albumsLabel) // shown by name
+        vm.toggleAlbum("54321")
         assertEquals("2 albums", vm.state.value.albumsLabel)
-        vm.toggleAlbum("Camera")
-        assertEquals(AlbumFilter.Selected(setOf("Screenshots")), store.backup().albums)
+        vm.toggleAlbum("-1739773001")
+        assertEquals(AlbumFilter.Selected(setOf("54321")), store.backup().albums)
         vm.selectAllAlbums()
         assertEquals(AlbumFilter.All, store.backup().albums)
         assertEquals("All photos", vm.state.value.albumsLabel)

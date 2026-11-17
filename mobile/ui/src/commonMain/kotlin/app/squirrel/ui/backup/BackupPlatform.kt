@@ -12,8 +12,8 @@ interface BackupPlatform {
     /** Whether photo locations survive (Android: ACCESS_MEDIA_LOCATION granted). */
     fun locationsIncluded(): Boolean
 
-    /** Albums for the settings screen (name and count). */
-    suspend fun albums(): List<Pair<String, Int>>
+    /** Albums for the settings screen. */
+    suspend fun albums(): List<AlbumChoice>
 
     /** Re-arms background backups for [settings] (cancels them when automatic backup is off). */
     fun schedule(settings: BackupSettings)
@@ -27,6 +27,9 @@ interface BackupPlatform {
     /** Signed out: no more background work. */
     fun cancel()
 }
+
+/** One album: [id] is what the filter stores (Android BUCKET_ID), [name] what is shown. */
+data class AlbumChoice(val id: String, val name: String, val count: Int)
 
 /** Platform dialogs the backup screens open. */
 interface PhotoAccessActions {

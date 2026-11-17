@@ -131,8 +131,10 @@ class BackupEndToEndTest {
         insert(videos, "e2e-clip.mp4", "video/mp4", bucket.encodeToByteArray() + ByteArray(64 * 1024) { (it % 251).toByte() })
 
         val db = createDatabase(AndroidSqliteDriver(SquirrelDatabase.Schema, context, null))
+        val source = MediaStoreSource(context, MediaAccessReader(context))
+        val bucketId = source.albums().filter { it.name == bucket }.map { it.id }.toSet() // Pictures/ and Movies/
         val settings = SettingsStore(db).apply {
-            setBackup(BackupSettings(wifiOnly = false, albums = AlbumFilter.Selected(setOf(bucket))))
+            setBackup(BackupSettings(wifiOnly = false, albums = AlbumFilter.Selected(bucketId)))
         }
         val session = Session(KeystoreTokenStore(db))
         val api = SquirrelApi(checkNotNull(base), OkHttp.create(), session)
@@ -141,7 +143,6 @@ class BackupEndToEndTest {
             args.getString("squirrelPassword") ?: "phone-e2e-password",
             DeviceDetails("E2E $bucket", DevicePlatform.android, android.os.Build.MODEL, "e2e"),
         )
-        val source = MediaStoreSource(context, MediaAccessReader(context))
         val queue = Queue(db)
         val engine = SyncEngine(
             source = source,
@@ -174,8 +175,8 @@ class BackupEndToEndTest {
         val done = db.localAssetQueries.counts().executeAsList().associate { it.state to it.n }
         assertEquals(mapOf("done" to 4L), done)
         // Nothing left to send: the server knows every asset.
-        val all = source.changes(null, app.squirrel.shared.sync.SourceFilter(true, AlbumFilter.Selected(setOf(bucket))))
-            .assets.filter { it.album == bucket }
+        val all = source.changes(null, app.squirrel.shared.sync.SourceFilter(true, AlbumFilter.Selected(bucketId)))
+            .assets.filter { it.album in bucketId }
         val hashes = all.map { asset -> SyncCheckItem(asset.deviceAssetId, checkNotNull(queue.get(asset.deviceAssetId)?.sha256)) }
         assertEquals(emptyList(), api.sync.syncCheck(SyncCheckRequest(hashes)).bodyOrThrow().missing)
         println("E2E device=${signedIn.device.name} uploaded=${names.sorted()}")

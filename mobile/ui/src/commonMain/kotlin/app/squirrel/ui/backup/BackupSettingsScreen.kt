@@ -82,9 +82,9 @@ fun BackupSettingsScreen(vm: BackupSettingsViewModel, onBack: () -> Unit) {
             if (albums == null) {
                 BasicText("Loading albums…", style = type.caption)
             } else {
-                albums.forEach { (name, count) ->
-                    val selected = filter is AlbumFilter.Selected && name in filter.names
-                    ListRow(name, icon = SquirrelIcon.Folder, meta = count.toString(), onClick = { vm.toggleAlbum(name) }, trailing = {
+                albums.forEach { album ->
+                    val selected = filter is AlbumFilter.Selected && album.id in filter.names
+                    ListRow(album.name, icon = SquirrelIcon.Folder, meta = album.count.toString(), onClick = { vm.toggleAlbum(album.id) }, trailing = {
                         if (selected) Icon(SquirrelIcon.Check, contentDescription = "Selected", tint = SquirrelTheme.scheme.accent)
                     })
                 }
