@@ -9,8 +9,10 @@ import androidx.work.NetworkType
 import androidx.work.OneTimeWorkRequestBuilder
 import androidx.work.OutOfQuotaPolicy
 import androidx.work.PeriodicWorkRequestBuilder
+import androidx.work.WorkInfo
 import androidx.work.WorkManager
 import app.squirrel.shared.settings.BackupSettings
+import java.util.UUID
 import java.util.concurrent.TimeUnit
 import kotlin.time.Duration.Companion.hours
 import kotlin.time.Duration.Companion.minutes
@@ -25,21 +27,30 @@ import kotlin.time.toJavaDuration
 class BackupScheduler(context: Context) {
     private val work = WorkManager.getInstance(context.applicationContext)
 
+    /**
+     * Brings the background work in line with [settings] without ever cancelling a run: queued
+     * work is kept, or updated in place when its constraints changed; running work is left alone
+     * (it re-arms with the current settings when it finishes).
+     */
     fun apply(settings: BackupSettings) {
         if (!settings.autoBackup) {
             listOf(PERIODIC, ON_NEW_MEDIA).forEach(work::cancelUniqueWork)
             return
         }
-        val periodic = PeriodicWorkRequestBuilder<BackupWorker>(PERIOD.inWholeHours, TimeUnit.HOURS, FLEX.inWholeHours, TimeUnit.HOURS)
-            .setConstraints(constraints(settings))
-            .build()
-        work.enqueueUniquePeriodicWork(PERIODIC, ExistingPeriodicWorkPolicy.UPDATE, periodic)
-        enqueueOnNewMedia(settings, ExistingWorkPolicy.REPLACE)
+        val periodic = infos(PERIODIC).firstOrNull { !it.state.isFinished }
+        if (periodic == null || periodic.constraints != constraints(settings)) {
+            // UPDATE keeps a running period running; the new constraints apply from the next one.
+            val request = PeriodicWorkRequestBuilder<BackupWorker>(PERIOD.inWholeHours, TimeUnit.HOURS, FLEX.inWholeHours, TimeUnit.HOURS)
+                .setConstraints(constraints(settings))
+                .build()
+            work.enqueueUniquePeriodicWork(PERIODIC, ExistingPeriodicWorkPolicy.UPDATE, request)
+        }
+        ensureOnNewMedia(settings)
     }
 
     /** After each run: wait for the next MediaStore change again. */
     fun rearm(settings: BackupSettings) {
-        if (settings.autoBackup) enqueueOnNewMedia(settings, ExistingWorkPolicy.KEEP)
+        if (settings.autoBackup) ensureOnNewMedia(settings)
     }
 
     /** User-initiated: expedited when the quota allows. Expedited work takes network constraints only. */
@@ -68,20 +79,26 @@ class BackupScheduler(context: Context) {
         listOf(PERIODIC, ON_NEW_MEDIA, NOW, ON_CHANGE, CONTINUE).forEach(work::cancelUniqueWork)
     }
 
-    private fun enqueueOnNewMedia(settings: BackupSettings, policy: ExistingWorkPolicy) {
-        val triggers = constraints(settings).let { base ->
-            Constraints.Builder()
-                .setRequiredNetworkType(base.requiredNetworkType)
-                .setRequiresCharging(base.requiresCharging())
-                .setRequiresBatteryNotLow(true)
-                .addContentUriTrigger(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, true)
-                .addContentUriTrigger(MediaStore.Video.Media.EXTERNAL_CONTENT_URI, true)
-                .setTriggerContentUpdateDelay(UPDATE_DELAY.toJavaDuration())
-                .setTriggerContentMaxDelay(MAX_DELAY.toJavaDuration())
-                .build()
+    /** Armed once: kept when queued with the same constraints, updated in place when not. */
+    private fun ensureOnNewMedia(settings: BackupSettings) {
+        val existing = infos(ON_NEW_MEDIA)
+        val pending = existing.firstOrNull { it.state == WorkInfo.State.ENQUEUED || it.state == WorkInfo.State.BLOCKED }
+        when {
+            pending != null -> if (pending.constraints != triggerConstraints(settings)) {
+                work.updateWork(onNewMediaRequest(settings, pending.id))
+            }
+            existing.any { it.state == WorkInfo.State.RUNNING } -> Unit // it re-arms when it finishes
+            else -> work.enqueueUniqueWork(ON_NEW_MEDIA, ExistingWorkPolicy.KEEP, onNewMediaRequest(settings))
         }
-        work.enqueueUniqueWork(ON_NEW_MEDIA, policy, OneTimeWorkRequestBuilder<BackupWorker>().setConstraints(triggers).build())
     }
+
+    private fun onNewMediaRequest(settings: BackupSettings, id: UUID? = null) =
+        OneTimeWorkRequestBuilder<BackupWorker>()
+            .setConstraints(triggerConstraints(settings))
+            .apply { if (id != null) setId(id) }
+            .build()
+
+    private fun infos(name: String): List<WorkInfo> = work.getWorkInfosForUniqueWork(name).get()
 
     companion object {
         const val PERIODIC = "backup-periodic"
@@ -96,6 +113,16 @@ class BackupScheduler(context: Context) {
 
         fun network(settings: BackupSettings): NetworkType =
             if (settings.wifiOnly) NetworkType.UNMETERED else NetworkType.CONNECTED
+
+        fun triggerConstraints(settings: BackupSettings): Constraints = Constraints.Builder()
+            .setRequiredNetworkType(network(settings))
+            .setRequiresCharging(settings.chargingOnly)
+            .setRequiresBatteryNotLow(true)
+            .addContentUriTrigger(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, true)
+            .addContentUriTrigger(MediaStore.Video.Media.EXTERNAL_CONTENT_URI, true)
+            .setTriggerContentUpdateDelay(UPDATE_DELAY.toJavaDuration())
+            .setTriggerContentMaxDelay(MAX_DELAY.toJavaDuration())
+            .build()
 
         fun constraints(settings: BackupSettings): Constraints = Constraints.Builder()
             .setRequiredNetworkType(network(settings))

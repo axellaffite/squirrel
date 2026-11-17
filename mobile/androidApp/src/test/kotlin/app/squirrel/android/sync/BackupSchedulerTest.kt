@@ -100,4 +100,28 @@ class BackupSchedulerTest {
             assertEquals(null, info(it), it)
         }
     }
+
+    @Test
+    fun reApplyingTheSameSettingsKeepsTheQueuedWork() {
+        scheduler.apply(BackupSettings())
+        val periodic = checkNotNull(info(BackupScheduler.PERIODIC)).id
+        val onMedia = checkNotNull(info(BackupScheduler.ON_NEW_MEDIA)).id
+
+        scheduler.apply(BackupSettings())
+
+        assertEquals(periodic, checkNotNull(info(BackupScheduler.PERIODIC)).id)
+        assertEquals(onMedia, checkNotNull(info(BackupScheduler.ON_NEW_MEDIA)).id)
+    }
+
+    @Test
+    fun aConstraintChangeUpdatesTheTriggerInPlace() {
+        scheduler.apply(BackupSettings(wifiOnly = true))
+        val onMedia = checkNotNull(info(BackupScheduler.ON_NEW_MEDIA))
+
+        scheduler.apply(BackupSettings(wifiOnly = false))
+
+        val updated = checkNotNull(info(BackupScheduler.ON_NEW_MEDIA))
+        assertEquals(onMedia.id, updated.id) // not cancelled and replaced
+        assertEquals(NetworkType.CONNECTED, updated.constraints.requiredNetworkType)
+    }
 }
