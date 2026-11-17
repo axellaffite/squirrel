@@ -27,3 +27,7 @@ interface FileHandoff {
     /** Deletes every downloaded file (sign-out). */
     fun clear()
 }
+
+/** A file name safe to use as one path segment: no separators, no leading dots, never empty. */
+fun safeFileName(name: String): String =
+    name.replace('/', '_').replace('\\', '_').trim().trimStart('.').ifEmpty { "file" }

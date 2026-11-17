@@ -1,5 +1,6 @@
 package app.squirrel.ui.signin
 
+import androidx.compose.ui.autofill.ContentType
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -78,6 +79,7 @@ fun SignInScreen(
             onValueChange = onUsernameChange,
             label = "Username",
             error = state.usernameError,
+            autofill = ContentType.Username,
             enabled = !state.busy,
             keyboardOptions = KeyboardOptions(
                 capitalization = KeyboardCapitalization.None,
@@ -91,6 +93,7 @@ fun SignInScreen(
             label = "Password",
             error = state.passwordError,
             password = true,
+            autofill = ContentType.Password,
             enabled = !state.busy,
             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password, imeAction = ImeAction.Done),
             keyboardActions = KeyboardActions(onDone = { onSignIn() }),
