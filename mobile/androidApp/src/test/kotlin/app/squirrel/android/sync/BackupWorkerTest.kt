@@ -35,7 +35,10 @@ class FakeRunner : BackupRunner {
     override val progress: Flow<SyncState> = flowOf(SyncState.Idle)
     var manual: Boolean? = null
 
-    override suspend fun run(deadline: Long?, manual: Boolean): RunOutcome {
+    var reconcile: Boolean? = null
+
+    override suspend fun run(deadline: Long?, manual: Boolean, reconcile: Boolean): RunOutcome {
+        this.reconcile = reconcile
         this.deadline = deadline
         this.manual = manual
         failure?.let { throw it }
@@ -126,5 +129,13 @@ class BackupWorkerTest {
         kotlin.test.assertTrue(isForegroundRefusal(IllegalStateException("ForegroundServiceStartNotAllowedException")))
         kotlin.test.assertTrue(isForegroundRefusal(SecurityException("missing FOREGROUND_SERVICE_DATA_SYNC")))
         kotlin.test.assertFalse(isForegroundRefusal(IllegalArgumentException()))
+    }
+
+    @Test
+    fun onlyThePeriodicRunReconciles() {
+        runBlocking { TestListenableWorkerBuilder<BackupWorker>(app).setTags(listOf(BackupScheduler.PERIODIC_TAG)).build().doWork() }
+        assertEquals(true, app.fake.reconcile)
+        run()
+        assertEquals(false, app.fake.reconcile)
     }
 }

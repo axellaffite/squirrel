@@ -97,6 +97,23 @@ class MediaStoreSource(context: Context, private val access: MediaAccessReader) 
         null
     }
 
+    override suspend fun existing(ids: List<String>): Set<String> = withContext(Dispatchers.IO) {
+        ids.groupBy { it.substringBefore(':') }.flatMap { (prefix, group) ->
+            val kind = when (prefix) {
+                IMAGES -> images
+                VIDEO -> videos
+                else -> return@flatMap emptyList<String>()
+            }
+            group.chunked(EXISTING_CHUNK).flatMap { chunk ->
+                val numbers = chunk.mapNotNull { it.substringAfter(':').toLongOrNull() }
+                val selection = "${MediaColumns._ID} IN (${numbers.joinToString(",") { "?" }})"
+                resolver.query(kind.uri, arrayOf(MediaColumns._ID), selection, numbers.map(Long::toString).toTypedArray(), null)
+                    ?.use { c -> buildList { while (c.moveToNext()) add("$prefix:${c.getLong(0)}") } }
+                    .orEmpty()
+            }
+        }.toSet()
+    }
+
     override fun access(): MediaAccess = access.current()
 
     /** Full and None by kind; a partial grant by the exact set of selected items. */
@@ -197,6 +214,8 @@ fun takenAt(epochMillis: Long, zone: ZoneId = ZoneId.systemDefault()): String? {
 }
 
 private const val API29_VERSION = "dm"
+/** Bound parameters per IN (…) query (SQLite's limit is 999). */
+private const val EXISTING_CHUNK = 500
 
 /** Where a volume's last scan stopped: its MediaStore version and generation (API 29: seconds). */
 data class VolumeCursor(val version: String, val position: Long)

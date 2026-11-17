@@ -80,16 +80,16 @@ class SyncEngine(
      * Network and server failures end the run as [ErrorReason.Unreachable]; anything else is a
      * bug and is rethrown after the state says [ErrorReason.Unexpected].
      */
-    suspend fun runOnce(deadline: Long? = null): RunSummary {
+    suspend fun runOnce(deadline: Long? = null, reconcile: Boolean = false): RunSummary {
         if (!mutex.tryLock()) return RunSummary(stoppedBy = StopCause.AlreadyRunning)
         try {
-            return withContext(io) { runLocked(deadline) }
+            return withContext(io) { runLocked(deadline, reconcile) }
         } finally {
             mutex.unlock()
         }
     }
 
-    private suspend fun runLocked(deadline: Long?): RunSummary {
+    private suspend fun runLocked(deadline: Long?, reconcile: Boolean): RunSummary {
         var run: Run? = null
         fun stopped(state: SyncState, cause: StopCause): RunSummary {
             _state.value = state
@@ -101,6 +101,7 @@ class SyncEngine(
             run.checkpoint()
             _state.value = SyncState.Scanning
             scanner.scan()
+            if (reconcile) scanner.reconcile()
             hash(run)
             check(run)
             upload(run)

@@ -108,4 +108,23 @@ class ScannerTest {
         assertEquals("partial|4f2a", settings.value(SCAN_ACCESS_KEY))
         assertEquals(false, scanner.scan().full) // and incremental again afterwards
     }
+
+    @Test
+    fun reconcilingSkipsWhatVanishedButKeepsWhatIsDone() = runTest {
+        repeat(4) { source.put("images:$it") }
+        scanner.scan()
+        queue.setHash("images:0", "h0")
+        queue.markPresent(listOf("images:0")) // backed up
+        queue.setHash("images:1", "h1")
+        queue.applyCheck(listOf("images:1"), missing = listOf("images:1"))
+        queue.markFailed("images:1", "boom")
+        listOf("images:0", "images:1", "images:2").forEach(source::remove) // deleted on the phone
+
+        assertEquals(2, scanner.reconcile())
+
+        assertEquals(QueueState.Done, state("images:0")) // the server copy stays
+        assertEquals(QueueState.Skipped, state("images:1"))
+        assertEquals(QueueState.Skipped, state("images:2"))
+        assertEquals(QueueState.New, state("images:3"))
+    }
 }

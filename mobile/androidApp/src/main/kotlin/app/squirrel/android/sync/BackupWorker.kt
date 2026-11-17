@@ -23,7 +23,7 @@ interface BackupRunner {
     suspend fun pending(): Pair<Long, Long>
     val progress: Flow<SyncState>
     /** [manual]: "Back up now" (runs even with automatic backup off). */
-    suspend fun run(deadline: Long?, manual: Boolean): RunOutcome
+    suspend fun run(deadline: Long?, manual: Boolean, reconcile: Boolean = false): RunOutcome
     /** After any run, before the worker returns: re-arm the content trigger; after a deadline: continue. */
     suspend fun afterRun(outcome: RunOutcome?, manual: Boolean)
 }
@@ -63,7 +63,8 @@ class BackupWorker(context: Context, params: WorkerParameters) : CoroutineWorker
                 val foreground = (manual || assets > FOREGROUND_ASSETS || bytes > FOREGROUND_BYTES) && tryForeground()
                 val progress = if (foreground) launch { showProgress(runner) } else null
                 val deadline = if (foreground) null else System.currentTimeMillis() + DEADLINE_MS
-                outcome = runner.run(deadline, manual)
+                // The 6-hourly run also checks waiting assets against the phone (deleted ones).
+                outcome = runner.run(deadline, manual, reconcile = tags.contains(BackupScheduler.PERIODIC_TAG))
                 progress?.cancel()
             }
             when (outcome) {
