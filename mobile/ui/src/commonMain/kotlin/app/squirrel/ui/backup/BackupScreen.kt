@@ -30,6 +30,7 @@ import app.squirrel.theme.components.Progress
 import app.squirrel.theme.components.Sheet
 import app.squirrel.theme.components.Well
 import app.squirrel.theme.tabular
+import app.squirrel.ui.shell.PageHeader
 import kotlinx.coroutines.launch
 
 /** MASTER.md phone section: the Backup screen with its one graphite status card. */
@@ -47,6 +48,7 @@ fun BackupScreen(vm: BackupViewModel, actions: PhotoAccessActions, onOpenSetting
         modifier = Modifier.fillMaxWidth().verticalScroll(rememberScrollState()),
         verticalArrangement = Arrangement.spacedBy(Tokens.space4),
     ) {
+        PageHeader("Backup")
         if (state.access == AccessUi.None) {
             EmptyState(SquirrelIcon.Images, "Allow access to your photos", "Squirrel backs up the photos and videos on this phone.")
             Button("Allow access", onClick = actions::requestAccess, full = true, size = ButtonSize.Lg)

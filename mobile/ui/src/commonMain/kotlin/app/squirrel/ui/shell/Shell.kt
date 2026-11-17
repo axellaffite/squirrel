@@ -84,12 +84,12 @@ fun Shell(
                     }
                 }
             }
-            BasicText(
-                current.label,
-                style = SquirrelTheme.type.pageTitle,
-                modifier = Modifier.padding(vertical = Tokens.space3).semantics { heading() },
-            )
-            if (current == Tab.Backup) backup() else EmptyState(current.icon, current.title, current.line)
+            if (current == Tab.Backup) {
+                backup() // draws its own header (Backup, or Backup settings with a back button)
+            } else {
+                PageHeader(current.label)
+                EmptyState(current.icon, current.title, current.line)
+            }
         }
         BottomRail(
             items = Tab.entries.map { RailItem(it.name, it.label, it.icon) },

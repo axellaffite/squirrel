@@ -13,6 +13,8 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
+import app.squirrel.ui.shell.SystemBack
+import app.squirrel.ui.shell.PageHeader
 import androidx.compose.ui.text.input.ImeAction
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import app.squirrel.shared.settings.AlbumFilter
@@ -35,11 +37,12 @@ import app.squirrel.theme.tabular
 fun BackupSettingsScreen(vm: BackupSettingsViewModel, onBack: () -> Unit) {
     val state by vm.state.collectAsStateWithLifecycle()
     val type = SquirrelTheme.type
+    SystemBack(onBack = onBack)
     Column(
         modifier = Modifier.fillMaxWidth().verticalScroll(rememberScrollState()),
         verticalArrangement = Arrangement.spacedBy(Tokens.space4),
     ) {
-        Button("Backup", onClick = onBack, variant = ButtonVariant.Quiet, size = ButtonSize.Sm, icon = SquirrelIcon.ChevronLeft)
+        PageHeader("Backup settings", onBack = onBack, backLabel = "Back to Backup")
         Well(verticalArrangement = Arrangement.spacedBy(Tokens.space1)) {
             val s = state.settings
             Toggle("Back up automatically", s.autoBackup, vm::setAutoBackup, description = "When new photos appear, and every few hours")

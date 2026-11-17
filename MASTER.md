@@ -268,6 +268,9 @@ platforms. It adds no value: every token comes from `tokens.css` through the gen
   (Photos, Files, Backup) with `--radius-rail` and `--shadow-pop`, safe-area aware; the top row holds
   the wordmark and the account menu (server, device name, "Sign out"). Sign-in screens are the auth
   pages: wordmark and one white card on the ground.
+- **Page header**: one per page, the page title (`--text-2xl`). A sub-page (Backup settings)
+  puts a round back icon button (`chevron-left`, named "Back to …") before its own title instead
+  of repeating the parent's; the system back gesture does the same.
 - **Backup status card**: the Backup screen's one graphite card (allowed pattern "at most one
   graphite card per screen"): `--rail` gradient, `--rail-ink` featured figure ("1 204 left"),
   `--rail-muted` secondary line ("3.2 GB"), tabular figures, `--radius-card`. Progress inside it is
