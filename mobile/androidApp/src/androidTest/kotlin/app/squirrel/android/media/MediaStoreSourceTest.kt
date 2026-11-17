@@ -75,7 +75,8 @@ class MediaStoreSourceTest {
         insert(videoUri, "c.mp4", "video/mp4", ByteArray(4096) { it.toByte() })
 
         val first = source.changes(null, all)
-        val ours = first.assets.filter { it.album == bucket }.sortedBy { it.name }
+        val bucketId = source.albums().single { it.name == bucket }.id
+        val ours = first.assets.filter { it.album == bucketId }.sortedBy { it.name }
         assertTrue(first.full)
         assertEquals(listOf("a.jpg", "b.jpg", "c.mp4"), ours.map { it.name })
         assertEquals(listOf("photo", "photo", "video"), ours.map { it.kind })
@@ -85,7 +86,7 @@ class MediaStoreSourceTest {
         insert(imagesUri, "d.jpg", "image/jpeg", jpeg(Color.GREEN))
         val next = source.changes(first.token, all)
         assertEquals(false, next.full)
-        assertEquals(listOf("d.jpg"), next.assets.filter { it.album == bucket }.map { it.name })
+        assertEquals(listOf("d.jpg"), next.assets.filter { it.album == bucketId }.map { it.name })
 
         val reader = assertNotNull(source.open(ours[0].deviceAssetId))
         val bytes = ByteArray(reader.size.toInt())
@@ -97,6 +98,6 @@ class MediaStoreSourceTest {
 
         resolver.delete(inserted.first(), null, null)
         assertNull(source.open(ours[0].deviceAssetId))
-        assertTrue(source.albums().any { it.name == bucket && it.count == 3 })
+        assertTrue(source.albums().any { it.id == bucketId && it.name == bucket && it.count == 3 })
     }
 }

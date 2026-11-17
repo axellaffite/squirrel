@@ -19,8 +19,8 @@ import kotlinx.coroutines.withContext
 
 data class BackupSettingsState(
     val settings: BackupSettings = BackupSettings(),
-    /** Name and count of each album; null until loaded. */
-    val albums: List<Pair<String, Int>>? = null,
+    /** The phone's albums; null until loaded. */
+    val albums: List<AlbumChoice>? = null,
     val albumsOpen: Boolean = false,
     val deviceName: String = "",
     val savedName: String = "",
@@ -32,7 +32,7 @@ data class BackupSettingsState(
             AlbumFilter.All -> "All photos"
             is AlbumFilter.Selected -> when (filter.names.size) {
                 0 -> "No albums"
-                1 -> filter.names.first()
+                1 -> albums?.firstOrNull { it.id == filter.names.first() }?.name ?: "1 album"
                 else -> "${filter.names.size} albums"
             }
         }
@@ -46,7 +46,7 @@ private const val MAX_NAME = 64
 class BackupSettingsViewModel(
     private val store: SettingsStore,
     private val applySchedule: () -> Unit,
-    private val loadAlbums: suspend () -> List<Pair<String, Int>>,
+    private val loadAlbums: suspend () -> List<AlbumChoice>,
     /** PATCH /api/devices/current; returns the name the server kept. */
     private val rename: suspend (String) -> String,
     deviceName: String,
@@ -59,6 +59,8 @@ class BackupSettingsViewModel(
         viewModelScope.launch {
             val settings = withContext(io) { store.backup() }
             _state.update { it.copy(settings = settings) }
+            val albums = withContext(io) { loadAlbums() } // names for the label
+            _state.update { it.copy(albums = albums) }
         }
     }
 
@@ -79,11 +81,11 @@ class BackupSettingsViewModel(
 
     fun selectAllAlbums() = save { it.copy(albums = AlbumFilter.All) }
 
-    /** From "All photos", choosing one album selects just that one. */
-    fun toggleAlbum(name: String) = save { current ->
+    /** From "All photos", choosing one album selects just that one. Albums are kept by id. */
+    fun toggleAlbum(id: String) = save { current ->
         val selected = when (val filter = current.albums) {
-            AlbumFilter.All -> setOf(name)
-            is AlbumFilter.Selected -> if (name in filter.names) filter.names - name else filter.names + name
+            AlbumFilter.All -> setOf(id)
+            is AlbumFilter.Selected -> if (id in filter.names) filter.names - id else filter.names + id
         }
         current.copy(albums = AlbumFilter.Selected(selected))
     }
