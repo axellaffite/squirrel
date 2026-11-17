@@ -12,6 +12,9 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 
+/** How close to the end of what is loaded the viewer asks for more. */
+const val VIEWER_MARGIN = 10
+
 const val UNREACHABLE = "Your Squirrel could not be reached. Check your connection and try again."
 
 /** The Photos timeline: months first, then each month's photos page by page as it scrolls in. */
@@ -79,6 +82,21 @@ class PhotosViewModel(private val api: SquirrelApi, private val pageSize: Int = 
                 },
             )
         }
+    }
+
+    /**
+     * The viewer shows [id]: within [margin] of its month's loaded end, that month's next page;
+     * at the end of a complete month, the next month, so paging carries on across months.
+     */
+    fun near(id: String, margin: Int = VIEWER_MARGIN) {
+        val months = _state.value.months
+        val at = months.indexOfFirst { page -> page.items.any { it.id == id } }
+        if (at < 0) return
+        val page = months[at]
+        val left = page.items.lastIndex - page.items.indexOfFirst { it.id == id }
+        if (left >= margin) return
+        if (!page.complete) return ensure(page.month)
+        months.getOrNull(at + 1)?.takeIf { !it.started }?.let { ensure(it.month) }
     }
 
     /**

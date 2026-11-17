@@ -29,6 +29,8 @@ import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.rememberUpdatedState
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -67,11 +69,49 @@ private const val DOUBLE_TAP_ZOOM = 2.5f
  * MASTER.md lightbox: a full-screen graphite stage (`--rail`), the photo's `preview` variant,
  * swipe between the loaded photos, controls as `--rail-well` circles with `--rail-ink` icons.
  */
+/**
+ * Where the viewer stands in [ids] after they changed: [anchor]'s new place, or (when it left
+ * the list) [current] clamped to what is left.
+ */
+fun viewerIndex(ids: List<String>, anchor: String, current: Int): Int {
+    val at = ids.indexOf(anchor)
+    return if (at >= 0) at else current.coerceIn(0, (ids.size - 1).coerceAtLeast(0))
+}
+
+/**
+ * The photo viewer over a live list: [items] grows as pages arrive (it asks for them with
+ * [onNear]) and the photo on screen stays put, whatever lands before it.
+ */
 @Composable
-fun PhotoViewer(api: SquirrelApi, files: FileHandoff?, items: List<AssetSummary>, start: Int, onClose: () -> Unit) {
-    if (items.isEmpty()) return
+fun PhotoViewer(
+    api: SquirrelApi,
+    files: FileHandoff?,
+    items: List<AssetSummary>,
+    startId: String,
+    onNear: (String) -> Unit,
+    onClose: () -> Unit,
+) {
+    if (items.isEmpty()) {
+        LaunchedEffect(Unit) { onClose() }
+        return
+    }
     val scheme = SquirrelTheme.scheme
-    val pager = rememberPagerState(initialPage = start.coerceIn(0, items.lastIndex)) { items.size }
+    var anchor by remember { mutableStateOf(startId) }
+    val pager = rememberPagerState(initialPage = remember { viewerIndex(items.map { it.id }, startId, 0) }) { items.size }
+    val latest by rememberUpdatedState(items)
+    val near by rememberUpdatedState(onNear)
+    LaunchedEffect(items) {
+        val index = viewerIndex(items.map { it.id }, anchor, pager.currentPage)
+        if (index != pager.currentPage) pager.scrollToPage(index)
+    }
+    LaunchedEffect(pager) {
+        snapshotFlow { pager.currentPage }.collect { page ->
+            latest.getOrNull(page)?.let {
+                anchor = it.id
+                near(it.id)
+            }
+        }
+    }
     var zoomed by remember { mutableStateOf(false) }
     var info by remember { mutableStateOf<AssetSummary?>(null) }
     var progress by remember { mutableStateOf<Float?>(null) }
@@ -82,7 +122,7 @@ fun PhotoViewer(api: SquirrelApi, files: FileHandoff?, items: List<AssetSummary>
             HorizontalPager(pager, userScrollEnabled = !zoomed, key = { items[it].id }, modifier = Modifier.fillMaxSize()) { page ->
                 ZoomablePhoto(api, items[page], onZoom = { if (page == pager.currentPage) zoomed = it })
             }
-            val current = items[pager.currentPage]
+            val current = items.getOrNull(pager.currentPage) ?: items.last()
             Row(
                 modifier = Modifier.fillMaxWidth().windowInsetsPadding(WindowInsets.safeDrawing).padding(Tokens.space3),
                 horizontalArrangement = Arrangement.spacedBy(Tokens.space2),
