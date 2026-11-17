@@ -29,6 +29,7 @@ class FakeRunner : BackupRunner {
     var deadline: Long? = -1
     var after: RunOutcome? = null
     var afterCalled = false
+    var onAfter: suspend () -> Unit = {}
 
     override suspend fun pending() = pending
     override val progress: Flow<SyncState> = flowOf(SyncState.Idle)
@@ -37,9 +38,10 @@ class FakeRunner : BackupRunner {
         failure?.let { throw it }
         return outcome
     }
-    override fun afterRun(outcome: RunOutcome?) {
+    override suspend fun afterRun(outcome: RunOutcome?) {
         after = outcome
         afterCalled = true
+        onAfter()
     }
 }
 

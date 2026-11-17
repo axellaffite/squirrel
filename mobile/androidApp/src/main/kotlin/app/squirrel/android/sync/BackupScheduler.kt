@@ -48,9 +48,20 @@ class BackupScheduler(context: Context) {
         ensureOnNewMedia(settings)
     }
 
-    /** After each run: wait for the next MediaStore change again. */
+    /**
+     * After every run, whichever work it was: wait for the next MediaStore change again. Called
+     * from inside the trigger's own run, where KEEP would see that run and do nothing, so a fresh
+     * trigger is appended behind it (armed as soon as this run ends).
+     */
     fun rearm(settings: BackupSettings) {
-        if (settings.autoBackup) ensureOnNewMedia(settings)
+        if (!settings.autoBackup) return
+        val existing = infos(ON_NEW_MEDIA)
+        val pending = existing.any { it.state == WorkInfo.State.ENQUEUED || it.state == WorkInfo.State.BLOCKED }
+        if (!pending && existing.any { it.state == WorkInfo.State.RUNNING }) {
+            work.enqueueUniqueWork(ON_NEW_MEDIA, ExistingWorkPolicy.APPEND_OR_REPLACE, onNewMediaRequest(settings))
+        } else {
+            ensureOnNewMedia(settings)
+        }
     }
 
     /** User-initiated: expedited when the quota allows. Expedited work takes network constraints only. */
