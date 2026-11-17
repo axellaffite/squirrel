@@ -32,7 +32,10 @@ pg() {
 }
 
 start() {
-	pg dropdb -U squirrel --if-exists "$DB"
+	stop_server # a previous run's server, if any
+	# A failed start leaves nothing behind: no server, no database, no data directory.
+	trap 'echo "start failed: cleaning up" >&2; stop' ERR
+	pg dropdb -U squirrel --if-exists --force "$DB"
 	pg createdb -U squirrel "$DB"
 	rm -rf "$STATE" && mkdir -p "$STATE/data"
 	(cd "$ROOT" && cargo build -q -p squirrel)
@@ -45,12 +48,15 @@ start() {
 	SQUIRREL_EMBEDDED_WORKER=true \
 		nohup "$ROOT/target/debug/squirrel" serve >"$STATE/server.log" 2>&1 &
 	echo $! >"$STATE/pid"
+	local up=""
 	for _ in $(seq 1 60); do
-		curl -fs "http://127.0.0.1:$PORT/api/healthz" >/dev/null && break
+		curl -fs "http://127.0.0.1:$PORT/api/healthz" >/dev/null && { up=1; break; }
 		sleep 0.5
 	done
+	[[ -n "$up" ]] || { echo "the server did not answer on port $PORT (see $STATE/server.log)" >&2; false; }
 	curl -fs -X POST "http://127.0.0.1:$PORT/api/setup/admin" -H 'content-type: application/json' \
 		-d "{\"setup_token\":\"$SETUP_TOKEN\",\"username\":\"$USER_NAME\",\"display_name\":\"Phone Tester\",\"password\":\"$PASSWORD\"}" >/dev/null
+	trap - ERR
 	echo "server=http://localhost:$PORT username=$USER_NAME password=$PASSWORD log=$STATE/server.log"
 }
 
@@ -62,9 +68,18 @@ check() {
 	sql "SELECT n.name || '|' || a.taken_source FROM nodes n JOIN assets a ON a.node_id = n.id WHERE n.name = '$1' AND n.deleted_at IS NULL"
 }
 
+stop_server() {
+	if [[ -f "$STATE/pid" ]]; then
+		kill "$(cat "$STATE/pid")" 2>/dev/null || true
+		sleep 1
+		rm -f "$STATE/pid"
+	fi
+}
+
 stop() {
-	if [[ -f "$STATE/pid" ]]; then kill "$(cat "$STATE/pid")" 2>/dev/null || true; sleep 1; fi
-	pg dropdb -U squirrel --if-exists "$DB"
+	trap - ERR
+	stop_server
+	pg dropdb -U squirrel --if-exists --force "$DB"
 	rm -rf "$STATE"
 }
 
