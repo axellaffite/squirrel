@@ -9,7 +9,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.BasicText
 import androidx.compose.runtime.Composable
@@ -69,8 +69,9 @@ fun FilesTab(graph: AppGraph) {
                 verticalArrangement = Arrangement.spacedBy(Tokens.space2),
                 contentPadding = PaddingValues(bottom = RailClearance),
             ) {
-                items(state.items, key = { it.id }) { node ->
-                    if (node == state.items.last()) LaunchedEffect(state.items.size) { vm.more() }
+                itemsIndexed(state.items, key = { _, node -> node.id }) { index, node ->
+                    // The last row coming into view asks for the next page (by place, not by value).
+                    if (index == state.items.lastIndex) LaunchedEffect(state.items.size) { vm.more() }
                     NodeRow(api, node, state.downloads[node.id]) { vm.open(node) }
                 }
                 state.error?.let { error -> item(key = "error") { ErrorRetry(error, vm::retry) } }
