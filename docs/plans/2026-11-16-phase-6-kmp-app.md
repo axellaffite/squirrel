@@ -1929,3 +1929,96 @@ Server and web parts of Phase 6 (Tasks 1–13) are done; Milestones D–I are no
     declared as an `apiKey` in the `Authorization` header, whose value is `Upload squ_…`.
   - The two operations list it between `device_bearer` and the session pair.
   - The route matrix gains an upload-token column: both its tests check it.
+
+## As built: Milestone H, iOS (2026-11-17)
+
+- **Toolchain (Open question 17):** Kotlin 2.5.0 is only an RC on Maven Central, so the app stays
+  on 2.4.21. It builds with the installed Xcode 27: every module compiles for the simulator and
+  `:shared:iosSimulatorArm64Test` passes. No Xcode 26.4 is needed.
+- **Xcode project (Task 38):**
+  - Written by hand (objectVersion 77, synchronized folders), with a shared `iosApp` scheme. New
+    Swift or test files need no project edit.
+  - The build phase runs `:ui:embedAndSignAppleFrameworkForXcode -Psquirrel.ios=true`;
+    `squirrel.ios` stays false for Gradle builds.
+  - The entry functions live in `ui/src/iosMain/.../ios/IosEntry.kt` (the framework is `ui`).
+  - App Transport Security needs no debug exception: it does not apply to `localhost`,
+    unqualified names or IP addresses.
+  - Size: the Release arm64 binary is 37.6 MB stripped, about 12.7 MB compressed. No App
+    Thinning report: it needs a signed archive.
+- **Keychain (Task 39):**
+  - Queries are built with `CFDictionaryCreateMutable`. A Kotlin `Map` of CF pointers is not a
+    valid dictionary, and the first version never stored the token.
+  - Saving updates in place, then adds if missing; a failure throws `TokenStoreUnavailable`.
+  - The tests run in XCTest inside the host app: the Kotlin/Native test runner has no Keychain
+    entitlement.
+- **PhotoKit (Task 40):**
+  - The MIME type falls back to the file extension when the system type database is
+    unavailable (as in the Kotlin/Native test runner).
+  - Selected-album filters always rescan in full.
+  - `AssetSource.backedUp(id)` deletes an asset's export once the server has it. `bytesLeft`
+    ignores the -1 sizes iOS scans report.
+- **Background transport (Task 41):**
+  - Chunk results are stored in `transfer_result` (migration `3.sqm`, snapshot `4.db`) and
+    consumed once.
+  - A token-bound transport resumes through `POST /api/uploads`, which issues a fresh token.
+    A 401 throws `UploadTokenRefused` and the session is opened again.
+  - "Only on Wi-Fi" is set per request; the session itself is never discretionary.
+  - Fix `715cb0e`: parallel chunk reads shared one file handle. Android's reader uses
+    positional reads and was never affected; a test now covers both readers.
+- **Background tasks (Task 42):**
+  - "Back up now" uses `app.squirrel.ios.backup.now`: continued-processing identifiers must
+    start with the bundle id.
+  - Where the system refuses it (it does on the simulator), the run happens in the app with
+    `beginBackgroundTask`.
+  - The pause rules (`pauseReason`, `DeviceState`) moved to `shared`, used by both platforms.
+- **Shared screens (Task 43):**
+  - Compose Multiplatform 1.12 has no native iOS text input. The fields keep Compose's input and
+    carry `ContentType.Username` / `ContentType.Password`. On the simulator the QuickType bar
+    offers no password key: the content types do not reach iOS without native input.
+  - "Allow access" raises the system prompt; "Change selection" presents the limited picker;
+    "Allow all photos" opens Settings (on the simulator, the Settings root, not the app's page).
+  - Fix `b53dcae`: the photo library observer is registered only once access is granted.
+    Registering it earlier raised the photo prompt at launch, before sign-in.
+  - Open uses `UIDocumentInteractionController`, share uses `UIActivityViewController`. The
+    sheets are presented from the top view controller, injected so `IosFileOpenerTest` (K/N) runs
+    without a window. The shared screens only call open (`share = false`). On iOS the "Open in"
+    sheet also offers Save to Files and the other share actions.
+  - The safe areas come from `WindowInsets.safeDrawing` in the shell, so the rail clears the home
+    indicator. Compose follows Dynamic Type: checked at "accessibility large".
+  - Kotlin `suspend` functions called from Swift are marked `@Throws(Exception::class)`;
+    otherwise a Kotlin exception crashes the app. Names starting with `new` reach Swift with a
+    `do` prefix (`doNewApi`).
+- **End to end (Task 44):**
+  - `BackupEndToEndTests` signs in through `IosGraph`, runs the engine and checks
+    `Photos/<device>/<year>/` through the API, with a cookie session.
+  - The simulator's library holds the same bytes under two names. Content the server already
+    has is usually linked rather than stored again, so the test bounds the file count between
+    the distinct hashes and the photos instead of matching it exactly.
+  - `xcodebuild test` reports its results, then lingers for about 10 minutes before exiting on
+    this machine. The results are final when "Test Suite 'All tests'" is printed.
+  - The scheme's `$(SQUIRREL_SERVER)` is not filled from an `xcodebuild` build setting. Run it
+    with `TEST_RUNNER_SQUIRREL_SERVER=http://localhost:8188 xcodebuild test …`.
+  - The persistent-change PhotoKit test accepts system updates beside the new photo: media
+    analysis touches freshly added photos (`d199f83`).
+- **Verified on the iPhone 17 simulator (iOS 27), 2026-11-17**, against a throwaway server on
+  127.0.0.1:8188 with database `squirrel_mobile_e2e_ios`:
+  - XCTests: all 9 pass in one run, the end-to-end test included. K/N: 109 `shared` tests and 55 `ui` tests.
+  - Sign-in, and the session survives a relaunch. No password autofill (see above).
+  - No access, then limited access with 3 photos (backed up), then full access: 44, then 46
+    photos backed up into `Photos/iPhone 17/<year>/`, including photos added with
+    `simctl addmedia` while the app was open. Signing in again with the same name got the folder
+    back.
+  - Sent Home during a 474 MB upload (60 chunks): the upload finished about 22 s after Home,
+    inside the `beginBackgroundTask` window.
+    - Over localhost, every chunk had arrived within about 4 s of Home.
+    - The simulator cannot show chunks outliving the app's suspension. That needs a device and
+      a slower link (Task 45).
+  - The timeline, the viewer and the "Open in" sheet for a photo and for a file in Files.
+  - Revoking the device from the web: the next request sends the app back to sign-in.
+  - The accessibility tree names every rail item, tile and button. VoiceOver itself, and its
+    focus order, were not checked: the simulator has no VoiceOver.
+- **Still open:**
+  - password autofill (needs native text input in Compose, or an associated domain);
+  - VoiceOver focus order, on a device;
+  - Task 45, on a physical iPhone signed with the user's Apple team: background transfers that
+    outlive suspension, BG tasks, iCloud originals, HEIC and Live Photos.
