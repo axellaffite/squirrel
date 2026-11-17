@@ -24,6 +24,7 @@ import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.text.BasicText
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -49,20 +50,20 @@ import app.squirrel.theme.Shapes
 import app.squirrel.theme.SquirrelIcon
 import app.squirrel.theme.SquirrelTheme
 import app.squirrel.theme.Tokens
+import app.squirrel.theme.components.Button
+import app.squirrel.theme.components.ButtonVariant
 import app.squirrel.theme.components.Icon
 import app.squirrel.theme.components.MinTouchTarget
 import app.squirrel.theme.components.Progress
 import app.squirrel.theme.components.Sheet
 import app.squirrel.theme.tabular
 import app.squirrel.ui.files.FileHandoff
-import app.squirrel.ui.files.HandoffResult
 import app.squirrel.ui.images.Thumbnail
 import app.squirrel.ui.shell.FullScreen
 import app.squirrel.ui.shell.StageBars
 import app.squirrel.ui.shell.SystemBack
 import androidx.compose.ui.input.pointer.PointerInputScope
 import kotlinx.coroutines.CancellationException
-import kotlinx.coroutines.launch
 
 private const val MAX_ZOOM = 4f
 private const val DOUBLE_TAP_ZOOM = 2.5f
@@ -116,9 +117,9 @@ fun PhotoViewer(
     }
     var zoomed by remember { mutableStateOf(false) }
     var info by remember { mutableStateOf<AssetSummary?>(null) }
-    var progress by remember { mutableStateOf<Float?>(null) }
-    var message by remember { mutableStateOf<String?>(null) }
     val scope = rememberCoroutineScope()
+    val original = remember(files) { files?.let { OpenOriginal(api, it, scope) } }
+    val originalState = original?.state?.collectAsState()?.value ?: OriginalState()
     FullScreen {
         SystemBack(onBack = onClose)
         StageBars()
@@ -139,29 +140,24 @@ fun PhotoViewer(
                     style = SquirrelTheme.type.label.copy(color = scheme.railInk).tabular(),
                     modifier = Modifier.weight(1f),
                 )
-                if (files != null) {
-                    StageButton(SquirrelIcon.ExternalLink, "Open ${current.name} in another app") {
-                        if (progress != null) return@StageButton
-                        progress = 0f
-                        scope.launch {
-                            val result = files.open(api, current.id, current.name, current.mime, share = false) { progress = it }
-                            progress = null
-                            message = when (result) {
-                                HandoffResult.Opened -> null
-                                HandoffResult.NoApp -> "No app on this phone opens this file."
-                                is HandoffResult.Failed -> result.message
-                            }
-                        }
-                    }
+                if (original != null) {
+                    StageButton(SquirrelIcon.ExternalLink, "Open ${current.name} in another app") { original.request(current) }
                 }
                 StageButton(SquirrelIcon.Info, "Details of ${current.name}") { info = current }
             }
             Box(Modifier.align(Alignment.BottomCenter).fillMaxWidth().windowInsetsPadding(WindowInsets.safeDrawing).padding(Tokens.gutter)) {
-                progress?.let { Progress(it, label = "Downloading the original") }
-                message?.let { BasicText(it, style = SquirrelTheme.type.caption.copy(color = scheme.railInk)) }
+                originalState.progress?.let { Progress(it, label = "Downloading the original") }
+                originalState.message?.let { BasicText(it, style = SquirrelTheme.type.caption.copy(color = scheme.railInk)) }
             }
         }
         info?.let { PhotoInfo(api, it) { info = null } }
+        originalState.confirm?.let { (big, _) ->
+            Sheet(originalState.confirmText.orEmpty(), onDismiss = { original?.dismiss() }) {
+                BasicText("${big.name} is large: it is downloaded to this phone before it opens.", style = SquirrelTheme.type.body)
+                Button("Download", onClick = { original?.confirm() }, full = true)
+                Button("Cancel", onClick = { original?.dismiss() }, variant = ButtonVariant.Quiet, full = true)
+            }
+        }
     }
 }
 
