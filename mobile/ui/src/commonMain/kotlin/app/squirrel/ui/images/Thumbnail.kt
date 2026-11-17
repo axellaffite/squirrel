@@ -62,11 +62,13 @@ fun Thumbnail(
     contentDescription: String?,
     modifier: Modifier = Modifier,
     unsupported: Boolean = false,
+    /** Fit the whole image (the viewer) instead of cropping it to the tile. */
+    fit: Boolean = false,
 ) {
     val scheme = SquirrelTheme.scheme
     val preview = remember(blurhash) { blurhash?.let(::blurhashBitmap) }
-    Box(modifier.background(scheme.tint), contentAlignment = Alignment.Center) {
-        if (preview != null) {
+    Box(if (fit) modifier else modifier.background(scheme.tint), contentAlignment = Alignment.Center) {
+        if (preview != null && !fit) {
             Image(
                 BitmapPainter(preview, filterQuality = FilterQuality.Low),
                 contentDescription = null,
@@ -80,7 +82,7 @@ fun Thumbnail(
                 model = url,
                 imageLoader = loader,
                 contentDescription = contentDescription,
-                contentScale = ContentScale.Crop,
+                contentScale = if (fit) ContentScale.Fit else ContentScale.Crop,
                 modifier = Modifier.fillMaxSize(),
             )
             unsupported -> Icon(SquirrelIcon.ImageOff, contentDescription = contentDescription, tint = scheme.inkMuted)
