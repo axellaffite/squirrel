@@ -10,6 +10,8 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.IO
 import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import platform.Foundation.NSCachesDirectory
 import platform.Foundation.NSDate
 import platform.Foundation.NSFileHandle
@@ -94,11 +96,16 @@ class AssetExporter(private val dir: String = defaultDir()) {
         return FileReader(handle, size, modifiedAt)
     }
 
+    /** Chunks are read in parallel: seek and read on the one handle must not interleave. */
     private class FileReader(private val handle: NSFileHandle, override val size: Long, override val modifiedAt: Long) : AssetReader {
+        private val lock = Mutex()
+
         override suspend fun read(position: Long, into: ByteArray, offset: Int, length: Int): Int = withContext(Dispatchers.IO) {
             if (position >= size) return@withContext -1
-            handle.seekToFileOffset(position.toULong())
-            val data = handle.readDataOfLength(length.toULong())
+            val data = lock.withLock {
+                handle.seekToFileOffset(position.toULong())
+                handle.readDataOfLength(length.toULong())
+            }
             val count = data.length.toInt()
             if (count == 0) return@withContext -1
             into.usePinned { memcpy(it.addressOf(offset), data.bytes, count.toULong()) }
