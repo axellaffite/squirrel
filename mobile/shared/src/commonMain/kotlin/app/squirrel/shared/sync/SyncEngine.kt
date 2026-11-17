@@ -159,6 +159,8 @@ class SyncEngine(
             val request = SyncCheckRequest(batch.map { SyncCheckItem(it.deviceAssetId, checkNotNull(it.sha256)) })
             val missing = api.sync.syncCheck(request).bodyOrThrow().missing
             queue.applyCheck(batch.map { it.deviceAssetId }, missing)
+            val absent = missing.toSet()
+            batch.filter { it.deviceAssetId !in absent }.forEach { source.backedUp(it.deviceAssetId) }
             run.summary = run.summary.copy(checked = run.summary.checked + batch.size)
         }
     }

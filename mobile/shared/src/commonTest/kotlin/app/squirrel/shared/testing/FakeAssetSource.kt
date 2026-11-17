@@ -70,6 +70,12 @@ class FakeAssetSource : AssetSource {
     override suspend fun existing(ids: List<String>): Set<String> = ids.filter { it in assets }.toSet()
 
     override fun access(): MediaAccess = access
+
+    /** Ids the engine reported as on the server, in order. */
+    val backedUp = mutableListOf<String>()
+    override fun backedUp(deviceAssetId: String) {
+        backedUp += deviceAssetId
+    }
     var fingerprint: String = "full"
     override fun accessFingerprint(): String = fingerprint
 }
