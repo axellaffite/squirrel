@@ -6,8 +6,18 @@ import kotlinx.cinterop.alloc
 import kotlinx.cinterop.memScoped
 import kotlinx.cinterop.ptr
 import kotlinx.cinterop.value
+import platform.CoreFoundation.CFDictionaryAddValue
+import platform.CoreFoundation.CFDictionaryCreateMutable
+import platform.CoreFoundation.CFDictionaryGetValue
 import platform.CoreFoundation.CFDictionaryRef
+import platform.CoreFoundation.CFMutableDictionaryRef
+import platform.CoreFoundation.CFRelease
+import platform.CoreFoundation.CFRetain
+import platform.CoreFoundation.CFTypeRef
 import platform.CoreFoundation.CFTypeRefVar
+import platform.CoreFoundation.kCFBooleanTrue
+import platform.CoreFoundation.kCFTypeDictionaryKeyCallBacks
+import platform.CoreFoundation.kCFTypeDictionaryValueCallBacks
 import platform.Foundation.CFBridgingRelease
 import platform.Foundation.CFBridgingRetain
 import platform.Foundation.NSData
@@ -18,6 +28,8 @@ import platform.Foundation.dataUsingEncoding
 import platform.Security.SecItemAdd
 import platform.Security.SecItemCopyMatching
 import platform.Security.SecItemDelete
+import platform.Security.SecItemUpdate
+import platform.Security.errSecItemNotFound
 import platform.Security.errSecSuccess
 import platform.Security.kSecAttrAccessible
 import platform.Security.kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly
@@ -27,59 +39,109 @@ import platform.Security.kSecClass
 import platform.Security.kSecClassGenericPassword
 import platform.Security.kSecMatchLimit
 import platform.Security.kSecMatchLimitOne
+import platform.Security.kSecReturnAttributes
 import platform.Security.kSecReturnData
 import platform.Security.kSecValueData
 
+/** A Keychain call failed with [status] (an `OSStatus`, e.g. -25308 while the device is locked). */
+class KeychainError(val status: Int) : Exception("Keychain status $status")
+
 /**
  * The refresh token in the Keychain: a generic password readable after the first unlock (so
- * background tasks can refresh), never in backups or on another device. Built in Milestone H.
+ * background tasks can refresh), never in backups or on another device. A Keychain that cannot
+ * be read now throws [TokenStoreUnavailable] (the session stays signed in); a missing item is null.
  */
 @OptIn(ExperimentalForeignApi::class, BetaInteropApi::class)
-class KeychainTokenStore : TokenStore {
-    override suspend fun load(): String? = memScoped {
-        val query = dictionary(
-            kSecClass to kSecClassGenericPassword,
-            kSecAttrService to SERVICE,
-            kSecAttrAccount to ACCOUNT,
-            kSecReturnData to true,
-            kSecMatchLimit to kSecMatchLimitOne,
-        )
-        val result = alloc<CFTypeRefVar>()
-        val status = SecItemCopyMatching(query, result.ptr)
-        CFBridgingRelease(query)
-        if (status != errSecSuccess) return@memScoped null
-        val data = CFBridgingRelease(result.value) as? NSData ?: return@memScoped null
-        NSString.create(data, NSUTF8StringEncoding)?.toString()
+class KeychainTokenStore(
+    private val service: String = SERVICE,
+    private val account: String = ACCOUNT,
+) : TokenStore {
+    override suspend fun load(): String? {
+        val result = copyMatching(kSecReturnData) ?: return null
+        val data = CFBridgingRelease(result) as? NSData ?: return null
+        return NSString.create(data, NSUTF8StringEncoding)?.toString()
     }
 
+    /** Updates the item in place (never delete-then-add: a failed add would lose the token). */
     override suspend fun save(refreshToken: String) {
-        clear()
         @Suppress("CAST_NEVER_SUCCEEDS")
-        val data = (refreshToken as NSString).dataUsingEncoding(NSUTF8StringEncoding) ?: return
-        val item = dictionary(
-            kSecClass to kSecClassGenericPassword,
-            kSecAttrService to SERVICE,
-            kSecAttrAccount to ACCOUNT,
-            kSecAttrAccessible to kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly,
-            kSecValueData to data,
-        )
-        SecItemAdd(item, null)
-        CFBridgingRelease(item)
+        val data = (refreshToken as NSString).dataUsingEncoding(NSUTF8StringEncoding)
+            ?: throw TokenStoreUnavailable(IllegalArgumentException("not UTF-8"))
+        val bytes = CFBridgingRetain(data)
+        try {
+            var status = withQuery { query ->
+                val changes = mutable()
+                CFDictionaryAddValue(changes, kSecValueData, bytes)
+                CFDictionaryAddValue(changes, kSecAttrAccessible, kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly)
+                SecItemUpdate(query, changes).also { CFRelease(changes) }
+            }
+            if (status == errSecItemNotFound) {
+                status = withQuery { item ->
+                    CFDictionaryAddValue(item, kSecValueData, bytes)
+                    CFDictionaryAddValue(item, kSecAttrAccessible, kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly)
+                    SecItemAdd(item, null)
+                }
+            }
+            if (status != errSecSuccess) throw TokenStoreUnavailable(KeychainError(status))
+        } finally {
+            CFRelease(bytes)
+        }
     }
 
     override suspend fun clear() {
-        val query = dictionary(
-            kSecClass to kSecClassGenericPassword,
-            kSecAttrService to SERVICE,
-            kSecAttrAccount to ACCOUNT,
-        )
-        SecItemDelete(query)
-        CFBridgingRelease(query)
+        val status = withQuery { SecItemDelete(it) }
+        if (status != errSecSuccess && status != errSecItemNotFound) throw TokenStoreUnavailable(KeychainError(status))
     }
 
-    @Suppress("UNCHECKED_CAST")
-    private fun dictionary(vararg pairs: Pair<Any?, Any?>): CFDictionaryRef? =
-        CFBridgingRetain(mapOf(*pairs) as Map<Any?, *>) as CFDictionaryRef?
+    /** Whether the item is readable only on this device, after its first unlock (tests). */
+    fun isThisDeviceAfterFirstUnlock(): Boolean {
+        val attributes = copyMatching(kSecReturnAttributes) ?: return false
+        try {
+            @Suppress("UNCHECKED_CAST")
+            val value = CFDictionaryGetValue(attributes as CFDictionaryRef, kSecAttrAccessible)
+            return value != null && text(value) == text(kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly)
+        } finally {
+            CFRelease(attributes)
+        }
+    }
+
+    /** A borrowed CFString as Kotlin text. */
+    private fun text(ref: CFTypeRef?): String? = CFBridgingRelease(CFRetain(ref)) as? String
+
+    /** The matching item's data or attributes (retained: the caller releases it); null when missing. */
+    private fun copyMatching(returning: CFTypeRef?): CFTypeRef? = memScoped {
+        val result = alloc<CFTypeRefVar>()
+        val status = withQuery { query ->
+            CFDictionaryAddValue(query, returning, kCFBooleanTrue)
+            CFDictionaryAddValue(query, kSecMatchLimit, kSecMatchLimitOne)
+            SecItemCopyMatching(query, result.ptr)
+        }
+        when (status) {
+            errSecSuccess -> result.value
+            errSecItemNotFound -> null
+            else -> throw TokenStoreUnavailable(KeychainError(status))
+        }
+    }
+
+    /** Runs [block] with a fresh query for this item (class, service, account), then frees it. */
+    private fun <T> withQuery(block: (CFMutableDictionaryRef?) -> T): T {
+        val query = mutable()
+        val serviceRef = CFBridgingRetain(service)
+        val accountRef = CFBridgingRetain(account)
+        try {
+            CFDictionaryAddValue(query, kSecClass, kSecClassGenericPassword)
+            CFDictionaryAddValue(query, kSecAttrService, serviceRef)
+            CFDictionaryAddValue(query, kSecAttrAccount, accountRef)
+            return block(query)
+        } finally {
+            CFRelease(serviceRef)
+            CFRelease(accountRef)
+            CFRelease(query)
+        }
+    }
+
+    private fun mutable(): CFMutableDictionaryRef? =
+        CFDictionaryCreateMutable(null, 0, kCFTypeDictionaryKeyCallBacks.ptr, kCFTypeDictionaryValueCallBacks.ptr)
 
     private companion object {
         const val SERVICE = "app.squirrel"
