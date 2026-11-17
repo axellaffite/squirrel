@@ -81,9 +81,14 @@ class PhotosViewModel(private val api: SquirrelApi, private val pageSize: Int = 
         }
     }
 
-    /** After an error: months again if they failed, otherwise unblock failed months. */
+    /**
+     * After an error: months again if they failed, otherwise the months that failed load again
+     * (they were on screen when they failed; their placeholders' effects will not run twice).
+     */
     fun retry() {
         if (_state.value.months.isEmpty()) return loadMonths()
+        val failed = _state.value.months.filter { it.failed }.map { it.month }
         _state.update { state -> state.copy(error = null, months = state.months.map { it.copy(failed = false) }) }
+        failed.forEach(::ensure)
     }
 }

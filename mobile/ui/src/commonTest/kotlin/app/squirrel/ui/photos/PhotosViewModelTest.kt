@@ -102,8 +102,7 @@ class PhotosViewModelTest {
         assertEquals("Your Squirrel could not be reached. Check your connection and try again.", failed.error)
 
         failPhotos = false
-        vm.retry()
-        vm.ensure("2024-07")
+        vm.retry() // reloads the failed month by itself: its placeholder's effect has already run
         val ok = vm.settled()
         assertEquals(3, ok.months[0].items.size)
         assertNull(ok.error)
