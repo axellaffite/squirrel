@@ -29,6 +29,11 @@ import app.squirrel.shared.sync.SyncEngine
 import app.squirrel.shared.sync.SyncState
 import app.squirrel.shared.sync.backupStatus
 import app.squirrel.ui.backup.BackupPlatform
+import app.squirrel.ui.files.FileHandoff
+import app.squirrel.ui.images.ImagesPlatform
+import app.squirrel.ui.images.forgetEverything
+import app.squirrel.ui.images.squirrelImageLoader
+import coil3.ImageLoader
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -67,6 +72,10 @@ class AppGraph(
     private val io: CoroutineDispatcher = Dispatchers.IO,
     /** The platform's photo library and scheduler; null where backup is not wired (tests). */
     val backup: BackupPlatform? = null,
+    /** Image caches; null where images are not wired. */
+    private val images: ImagesPlatform? = null,
+    /** Downloads handed to other apps; null where not wired. */
+    val files: FileHandoff? = null,
     private val clock: () -> Long = { kotlin.time.Clock.System.now().toEpochMilliseconds() },
 ) {
     val database: SquirrelDatabase = createDatabase(driver)
@@ -79,6 +88,10 @@ class AppGraph(
         private set
     val queue = Queue(database)
     private val _syncEngine = MutableStateFlow<SyncEngine?>(null)
+    private val _imageLoader = MutableStateFlow<ImageLoader?>(null)
+
+    /** Thumbnails and previews of the signed-in account (null when signed out). */
+    val imageLoader: StateFlow<ImageLoader?> = _imageLoader.asStateFlow()
 
     /** The backup engine of the signed-in device (null when signed out or not wired). */
     val syncEngine: StateFlow<SyncEngine?> = _syncEngine.asStateFlow()
@@ -124,6 +137,7 @@ class AppGraph(
 
     private fun use(api: SquirrelApi) {
         this.api = api
+        images?.let { _imageLoader.value = squirrelImageLoader(it, api.httpClient) }
         val platform = backup ?: return
         _syncEngine.value = SyncEngine(
             source = platform.source,
@@ -218,6 +232,13 @@ class AppGraph(
 
     private suspend fun toSignIn() {
         backup?.cancel()
+        // Thumbnails, previews and downloaded files are this account's private data.
+        _imageLoader.value?.forgetEverything()
+        _imageLoader.value = null
+        withContext(io) {
+            images?.clearFiles()
+            files?.clear()
+        }
         _syncEngine.value = null
         api?.close()
         api = null

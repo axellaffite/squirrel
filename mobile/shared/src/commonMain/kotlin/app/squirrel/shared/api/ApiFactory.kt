@@ -31,6 +31,7 @@ import io.ktor.client.plugins.auth.providers.BearerAuthProvider
 import io.ktor.client.plugins.auth.providers.BearerTokens
 import io.ktor.client.plugins.auth.providers.bearer
 import io.ktor.client.plugins.contentnegotiation.ContentNegotiation
+import io.ktor.http.encodeURLPathPart
 import io.ktor.serialization.kotlinx.json.json
 import kotlinx.serialization.json.Json
 
@@ -89,6 +90,16 @@ class SquirrelApi(
     val storage = StorageApi(baseUrl, authed)
     val uploads = UploadsFacade(baseUrl, authed)
     val chunks = ChunkUploader(baseUrl, authed, public)
+
+    /** The authenticated client, for image loading and downloads (bearer and refresh included). */
+    val httpClient: HttpClient get() = authed
+
+    /** `GET /api/files/{id}/thumbnail`; [version] makes the URL immutable (and cacheable). */
+    fun thumbnailUrl(id: String, version: Int, preview: Boolean = false): String =
+        "$baseUrl/api/files/${id.encodeURLPathPart()}/thumbnail?size=${if (preview) "preview" else "thumb"}&v=$version"
+
+    /** `GET /api/files/{id}/content`: the original bytes. */
+    fun contentUrl(id: String): String = "$baseUrl/api/files/${id.encodeURLPathPart()}/content"
 
     suspend fun health(): Health = system.healthz().bodyOrThrow()
 

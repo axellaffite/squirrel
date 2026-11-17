@@ -27,6 +27,7 @@ object AndroidGraph {
             ),
             scope = scope,
             backup = backup,
+            images = AndroidImages(context),
         )
     }
 }
