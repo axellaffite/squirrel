@@ -109,4 +109,15 @@ class BackupWorkerTest {
         run()
         assertEquals(false, app.fake.manual)
     }
+
+    @Test
+    fun backUpNowRunsInTheForegroundEvenWhenSmall() {
+        app.fake.pending = 1L to 10L
+        runBlocking {
+            TestListenableWorkerBuilder<BackupWorker>(app)
+                .setInputData(androidx.work.Data.Builder().putBoolean(BackupWorker.KEY_MANUAL, true).build())
+                .build().doWork()
+        }
+        assertNull(app.fake.deadline) // foreground: no 9-minute deadline
+    }
 }

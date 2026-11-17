@@ -109,21 +109,22 @@ class BackupSchedulerTest {
     }
 
     @Test
-    fun backUpNowNeedsOnlyTheNetwork() {
+    fun backUpNowStartsAtOnce() {
         scheduler.backUpNow(BackupSettings(wifiOnly = true, chargingOnly = true))
 
-        val now = checkNotNull(info(BackupScheduler.NOW))
-        assertEquals(NetworkType.UNMETERED, now.constraints.requiredNetworkType)
+        // No constraints: it starts (and here, with a synchronous executor, finishes) at once.
+        val now = work.getWorkInfosForUniqueWork(BackupScheduler.NOW).get().single()
+        assertEquals(NetworkType.NOT_REQUIRED, now.constraints.requiredNetworkType)
         assertEquals(false, now.constraints.requiresCharging())
+        assertTrue(now.tags.contains("backup-manual"))
     }
 
     @Test
     fun signingOutCancelsEverything() {
         scheduler.apply(BackupSettings())
-        scheduler.backUpNow(BackupSettings())
         scheduler.cancel()
 
-        listOf(BackupScheduler.PERIODIC, BackupScheduler.ON_NEW_MEDIA, BackupScheduler.NOW).forEach {
+        listOf(BackupScheduler.PERIODIC, BackupScheduler.ON_NEW_MEDIA).forEach {
             assertEquals(null, info(it), it)
         }
     }

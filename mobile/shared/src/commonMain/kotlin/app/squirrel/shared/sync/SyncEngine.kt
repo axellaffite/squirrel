@@ -21,6 +21,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlin.random.Random
 
 /** The server's limit on one sync check. */
@@ -68,6 +69,11 @@ class SyncEngine(
             return if (reason != null) Stop(StopCause.Paused, SyncState.Paused(reason))
             else Stop(StopCause.Deadline, SyncState.Idle)
         }
+    }
+
+    /** Suspends until no run is in progress. */
+    suspend fun awaitIdle() {
+        mutex.withLock { }
     }
 
     /**
