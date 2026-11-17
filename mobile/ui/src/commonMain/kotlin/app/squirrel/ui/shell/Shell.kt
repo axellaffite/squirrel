@@ -53,6 +53,8 @@ fun Shell(
     onSignOut: () -> Unit,
     onRefresh: () -> Unit,
     backup: @Composable () -> Unit = {},
+    photos: (@Composable () -> Unit)? = null,
+    files: (@Composable () -> Unit)? = null,
 ) {
     var tab by rememberSaveable { mutableStateOf(Tab.Photos.name) }
     var menuOpen by rememberSaveable { mutableStateOf(false) }
@@ -84,8 +86,14 @@ fun Shell(
                     }
                 }
             }
-            if (current == Tab.Backup) {
-                backup() // draws its own header (Backup, or Backup settings with a back button)
+            // Each tab draws its own header (a sub-page puts a back button before its title).
+            val content = when (current) {
+                Tab.Backup -> backup
+                Tab.Photos -> photos
+                Tab.Files -> files
+            }
+            if (content != null) {
+                content()
             } else {
                 PageHeader(current.label)
                 EmptyState(current.icon, current.title, current.line)

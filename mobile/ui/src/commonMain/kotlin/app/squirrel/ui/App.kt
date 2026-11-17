@@ -11,6 +11,7 @@ import app.squirrel.theme.SquirrelTheme
 import app.squirrel.theme.components.ground
 import app.squirrel.ui.backup.BackupTab
 import app.squirrel.ui.images.LocalImageLoader
+import app.squirrel.ui.photos.PhotosTab
 import app.squirrel.ui.backup.PhotoAccessActions
 import app.squirrel.ui.shell.Shell
 import app.squirrel.ui.signin.SignInFlow
@@ -31,6 +32,7 @@ fun App(graph: AppGraph, actions: PhotoAccessActions = PhotoAccessActions.None) 
                         onSignOut = graph::signOut,
                         onRefresh = graph::refreshAccount,
                         backup = { BackupTab(graph, actions) },
+                        photos = { PhotosTab(graph) },
                     )
                 }
             }
