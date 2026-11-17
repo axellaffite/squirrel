@@ -23,6 +23,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.error
+import androidx.compose.ui.autofill.ContentType
+import androidx.compose.ui.semantics.contentType
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
@@ -47,6 +49,8 @@ fun TextField(
     enabled: Boolean = true,
     keyboardOptions: KeyboardOptions = KeyboardOptions.Default,
     keyboardActions: KeyboardActions = KeyboardActions.Default,
+    /** What the field holds, for password managers and the system's credential autofill. */
+    autofill: ContentType? = null,
 ) {
     val scheme = SquirrelTheme.scheme
     val type = SquirrelTheme.type
@@ -71,6 +75,7 @@ fun TextField(
                 .semantics {
                     contentDescription = label
                     if (error != null) error(error)
+                    if (autofill != null) contentType = autofill
                 },
             decorationBox = { inner ->
                 Box(

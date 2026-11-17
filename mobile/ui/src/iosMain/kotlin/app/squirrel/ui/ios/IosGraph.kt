@@ -40,6 +40,7 @@ object IosGraph {
             io = Dispatchers.IO,
             backup = backup,
             images = IosImages(),
+            files = IosFileOpener(),
             clock = clock,
         )
     }
