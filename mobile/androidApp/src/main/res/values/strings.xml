@@ -1,3 +1,12 @@
 <resources>
     <string name="app_name">Squirrel</string>
+    <!-- Backup notification (long backups run in the foreground). -->
+    <string name="backup_channel">Backup</string>
+    <string name="backup_title">Backing up your photos</string>
+    <string name="backup_progress">Backing up %1$s of %2$s</string>
+    <plurals name="backup_preparing">
+        <item quantity="one">Preparing %1$s item</item>
+        <item quantity="other">Preparing %1$s items</item>
+    </plurals>
+    <string name="backup_checking">Checking what is new</string>
 </resources>
