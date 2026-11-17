@@ -73,12 +73,39 @@ class BackupSchedulerTest {
     }
 
     @Test
-    fun automaticBackupOffCancelsBackgroundWork() {
+    fun automaticBackupOffCancelsEveryWorkName() {
         scheduler.apply(BackupSettings())
+        scheduler.onNewMedia(BackupSettings())
+        scheduler.backUpNow(BackupSettings())
+        scheduler.continueLater(BackupSettings(), manual = false)
+
         scheduler.apply(BackupSettings(autoBackup = false))
 
-        assertEquals(null, info(BackupScheduler.PERIODIC))
-        assertEquals(null, info(BackupScheduler.ON_NEW_MEDIA))
+        BackupScheduler.ALL.forEach { assertEquals(null, info(it), it) }
+    }
+
+    @Test
+    fun noAutomaticContinuationWhileOff() {
+        scheduler.continueLater(BackupSettings(autoBackup = false), manual = false)
+        assertEquals(null, info(BackupScheduler.CONTINUE))
+        scheduler.continueLater(BackupSettings(autoBackup = false), manual = true)
+        assertTrue(checkNotNull(info(BackupScheduler.CONTINUE)).tags.contains("backup-manual"))
+    }
+
+    @Test
+    fun aConstraintChangeUpdatesEveryQueuedWork() {
+        scheduler.apply(BackupSettings(wifiOnly = true))
+        scheduler.onNewMedia(BackupSettings(wifiOnly = true))
+        scheduler.continueLater(BackupSettings(wifiOnly = true), manual = false)
+
+        scheduler.apply(BackupSettings(wifiOnly = false, chargingOnly = true))
+
+        listOf(BackupScheduler.PERIODIC, BackupScheduler.ON_NEW_MEDIA, BackupScheduler.ON_CHANGE, BackupScheduler.CONTINUE).forEach {
+            val name = it
+            val constraints = checkNotNull(info(name)) { name }.constraints
+            assertEquals(NetworkType.CONNECTED, constraints.requiredNetworkType, it)
+            assertTrue(constraints.requiresCharging(), message = it)
+        }
     }
 
     @Test

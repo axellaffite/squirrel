@@ -29,9 +29,11 @@ class AppBackupRunner(
     @OptIn(ExperimentalCoroutinesApi::class)
     override val progress: Flow<SyncState> = graph.syncEngine.flatMapLatest { it?.state ?: flowOf(SyncState.Idle) }
 
-    override suspend fun run(deadline: Long?): RunOutcome {
+    override suspend fun run(deadline: Long?, manual: Boolean): RunOutcome {
         graph.awaitReady()
         val engine = graph.syncEngine.value ?: return RunOutcome.NotSignedIn
+        // A trigger or period that fired just before automatic backup was turned off.
+        if (!manual && !withContext(Dispatchers.IO) { graph.settings.backup() }.autoBackup) return RunOutcome.Done
         val summary = engine.runOnce(deadline)
         return when {
             summary.stoppedBy == StopCause.Deadline -> RunOutcome.Continue
@@ -41,11 +43,11 @@ class AppBackupRunner(
         }
     }
 
-    override suspend fun afterRun(outcome: RunOutcome?) {
+    override suspend fun afterRun(outcome: RunOutcome?, manual: Boolean) {
         if (outcome == RunOutcome.NotSignedIn) return
         withContext(Dispatchers.IO) {
             val settings = graph.settings.backup()
-            if (outcome == RunOutcome.Continue) backup.scheduler.continueLater(settings)
+            if (outcome == RunOutcome.Continue) backup.scheduler.continueLater(settings, manual)
             backup.scheduler.rearm(settings)
         }
     }

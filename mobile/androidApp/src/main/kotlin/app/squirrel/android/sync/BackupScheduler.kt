@@ -3,6 +3,7 @@ package app.squirrel.android.sync
 import android.content.Context
 import android.provider.MediaStore
 import androidx.work.Constraints
+import androidx.work.Data
 import androidx.work.ExistingPeriodicWorkPolicy
 import androidx.work.ExistingWorkPolicy
 import androidx.work.NetworkType
@@ -34,9 +35,12 @@ class BackupScheduler(context: Context) {
      */
     fun apply(settings: BackupSettings) {
         if (!settings.autoBackup) {
-            listOf(PERIODIC, ON_NEW_MEDIA).forEach(work::cancelUniqueWork)
+            // Off means off: no background run of any kind is left waiting.
+            ALL.forEach(work::cancelUniqueWork)
             return
         }
+        updateQueued(ON_CHANGE, constraints(settings))
+        updateQueued(CONTINUE, constraints(settings))
         val periodic = infos(PERIODIC).firstOrNull { !it.state.isFinished }
         if (periodic == null || periodic.constraints != constraints(settings)) {
             // UPDATE keeps a running period running; the new constraints apply from the next one.
@@ -69,6 +73,8 @@ class BackupScheduler(context: Context) {
         val request = OneTimeWorkRequestBuilder<BackupWorker>()
             .setConstraints(Constraints.Builder().setRequiredNetworkType(network(settings)).build())
             .setExpedited(OutOfQuotaPolicy.RUN_AS_NON_EXPEDITED_WORK_REQUEST)
+            .setInputData(manual(true))
+            .addTag(MANUAL_TAG)
             .build()
         work.enqueueUniqueWork(NOW, ExistingWorkPolicy.KEEP, request)
     }
@@ -80,15 +86,39 @@ class BackupScheduler(context: Context) {
         work.enqueueUniqueWork(ON_CHANGE, ExistingWorkPolicy.KEEP, request)
     }
 
-    /** A run stopped at its deadline with work left: continue as soon as allowed. */
-    fun continueLater(settings: BackupSettings) {
-        val request = OneTimeWorkRequestBuilder<BackupWorker>().setConstraints(constraints(settings)).build()
-        work.enqueueUniqueWork(CONTINUE, ExistingWorkPolicy.REPLACE, request)
+    /**
+     * A run stopped at its deadline with work left: continue as soon as allowed. A manual run's
+     * continuation stays manual (it runs even with automatic backup off).
+     */
+    fun continueLater(settings: BackupSettings, manual: Boolean) {
+        if (!manual && !settings.autoBackup) return
+        val request = OneTimeWorkRequestBuilder<BackupWorker>()
+            .setConstraints(constraints(settings))
+            .setInputData(manual(manual))
+            .apply { if (manual) addTag(MANUAL_TAG) }
+            .build()
+        work.enqueueUniqueWork(CONTINUE, ExistingWorkPolicy.APPEND_OR_REPLACE, request)
     }
 
     fun cancel() {
-        listOf(PERIODIC, ON_NEW_MEDIA, NOW, ON_CHANGE, CONTINUE).forEach(work::cancelUniqueWork)
+        ALL.forEach(work::cancelUniqueWork)
     }
+
+    /** New constraints for work still waiting under [name]; a running one is left alone. */
+    private fun updateQueued(name: String, constraints: Constraints) {
+        val pending = infos(name).firstOrNull { it.state == WorkInfo.State.ENQUEUED } ?: return
+        if (pending.constraints == constraints) return
+        work.updateWork(
+            OneTimeWorkRequestBuilder<BackupWorker>()
+                .setId(pending.id)
+                .setConstraints(constraints)
+                .setInputData(manual(pending.tags.contains(MANUAL_TAG)))
+                .apply { if (pending.tags.contains(MANUAL_TAG)) addTag(MANUAL_TAG) }
+                .build(),
+        )
+    }
+
+    private fun manual(on: Boolean): Data = Data.Builder().putBoolean(BackupWorker.KEY_MANUAL, on).build()
 
     /** Armed once: kept when queued with the same constraints, updated in place when not. */
     private fun ensureOnNewMedia(settings: BackupSettings) {
@@ -117,6 +147,8 @@ class BackupScheduler(context: Context) {
         const val ON_CHANGE = "backup-on-change"
         const val NOW = "backup-now"
         const val CONTINUE = "backup-continue"
+        private const val MANUAL_TAG = "backup-manual"
+        val ALL = listOf(PERIODIC, ON_NEW_MEDIA, ON_CHANGE, NOW, CONTINUE)
         private val PERIOD = 6.hours
         private val FLEX = 1.hours
         private val UPDATE_DELAY = 30.seconds

@@ -22,9 +22,10 @@ interface BackupRunner {
     /** Assets and bytes left, to decide on a foreground run. */
     suspend fun pending(): Pair<Long, Long>
     val progress: Flow<SyncState>
-    suspend fun run(deadline: Long?): RunOutcome
+    /** [manual]: "Back up now" (runs even with automatic backup off). */
+    suspend fun run(deadline: Long?, manual: Boolean): RunOutcome
     /** After any run, before the worker returns: re-arm the content trigger; after a deadline: continue. */
-    suspend fun afterRun(outcome: RunOutcome?)
+    suspend fun afterRun(outcome: RunOutcome?, manual: Boolean)
 }
 
 /** Implemented by the Application: where workers find the runner. */
@@ -47,13 +48,14 @@ class BackupWorker(context: Context, params: WorkerParameters) : CoroutineWorker
     override suspend fun doWork(): Result {
         val runner = (applicationContext as? BackupHost)?.backupRunner ?: return Result.failure()
         var outcome: RunOutcome? = null
+        val manual = inputData.getBoolean(KEY_MANUAL, false)
         return try {
             coroutineScope {
                 val (assets, bytes) = runner.pending()
                 val foreground = (assets > FOREGROUND_ASSETS || bytes > FOREGROUND_BYTES) && tryForeground()
                 val progress = if (foreground) launch { showProgress(runner) } else null
                 val deadline = if (foreground) null else System.currentTimeMillis() + DEADLINE_MS
-                outcome = runner.run(deadline)
+                outcome = runner.run(deadline, manual)
                 progress?.cancel()
             }
             when (outcome) {
@@ -67,7 +69,7 @@ class BackupWorker(context: Context, params: WorkerParameters) : CoroutineWorker
             Log.e(TAG, "Backup run failed", e)
             Result.failure()
         } finally {
-            withContext(NonCancellable) { runner.afterRun(outcome) }
+            withContext(NonCancellable) { runner.afterRun(outcome, manual) }
         }
     }
 
@@ -94,6 +96,7 @@ class BackupWorker(context: Context, params: WorkerParameters) : CoroutineWorker
 
     companion object {
         private const val TAG = "SquirrelBackup"
+        const val KEY_MANUAL = "manual"
         const val FOREGROUND_ASSETS = 20L
         const val FOREGROUND_BYTES = 200L * 1000 * 1000
         const val DEADLINE_MS = 9 * 60_000L
