@@ -40,8 +40,6 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
-import androidx.compose.ui.window.Dialog
-import androidx.compose.ui.window.DialogProperties
 import app.squirrel.api.models.AssetDetails
 import app.squirrel.api.models.AssetSummary
 import app.squirrel.api.models.ThumbnailStatus
@@ -59,6 +57,10 @@ import app.squirrel.theme.tabular
 import app.squirrel.ui.files.FileHandoff
 import app.squirrel.ui.files.HandoffResult
 import app.squirrel.ui.images.Thumbnail
+import app.squirrel.ui.shell.FullScreen
+import app.squirrel.ui.shell.StageBars
+import app.squirrel.ui.shell.SystemBack
+import androidx.compose.ui.input.pointer.PointerInputScope
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
 
@@ -117,8 +119,11 @@ fun PhotoViewer(
     var progress by remember { mutableStateOf<Float?>(null) }
     var message by remember { mutableStateOf<String?>(null) }
     val scope = rememberCoroutineScope()
-    Dialog(onDismissRequest = onClose, properties = DialogProperties(usePlatformDefaultWidth = false)) {
-        Box(Modifier.fillMaxSize().background(scheme.rail.brush())) {
+    FullScreen {
+        SystemBack(onBack = onClose)
+        StageBars()
+        // The graphite stage runs under the system bars; it takes every touch the photo leaves.
+        Box(Modifier.fillMaxSize().background(scheme.rail.brush()).pointerInput(Unit) { blockTouches() }) {
             HorizontalPager(pager, userScrollEnabled = !zoomed, key = { items[it].id }, modifier = Modifier.fillMaxSize()) { page ->
                 ZoomablePhoto(api, items[page], onZoom = { if (page == pager.currentPage) zoomed = it })
             }
@@ -157,6 +162,13 @@ fun PhotoViewer(
             }
         }
         info?.let { PhotoInfo(api, it) { info = null } }
+    }
+}
+
+/** Keeps touches on the stage from reaching the shell underneath. */
+private suspend fun PointerInputScope.blockTouches() {
+    awaitPointerEventScope {
+        while (true) awaitPointerEvent().changes.forEach { it.consume() }
     }
 }
 
