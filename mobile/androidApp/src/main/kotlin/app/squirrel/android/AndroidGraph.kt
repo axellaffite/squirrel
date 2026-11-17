@@ -29,7 +29,7 @@ object AndroidGraph {
             scope = scope,
             backup = backup,
             images = AndroidImages(context),
-            files = AndroidFileOpener(context),
+            files = AndroidFileOpener(context).also { it.prune() },
         )
     }
 }
