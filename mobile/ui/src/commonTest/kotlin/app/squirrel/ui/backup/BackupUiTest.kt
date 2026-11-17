@@ -52,6 +52,8 @@ class BackupUiTest {
         assertEquals("Backing up…", ui.button)
         assertEquals(0.25f, ui.progress)
         assertEquals("Uploading IMG_0042.jpg", ui.progressLabel)
+        // A single large file moves the bar chunk by chunk.
+        assertEquals(0.5f, ui(status.copy(state = SyncState.Uploading("big.mp4", done = 0, of = 1, current = 0.5f))).progress)
     }
 
     @Test
