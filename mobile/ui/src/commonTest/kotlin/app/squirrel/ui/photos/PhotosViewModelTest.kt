@@ -150,4 +150,38 @@ class PhotosViewModelTest {
         assertEquals(false, failed.months[0].loading)
         assertEquals(UNREACHABLE, failed.error)
     }
+
+    @Test
+    fun theViewerNearTheEndOfAMonthLoadsMore() = run {
+        val vm = PhotosViewModel(api(), pageSize = 100)
+        vm.settled()
+        vm.ensure("2024-07")
+        vm.ensure("2024-06")
+        vm.settled()
+
+        vm.near("j50") // far from the end of June's first page: nothing
+        assertEquals(1, requests.count { it.url.parameters["month"] == "2024-06" })
+        vm.near("j95") // close to it: June's next page
+        assertEquals(150, vm.settled().months[1].items.size)
+    }
+
+    @Test
+    fun theViewerAtTheEndOfACompleteMonthLoadsTheNextMonth() = run {
+        val vm = PhotosViewModel(api(), pageSize = 100)
+        vm.settled()
+        vm.ensure("2024-07")
+        vm.settled()
+
+        vm.near("a3") // July is complete; June has not started
+        assertEquals(100, vm.settled().months[1].items.size)
+    }
+
+    @Test
+    fun theViewerStaysOnItsPhotoAsPagesArrive() {
+        val before = listOf("a", "b", "c")
+        assertEquals(4, viewerIndex(listOf("x", "y", "a", "b", "c"), anchor = "c", current = 2)) // pages before it
+        assertEquals(2, viewerIndex(before + listOf("d"), anchor = "c", current = 2)) // pages after it
+        assertEquals(1, viewerIndex(listOf("a", "b"), anchor = "c", current = 2)) // gone: the last one left
+        assertEquals(0, viewerIndex(emptyList(), anchor = "c", current = 2))
+    }
 }

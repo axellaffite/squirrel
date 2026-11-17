@@ -88,7 +88,7 @@ private fun AlbumCard(api: SquirrelApi, album: AlbumDto, onClick: () -> Unit) {
 
 /** One album's photos in justified rows. */
 @Composable
-fun AlbumPhotos(api: SquirrelApi, vm: AlbumViewModel, onOpen: (List<AssetSummary>, Int) -> Unit) {
+fun AlbumPhotos(api: SquirrelApi, vm: AlbumViewModel, onOpen: (AssetSummary) -> Unit) {
     val state by vm.state.collectAsStateWithLifecycle()
     if (state.complete && state.items.isEmpty()) return EmptyState(SquirrelIcon.Images, "This album is empty", "Add photos to it on the web.")
     if (!state.started && state.loading) return Loading()
@@ -108,7 +108,7 @@ fun AlbumPhotos(api: SquirrelApi, vm: AlbumViewModel, onOpen: (List<AssetSummary
             items(rows.size, key = { "row:$it" }) { n ->
                 val (height, tiles) = rows[n]
                 if (n == rows.lastIndex) LaunchedEffect(state.items.size) { vm.more() }
-                PhotoRow(api, height, tiles) { item -> onOpen(state.items, state.items.indexOf(item)) }
+                PhotoRow(api, height, tiles, onOpen)
             }
             state.error?.let { error -> item(key = "error") { ErrorRetry(error, vm::more) } }
         }

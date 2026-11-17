@@ -40,7 +40,7 @@ val RailClearance = Tokens.railBarH + Tokens.frame * 2
 
 /** The timeline: month headings, justified rows, placeholder rows until each month loads. */
 @Composable
-fun TimelineList(api: SquirrelApi, vm: PhotosViewModel, onOpen: (List<AssetSummary>, Int) -> Unit) {
+fun TimelineList(api: SquirrelApi, vm: PhotosViewModel, onOpen: (AssetSummary) -> Unit) {
     val state by vm.state.collectAsStateWithLifecycle()
     when {
         state.loadingMonths -> return Loading()
@@ -76,10 +76,7 @@ fun TimelineList(api: SquirrelApi, vm: PhotosViewModel, onOpen: (List<AssetSumma
                                 .semantics { heading() },
                         )
                     }
-                    is TimelineBlock.Row -> PhotoRow(api, block.height, block.tiles) { item ->
-                        val all = state.loaded()
-                        onOpen(all, all.indexOfFirst { it.id == item.id })
-                    }
+                    is TimelineBlock.Row -> PhotoRow(api, block.height, block.tiles, onOpen)
                     is TimelineBlock.Placeholder -> {
                         LaunchedEffect(block.month) { vm.ensure(block.month) }
                         PlaceholderRow(block.height)

@@ -76,4 +76,12 @@ class AlbumViewModel(private val api: SquirrelApi, private val albumId: String, 
             }
         }
     }
+
+    /** The viewer shows [id]: the next page when it is close to the end of what is loaded. */
+    fun near(id: String, margin: Int = VIEWER_MARGIN) {
+        if (_state.value.error != null) return // "Try again" in the album is the way back
+        val items = _state.value.items
+        val at = items.indexOfFirst { it.id == id }
+        if (at >= 0 && items.lastIndex - at < margin) more()
+    }
 }
