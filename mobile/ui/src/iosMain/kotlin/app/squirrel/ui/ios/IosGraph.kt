@@ -14,6 +14,13 @@ import platform.UIKit.UIDevice
 
 /** Builds the iOS [AppGraph] once per process: SQLite, the Keychain, NSURLSession, PhotoKit. */
 object IosGraph {
+    private val scope = MainScope()
+    private val clock = { kotlin.time.Clock.System.now().toEpochMilliseconds() }
+
+    val backup: IosBackup by lazy {
+        IosBackup(database = { instance.database }, settings = { instance.settings }, runner = GraphRunner { instance }, scope = scope, now = clock)
+    }
+
     val instance: AppGraph by lazy { create() }
 
     private fun create(): AppGraph {
@@ -29,9 +36,11 @@ object IosGraph {
                 model = device.model,
                 appVersion = NSBundle.mainBundle.objectForInfoDictionaryKey("CFBundleShortVersionString") as? String ?: "0",
             ),
-            scope = MainScope(),
+            scope = scope,
             io = Dispatchers.IO,
+            backup = backup,
             images = IosImages(),
+            clock = clock,
         )
     }
 }

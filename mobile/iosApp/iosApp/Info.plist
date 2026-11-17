@@ -50,7 +50,7 @@
 	<array>
 		<string>app.squirrel.backup.processing</string>
 		<string>app.squirrel.backup.refresh</string>
-		<string>app.squirrel.backup.now</string>
+		<string>app.squirrel.ios.backup.now</string>
 	</array>
 	<key>UIBackgroundModes</key>
 	<array>
