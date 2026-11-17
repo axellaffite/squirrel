@@ -11,7 +11,7 @@ import kotlinx.coroutines.IO
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.flowOf
-import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 /** The app's engine behind [BackupRunner]. */
 class AppBackupRunner(
@@ -41,9 +41,9 @@ class AppBackupRunner(
         }
     }
 
-    override fun afterRun(outcome: RunOutcome?) {
+    override suspend fun afterRun(outcome: RunOutcome?) {
         if (outcome == RunOutcome.NotSignedIn) return
-        scope.launch(Dispatchers.IO) {
+        withContext(Dispatchers.IO) {
             val settings = graph.settings.backup()
             if (outcome == RunOutcome.Continue) backup.scheduler.continueLater(settings)
             backup.scheduler.rearm(settings)

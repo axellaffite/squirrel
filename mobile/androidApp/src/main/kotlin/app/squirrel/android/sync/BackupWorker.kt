@@ -8,6 +8,8 @@ import androidx.work.ForegroundInfo
 import androidx.work.WorkerParameters
 import app.squirrel.shared.sync.SyncState
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.NonCancellable
+import kotlinx.coroutines.withContext
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.launch
@@ -21,8 +23,8 @@ interface BackupRunner {
     suspend fun pending(): Pair<Long, Long>
     val progress: Flow<SyncState>
     suspend fun run(deadline: Long?): RunOutcome
-    /** After any run: re-arm the content trigger; after a deadline: continue. */
-    fun afterRun(outcome: RunOutcome?)
+    /** After any run, before the worker returns: re-arm the content trigger; after a deadline: continue. */
+    suspend fun afterRun(outcome: RunOutcome?)
 }
 
 /** Implemented by the Application: where workers find the runner. */
@@ -65,7 +67,7 @@ class BackupWorker(context: Context, params: WorkerParameters) : CoroutineWorker
             Log.e(TAG, "Backup run failed", e)
             Result.failure()
         } finally {
-            runner.afterRun(outcome)
+            withContext(NonCancellable) { runner.afterRun(outcome) }
         }
     }
 
