@@ -32,6 +32,8 @@ fun ListRow(
     icon: SquirrelIcon? = null,
     meta: String? = null,
     onClick: (() -> Unit)? = null,
+    /** Replaces the icon well, e.g. with a 36 dp thumbnail. */
+    leading: (@Composable () -> Unit)? = null,
     trailing: (@Composable RowScope.() -> Unit)? = null,
 ) {
     val interaction = remember { MutableInteractionSource() }
@@ -50,7 +52,10 @@ fun ListRow(
         horizontalArrangement = Arrangement.spacedBy(Tokens.space3),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        if (icon != null) IconWell(icon)
+        when {
+            leading != null -> leading()
+            icon != null -> IconWell(icon)
+        }
         Column(Modifier.weight(1f)) {
             BasicText(name, style = SquirrelTheme.type.label, maxLines = 1, overflow = TextOverflow.Ellipsis)
             if (meta != null) BasicText(meta, style = SquirrelTheme.type.caption.tabular(), maxLines = 1)

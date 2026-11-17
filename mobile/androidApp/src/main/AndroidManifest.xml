@@ -33,6 +33,17 @@
             </intent-filter>
         </activity>
 
+        <!-- Downloaded originals handed to other apps (read grant per intent). -->
+        <provider
+            android:name="androidx.core.content.FileProvider"
+            android:authorities="${applicationId}.files"
+            android:exported="false"
+            android:grantUriPermissions="true">
+            <meta-data
+                android:name="android.support.FILE_PROVIDER_PATHS"
+                android:resource="@xml/file_paths" />
+        </provider>
+
         <!-- WorkManager's foreground service runs long backups as dataSync. -->
         <service
             android:name="androidx.work.impl.foreground.SystemForegroundService"
