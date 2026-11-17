@@ -57,7 +57,7 @@ fun BackupScreen(vm: BackupViewModel, actions: PhotoAccessActions, onOpenSetting
         state.notice?.let { Alert(it, tone = if (state.noticeIsError) AlertTone.Error else AlertTone.Info) }
         (state.access as? AccessUi.Partial)?.let { partial ->
             Alert(partial.text) {
-                Button("Allow all photos", onClick = actions::requestAccess, variant = ButtonVariant.Secondary, size = ButtonSize.Sm)
+                Button("Allow all photos", onClick = actions::allowAll, variant = ButtonVariant.Secondary, size = ButtonSize.Sm)
                 Button("Change selection", onClick = actions::changeSelection, variant = ButtonVariant.Quiet, size = ButtonSize.Sm)
             }
         }

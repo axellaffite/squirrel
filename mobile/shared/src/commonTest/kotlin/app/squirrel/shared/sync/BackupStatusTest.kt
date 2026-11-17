@@ -21,6 +21,8 @@ class BackupStatusTest {
         assertEquals("1${nbsp}204${nbsp}000", formatCount(1_204_000))
         assertEquals("1${nbsp}204 left", BackupStatus(left = 1204).leftLabel())
         assertEquals("Everything is backed up", BackupStatus(total = 3, backedUp = 3).leftLabel())
+        assertEquals("Ready to back up", BackupStatus().leftLabel()) // nothing scanned yet
+        assertEquals("Everything is backed up", BackupStatus(lastRun = 1).leftLabel()) // an empty library
     }
 
     @Test

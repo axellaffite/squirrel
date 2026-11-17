@@ -33,9 +33,13 @@ interface PhotoAccessActions {
     /** Android 14+ / iOS: the picker of selected photos. */
     fun changeSelection()
 
+    /** From partial access to all photos: the system settings page (a new request only re-opens the picker). */
+    fun allowAll()
+
     /** No-op default for previews and tests. */
     object None : PhotoAccessActions {
         override fun requestAccess() = Unit
         override fun changeSelection() = Unit
+        override fun allowAll() = Unit
     }
 }

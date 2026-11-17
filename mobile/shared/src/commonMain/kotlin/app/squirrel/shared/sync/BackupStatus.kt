@@ -25,7 +25,11 @@ data class BackupStatus(
     val paused: PauseReason? get() = (state as? SyncState.Paused)?.reason
 
     /** The featured figure: "1 204 left", or that everything is backed up. */
-    fun leftLabel(): String = if (left == 0L && failed == 0L) "Everything is backed up" else "${formatCount(left)} left"
+    fun leftLabel(): String = when {
+        total == 0L && left == 0L && lastRun == null -> "Ready to back up"
+        left == 0L && failed == 0L -> "Everything is backed up"
+        else -> "${formatCount(left)} left"
+    }
 
     companion object {
         fun of(
