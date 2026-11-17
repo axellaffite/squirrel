@@ -33,6 +33,7 @@ private const val DATE_OVERLAP_SECONDS = 2L
  * Incremental scans use MediaStore generations (API 30+; a new volume version means a full
  * rescan) or modification times (API 29). Deletions are not listed: an asset gone from the
  * phone is skipped when it cannot be opened. Pending and trashed items are excluded by default.
+ * `taken_at` is DATE_TAKEN, or the modification time when MediaStore has none.
  */
 class MediaStoreSource(context: Context, private val access: MediaAccessReader) : AssetSource {
     private val app = context.applicationContext
@@ -114,7 +115,10 @@ class MediaStoreSource(context: Context, private val access: MediaAccessReader) 
             mime = c.getString(2),
             size = size,
             modifiedAt = modifiedSeconds * MILLIS,
-            takenAt = if (c.isNull(4)) null else takenAt(c.getLong(4)),
+            // MediaStore leaves DATE_TAKEN empty when the EXIF date has no offset, and for files
+            // without EXIF (screenshots, downloads): the file's time is then the phone's best guess.
+            // The server prefers the photo's own EXIF date whenever it has one.
+            takenAt = takenAt(if (c.isNull(4) || c.getLong(4) <= 0) modifiedSeconds * MILLIS else c.getLong(4)),
             album = c.getString(6),
         )
         return Row(asset, if (generations) c.getLong(7) else modifiedSeconds)
