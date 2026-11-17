@@ -48,9 +48,11 @@ sealed interface MediaAccess {
 /** The phone's photo library: MediaStore on Android, PhotoKit on iOS. */
 interface AssetSource {
     /** Assets changed since [token] (null: everything visible), and the token to store next. */
+    @Throws(Exception::class)
     suspend fun changes(token: String?, filter: SourceFilter): ScanResult
 
     /** Null when the asset is gone from the phone. */
+    @Throws(Exception::class)
     suspend fun open(deviceAssetId: String): AssetReader?
 
     /** Which of [ids] still exist on the phone (a cheap id lookup, no file access). */
