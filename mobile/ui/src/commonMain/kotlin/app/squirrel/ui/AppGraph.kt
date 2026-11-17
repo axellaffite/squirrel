@@ -5,6 +5,7 @@ import app.squirrel.shared.api.DeviceDetails
 import app.squirrel.shared.api.bodyOrThrow
 import app.squirrel.shared.api.SignedIn
 import app.squirrel.shared.api.SquirrelApi
+import app.squirrel.shared.auth.PendingClear
 import app.squirrel.shared.auth.Session
 import app.squirrel.shared.auth.SessionState
 import app.squirrel.shared.auth.TokenStore
@@ -62,6 +63,15 @@ private object AccountKeys {
     const val DEVICE_NAME = "device.name"
 }
 
+/** The sign-out that could not delete the stored token, kept in the settings table. */
+private class SettingsPendingClear(private val settings: SettingsStore) : PendingClear {
+    override suspend fun isPending(): Boolean = settings.value(PENDING_CLEAR_KEY) != null
+    override suspend fun set(pending: Boolean) = settings.setValue(PENDING_CLEAR_KEY, if (pending) "1" else null)
+}
+
+/** Kept by `forgetDevice` (Setting.sq `removeDeviceState`). */
+const val PENDING_CLEAR_KEY = "session.clear_pending"
+
 /** Manual wiring of the shared pieces; one per process, built by each platform's entry point. */
 class AppGraph(
     driver: SqlDriver,
@@ -81,7 +91,7 @@ class AppGraph(
 ) {
     val database: SquirrelDatabase = createDatabase(driver)
     val settings = SettingsStore(database)
-    val session = Session(tokenStore(database))
+    val session = Session(tokenStore(database), SettingsPendingClear(settings))
     private val _state = MutableStateFlow<AppState>(AppState.Loading)
     val state: StateFlow<AppState> = _state.asStateFlow()
     private var attempts = 0
@@ -226,7 +236,13 @@ class AppGraph(
             } catch (e: CancellationException) {
                 throw e
             } catch (_: Exception) {
-                session.signOut() // Unreachable server: forget the tokens anyway.
+                try {
+                    session.signOut() // Unreachable server: forget the tokens anyway.
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (_: Exception) {
+                    // Signed out in memory regardless; the sign-in screen must still come.
+                }
             }
             toSignIn()
         }

@@ -35,10 +35,24 @@ sealed interface RefreshOutcome {
 }
 
 /**
+ * Remembers, outside the [TokenStore], that the stored refresh token must still be deleted: the
+ * store failed to at sign-out (iOS Keychain locked or unavailable). Retried on the next launch.
+ */
+interface PendingClear {
+    suspend fun isPending(): Boolean
+    suspend fun set(pending: Boolean)
+
+    object None : PendingClear {
+        override suspend fun isPending() = false
+        override suspend fun set(pending: Boolean) = Unit
+    }
+}
+
+/**
  * The device's credentials: the refresh token in [store], the access token in memory only.
  * Refreshes are single-flight: callers that saw the same stale access token share one refresh.
  */
-class Session(private val store: TokenStore) {
+class Session(private val store: TokenStore, private val pendingClear: PendingClear = PendingClear.None) {
     private val mutex = Mutex()
     private var access: String? = null
     /** A rotated refresh token the store failed to save; it replaces whatever the store holds. */
@@ -50,6 +64,12 @@ class Session(private val store: TokenStore) {
 
     /** Reads the store once at start-up. */
     suspend fun restore(): SessionState = mutex.withLock {
+        if (pendingClear.isPending()) {
+            // Signed out while the store could not be cleared: never sign back in with that token.
+            if (clearStore()) pendingClear.set(false)
+            _state.value = SessionState.SignedOut
+            return@withLock SessionState.SignedOut
+        }
         val stored = try {
             store.load() != null
         } catch (_: TokenStoreUnavailable) {
@@ -139,11 +159,29 @@ class Session(private val store: TokenStore) {
         }
     }
 
+    /** Signed out at once, in memory; the stored token is deleted now or on the next launch. */
     private suspend fun signOutLocked(): String? {
         pendingRefresh = null
         access = null
-        store.clear()
         _state.value = SessionState.SignedOut
+        if (!clearStore()) {
+            try {
+                pendingClear.set(true)
+            } catch (e: CancellationException) {
+                throw e
+            } catch (_: Exception) {
+                // Nowhere to remember it either: the in-memory state still says signed out.
+            }
+        }
         return null
+    }
+
+    private suspend fun clearStore(): Boolean = try {
+        store.clear()
+        true
+    } catch (e: CancellationException) {
+        throw e
+    } catch (_: Exception) {
+        false
     }
 }

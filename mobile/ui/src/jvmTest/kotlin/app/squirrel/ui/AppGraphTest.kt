@@ -149,4 +149,23 @@ class AppGraphTest {
         assertEquals(emptySet(), second.viewModelStore.keys()) // ... and Bob starts with none
     }
 
+    @Test
+    fun signingOutWithAnUnavailableKeychainStillReachesSignIn(): Unit = runBlocking {
+        val locked = object : app.squirrel.shared.auth.TokenStore {
+            override suspend fun load(): String? = "sqr_1"
+            override suspend fun save(refreshToken: String) = Unit
+            override suspend fun clear() = throw app.squirrel.shared.auth.TokenStoreUnavailable(IllegalStateException("locked"))
+        }
+        val driver = createJvmDriver()
+        val settings = app.squirrel.shared.settings.SettingsStore(app.squirrel.shared.db.createDatabase(driver))
+        settings.setServerUrl("https://home.example")
+        settings.setValue("account.display_name", "Ada")
+        val graph = AppGraph(driver = driver, tokenStore = { locked }, httpEngine = { MockEngine { error("offline") } }, device = device, scope = scope)
+        withTimeout(5_000) { graph.state.first { it is AppState.SignedIn } }
+
+        graph.signOut()
+
+        assertIs<AppState.NeedsSignIn>(withTimeout(5_000) { graph.state.first { it is AppState.NeedsSignIn } })
+        assertEquals("1", settings.value(PENDING_CLEAR_KEY)) // kept by forgetDevice, retried at the next launch
+    }
 }
