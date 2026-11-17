@@ -67,4 +67,6 @@ class FakeAssetSource : AssetSource {
     }
 
     override fun access(): MediaAccess = access
+    var fingerprint: String = "full"
+    override fun accessFingerprint(): String = fingerprint
 }

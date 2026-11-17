@@ -20,5 +20,6 @@ class AndroidBackup(context: Context) : BackupPlatform {
     override suspend fun albums(): List<Pair<String, Int>> = mediaStore.albums().map { it.name to it.count }
     override fun schedule(settings: BackupSettings) = scheduler.apply(settings)
     override fun backUpNow(settings: BackupSettings) = scheduler.backUpNow(settings)
+    override fun runSoon(settings: BackupSettings) = scheduler.onNewMedia(settings)
     override fun cancel() = scheduler.cancel()
 }

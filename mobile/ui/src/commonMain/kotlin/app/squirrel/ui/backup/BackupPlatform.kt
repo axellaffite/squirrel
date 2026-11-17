@@ -18,6 +18,9 @@ interface BackupPlatform {
     /** Re-arms background backups for [settings] (cancels them when automatic backup is off). */
     fun schedule(settings: BackupSettings)
 
+    /** A background run soon (photo access changed, new media while open), if automatic backup is on. */
+    fun runSoon(settings: BackupSettings)
+
     /** "Back up now": one run as soon as the constraints allow. */
     fun backUpNow(settings: BackupSettings)
 

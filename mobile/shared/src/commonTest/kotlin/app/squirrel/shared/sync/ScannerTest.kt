@@ -92,4 +92,20 @@ class ScannerTest {
 
         assertEquals(QueueState.New, state("images:1"))
     }
+
+    @Test
+    fun aPermissionChangeForcesAFullScan() = runTest {
+        source.put("images:1")
+        scanner.scan()
+        source.put("images:2") // visible before, but the token moved on: only a rescan finds it again
+        scanner.scan()
+
+        source.fingerprint = "partial|4f2a"
+        val summary = scanner.scan()
+
+        assertEquals(true, summary.full)
+        assertEquals(2, summary.seen)
+        assertEquals("partial|4f2a", settings.value(SCAN_ACCESS_KEY))
+        assertEquals(false, scanner.scan().full) // and incremental again afterwards
+    }
 }
