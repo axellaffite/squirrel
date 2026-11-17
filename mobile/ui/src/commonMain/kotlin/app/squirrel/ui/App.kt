@@ -4,6 +4,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.lifecycle.viewmodel.compose.LocalViewModelStoreOwner
 import androidx.compose.runtime.getValue
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.ui.Modifier
@@ -28,7 +29,8 @@ fun App(graph: AppGraph, actions: PhotoAccessActions = PhotoAccessActions.None) 
                 when (val current = state) {
                     AppState.Loading -> Unit
                     is AppState.NeedsSignIn -> SignInFlow(graph, current.attempt, current.serverUrl)
-                    is AppState.SignedIn -> Shell(
+                    is AppState.SignedIn -> CompositionLocalProvider(LocalViewModelStoreOwner provides current.scope) {
+                        Shell(
                         current.account,
                         onSignOut = graph::signOut,
                         onRefresh = graph::refreshAccount,
@@ -36,6 +38,7 @@ fun App(graph: AppGraph, actions: PhotoAccessActions = PhotoAccessActions.None) 
                         photos = { PhotosTab(graph) },
                         files = { FilesTab(graph) },
                     )
+                    }
                 }
             }
         }

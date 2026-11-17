@@ -51,7 +51,7 @@ import kotlinx.datetime.toLocalDateTime
 @Composable
 fun FilesTab(graph: AppGraph) {
     val api = graph.api ?: return
-    val vm = viewModel(key = "files-${api.baseUrl}") { FilesViewModel(api, graph.files) }
+    val vm = viewModel(key = "files") { FilesViewModel(api, graph.files) }
     val state by vm.state.collectAsStateWithLifecycle()
     SystemBack(enabled = state.folderId != null) { vm.up() }
     Column(Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(Tokens.space2)) {

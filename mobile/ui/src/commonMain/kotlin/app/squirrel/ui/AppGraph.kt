@@ -52,7 +52,8 @@ sealed interface AppState {
     data object Loading : AppState
     /** [attempt] changes on every sign-out so the sign-in screens start fresh, at [serverUrl]. */
     data class NeedsSignIn(val attempt: Int, val serverUrl: String? = null) : AppState
-    data class SignedIn(val account: AccountInfo) : AppState
+    /** [scope] holds this session's view models; it is cleared at sign-out. */
+    data class SignedIn(val account: AccountInfo, val scope: SessionScope) : AppState
 }
 
 private object AccountKeys {
@@ -184,7 +185,7 @@ class AppGraph(
             }
         } ?: return toSignIn()
         use(newApi(restored.serverUrl))
-        _state.value = AppState.SignedIn(restored)
+        _state.value = AppState.SignedIn(restored, newScope())
         refreshAccount()
     }
 
@@ -196,7 +197,7 @@ class AppGraph(
         }
         use(api)
         applySchedule()
-        _state.value = AppState.SignedIn(info(serverUrl, result))
+        _state.value = AppState.SignedIn(info(serverUrl, result), newScope())
     }
 
     /** Re-reads the account and device; a revoked device ends up signed out. */
@@ -207,7 +208,7 @@ class AppGraph(
                 val current = api.devices.getCurrentDevice().bodyOrThrow()
                 val result = SignedIn(current.account, current.device)
                 withContext(io) { remember(result) }
-                _state.update { if (it is AppState.SignedIn) AppState.SignedIn(info(api.baseUrl, result)) else it }
+                _state.update { if (it is AppState.SignedIn) it.copy(account = info(api.baseUrl, result)) else it }
             } catch (e: CancellationException) {
                 throw e
             } catch (_: Exception) {
@@ -230,7 +231,13 @@ class AppGraph(
         }
     }
 
+    private fun newScope(): SessionScope {
+        (_state.value as? AppState.SignedIn)?.scope?.close()
+        return SessionScope()
+    }
+
     private suspend fun toSignIn() {
+        (_state.value as? AppState.SignedIn)?.scope?.close()
         backup?.cancel()
         // Thumbnails, previews and downloaded files are this account's private data.
         _imageLoader.value?.forgetEverything()
