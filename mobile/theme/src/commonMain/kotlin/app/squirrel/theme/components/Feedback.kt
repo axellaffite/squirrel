@@ -97,3 +97,17 @@ fun Progress(fraction: Float, label: String, modifier: Modifier = Modifier) {
         Box(Modifier.fillMaxWidth(value).fillMaxHeight().background(scheme.accent, Shapes.pill))
     }
 }
+
+/** The web's centred muted "Loading…": a first load that has nothing to show yet. */
+@Composable
+fun Loading(modifier: Modifier = Modifier, text: String = "Loading…") {
+    Box(
+        modifier = modifier
+            .fillMaxWidth()
+            .padding(Tokens.space6)
+            .semantics { liveRegion = LiveRegionMode.Polite },
+        contentAlignment = Alignment.Center,
+    ) {
+        BasicText(text, style = SquirrelTheme.type.caption)
+    }
+}

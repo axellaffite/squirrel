@@ -43,6 +43,8 @@ class PhotosViewModelTest {
         """{"id":"$id","kind":"photo","name":"$id.jpg","taken_at":"2024-07-14T18:30:05","thumbnail":{"state":"ready","version":1},""" +
             """"blurhash":null,"width":$w,"height":$h,"mime":"image/jpeg","taken_offset":"+02:00"}"""
 
+    private var cancelPhotos = false
+
     private suspend fun api(): SquirrelApi {
         val session = Session(InMemoryTokenStore()).apply { signedIn(Tokens("sqa", "sqr")) }
         val engine = MockEngine { request ->
@@ -52,6 +54,7 @@ class PhotosViewModelTest {
                 "/api/photos/months" -> respond("""[{"month":"2024-07","count":3},{"month":"2024-06","count":150}]""", headers = json)
                 "/api/photos" -> {
                     if (failPhotos) return@MockEngine respondError(HttpStatusCode.BadGateway)
+                    if (cancelPhotos) throw kotlinx.coroutines.CancellationException("cancelled inside the client")
                     val month = request.url.parameters["month"]
                     val cursor = request.url.parameters["cursor"]
                     val body = when {
@@ -135,5 +138,17 @@ class PhotosViewModelTest {
         assertEquals(3, state.indexOf("j1"))
         assertEquals("a1", all[state.indexOf("a1")].id)
         assertEquals(-1, state.indexOf("missing"))
+    }
+
+    @Test
+    fun aStrayCancellationFailsTheMonthInsteadOfLeavingItLoading() = run {
+        cancelPhotos = true
+        val vm = PhotosViewModel(api(), pageSize = 100)
+        vm.settled()
+        vm.ensure("2024-07")
+        val failed = vm.settled()
+        assertTrue(failed.months[0].failed)
+        assertEquals(false, failed.months[0].loading)
+        assertEquals(UNREACHABLE, failed.error)
     }
 }

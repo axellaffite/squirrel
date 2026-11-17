@@ -2,10 +2,10 @@ package app.squirrel.ui.photos
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import app.squirrel.shared.api.SignedOut
+import app.squirrel.api.models.TimelinePage
 import app.squirrel.shared.api.SquirrelApi
 import app.squirrel.shared.api.bodyOrThrow
-import kotlinx.coroutines.CancellationException
+import app.squirrel.ui.attempt
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -26,10 +26,14 @@ class PhotosViewModel(private val api: SquirrelApi, private val pageSize: Int = 
     private fun loadMonths() {
         _state.update { it.copy(loadingMonths = true, error = null) }
         viewModelScope.launch {
-            val result = attempt { api.photos.photoMonths().bodyOrThrow() }
-            _state.update { state ->
-                if (result == null) state.copy(loadingMonths = false, error = UNREACHABLE)
-                else state.copy(loadingMonths = false, months = result.map { MonthPage(it.month, it.count) })
+            try {
+                val result = attempt { api.photos.photoMonths().bodyOrThrow() }
+                _state.update { state ->
+                    if (result == null) state.copy(error = UNREACHABLE)
+                    else state.copy(months = result.map { MonthPage(it.month, it.count) })
+                }
+            } finally {
+                _state.update { it.copy(loadingMonths = false) }
             }
         }
     }
@@ -47,24 +51,33 @@ class PhotosViewModel(private val api: SquirrelApi, private val pageSize: Int = 
         }
         if (!start) return
         viewModelScope.launch {
-            val result = attempt { api.photos.listPhotos(month = month, cursor = cursor, limit = pageSize).bodyOrThrow() }
-            _state.update { state ->
-                state.copy(
-                    error = if (result == null) UNREACHABLE else state.error,
-                    months = state.months.map { page ->
-                        when {
-                            page.month != month -> page
-                            result == null -> page.copy(loading = false, failed = true)
-                            else -> page.copy(
-                                items = page.items + result.items,
-                                nextCursor = result.nextCursor,
-                                started = true,
-                                loading = false,
-                            )
-                        }
-                    },
-                )
+            var result: TimelinePage? = null
+            try {
+                result = attempt { api.photos.listPhotos(month = month, cursor = cursor, limit = pageSize).bodyOrThrow() }
+            } finally {
+                settle(month, result)
             }
+        }
+    }
+
+    /** Ends a month's page load: its items, or a failure the "Try again" button can clear. */
+    private fun settle(month: String, result: TimelinePage?) {
+        _state.update { state ->
+            state.copy(
+                error = if (result == null) UNREACHABLE else state.error,
+                months = state.months.map { page ->
+                    when {
+                        page.month != month -> page
+                        result == null -> page.copy(loading = false, failed = true)
+                        else -> page.copy(
+                            items = (page.items + result.items).distinctBy { it.id },
+                            nextCursor = result.nextCursor,
+                            started = true,
+                            loading = false,
+                        )
+                    }
+                },
+            )
         }
     }
 
@@ -72,16 +85,5 @@ class PhotosViewModel(private val api: SquirrelApi, private val pageSize: Int = 
     fun retry() {
         if (_state.value.months.isEmpty()) return loadMonths()
         _state.update { state -> state.copy(error = null, months = state.months.map { it.copy(failed = false) }) }
-    }
-
-    /** Null on failure (a refused device is signed out by the session; the app leaves the screen). */
-    private suspend fun <T> attempt(call: suspend () -> T): T? = try {
-        call()
-    } catch (e: CancellationException) {
-        throw e
-    } catch (_: SignedOut) {
-        null
-    } catch (_: Exception) {
-        null
     }
 }

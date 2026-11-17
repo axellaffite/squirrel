@@ -109,4 +109,14 @@ class SessionTest {
 
         assertEquals("sqr_2", disk.load())
     }
+
+    @Test
+    fun aRefreshThatNeverAnswersTimesOutAndKeepsTheSession() = runTest {
+        session.signedIn(Tokens("sqa_1", "sqr_1"))
+        kotlin.test.assertFailsWith<RefreshTimedOut> {
+            session.refresh("sqa_1") { kotlinx.coroutines.awaitCancellation() }
+        }
+        assertEquals(SessionState.SignedIn, session.state.value)
+        assertEquals(false, session.refused()) // transient: the device stays signed in
+    }
 }
