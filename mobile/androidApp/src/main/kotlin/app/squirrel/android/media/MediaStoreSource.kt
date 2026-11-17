@@ -71,14 +71,15 @@ class MediaStoreSource(context: Context, private val access: MediaAccessReader) 
 
     override suspend fun open(deviceAssetId: String): AssetReader? = withContext(Dispatchers.IO) {
         val uri = uriOf(deviceAssetId) ?: return@withContext null
-        val modified = resolver.query(uri, arrayOf(MediaColumns.DATE_MODIFIED), null, null, null)?.use {
-            if (it.moveToFirst()) it.getLong(0) * MILLIS else null
-        } ?: return@withContext null
-        // Without ACCESS_MEDIA_LOCATION the original (with GPS) cannot be read; the redacted copy is.
-        val target = if (access.locationsIncluded()) MediaStore.setRequireOriginal(uri) else uri
         try {
-            val descriptor = resolver.openFileDescriptor(target, "r") ?: return@withContext null
-            MediaStoreReader(descriptor, descriptor.statSize, modified)
+            val modified = resolver.query(uri, arrayOf(MediaColumns.DATE_MODIFIED), null, null, null)?.use {
+                if (it.moveToFirst()) it.getLong(0) * MILLIS else null
+            } ?: return@withContext null
+            // The original (with GPS) needs ACCESS_MEDIA_LOCATION; when it is refused, the redacted
+            // copy is backed up rather than nothing, and the asset says its location was stripped.
+            val original = if (access.locationsIncluded()) openOrNull(MediaStore.setRequireOriginal(uri)) else null
+            val descriptor = original ?: resolver.openFileDescriptor(uri, "r") ?: return@withContext null
+            MediaStoreReader(descriptor, descriptor.statSize, modified, locationStripped = original == null)
         } catch (_: FileNotFoundException) {
             null
         } catch (_: SecurityException) {
@@ -86,6 +87,14 @@ class MediaStoreSource(context: Context, private val access: MediaAccessReader) 
         } catch (_: IllegalArgumentException) {
             null
         }
+    }
+
+    private fun openOrNull(uri: Uri) = try {
+        resolver.openFileDescriptor(uri, "r")
+    } catch (_: SecurityException) {
+        null
+    } catch (_: UnsupportedOperationException) {
+        null
     }
 
     override fun access(): MediaAccess = access.current()

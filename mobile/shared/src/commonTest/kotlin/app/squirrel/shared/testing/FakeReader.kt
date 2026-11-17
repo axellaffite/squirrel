@@ -7,6 +7,7 @@ class FakeReader(
     override val size: Long,
     private val seed: Int = 7,
     override val modifiedAt: Long? = null,
+    override val locationStripped: Boolean = false,
 ) : AssetReader {
     var reads = 0
         private set

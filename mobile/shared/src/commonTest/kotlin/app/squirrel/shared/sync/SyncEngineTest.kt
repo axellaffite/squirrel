@@ -335,4 +335,14 @@ class SyncEngineTest {
         assertEquals(1, run.await().uploaded)
         assertEquals(SyncState.Idle, waiter.await())
     }
+
+    @Test
+    fun anAssetReadWithoutItsLocationIsMarked() = runApiTest {
+        source.put("images:1", size = 64, locationStripped = true)
+        server.known += hashOf("images:1")
+
+        engine().runOnce()
+
+        assertEquals(true, queue.get("images:1")!!.locationStripped)
+    }
 }

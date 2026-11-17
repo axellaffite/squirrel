@@ -140,7 +140,7 @@ class SyncEngine(
                     reader.use {
                         val size = it.size
                         val modifiedAt = it.modifiedAt
-                        queue.setHash(asset.deviceAssetId, hashAsset(it), size, modifiedAt)
+                        queue.setHash(asset.deviceAssetId, hashAsset(it), size, modifiedAt, it.locationStripped)
                     }
                     run.summary = run.summary.copy(hashed = run.summary.hashed + 1)
                 }
