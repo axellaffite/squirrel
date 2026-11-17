@@ -1,5 +1,7 @@
 package app.squirrel.ui.photos
 
+import androidx.compose.ui.geometry.Offset
+
 import app.squirrel.api.models.AssetSummary
 import app.squirrel.theme.Tokens
 import kotlinx.datetime.Month
@@ -45,6 +47,20 @@ fun dayLabel(takenAt: String): String {
     val date = takenAt.take(10)
     val day = date.substringAfterLast('-').toIntOrNull() ?: return takenAt
     return "$day ${monthLabel(date.take(7))}"
+}
+
+/** What assistive tech reads for a photo: "Photo, 12 October 2026, 19:59". */
+fun photoLabel(item: AssetSummary): String {
+    val kind = if (item.mime?.startsWith("video/") == true) "Video" else "Photo"
+    val time = item.takenAt.drop(11).take(5)
+    return listOf(kind, dayLabel(item.takenAt), time).filter { it.isNotEmpty() }.joinToString(", ")
+}
+
+/** Zoom pan bounds: the scaled photo's edges never come inside the stage. */
+fun clampPan(offset: Offset, scale: Float, width: Float, height: Float): Offset {
+    val maxX = (width * (scale - 1) / 2).coerceAtLeast(0f)
+    val maxY = (height * (scale - 1) / 2).coerceAtLeast(0f)
+    return Offset(offset.x.coerceIn(-maxX, maxX), offset.y.coerceIn(-maxY, maxY))
 }
 
 data class TileSlot(val item: AssetSummary, val left: Int, val width: Int)
