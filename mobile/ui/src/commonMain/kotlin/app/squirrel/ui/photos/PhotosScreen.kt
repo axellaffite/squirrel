@@ -55,7 +55,8 @@ fun TimelineList(api: SquirrelApi, vm: PhotosViewModel, onOpen: (AssetSummary) -
     }
     BoxWithConstraints(Modifier.fillMaxSize()) {
         val width = maxWidth.value.toInt()
-        val blocks = remember(state.months, width) { timelineBlocks(state.months, width) }
+        val layout = remember { TimelineLayout() }
+        val blocks = remember(state.months, width) { layout.blocks(state.months, width) }
         LazyColumn(
             modifier = Modifier.fillMaxSize(),
             verticalArrangement = Arrangement.spacedBy(Tokens.space1),
