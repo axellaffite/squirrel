@@ -27,11 +27,12 @@ class FakeAssetSource : AssetSource {
         album: String = "Camera",
         modifiedAt: Long = 1,
         takenAt: String? = "2024-07-14T18:30:05+02:00",
+        locationStripped: Boolean = false,
     ): ScannedAsset {
         clock++
         val asset = ScannedAsset(id, kind, "$id.jpg", if (kind == "video") "video/mp4" else "image/jpeg", size, modifiedAt, takenAt, album)
         assets[id] = asset
-        readers[id] = FakeReader(size, seed = id.hashCode(), modifiedAt = modifiedAt)
+        readers[id] = FakeReader(size, seed = id.hashCode(), modifiedAt = modifiedAt, locationStripped = locationStripped)
         changedAt[id] = clock
         removedAt.remove(id)
         return asset

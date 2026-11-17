@@ -10,6 +10,7 @@ class MediaStoreReader(
     private val descriptor: ParcelFileDescriptor,
     override val size: Long,
     override val modifiedAt: Long?,
+    override val locationStripped: Boolean = false,
 ) : AssetReader {
     private val stream = FileInputStream(descriptor.fileDescriptor)
     private val channel = stream.channel

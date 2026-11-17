@@ -42,6 +42,8 @@ data class QueuedAsset(
     val lastError: String?,
     val hashedSize: Long? = null,
     val hashedModifiedAt: Long? = null,
+    /** Read without its GPS: the server's copy has no location. */
+    val locationStripped: Boolean = false,
 )
 
 private fun Local_asset.toQueued() = QueuedAsset(
@@ -61,6 +63,7 @@ private fun Local_asset.toQueued() = QueuedAsset(
     lastError = last_error,
     hashedSize = hashed_size,
     hashedModifiedAt = hashed_modified_at,
+    locationStripped = location_stripped != 0L,
 )
 
 /** The backup queue in `local_asset`: what is known, hashed, missing, uploaded. */
@@ -72,8 +75,8 @@ class Queue(private val db: SquirrelDatabase) {
     fun nextToHash(limit: Long): List<QueuedAsset> = q.nextToHash(limit).executeAsList().map { it.toQueued() }
 
     /** Records the hash of what was read: [size] and [modifiedAt] as hashed (null: the scanned values). */
-    fun setHash(id: String, sha256: String, size: Long? = null, modifiedAt: Long? = null) {
-        q.setHash(sha256, size, modifiedAt, id)
+    fun setHash(id: String, sha256: String, size: Long? = null, modifiedAt: Long? = null, locationStripped: Boolean = false) {
+        q.setHash(sha256, size, modifiedAt, if (locationStripped) 1L else 0L, id)
     }
 
     fun hashedBatch(limit: Long): List<QueuedAsset> = q.hashedBatch(limit).executeAsList().map { it.toQueued() }
