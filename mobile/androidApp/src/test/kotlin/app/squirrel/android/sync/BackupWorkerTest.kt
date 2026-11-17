@@ -33,12 +33,15 @@ class FakeRunner : BackupRunner {
 
     override suspend fun pending() = pending
     override val progress: Flow<SyncState> = flowOf(SyncState.Idle)
-    override suspend fun run(deadline: Long?): RunOutcome {
+    var manual: Boolean? = null
+
+    override suspend fun run(deadline: Long?, manual: Boolean): RunOutcome {
         this.deadline = deadline
+        this.manual = manual
         failure?.let { throw it }
         return outcome
     }
-    override suspend fun afterRun(outcome: RunOutcome?) {
+    override suspend fun afterRun(outcome: RunOutcome?, manual: Boolean) {
         after = outcome
         afterCalled = true
         onAfter()
@@ -93,5 +96,17 @@ class BackupWorkerTest {
         app.fake.failure = IllegalStateException("bug")
         assertEquals(ListenableWorker.Result.failure(), run())
         assertEquals(true, app.fake.afterCalled)
+    }
+
+    @Test
+    fun backUpNowRunsAsManual() {
+        runBlocking {
+            TestListenableWorkerBuilder<BackupWorker>(app)
+                .setInputData(androidx.work.Data.Builder().putBoolean(BackupWorker.KEY_MANUAL, true).build())
+                .build().doWork()
+        }
+        assertEquals(true, app.fake.manual)
+        run()
+        assertEquals(false, app.fake.manual)
     }
 }
