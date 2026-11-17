@@ -75,6 +75,18 @@ class MediaStoreSource(context: Context, private val access: MediaAccessReader) 
 
     override fun access(): MediaAccess = access.current()
 
+    /** Full and None by kind; a partial grant by the exact set of selected items. */
+    override fun accessFingerprint(): String = when (val current = access.current()) {
+        is MediaAccess.Partial -> "partial|" + visibleIds().joinToString(",").hashCode().toString(16)
+        else -> current.toString() + "|videos=" + access.videosGranted()
+    }
+
+    private fun visibleIds(): List<String> = listOf(images, videos).flatMap { kind ->
+        resolver.query(kind.uri, arrayOf(MediaColumns._ID), null, null, "${MediaColumns._ID} ASC")?.use { c ->
+            buildList { while (c.moveToNext()) add("${kind.prefix}:${c.getLong(0)}") }
+        }.orEmpty()
+    }
+
     /** Buckets with their photo and video counts, for the album filter. */
     suspend fun albums(): List<Album> = withContext(Dispatchers.IO) {
         listOf(images, videos).flatMap { kind ->

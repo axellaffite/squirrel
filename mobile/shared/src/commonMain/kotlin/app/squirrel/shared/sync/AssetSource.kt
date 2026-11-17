@@ -52,4 +52,10 @@ interface AssetSource {
     suspend fun open(deviceAssetId: String): AssetReader?
 
     fun access(): MediaAccess
+
+    /**
+     * Changes whenever what the app may see changes (full, partial and which items, videos or
+     * not): a change forces a full rescan, so newly visible assets are found.
+     */
+    fun accessFingerprint(): String = access().toString()
 }

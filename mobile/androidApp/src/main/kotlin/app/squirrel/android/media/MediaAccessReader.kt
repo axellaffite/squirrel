@@ -14,6 +14,10 @@ class MediaAccessReader(private val context: Context) {
 
     fun current(): MediaAccess = MediaPermissions.access(Build.VERSION.SDK_INT, ::granted, ::visibleCount)
 
+    fun videosGranted(): Boolean =
+        if (Build.VERSION.SDK_INT >= 33) granted(android.Manifest.permission.READ_MEDIA_VIDEO)
+        else granted(android.Manifest.permission.READ_EXTERNAL_STORAGE)
+
     fun locationsIncluded(): Boolean = MediaPermissions.locationsIncluded(::granted)
 
     /** With partial access MediaStore only returns the selected items: count them. */

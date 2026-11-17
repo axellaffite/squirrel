@@ -23,6 +23,7 @@ import app.squirrel.shared.sync.BackupStatus
 import app.squirrel.shared.sync.KtorChunkTransport
 import app.squirrel.shared.sync.MediaAccess
 import app.squirrel.shared.sync.Queue
+import app.squirrel.shared.sync.SCAN_ACCESS_KEY
 import app.squirrel.shared.sync.Scanner
 import app.squirrel.shared.sync.SyncEngine
 import app.squirrel.shared.sync.SyncState
@@ -141,7 +142,16 @@ class AppGraph(
      * The app's UI came to the foreground: the place, besides sign-in and settings changes, where
      * the schedule is (re-)applied. A process a worker woke does not touch the schedule.
      */
-    fun onAppVisible() = applySchedule()
+    fun onAppVisible() {
+        applySchedule()
+        val platform = backup ?: return
+        if (_syncEngine.value == null) return
+        scope.launch(io) {
+            // Access granted, widened, shrunk or reselected while the app was away: rescan now.
+            val seen = settings.value(SCAN_ACCESS_KEY)
+            if (seen != null && seen != platform.source.accessFingerprint()) platform.runSoon(settings.backup())
+        }
+    }
 
     private suspend fun start() {
         val restored = withContext(io) {
