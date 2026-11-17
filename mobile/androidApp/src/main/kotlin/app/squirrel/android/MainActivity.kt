@@ -55,6 +55,7 @@ class MainActivity : ComponentActivity() {
 
     override fun onStart() {
         super.onStart()
+        (application as SquirrelApp).graph.onAppVisible()
         observer.register()
     }
 

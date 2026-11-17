@@ -136,8 +136,13 @@ class AppGraph(
             now = clock,
             io = io,
         )
-        applySchedule()
     }
+
+    /**
+     * The app's UI came to the foreground: the place, besides sign-in and settings changes, where
+     * the schedule is (re-)applied. A process a worker woke does not touch the schedule.
+     */
+    fun onAppVisible() = applySchedule()
 
     private suspend fun start() {
         val restored = withContext(io) {
@@ -167,6 +172,7 @@ class AppGraph(
             remember(result)
         }
         use(api)
+        applySchedule()
         _state.value = AppState.SignedIn(info(serverUrl, result))
     }
 
