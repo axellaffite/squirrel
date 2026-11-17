@@ -30,9 +30,13 @@ object MediaPermissions {
         if (sdk >= TIRAMISU) add(POST_NOTIFICATIONS)
     }
 
-    /** Full when the whole library is readable, Partial for "Select photos" (14+), else None. */
+    /**
+     * Full when the whole library is readable, NoVideos when only photos are (13+ grants them
+     * separately), Partial for "Select photos" (14+, photos and videos alike), else None.
+     */
     fun access(sdk: Int, granted: (String) -> Boolean, selectedCount: () -> Int): MediaAccess = when {
-        sdk >= TIRAMISU && granted(READ_MEDIA_IMAGES) -> MediaAccess.Full
+        sdk >= TIRAMISU && granted(READ_MEDIA_IMAGES) ->
+            if (granted(READ_MEDIA_VIDEO)) MediaAccess.Full else MediaAccess.NoVideos
         sdk >= UPSIDE_DOWN_CAKE && granted(READ_MEDIA_VISUAL_USER_SELECTED) -> MediaAccess.Partial(selectedCount())
         sdk < TIRAMISU && granted(READ_EXTERNAL_STORAGE) -> MediaAccess.Full
         else -> MediaAccess.None

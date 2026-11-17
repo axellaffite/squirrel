@@ -36,6 +36,8 @@ class MediaPermissionsTest {
         assertEquals(MediaAccess.None, access(32))
         assertEquals(MediaAccess.Full, access(33, READ_MEDIA_IMAGES, READ_MEDIA_VIDEO))
         assertEquals(MediaAccess.None, access(33, READ_EXTERNAL_STORAGE))
+        assertEquals(MediaAccess.NoVideos, access(33, READ_MEDIA_IMAGES))
+        assertEquals(MediaAccess.NoVideos, access(35, READ_MEDIA_IMAGES, READ_MEDIA_VISUAL_USER_SELECTED))
         assertEquals(MediaAccess.Full, access(34, READ_MEDIA_IMAGES, READ_MEDIA_VIDEO, READ_MEDIA_VISUAL_USER_SELECTED))
         // "Select photos" on Android 14+: only the user-selected grant.
         assertEquals(MediaAccess.Partial(42), access(34, READ_MEDIA_VISUAL_USER_SELECTED))

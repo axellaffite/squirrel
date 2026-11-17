@@ -110,4 +110,13 @@ class BackupUiTest {
         assertNull(ui(locations = true).locationWarning)
         assertNull(ui(status.copy(access = MediaAccess.None), locations = false).locationWarning)
     }
+
+    @Test
+    fun missingVideoAccessIsShownOnlyWhenVideosAreBackedUp() {
+        assertEquals(
+            AccessUi.NoVideos("Squirrel cannot see your videos. Only photos are backed up."),
+            ui(status.copy(access = MediaAccess.NoVideos)).access,
+        )
+        assertEquals(AccessUi.Full, ui(status.copy(access = MediaAccess.NoVideos), BackupSettings(includeVideos = false)).access)
+    }
 }
