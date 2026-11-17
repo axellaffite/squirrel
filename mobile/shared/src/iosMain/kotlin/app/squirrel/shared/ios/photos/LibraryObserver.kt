@@ -28,8 +28,9 @@ class LibraryObserver(private val scope: CoroutineScope, private val onChange: (
         }
     }
 
+    /** Only once access is granted: registering earlier raises the system's photo prompt. */
     fun register() {
-        if (registered) return
+        if (registered || !PhotoAccess.granted()) return
         PHPhotoLibrary.sharedPhotoLibrary().registerChangeObserver(this)
         registered = true
     }

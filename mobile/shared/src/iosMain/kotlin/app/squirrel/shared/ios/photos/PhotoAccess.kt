@@ -14,6 +14,9 @@ import kotlin.coroutines.resume
 object PhotoAccess {
     fun status(): PHAuthorizationStatus = PHPhotoLibrary.authorizationStatusForAccessLevel(PHAccessLevelReadWrite)
 
+    /** Whether the library may be touched without the system prompting (all or selected photos). */
+    fun granted(): Boolean = isGranted(status())
+
     fun current(): MediaAccess = when (status()) {
         PHAuthorizationStatusAuthorized -> MediaAccess.Full
         PHAuthorizationStatusLimited -> MediaAccess.Partial(PHAsset.fetchAssetsWithOptions(null).count.toInt())
@@ -27,3 +30,7 @@ object PhotoAccess {
         }
     }
 }
+
+/** Full or limited access: anything else, and PhotoKit calls would raise the system prompt. */
+fun isGranted(status: PHAuthorizationStatus): Boolean =
+    status == PHAuthorizationStatusAuthorized || status == PHAuthorizationStatusLimited
