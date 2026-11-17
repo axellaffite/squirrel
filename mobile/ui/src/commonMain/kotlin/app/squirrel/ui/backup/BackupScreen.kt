@@ -63,6 +63,11 @@ fun BackupScreen(vm: BackupViewModel, actions: PhotoAccessActions, onOpenSetting
                 Button("Change selection", onClick = actions::changeSelection, variant = ButtonVariant.Quiet, size = ButtonSize.Sm)
             }
         }
+        (state.access as? AccessUi.NoVideos)?.let { noVideos ->
+            Alert(noVideos.text) {
+                Button("Allow videos", onClick = actions::allowAll, variant = ButtonVariant.Secondary, size = ButtonSize.Sm)
+            }
+        }
         state.locationWarning?.let { Alert(it) }
         Well(verticalArrangement = Arrangement.spacedBy(Tokens.space2)) {
             ListRow("Backed up", icon = SquirrelIcon.CheckCircle, meta = state.backedUp)

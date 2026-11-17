@@ -14,6 +14,8 @@ import app.squirrel.shared.sync.formatLastRun
 sealed interface AccessUi {
     data object Full : AccessUi
     data class Partial(val text: String) : AccessUi
+    /** Videos are to be backed up but cannot be read. */
+    data class NoVideos(val text: String) : AccessUi
     data object None : AccessUi
 }
 
@@ -75,6 +77,9 @@ fun backupUi(status: BackupStatus, settings: BackupSettings, locationsIncluded: 
                     "${if (access.count == 1) "photo" else "photos"}. Only these are backed up.",
             )
             MediaAccess.None -> AccessUi.None
+            MediaAccess.NoVideos ->
+                if (settings.includeVideos) AccessUi.NoVideos("Squirrel cannot see your videos. Only photos are backed up.")
+                else AccessUi.Full
         },
         locationWarning = if (status.access != MediaAccess.None && !locationsIncluded) "Photo locations won't be backed up" else null,
     )

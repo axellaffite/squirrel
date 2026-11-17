@@ -40,6 +40,8 @@ sealed interface MediaAccess {
     data object Full : MediaAccess
     /** Android 14+ "Select photos", iOS "Limited Access": only these are backed up. */
     data class Partial(val count: Int) : MediaAccess
+    /** All photos, but not videos (Android 13+ grants them separately). */
+    data object NoVideos : MediaAccess
     data object None : MediaAccess
 }
 
