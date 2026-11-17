@@ -42,6 +42,7 @@ class BackupUiTest {
     fun everythingBackedUp() {
         assertEquals("Everything is backed up", ui(BackupStatus(total = 5, backedUp = 5)).featured)
         assertEquals("0 B · Any network", ui(BackupStatus(), BackupSettings(wifiOnly = false)).detail)
+        assertEquals("Ready to back up", ui(BackupStatus()).featured)
     }
 
     @Test

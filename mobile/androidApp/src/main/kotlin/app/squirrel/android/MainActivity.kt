@@ -32,6 +32,7 @@ class MainActivity : ComponentActivity() {
     private val photoActions = object : PhotoAccessActions {
         override fun requestAccess() = permissions.launch(MediaPermissions.toRequest(Build.VERSION.SDK_INT).toTypedArray())
         override fun changeSelection() = requestAccess()
+        override fun allowAll() = openAppSettings()
     }
 
     private fun shouldShowAnyRationale() =

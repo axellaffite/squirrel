@@ -109,11 +109,16 @@ class AppGraph(
         scope.launch(io) { platform.schedule(settings.backup()) }
     }
 
+    /**
+     * "Back up now" with the app open: runs at once in the app, and also as expedited work that
+     * carries on if the app goes away (the engine's lock keeps the two from overlapping).
+     */
     fun backUpNow() {
         val platform = backup ?: return
         scope.launch(io) {
             queue.retryFailed()
             platform.backUpNow(settings.backup())
+            _syncEngine.value?.runOnce()
         }
     }
 
