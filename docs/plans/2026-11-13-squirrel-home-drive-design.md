@@ -165,6 +165,10 @@ Setup / join / login; Photos (virtualized justified grid, timeline scrubber, lig
 build order is now 1, 2, 3, 6, 4, 5, 7. Videos the phone backs up are stored as files until
 Phase 4's backfill processes them.
 
+**Order changed again on 2026-11-17:** Phase 5 (ML) now comes before Phase 4 (video). The build
+order is 1, 2, 3, 6, 5, 4, 7. Phase 5 covers images only; video keyframes for CLIP and faces are
+added in Phase 4, whose backfill also queues the ML jobs for videos.
+
 ## Out of scope for v1
 
 Cross-user sharing, public links, live transcoding, OCR, email delivery of invitations, WebDAV.
