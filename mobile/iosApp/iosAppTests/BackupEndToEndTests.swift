@@ -42,8 +42,21 @@ final class BackupEndToEndTests: XCTestCase {
             XCTAssertNotNil(Int(year.name), "year folder \(year.name)")
             files += try await web.list(year.id).filter { $0.kind == "file" }.count
         }
-        XCTAssertEqual(files, images)
+        // A photo whose bytes the server already has is usually linked rather than stored again
+        // (two such photos backed up in the same run can both land), so the count lies between
+        // the distinct contents and the photos.
+        XCTAssertGreaterThanOrEqual(files, distinctContents(graph.queue))
+        XCTAssertLessThanOrEqual(files, images)
     }
+}
+
+/// How many distinct contents the library's photos have, from the hashes the queue recorded.
+private func distinctContents(_ queue: Queue) -> Int {
+    var hashes = Set<String>()
+    PHAsset.fetchAssets(with: .image, options: nil).enumerateObjects { asset, _, _ in
+        hashes.insert(queue.get(id: asset.localIdentifier)?.sha256 ?? asset.localIdentifier)
+    }
+    return hashes.count
 }
 
 /// A browser-style session on the server (cookie login), for reading folders from the test.
