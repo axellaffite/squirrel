@@ -166,7 +166,8 @@ class SyncEngine(
                 ?: return@forEachIndexed
             run.checkpoint()
             _state.value = SyncState.Uploading(asset.name, done, candidates.size)
-            when (uploader.upload(asset, shouldContinue = run::mayContinue)) {
+            val progress: (Float) -> Unit = { _state.value = SyncState.Uploading(asset.name, done, candidates.size, it) }
+            when (uploader.upload(asset, shouldContinue = run::mayContinue, onProgress = progress)) {
                 UploadResult.Uploaded -> run.summary = run.summary.copy(uploaded = run.summary.uploaded + 1)
                 UploadResult.Deduplicated -> run.summary = run.summary.copy(deduplicated = run.summary.deduplicated + 1)
                 UploadResult.Failed -> run.summary = run.summary.copy(failed = run.summary.failed + 1)

@@ -310,4 +310,12 @@ class UploaderTest {
         assertTrue(cancelled)
         assertEquals(QueueState.Uploading, queue.get("images:1")!!.state)
     }
+
+    @Test
+    fun progressGoesChunkByChunk() = runApiTest {
+        val seen = mutableListOf<Float>()
+        val uploader = Uploader(server.api(), server.transport, source, queue, now = { now }, random = { 0.5 }, parallelChunks = 1)
+        uploader.upload(missing(), onProgress = { seen += it })
+        assertEquals(listOf(0f, 1f / 3, 2f / 3, 1f), seen)
+    }
 }

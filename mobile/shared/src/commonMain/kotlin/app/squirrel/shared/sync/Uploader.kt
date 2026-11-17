@@ -9,6 +9,9 @@ import app.squirrel.shared.api.UploadOutcome
 import app.squirrel.shared.api.bodyOrThrow
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
+import kotlin.concurrent.atomics.AtomicInt
+import kotlin.concurrent.atomics.ExperimentalAtomicApi
+import kotlin.concurrent.atomics.incrementAndFetch
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.joinAll
 import kotlinx.coroutines.withTimeoutOrNull
@@ -55,6 +58,7 @@ private val PERMANENT = setOf(400, 403, PAYLOAD_TOO_LARGE, 422)
  * ([parallelChunks] at a time), then complete. Resumes a recorded session. One instance per run
  * (it caches the year folders).
  */
+@OptIn(ExperimentalAtomicApi::class)
 class Uploader(
     private val api: SquirrelApi,
     private val transport: ChunkTransport,
@@ -75,14 +79,18 @@ class Uploader(
         data object Restart : Transfer
     }
 
-    suspend fun upload(asset: QueuedAsset, shouldContinue: () -> Boolean = { true }): UploadResult {
+    suspend fun upload(
+        asset: QueuedAsset,
+        shouldContinue: () -> Boolean = { true },
+        onProgress: (Float) -> Unit = {},
+    ): UploadResult {
         val reader = source.open(asset.deviceAssetId) ?: run {
             queue.markSkipped(asset.deviceAssetId)
             return UploadResult.Skipped
         }
         return reader.use {
             try {
-                transfer(asset, reader, shouldContinue)
+                transfer(asset, reader, shouldContinue, onProgress)
             } catch (e: CancellationException) {
                 throw e
             } catch (e: SignedOut) {
@@ -97,7 +105,12 @@ class Uploader(
         }
     }
 
-    private suspend fun transfer(asset: QueuedAsset, reader: AssetReader, shouldContinue: () -> Boolean): UploadResult {
+    private suspend fun transfer(
+        asset: QueuedAsset,
+        reader: AssetReader,
+        shouldContinue: () -> Boolean,
+        onProgress: (Float) -> Unit,
+    ): UploadResult {
         if (changedSinceHashing(asset, reader)) {
             queue.resetHash(asset.deviceAssetId)
             return UploadResult.Changed
@@ -113,7 +126,7 @@ class Uploader(
                     queue.markUploading(asset.deviceAssetId, it.uploadId)
                 }
             }
-            when (sendAndComplete(session, reader, shouldContinue)) {
+            when (sendAndComplete(session, reader, shouldContinue, onProgress)) {
                 Transfer.Done -> {
                     queue.markDone(asset.deviceAssetId)
                     return UploadResult.Uploaded
@@ -128,11 +141,16 @@ class Uploader(
         throw ApiError(NOT_FOUND, "not_found", "The server kept losing the upload session")
     }
 
-    private suspend fun sendAndComplete(start: UploadSession, reader: AssetReader, shouldContinue: () -> Boolean): Transfer {
+    private suspend fun sendAndComplete(
+        start: UploadSession,
+        reader: AssetReader,
+        shouldContinue: () -> Boolean,
+        onProgress: (Float) -> Unit,
+    ): Transfer {
         var session = start
         repeat(MAX_COMPLETE_TRIES) {
             try {
-                if (!send(session, reader, shouldContinue)) return Transfer.Interrupted
+                if (!send(session, reader, shouldContinue, onProgress)) return Transfer.Interrupted
                 api.uploadsApi.completeUpload(session.uploadId).bodyOrThrow()
                 return Transfer.Done
             } catch (e: ApiError) {
@@ -151,9 +169,16 @@ class Uploader(
      * false. It is checked before each chunk and every [pollMillis] while chunks are in flight;
      * those get [stopGraceMillis] to finish, then are cancelled (the server keeps what arrived).
      */
-    private suspend fun send(session: UploadSession, reader: AssetReader, shouldContinue: () -> Boolean): Boolean =
+    private suspend fun send(
+        session: UploadSession,
+        reader: AssetReader,
+        shouldContinue: () -> Boolean,
+        onProgress: (Float) -> Unit,
+    ): Boolean =
         coroutineScope {
             val gate = Semaphore(parallelChunks)
+            val stored = AtomicInt(session.received.size)
+            onProgress(stored.load().toFloat() / session.chunkCount)
             val chunks = mutableListOf<Job>()
             val producer = launch {
                 for (index in session.missing) {
@@ -165,6 +190,7 @@ class Uploader(
                     chunks += this@coroutineScope.launch {
                         try {
                             transport.put(session, index, reader)
+                            onProgress(stored.incrementAndFetch().toFloat() / session.chunkCount)
                         } finally {
                             gate.release()
                         }

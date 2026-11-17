@@ -42,7 +42,8 @@ fun backupUi(status: BackupStatus, settings: BackupSettings, locationsIncluded: 
     val running = state is SyncState.Scanning || state is SyncState.Hashing || state is SyncState.Checking ||
         state is SyncState.Uploading
     val (progress, progressLabel) = when (state) {
-        is SyncState.Uploading -> fraction(state.done, state.of) to "Uploading ${state.name}"
+        is SyncState.Uploading ->
+            (if (state.of <= 0) 0f else ((state.done + state.current) / state.of).coerceIn(0f, 1f)) to "Uploading ${state.name}"
         is SyncState.Hashing -> fraction(state.done, state.of) to "Preparing ${formatCount(state.of.toLong())} items"
         SyncState.Scanning -> null to "Looking for new photos"
         SyncState.Checking -> null to "Checking what your Squirrel already has"

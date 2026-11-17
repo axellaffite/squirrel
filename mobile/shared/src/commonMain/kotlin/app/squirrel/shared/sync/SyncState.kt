@@ -7,7 +7,8 @@ sealed interface SyncState {
     data object Scanning : SyncState
     data class Hashing(val done: Int, val of: Int) : SyncState
     data object Checking : SyncState
-    data class Uploading(val name: String, val done: Int, val of: Int) : SyncState
+    /** [done] of [of] assets are through; [current] is how far the one in flight is (0–1). */
+    data class Uploading(val name: String, val done: Int, val of: Int, val current: Float = 0f) : SyncState
     data class Paused(val reason: PauseReason) : SyncState
     data class Error(val reason: ErrorReason) : SyncState
 }
