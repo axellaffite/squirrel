@@ -1903,3 +1903,29 @@ Server and web parts of Phase 6 (Tasks 1–13) are done; Milestones D–I are no
   - A reinstall without signing out first gets `<name> (2)` until the old device expires.
 - **Redacted Debug:** `LoginRequest`, `SetupRequest`, `AccountRequest`, `DeviceLoginRequest`,
   `RefreshRequest` and `TokenPair` show `<redacted>` instead of secrets in `Debug` output.
+
+### Task 37 as built: per-upload tokens (2026-11-17)
+
+- **Migration:** `20261116000005_upload_tokens.sql` adds `upload_sessions.upload_token_hash`
+  (SHA-256, unique) and `upload_token_device_id`, the device the token was issued to.
+- **Issuing:**
+  - A bearer `POST /api/uploads` that opens or resumes a session returns `upload_token` (`squ_…`).
+    Each open or resume issues a new one, and the old one stops working.
+  - Browsers and deduplicated (200) uploads get no token.
+- **Accepting:**
+  - `UploadCaller` takes a session, a device bearer, or `Authorization: Upload squ_…`, on
+    `PUT …/chunks/{n}` and `GET /api/uploads/{id}` only.
+  - The token is looked up by its hash. It works only while the session is unexpired and its
+    device is signed in (not revoked, refresh lifetime not over) and the owner is not disabled.
+- **Refusals:**
+  - Another upload's id gets 404.
+  - A dead token (upload completed, aborted or expired, device revoked, unknown or malformed)
+    gets 401, not 404: once its session row is gone the server cannot tell it from a wrong token,
+    and 401 tells the client to drop it.
+  - On every other route, including complete and abort, the `Upload` scheme is not a bearer, so
+    only a session cookie could apply: 401 without one.
+- **Contract:**
+  - OpenAPI's `http` security type only accepts registered schemes, so `upload_token` is
+    declared as an `apiKey` in the `Authorization` header, whose value is `Upload squ_…`.
+  - The two operations list it between `device_bearer` and the session pair.
+  - The route matrix gains an upload-token column: both its tests check it.
