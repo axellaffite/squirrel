@@ -18,4 +18,16 @@ class ConditionsTest {
         assertEquals(PauseReason.BatteryLow, pauseReason(BackupSettings(), ok.copy(batteryLow = true)))
         assertEquals(null, pauseReason(BackupSettings(), ok.copy(batteryLow = true, charging = true)))
     }
+
+    @Test
+    fun theDeviceStateIsReadAtMostEveryFiveSeconds() {
+        var clock = 0L
+        var reads = 0
+        val cached = Cached(5_000, { clock }) { ++reads }
+        assertEquals(1, cached.get())
+        clock = 4_999
+        assertEquals(1, cached.get())
+        clock = 5_000
+        assertEquals(2, cached.get())
+    }
 }
