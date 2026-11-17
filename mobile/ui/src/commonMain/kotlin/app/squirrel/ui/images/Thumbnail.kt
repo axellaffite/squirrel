@@ -6,7 +6,10 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.produceState
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -58,7 +61,9 @@ fun Thumbnail(
 ) {
     val scheme = SquirrelTheme.scheme
     val decoded by produceState<ImageBitmap?>(null, blurhash) { value = blurhash?.let { blurhashBitmap(it) } }
-    val preview = decoded
+    // A load that failed (offline, deleted, refused) shows `image-off`, not a blurhash forever.
+    var failed by remember(url) { mutableStateOf(false) }
+    val preview = decoded.takeUnless { failed }
     Box(if (fit) modifier else modifier.background(scheme.tint), contentAlignment = Alignment.Center) {
         if (preview != null && !fit) {
             Image(
@@ -70,14 +75,15 @@ fun Thumbnail(
         }
         val loader = LocalImageLoader.current
         when {
-            url != null && loader != null -> AsyncImage(
+            url != null && loader != null && !failed -> AsyncImage(
                 model = url,
                 imageLoader = loader,
                 contentDescription = contentDescription,
                 contentScale = if (fit) ContentScale.Fit else ContentScale.Crop,
+                onError = { failed = true },
                 modifier = Modifier.fillMaxSize(),
             )
-            unsupported -> Icon(SquirrelIcon.ImageOff, contentDescription = contentDescription, tint = scheme.inkMuted)
+            unsupported || failed -> Icon(SquirrelIcon.ImageOff, contentDescription = contentDescription, tint = scheme.inkMuted)
             preview == null -> Icon(SquirrelIcon.Image, contentDescription = contentDescription, tint = scheme.inkMuted)
         }
     }
