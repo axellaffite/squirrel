@@ -3,7 +3,12 @@ package app.squirrel.shared.ios.transfer
 import app.squirrel.shared.db.SquirrelDatabase
 
 /** How a chunk transfer ended: an HTTP [status] (0 when no answer came) and the failure, if any. */
-data class ChunkResult(val status: Int, val error: String?) {
+data class ChunkResult(
+    val status: Int,
+    val error: String?,
+    /** Cancelled on purpose (sign-out): never worth keeping. */
+    val cancelled: Boolean = false,
+) {
     val succeeded: Boolean get() = status in 200..299
 }
 

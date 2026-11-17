@@ -2,6 +2,8 @@ package app.squirrel.shared.ios.transfer
 
 import platform.Foundation.NSError
 import platform.Foundation.NSHTTPURLResponse
+import platform.Foundation.NSURLErrorCancelled
+import platform.Foundation.NSURLErrorDomain
 import platform.Foundation.NSURLSession
 import platform.Foundation.NSURLSessionDelegateProtocol
 import platform.Foundation.NSURLSessionTask
@@ -19,7 +21,8 @@ class TransportDelegate(
     override fun URLSession(session: NSURLSession, task: NSURLSessionTask, didCompleteWithError: NSError?) {
         val description = task.taskDescription ?: return
         val status = (task.response as? NSHTTPURLResponse)?.statusCode?.toInt() ?: 0
-        onComplete(description, ChunkResult(status, didCompleteWithError?.localizedDescription))
+        val cancelled = didCompleteWithError?.let { it.domain == NSURLErrorDomain && it.code == NSURLErrorCancelled } == true
+        onComplete(description, ChunkResult(status, didCompleteWithError?.localizedDescription, cancelled))
     }
 
     override fun URLSessionDidFinishEventsForBackgroundURLSession(session: NSURLSession) = onEventsFinished()

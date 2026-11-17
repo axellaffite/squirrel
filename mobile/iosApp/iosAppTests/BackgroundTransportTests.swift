@@ -71,7 +71,7 @@ final class BackgroundTransportTests: XCTestCase {
     }
 
     func testAResultThatArrivedWhileNobodyWaitedIsUsedOnce() async throws {
-        store.record(task: "up-1:1", result: ChunkResult(status: 204, error: nil))
+        store.record(task: "up-1:1", result: ChunkResult(status: 204, error: nil, cancelled: false))
         let transport = BackgroundTransport(baseUrl: "http://localhost:8188", transfers: transfers, wifiOnly: { KotlinBoolean(value: false) })
 
         try await transport.put(session: session(token: "squ_test"), index: 1, reader: reader())
