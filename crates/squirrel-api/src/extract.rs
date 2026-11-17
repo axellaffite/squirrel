@@ -1,14 +1,18 @@
-use axum::extract::FromRequestParts;
+use std::collections::HashMap;
+
+use axum::extract::{FromRequestParts, Path};
 use axum::http::HeaderValue;
 use axum::http::header::AUTHORIZATION;
 use axum::http::request::Parts;
 use axum_extra::extract::CookieJar;
-use squirrel_auth::{hash_token, parse_access};
+use squirrel_auth::{hash_token, parse_access, parse_upload};
 use squirrel_db::devices::{self, DeviceRecord};
 use squirrel_db::sessions::{self, SessionRecord};
+use squirrel_db::uploads;
 use squirrel_db::users::{self, UserRecord};
 use subtle::ConstantTimeEq;
 use time::OffsetDateTime;
+use uuid::Uuid;
 
 use crate::error::ApiError;
 use crate::session::{CSRF_HEADER, SESSION_COOKIE};
@@ -127,13 +131,18 @@ impl FromRequestParts<AppState> for Caller {
     }
 }
 
-/// Whether an `Authorization` header uses the `Bearer` scheme (case-insensitive).
-fn is_bearer_scheme(value: &HeaderValue) -> bool {
+/// Whether an `Authorization` header uses `scheme` (case-insensitive).
+fn has_scheme(value: &HeaderValue, scheme: &str) -> bool {
     value
         .to_str()
         .ok()
         .and_then(|text| text.split_whitespace().next())
-        .is_some_and(|scheme| scheme.eq_ignore_ascii_case("bearer"))
+        .is_some_and(|found| found.eq_ignore_ascii_case(scheme))
+}
+
+/// Whether an `Authorization` header uses the `Bearer` scheme (case-insensitive).
+fn is_bearer_scheme(value: &HeaderValue) -> bool {
+    has_scheme(value, "bearer")
 }
 
 /// The `sqa_…` token of an `Authorization: Bearer` header, if well formed.
@@ -186,6 +195,59 @@ impl FromRequestParts<AppState> for DeviceCaller {
             }),
             Principal::Session => Err(ApiError::Forbidden),
         }
+    }
+}
+
+/// Who may send an upload's chunks or read its status: a session or a device
+/// bearer ([`Caller`]), or `Authorization: Upload squ_…`, the per-upload token
+/// a device got from `POST /api/uploads` (iOS background transfers outlive the
+/// access token). The upload token opens only the upload in the path, only
+/// while its session is open and its device signed in; it never falls back to
+/// another credential.
+pub struct UploadCaller {
+    pub owner_id: Uuid,
+}
+
+impl FromRequestParts<AppState> for UploadCaller {
+    type Rejection = ApiError;
+
+    async fn from_request_parts(
+        parts: &mut Parts,
+        state: &AppState,
+    ) -> Result<Self, Self::Rejection> {
+        let Some(value) = parts
+            .headers
+            .get(AUTHORIZATION)
+            .filter(|value| has_scheme(value, "upload"))
+        else {
+            let caller = Caller::from_request_parts(parts, state).await?;
+            return Ok(Self {
+                owner_id: caller.user.id,
+            });
+        };
+        let token = value
+            .to_str()
+            .ok()
+            .and_then(|text| text.split_once(' '))
+            .and_then(|(_, token)| parse_upload(token.trim()))
+            .ok_or(ApiError::Unauthorized)?;
+        let grant = uploads::find_by_upload_token(&state.pool, &hash_token(token))
+            .await?
+            .ok_or(ApiError::Unauthorized)?;
+        let Path(params) = Path::<HashMap<String, String>>::from_request_parts(parts, state)
+            .await
+            .map_err(|_| ApiError::BadRequest("invalid path parameter".into()))?;
+        let upload_id: Uuid = params
+            .get("id")
+            .and_then(|id| id.parse().ok())
+            .ok_or_else(|| ApiError::BadRequest("invalid path parameter".into()))?;
+        // Another upload's id: as if it did not exist.
+        if upload_id != grant.upload_id {
+            return Err(ApiError::NotFound);
+        }
+        Ok(Self {
+            owner_id: grant.owner_id,
+        })
     }
 }
 

@@ -22,6 +22,8 @@ pub fn hash_token(token: &str) -> Vec<u8> {
 pub const ACCESS_PREFIX: &str = "sqa_";
 /// Prefix of device refresh tokens.
 pub const REFRESH_PREFIX: &str = "sqr_";
+/// Prefix of per-upload tokens (one upload's chunks and status).
+pub const UPLOAD_PREFIX: &str = "squ_";
 /// Characters of a [`generate_token`] value.
 const TOKEN_CHARS: usize = 43;
 
@@ -39,6 +41,11 @@ impl DeviceToken {
     /// A new refresh token: `sqr_` + 43 base64url characters.
     pub fn refresh() -> String {
         format!("{REFRESH_PREFIX}{}", generate_token())
+    }
+
+    /// A new per-upload token: `squ_` + 43 base64url characters.
+    pub fn upload() -> String {
+        format!("{UPLOAD_PREFIX}{}", generate_token())
     }
 }
 
@@ -78,6 +85,11 @@ pub fn parse_refresh(token: &str) -> Option<&str> {
     parse_prefixed(token, REFRESH_PREFIX)
 }
 
+/// `token` if it is shaped like a per-upload token.
+pub fn parse_upload(token: &str) -> Option<&str> {
+    parse_prefixed(token, UPLOAD_PREFIX)
+}
+
 fn parse_prefixed<'a>(token: &'a str, prefix: &str) -> Option<&'a str> {
     let body = token.strip_prefix(prefix)?;
     let well_formed = body.len() == TOKEN_CHARS
@@ -113,6 +125,15 @@ mod tests {
         assert_eq!(parse_access(&format!("{access}x")), None);
         assert_eq!(parse_access(&format!("sqa_{}", "!".repeat(43))), None);
         assert_eq!(parse_access(&"sqa_a".repeat(1000)), None);
+    }
+
+    #[test]
+    fn parse_upload_accepts_only_upload_tokens() {
+        let upload = DeviceToken::upload();
+        assert!(upload.starts_with("squ_"));
+        assert_eq!(parse_upload(&upload), Some(upload.as_str()));
+        assert_eq!(parse_upload(&DeviceToken::access()), None);
+        assert_eq!(parse_access(&upload), None);
     }
 
     #[test]

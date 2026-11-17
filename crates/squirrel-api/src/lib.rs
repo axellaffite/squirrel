@@ -73,7 +73,8 @@ struct ApiDoc;
 /// The credentials an operation may accept; each operation's `security` lists
 /// the ones it takes (any one entry suffices):
 /// - `session_cookie` (+ `csrf_token` on non-GET requests): a browser session;
-/// - `device_bearer`: a phone's access token.
+/// - `device_bearer`: a phone's access token;
+/// - `upload_token`: one upload's chunks and status (iOS background transfers).
 struct SecuritySchemes;
 
 impl utoipa::Modify for SecuritySchemes {
@@ -96,6 +97,16 @@ impl utoipa::Modify for SecuritySchemes {
                 "X-CSRF-Token",
                 "The session's `csrf_token` (from `GET /api/auth/me`), required with the \
                  session cookie on every non-GET request.",
+            ))),
+        );
+        // An apiKey in `Authorization`: OpenAPI's `http` type only knows
+        // registered schemes, and this one is `Upload`.
+        components.add_security_scheme(
+            "upload_token",
+            SecurityScheme::ApiKey(ApiKey::Header(ApiKeyValue::with_description(
+                "Authorization",
+                "Per-upload token `squ_…` from `POST /api/uploads`, sent as \
+                 `Authorization: Upload squ_…`, for this upload's chunks and status only.",
             ))),
         );
         components.add_security_scheme(

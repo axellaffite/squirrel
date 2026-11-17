@@ -4,6 +4,7 @@
 
 mod common;
 
+use axum::http::header::AUTHORIZATION;
 use axum::http::{HeaderName, HeaderValue, Method, StatusCode};
 use axum_test::TestServer;
 use common::devices::{access, bearer, device_login};
@@ -73,6 +74,17 @@ const DATA: &[&str] = &[
     "/api/uploads/{id}/chunks/{index}",
     "/api/uploads/{id}/complete",
 ];
+
+/// Operations that also take a per-upload token (`Authorization: Upload squ_…`),
+/// for the upload in their path only. Every other route refuses it.
+const UPLOAD_TOKEN: &[&str] = &[
+    "GET /api/uploads/{id}",
+    "PUT /api/uploads/{id}/chunks/{index}",
+];
+
+fn takes_upload_token(method: &Method, path: &str) -> bool {
+    UPLOAD_TOKEN.contains(&format!("{method} {path}").as_str())
+}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum Access {
@@ -144,7 +156,7 @@ fn concrete(path: &str) -> String {
         .replace("{id}", &id)
 }
 
-fn security_of(method: &Method, access: Access) -> Value {
+fn security_of(method: &Method, path: &str, access: Access) -> Value {
     let session = if method == Method::GET {
         json!({ "session_cookie": [] })
     } else {
@@ -154,6 +166,9 @@ fn security_of(method: &Method, access: Access) -> Value {
         Access::Public => json!([{}]),
         Access::Session => json!([session]),
         Access::Device => json!([{ "device_bearer": [] }]),
+        Access::Data if takes_upload_token(method, path) => {
+            json!([{ "device_bearer": [] }, { "upload_token": [] }, session])
+        }
         Access::Data => json!([{ "device_bearer": [] }, session]),
     }
 }
@@ -165,7 +180,7 @@ fn the_contract_declares_each_routes_credentials() {
         let operation = &doc["paths"][&path][method.as_str().to_lowercase()];
         assert_eq!(
             operation["security"],
-            security_of(&method, access_of(&method, &path)),
+            security_of(&method, &path, access_of(&method, &path)),
             "{method} {path}: `security` in openapi.json does not match its callers"
         );
     }
@@ -175,16 +190,39 @@ struct Credentials {
     browser: TestServer,
     csrf: HeaderValue,
     bearer: (HeaderName, HeaderValue),
+    /// An open upload of the device and its per-upload token.
+    upload_id: String,
+    upload_token: HeaderValue,
 }
 
 async fn credentials(instance: &common::Instance) -> Credentials {
     let browser = instance.browser();
     let me = common::login(&browser, "alice").await;
     let login = device_login(instance, "alice", "Pixel").await;
+    let (name, value) = bearer(&access(&login));
+    let files = common::files::root_id(instance, &me, "Files").await;
+    let content = uuid::Uuid::now_v7().to_string();
+    let started = instance
+        .browser()
+        .post("/api/uploads")
+        .add_header(name.clone(), value.clone())
+        .json(&json!({
+            "parent_id": files, "name": format!("{content}.bin"), "size": 4096,
+            "sha256": common::files::sha256_hex(content.as_bytes()),
+        }))
+        .await;
+    started.assert_status(StatusCode::CREATED);
+    let session: Value = started.json();
     Credentials {
         browser,
         csrf: common::csrf(&me),
-        bearer: bearer(&access(&login)),
+        bearer: (name, value),
+        upload_id: session["upload_id"].as_str().unwrap().to_owned(),
+        upload_token: HeaderValue::from_str(&format!(
+            "Upload {}",
+            session["upload_token"].as_str().unwrap()
+        ))
+        .unwrap(),
     }
 }
 
@@ -221,6 +259,32 @@ async fn every_route_accepts_exactly_its_callers(pool: PgPool) {
         }
         if access == Access::Public {
             continue;
+        }
+
+        // A per-upload token, aimed at its own upload wherever the path has one.
+        let own_upload = path
+            .replace("{id}", &creds.upload_id)
+            .replace("{index}", "0");
+        let target = if path.starts_with("/api/uploads/{id}") {
+            own_upload
+        } else {
+            url.clone()
+        };
+        let by_upload_token = send(&instance.browser(), &method, &target)
+            .add_header(AUTHORIZATION, creds.upload_token.clone())
+            .await;
+        let status = by_upload_token.status_code();
+        if takes_upload_token(&method, &path) {
+            assert!(
+                status != StatusCode::UNAUTHORIZED && status != StatusCode::FORBIDDEN,
+                "upload token {method} {path}: {status}"
+            );
+        } else {
+            assert_eq!(
+                status,
+                StatusCode::UNAUTHORIZED,
+                "upload token {method} {path}"
+            );
         }
 
         let (name, value) = creds.bearer.clone();
