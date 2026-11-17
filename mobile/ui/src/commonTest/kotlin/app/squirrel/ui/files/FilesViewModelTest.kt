@@ -129,4 +129,77 @@ class FilesViewModelTest {
         assertNull(vm.state.value.confirm)
         assertEquals(listOf("big"), handoff.opened)
     }
+
+    @Test
+    fun lateAnswersForAFolderLeftBehindAreDropped() = run {
+        val json = headersOf(HttpHeaders.ContentType, ContentType.Application.Json.toString())
+        val firstA = CompletableDeferred<Unit>()
+        val firstB = CompletableDeferred<Unit>()
+        val askedA = CompletableDeferred<Unit>()
+        val askedB = CompletableDeferred<Unit>()
+        var aCalls = 0
+        val session = Session(InMemoryTokenStore()).apply { signedIn(Tokens("sqa", "sqr")) }
+        val engine = MockEngine { request ->
+            val path = request.url.encodedPath
+            val parent = request.url.parameters["parent_id"] ?: request.url.parameters["parent"]
+            when {
+                path == "/api/nodes" && parent == null -> respond("""{"items":[],"next_cursor":null}""", headers = json)
+                path == "/api/nodes/A" -> respond("""{"node":${node("A", "folder")},"path":[]}""", headers = json)
+                path == "/api/nodes/B" -> respond("""{"node":${node("B", "folder")},"path":[]}""", headers = json)
+                parent == "A" -> {
+                    val call = ++aCalls
+                    if (call == 1) {
+                        askedA.complete(Unit)
+                        firstA.await() // the first visit's answer comes late
+                    }
+                    respond("""{"items":[${node("a$call", parent = "A")},${node("shared", parent = "A")},${node("shared", parent = "A")}],"next_cursor":null}""", headers = json)
+                }
+                parent == "B" -> {
+                    askedB.complete(Unit)
+                    firstB.await()
+                    respond("""{"items":[${node("b", parent = "B")}],"next_cursor":null}""", headers = json)
+                }
+                else -> respondError(HttpStatusCode.NotFound)
+            }
+        }
+        val vm = FilesViewModel(SquirrelApi("https://home.example", engine, session), null)
+        vm.settled()
+
+        vm.enter("A") // A, stuck on its first answer
+        withTimeout(5_000) { askedA.await() }
+        vm.enter("B") // then B, also stuck
+        withTimeout(5_000) { askedB.await() }
+        vm.enter("A") // back to A: answered at once
+        val back = vm.settled()
+        firstA.complete(Unit)
+        firstB.complete(Unit)
+        kotlinx.coroutines.delay(200)
+
+        val final = vm.state.value
+        assertEquals("A", final.folderId)
+        assertEquals(listOf("a2", "shared"), final.items.map { it.id }) // deduplicated, and not a1 or b
+        assertEquals(back.items, final.items)
+        assertEquals(false, final.loading)
+    }
+
+    @Test
+    fun aTimeoutEndsInAnErrorWithTryAgain() = run {
+        val session = Session(InMemoryTokenStore()).apply { signedIn(Tokens("sqa", "sqr")) }
+        val engine = MockEngine { throw io.ktor.client.plugins.HttpRequestTimeoutException("https://home.example/api/nodes", 30_000) }
+        val vm = FilesViewModel(SquirrelApi("https://home.example", engine, session), null)
+        val state = vm.settled()
+        assertEquals(app.squirrel.ui.photos.UNREACHABLE, state.error)
+        assertEquals(false, state.loading)
+    }
+
+    @Test
+    fun aStrayCancellationIsAnErrorToo() = run {
+        val session = Session(InMemoryTokenStore()).apply { signedIn(Tokens("sqa", "sqr")) }
+        // A library cancelling internally, while this screen's coroutine is still active.
+        val engine = MockEngine { throw kotlinx.coroutines.CancellationException("cancelled inside the client") }
+        val vm = FilesViewModel(SquirrelApi("https://home.example", engine, session), null)
+        val state = vm.settled()
+        assertEquals(app.squirrel.ui.photos.UNREACHABLE, state.error)
+        assertEquals(false, state.loading)
+    }
 }

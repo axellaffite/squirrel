@@ -8,8 +8,9 @@ import app.squirrel.api.models.PathSegmentDto
 import app.squirrel.shared.api.SquirrelApi
 import app.squirrel.shared.api.bodyOrThrow
 import app.squirrel.shared.sync.formatBytes
+import app.squirrel.ui.attempt
 import app.squirrel.ui.photos.UNREACHABLE
-import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -22,7 +23,7 @@ const val CONFIRM_BYTES = 200L * 1000 * 1000
 data class FilesState(
     /** Null: the root ("Files"). */
     val folderId: String? = null,
-    /** Breadcrumbs from the root to the current folder (`GET /api/nodes/{id}` path). */
+    /** Breadcrumbs from the root to the current folder. */
     val path: List<PathSegmentDto> = emptyList(),
     val items: List<NodeDto> = emptyList(),
     val nextCursor: String? = null,
@@ -38,6 +39,9 @@ data class FilesState(
     val complete: Boolean get() = started && nextCursor == null
     val title: String get() = path.lastOrNull()?.name ?: "Files"
     val confirmText: String? get() = confirm?.let { "Download ${formatBytes(it.propertySize)}?" }
+
+    /** The first page has not arrived yet: the screen shows its loading rows. */
+    val firstLoad: Boolean get() = loading && items.isEmpty()
 }
 
 /** The read-only file browser: folders, breadcrumbs, keyset paging, open with another app. */
@@ -49,43 +53,65 @@ class FilesViewModel(
     private val _state = MutableStateFlow(FilesState())
     val state: StateFlow<FilesState> = _state.asStateFlow()
 
+    /** The folder load or page in flight; a new folder cancels it. */
+    private var loadJob: Job? = null
+
+    /** Bumped on every folder change: late answers for an older folder are dropped. */
+    private var generation = 0
+
     init {
         enter(null)
     }
 
     /** Opens a folder ([id] null: the root). */
     fun enter(id: String?) {
-        _state.value = FilesState(folderId = id, loading = true)
-        viewModelScope.launch {
-            // The node's path lists its ancestors only: the folder itself ends the breadcrumbs.
-            val path = if (id == null) emptyList() else attempt {
-                val details = api.files.getNode(id).bodyOrThrow()
-                details.path + PathSegmentDto(details.node.id, details.node.name)
+        loadJob?.cancel()
+        val gen = ++generation
+        _state.update { FilesState(folderId = id, loading = true, downloads = it.downloads) }
+        loadJob = viewModelScope.launch {
+            try {
+                // The node's path lists its ancestors only: the folder itself ends the breadcrumbs.
+                val path = if (id == null) emptyList() else attempt {
+                    val details = api.files.getNode(id).bodyOrThrow()
+                    details.path + PathSegmentDto(details.node.id, details.node.name)
+                }
+                if (path == null) return@launch update(gen) { it.copy(error = UNREACHABLE) }
+                update(gen) { it.copy(path = path) }
+                page(gen, id, cursor = null)
+            } finally {
+                update(gen) { it.copy(loading = false) }
             }
-            if (path == null) return@launch _state.update { it.copy(loading = false, error = UNREACHABLE) }
-            _state.update { it.copy(path = path) }
-            page(id, cursor = null)
         }
     }
 
     /** One level up; false at the root (the caller leaves the tab's back handling alone). */
     fun up(): Boolean {
-        val path = _state.value.path
-        if (_state.value.folderId == null) return false
-        enter(path.dropLast(1).lastOrNull()?.id)
+        val current = _state.value
+        if (current.folderId == null) return false
+        enter(current.path.dropLast(1).lastOrNull()?.id)
         return true
     }
 
+    /** The next page; never while the folder itself is still loading. */
     fun more() {
         val current = _state.value
-        if (current.loading || current.complete || current.error != null) return
+        if (loadJob?.isActive == true || current.complete || current.error != null || !current.started) return
+        val gen = generation
         _state.update { it.copy(loading = true) }
-        viewModelScope.launch { page(current.folderId, current.nextCursor) }
+        loadJob = viewModelScope.launch {
+            try {
+                page(gen, current.folderId, current.nextCursor)
+            } finally {
+                update(gen) { it.copy(loading = false) }
+            }
+        }
     }
 
     fun retry() {
         val current = _state.value
-        if (!current.started) enter(current.folderId) else {
+        if (!current.started) {
+            enter(current.folderId)
+        } else {
             _state.update { it.copy(error = null) }
             more()
         }
@@ -98,12 +124,15 @@ class FilesViewModel(
         if (!confirmed && node.propertySize > CONFIRM_BYTES) return _state.update { it.copy(confirm = node) }
         _state.update { it.copy(confirm = null, message = null, downloads = it.downloads + (node.id to 0f)) }
         viewModelScope.launch {
-            val result = handoff.open(api, node.id, node.name, node.mime, share = false) { progress ->
-                _state.update { s -> if (node.id in s.downloads) s.copy(downloads = s.downloads + (node.id to progress)) else s }
+            val result = try {
+                handoff.open(api, node.id, node.name, node.mime, share = false) { progress ->
+                    _state.update { s -> if (node.id in s.downloads) s.copy(downloads = s.downloads + (node.id to progress)) else s }
+                }
+            } finally {
+                _state.update { it.copy(downloads = it.downloads - node.id) }
             }
             _state.update {
                 it.copy(
-                    downloads = it.downloads - node.id,
                     message = when (result) {
                         HandoffResult.Opened -> null
                         HandoffResult.NoApp -> "No app on this phone opens ${node.name}."
@@ -116,20 +145,24 @@ class FilesViewModel(
 
     fun dismissConfirm() = _state.update { it.copy(confirm = null) }
 
-    private suspend fun page(folder: String?, cursor: String?) {
+    private suspend fun page(gen: Int, folder: String?, cursor: String?) {
         val listing = attempt { api.files.listNodes(parentId = folder, cursor = cursor, limit = pageSize).bodyOrThrow() }
-        _state.update { state ->
-            if (state.folderId != folder) return@update state // the user moved on meanwhile
-            if (listing == null) state.copy(loading = false, error = UNREACHABLE)
-            else state.copy(items = state.items + listing.items, nextCursor = listing.nextCursor, started = true, loading = false)
+        update(gen) { state ->
+            if (listing == null) {
+                state.copy(error = UNREACHABLE)
+            } else {
+                state.copy(
+                    // A row that moved between two pages arrives twice: keep its first place.
+                    items = (state.items + listing.items).distinctBy { it.id },
+                    nextCursor = listing.nextCursor,
+                    started = true,
+                )
+            }
         }
     }
 
-    private suspend fun <T> attempt(call: suspend () -> T): T? = try {
-        call()
-    } catch (e: CancellationException) {
-        throw e
-    } catch (_: Exception) {
-        null
+    /** Applies [change] only while [gen] is still the current folder. */
+    private fun update(gen: Int, change: (FilesState) -> FilesState) {
+        _state.update { if (gen == generation) change(it) else it }
     }
 }
