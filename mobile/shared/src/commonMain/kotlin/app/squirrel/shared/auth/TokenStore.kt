@@ -8,8 +8,13 @@ import kotlinx.coroutines.sync.withLock
  * Keychain. Access tokens are never stored (they stay in [Session]'s memory).
  */
 interface TokenStore {
+    @Throws(Exception::class)
     suspend fun load(): String?
+
+    @Throws(Exception::class)
     suspend fun save(refreshToken: String)
+
+    @Throws(Exception::class)
     suspend fun clear()
 }
 

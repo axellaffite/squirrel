@@ -1,0 +1,21 @@
+CREATE TABLE transfer_result (
+    task TEXT NOT NULL PRIMARY KEY, -- "<upload_id>:<chunk index>"
+    status INTEGER NOT NULL,        -- HTTP status; 0 when the request failed before an answer
+    error TEXT,
+    recorded_at INTEGER NOT NULL    -- epoch ms
+);
+
+record:
+INSERT OR REPLACE INTO transfer_result (task, status, error, recorded_at) VALUES (?, ?, ?, ?);
+
+byTask:
+SELECT * FROM transfer_result WHERE task = ?;
+
+forget:
+DELETE FROM transfer_result WHERE task = ?;
+
+pruneBefore:
+DELETE FROM transfer_result WHERE recorded_at < ?;
+
+clear:
+DELETE FROM transfer_result;

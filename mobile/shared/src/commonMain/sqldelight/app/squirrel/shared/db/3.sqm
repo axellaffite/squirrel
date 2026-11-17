@@ -1,0 +1,8 @@
+-- v3 → v4: results of background chunk transfers (iOS), recorded by the session delegate and
+-- consumed once by the uploader, even when they arrive while the app is suspended.
+CREATE TABLE transfer_result (
+    task TEXT NOT NULL PRIMARY KEY, -- "<upload_id>:<chunk index>"
+    status INTEGER NOT NULL,        -- HTTP status; 0 when the request failed before an answer
+    error TEXT,
+    recorded_at INTEGER NOT NULL    -- epoch ms
+);

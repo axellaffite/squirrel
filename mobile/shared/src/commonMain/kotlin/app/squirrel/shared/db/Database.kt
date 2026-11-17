@@ -36,6 +36,7 @@ fun SquirrelDatabase.recordScanned(asset: ScannedAsset, generation: Long) = tran
 fun SquirrelDatabase.forgetDevice() = transaction {
     localAssetQueries.deleteAll()
     scanStateQueries.clear()
+    transferResultQueries.clear()
     settingQueries.removeDeviceState()
 }
 

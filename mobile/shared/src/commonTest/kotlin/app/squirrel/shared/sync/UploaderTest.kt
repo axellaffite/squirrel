@@ -74,6 +74,52 @@ class UploaderTest {
         assertTrue(server.requests.none { it.url.encodedPath == "/api/uploads" })
     }
 
+    /** A transport like iOS's: needs the upload token, and refuses a stale one once. */
+    private inner class TokenTransport : ChunkTransport {
+        override val needsUploadToken = true
+        val tokens = mutableListOf<String?>()
+        var refuseOnce = true
+        override suspend fun put(session: UploadSession, index: Int, reader: AssetReader) {
+            tokens += session.uploadToken
+            if (refuseOnce) {
+                refuseOnce = false
+                throw UploadTokenRefused()
+            }
+            server.transport.put(session, index, reader)
+        }
+    }
+
+    @Test
+    fun aTokenTransportResumesThroughANewSessionAndRetriesARefusedToken() = runApiTest {
+        server.onRequest = { request, _ ->
+            if (request.url.encodedPath == "/api/uploads" && request.method.value == "POST") {
+                val n = server.requests.count { it.url.encodedPath == "/api/uploads" }
+                server.sessions["up-$n"] = mutableSetOf()
+                respond(
+                    """{"upload_id":"up-$n","chunk_size":8388608,"chunk_count":3,"received_chunks":[],"expires_at":"2026-12-01T00:00:00Z","upload_token":"squ_$n"}""",
+                    HttpStatusCode.Created,
+                    headersOf(HttpHeaders.ContentType, "application/json"),
+                )
+            } else {
+                null
+            }
+        }
+        val asset = missing()
+        queue.markUploading(asset.deviceAssetId, "up-old") // recorded by an earlier run
+        val transport = TokenTransport()
+
+        val result = Uploader(server.api(), transport, source, queue, now = { now }, random = { 0.5 }).upload(queue.get(asset.deviceAssetId)!!)
+
+        assertEquals(UploadResult.Uploaded, result)
+        assertTrue(server.requests.none { it.url.encodedPath == "/api/uploads/up-old" }) // no status call: no token there
+        assertEquals("squ_1", transport.tokens.first())
+        // Chunks already in flight with the first token may finish; everything after the refusal uses the new one.
+        val refusedAt = 0
+        assertTrue(transport.tokens.drop(refusedAt + 1).dropWhile { it == "squ_1" }.all { it == "squ_2" }, "${transport.tokens}")
+        assertEquals("squ_2", transport.tokens.last())
+        assertEquals(2, server.requests.count { it.url.encodedPath == "/api/uploads" })
+    }
+
     @Test
     fun aDeduplicatedUploadSendsNoChunk() = runApiTest {
         server.known += "f".repeat(64)

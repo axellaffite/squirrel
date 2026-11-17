@@ -11,5 +11,6 @@ interface AssetReader : AutoCloseable {
     val locationStripped: Boolean get() = false
 
     /** Reads up to [length] bytes at [position] into [into]; -1 at the end. */
+    @Throws(Exception::class)
     suspend fun read(position: Long, into: ByteArray, offset: Int, length: Int): Int
 }

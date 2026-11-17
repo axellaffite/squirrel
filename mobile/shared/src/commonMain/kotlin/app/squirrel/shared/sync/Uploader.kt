@@ -119,7 +119,8 @@ class Uploader(
         }
         var uploadId = asset.uploadId
         repeat(MAX_RESTARTS) {
-            val session = uploadId?.let { status(it) } ?: when (val created = create(asset)) {
+            // A token-bound transport resumes by opening the session again (the status call gives no token).
+            val session = uploadId?.takeUnless { transport.needsUploadToken }?.let { status(it) } ?: when (val created = create(asset)) {
                 is UploadOutcome.Deduplicated -> {
                     queue.markDone(asset.deviceAssetId)
                     return UploadResult.Deduplicated
@@ -155,6 +156,8 @@ class Uploader(
                 if (!send(session, reader, shouldContinue, onProgress)) return Transfer.Interrupted
                 api.uploadsApi.completeUpload(session.uploadId).bodyOrThrow()
                 return Transfer.Done
+            } catch (_: UploadTokenRefused) {
+                return Transfer.Restart
             } catch (e: ApiError) {
                 when {
                     e.status == NOT_FOUND -> return Transfer.Restart
