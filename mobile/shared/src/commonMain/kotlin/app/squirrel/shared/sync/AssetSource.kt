@@ -58,6 +58,9 @@ interface AssetSource {
 
     fun access(): MediaAccess
 
+    /** The server has this asset now: any copy the platform made to read it can go (iOS exports). */
+    fun backedUp(deviceAssetId: String) = Unit
+
     /**
      * Changes whenever what the app may see changes (full, partial and which items, videos or
      * not): a change forces a full rescan, so newly visible assets are found.

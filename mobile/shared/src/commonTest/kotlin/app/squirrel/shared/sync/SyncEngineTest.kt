@@ -97,6 +97,15 @@ class SyncEngineTest {
     }
 
     @Test
+    fun theSourceHearsOfEveryAssetTheServerNowHas() = runApiTest {
+        repeat(3) { source.put("images:$it", size = 64L + it) }
+        server.known += hashOf("images:0") // already there: found by the check
+        engine().runOnce()
+        assertEquals(setOf("images:0", "images:1", "images:2"), source.backedUp.toSet())
+        assertEquals(3, source.backedUp.size)
+    }
+
+    @Test
     fun assetsAlreadyDoneAreNeverCheckedAgain() = runApiTest {
         repeat(3) { source.put("images:$it", size = 64) }
         val engine = engine()

@@ -88,7 +88,7 @@ class Uploader(
             queue.markSkipped(asset.deviceAssetId)
             return UploadResult.Skipped
         }
-        return reader.use {
+        val result = reader.use {
             try {
                 transfer(asset, reader, shouldContinue, onProgress)
             } catch (e: CancellationException) {
@@ -103,6 +103,8 @@ class Uploader(
                 retry(asset, e)
             }
         }
+        if (result == UploadResult.Uploaded || result == UploadResult.Deduplicated) source.backedUp(asset.deviceAssetId)
+        return result
     }
 
     private suspend fun transfer(

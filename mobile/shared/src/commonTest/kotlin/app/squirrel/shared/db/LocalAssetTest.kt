@@ -82,6 +82,15 @@ class LocalAssetTest {
     }
 
     @Test
+    fun unknownSizesDoNotCountAsBytesLeftUntilHashed() {
+        scan("ios:1", size = -1)
+        scan("ios:2", size = -1)
+        assertEquals(0L, q.bytesLeft().executeAsOne())
+        q.setHash("h", 4_000, 1, 0, "ios:1") // the export's real size
+        assertEquals(4_000L, q.bytesLeft().executeAsOne())
+    }
+
+    @Test
     fun aChangedFileForgetsWhatWasHashed() {
         scan("images:1", size = 100)
         q.setHash("h1", 99, 5, 0, "images:1")
