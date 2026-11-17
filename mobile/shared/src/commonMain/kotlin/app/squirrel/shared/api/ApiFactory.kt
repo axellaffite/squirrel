@@ -115,6 +115,7 @@ class SquirrelApi(
     suspend fun setupStatus(): SetupStatus = setup.setupStatus().bodyOrThrow()
 
     /** `POST /api/auth/device/login`; on success the session holds the new tokens. */
+    @Throws(Exception::class)
     suspend fun signIn(username: String, password: String, device: DeviceDetails): SignedIn {
         val request = DeviceLoginRequest(
             username = username,
