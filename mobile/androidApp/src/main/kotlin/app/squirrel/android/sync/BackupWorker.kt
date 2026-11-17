@@ -52,7 +52,8 @@ class BackupWorker(context: Context, params: WorkerParameters) : CoroutineWorker
         return try {
             coroutineScope {
                 val (assets, bytes) = runner.pending()
-                val foreground = (assets > FOREGROUND_ASSETS || bytes > FOREGROUND_BYTES) && tryForeground()
+                // "Back up now" always: the user may leave the app and the run must go on.
+                val foreground = (manual || assets > FOREGROUND_ASSETS || bytes > FOREGROUND_BYTES) && tryForeground()
                 val progress = if (foreground) launch { showProgress(runner) } else null
                 val deadline = if (foreground) null else System.currentTimeMillis() + DEADLINE_MS
                 outcome = runner.run(deadline, manual)

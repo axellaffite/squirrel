@@ -34,8 +34,16 @@ class AppBackupRunner(
         val engine = graph.syncEngine.value ?: return RunOutcome.NotSignedIn
         // A trigger or period that fired just before automatic backup was turned off.
         if (!manual && !withContext(Dispatchers.IO) { graph.settings.backup() }.autoBackup) return RunOutcome.Done
-        val summary = engine.runOnce(deadline)
+        var summary = engine.runOnce(deadline)
+        if (summary.stoppedBy == StopCause.AlreadyRunning) {
+            // Another run (periodic, trigger) holds the engine: let it finish, then do ours, so a
+            // "Back up now" never ends as "done" while the other run may still be stopped.
+            engine.awaitIdle()
+            summary = engine.runOnce(deadline)
+        }
+        val paused = engine.state.value as? SyncState.Paused
         return when {
+            manual && paused?.reason == app.squirrel.shared.sync.PauseReason.NoNetwork -> RunOutcome.Retry
             summary.stoppedBy == StopCause.Deadline -> RunOutcome.Continue
             engine.state.value == SyncState.Error(app.squirrel.shared.sync.ErrorReason.Unreachable) -> RunOutcome.Retry
             engine.state.value == SyncState.Error(app.squirrel.shared.sync.ErrorReason.SignedOut) -> RunOutcome.NotSignedIn

@@ -314,4 +314,25 @@ class SyncEngineTest {
         assertEquals(64L, asset.hashedSize)
         assertEquals(42L, asset.hashedModifiedAt)
     }
+
+    @Test
+    fun awaitIdleWaitsForTheRunningPass() = runApiTest {
+        source.put("images:1", size = 64)
+        val gate = CompletableDeferred<Unit>()
+        val transport = object : ChunkTransport {
+            override suspend fun put(session: UploadSession, index: Int, reader: AssetReader) {
+                gate.await()
+                server.transport.put(session, index, reader)
+            }
+        }
+        val engine = engine(transport = transport)
+        val run = async { engine.runOnce() }
+        engine.state.test { awaitState { it is SyncState.Uploading }; cancelAndIgnoreRemainingEvents() }
+
+        val waiter = async { engine.awaitIdle(); engine.state.value }
+        gate.complete(Unit)
+
+        assertEquals(1, run.await().uploaded)
+        assertEquals(SyncState.Idle, waiter.await())
+    }
 }

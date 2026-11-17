@@ -110,15 +110,14 @@ class AppGraph(
     }
 
     /**
-     * "Back up now" with the app open: runs at once in the app, and also as expedited work that
-     * carries on if the app goes away (the engine's lock keeps the two from overlapping).
+     * "Back up now": expedited background work, in the foreground, so it carries on when the user
+     * leaves the app; the screens follow it through [syncEngine]'s state (same process).
      */
     fun backUpNow() {
         val platform = backup ?: return
         scope.launch(io) {
             queue.retryFailed()
             platform.backUpNow(settings.backup())
-            _syncEngine.value?.runOnce()
         }
     }
 

@@ -68,10 +68,12 @@ class BackupScheduler(context: Context) {
         }
     }
 
-    /** User-initiated: expedited when the quota allows. Expedited work takes network constraints only. */
-    fun backUpNow(settings: BackupSettings) {
+    /**
+     * User-initiated: expedited (when the quota allows) and without WorkManager constraints, so it
+     * starts at once; the engine checks network and power itself and says why it waits.
+     */
+    fun backUpNow(@Suppress("UNUSED_PARAMETER") settings: BackupSettings) {
         val request = OneTimeWorkRequestBuilder<BackupWorker>()
-            .setConstraints(Constraints.Builder().setRequiredNetworkType(network(settings)).build())
             .setExpedited(OutOfQuotaPolicy.RUN_AS_NON_EXPEDITED_WORK_REQUEST)
             .setInputData(manual(true))
             .addTag(MANUAL_TAG)
