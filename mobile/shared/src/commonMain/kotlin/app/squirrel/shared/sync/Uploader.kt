@@ -77,6 +77,9 @@ class Uploader(
         data object Done : Transfer
         data object Interrupted : Transfer
         data object Restart : Transfer
+
+        /** The session lives but its token was refused: open it again for a fresh token. */
+        data object Reopen : Transfer
     }
 
     suspend fun upload(
@@ -139,6 +142,7 @@ class Uploader(
                     queue.forgetUpload(asset.deviceAssetId)
                     uploadId = null
                 }
+                Transfer.Reopen -> Unit // the next pass resumes the same session with a new token
             }
         }
         throw ApiError(NOT_FOUND, "not_found", "The server kept losing the upload session")
@@ -157,7 +161,9 @@ class Uploader(
                 api.uploadsApi.completeUpload(session.uploadId).bodyOrThrow()
                 return Transfer.Done
             } catch (_: UploadTokenRefused) {
-                return Transfer.Restart
+                // The token may only have been replaced: the device's bearer tells whether the
+                // session is gone (start over) or alive (reopen it, keeping what the server has).
+                return if (status(session.uploadId) == null) Transfer.Restart else Transfer.Reopen
             } catch (e: ApiError) {
                 when {
                     e.status == NOT_FOUND -> return Transfer.Restart

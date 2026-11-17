@@ -120,6 +120,52 @@ class UploaderTest {
         assertEquals(2, server.requests.count { it.url.encodedPath == "/api/uploads" })
     }
 
+    private fun createsNewSessions() {
+        server.onRequest = { request, _ ->
+            when {
+                request.url.encodedPath == "/api/uploads" && request.method.value == "POST" -> {
+                    val n = server.requests.count { it.url.encodedPath == "/api/uploads" }
+                    server.sessions["up-$n"] = mutableSetOf()
+                    respond(
+                        """{"upload_id":"up-$n","chunk_size":8388608,"chunk_count":3,"received_chunks":[],"expires_at":"2026-12-01T00:00:00Z","upload_token":"squ_$n"}""",
+                        HttpStatusCode.Created,
+                        headersOf(HttpHeaders.ContentType, "application/json"),
+                    )
+                }
+                lostSession != null && request.url.encodedPath == "/api/uploads/$lostSession" -> error(HttpStatusCode.NotFound, "not_found")
+                else -> null
+            }
+        }
+    }
+
+    private var lostSession: String? = null
+
+    @Test
+    fun aRefusedTokenAsksTheSessionStatusWithTheBearerBeforeReopening() = runApiTest {
+        createsNewSessions()
+        val asset = missing()
+
+        val result = Uploader(server.api(), TokenTransport(), source, queue, now = { now }, random = { 0.5 }).upload(asset)
+
+        assertEquals(UploadResult.Uploaded, result)
+        val status = server.requests.single { it.url.encodedPath == "/api/uploads/up-1" && it.method.value == "GET" }
+        assertTrue(status.headers[HttpHeaders.Authorization].orEmpty().startsWith("Bearer "), status.headers.toString())
+        assertEquals(2, server.requests.count { it.url.encodedPath == "/api/uploads" })
+    }
+
+    @Test
+    fun aRefusedTokenOfALostSessionStartsOver() = runApiTest {
+        lostSession = "up-1"
+        createsNewSessions()
+        val asset = missing()
+
+        val result = Uploader(server.api(), TokenTransport(), source, queue, now = { now }, random = { 0.5 }).upload(asset)
+
+        assertEquals(UploadResult.Uploaded, result)
+        assertEquals(1, server.requests.count { it.url.encodedPath == "/api/uploads/up-1" })
+        assertEquals(listOf(0, 1, 2), server.sent.filter { it.first == "up-2" }.map { it.second }.sorted()) // started over
+    }
+
     @Test
     fun aDeduplicatedUploadSendsNoChunk() = runApiTest {
         server.known += "f".repeat(64)
