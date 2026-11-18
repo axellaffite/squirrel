@@ -354,7 +354,7 @@ async fn a_thousand_faces_cluster_quickly(pool: PgPool) {
 }
 
 #[sqlx::test(migrator = "squirrel_db::MIGRATOR")]
-async fn a_long_run_hands_over_and_new_faces_bring_it_back(pool: PgPool) {
+async fn a_long_run_hands_over_to_the_next(pool: PgPool) {
     let fx = Fixture::new(pool);
     let alice = admin(fx.pool()).await;
     let sha = photo(&fx, alice.id, "a.jpg").await;
@@ -377,27 +377,6 @@ async fn a_long_run_hands_over_and_new_faces_bring_it_back(pool: PgPool) {
     );
     // The three groups, plus the 64 groups of the 250 extra faces.
     assert_eq!(people(fx.pool(), alice.id).await, 3 + 64);
-
-    // A face committed by a transaction that began before the run and is
-    // older than every page the run read.
-    let late = Uuid::now_v7();
-    sqlx::query(
-        "INSERT INTO faces (id, owner_id, sha256, model, box_x, box_y, box_w, box_h, landmarks, \
-                            score, embedding, created_at) \
-         SELECT $1, owner_id, sha256, model, box_x, box_y, box_w, box_h, landmarks, score, \
-                embedding, now() + interval '1 hour' FROM faces WHERE owner_id = $2 LIMIT 1",
-    )
-    .bind(late)
-    .bind(alice.id)
-    .execute(fx.pool())
-    .await
-    .unwrap();
-    let mut conn = fx.pool().acquire().await.unwrap();
-    let since = time::OffsetDateTime::now_utc();
-    let recent = squirrel_db::clustering::unclustered_since(&mut conn, alice.id, since)
-        .await
-        .unwrap();
-    assert_eq!(recent, [late]);
 }
 
 /// Many faces that never cluster (lone faces) must not keep new faces from
@@ -441,4 +420,83 @@ async fn waiting_faces_never_starve_new_ones(pool: PgPool) {
         .await
         .unwrap();
     assert_eq!(idle.left, cluster_job::Left::Nothing, "{idle:?}");
+}
+
+async fn cluster_jobs(pool: &PgPool) -> Vec<(String, String)> {
+    sqlx::query_as("SELECT dedupe_key, status FROM jobs WHERE kind = 'cluster_faces' ORDER BY id")
+        .fetch_all(pool)
+        .await
+        .unwrap()
+}
+
+/// A request made while a run is going (its own key is taken by the running
+/// job) is kept as a follow-up run, even when the faces are committed after
+/// the run read its last page.
+#[sqlx::test(migrator = "squirrel_db::MIGRATOR")]
+async fn a_request_during_a_run_is_never_lost(pool: PgPool) {
+    let fx = Fixture::new(pool);
+    let alice = admin(fx.pool()).await;
+    let main = format!("cluster_faces:{}", alice.id);
+    let mut conn = fx.pool().acquire().await.unwrap();
+    squirrel_worker::jobs::request_clustering(&mut conn, alice.id)
+        .await
+        .unwrap();
+    sqlx::query(
+        "UPDATE jobs SET status = 'running', claim_id = gen_random_uuid(), \
+                 claimed_by = 't', locked_until = now() + interval '1 minute'",
+    )
+    .execute(fx.pool())
+    .await
+    .unwrap();
+    for _ in 0..2 {
+        squirrel_worker::jobs::request_clustering(&mut conn, alice.id)
+            .await
+            .unwrap();
+    }
+    assert_eq!(
+        cluster_jobs(fx.pool()).await,
+        [
+            (main.clone(), "running".to_owned()),
+            (format!("{main}:next"), "queued".to_owned())
+        ]
+    );
+    // Turning faces off drops the queued follow-up too.
+    squirrel_db::faces::turn_off(fx.pool(), alice.id)
+        .await
+        .unwrap();
+    assert_eq!(
+        cluster_jobs(fx.pool()).await,
+        [(main.clone(), "running".to_owned())]
+    );
+
+    // While a request's transaction is open, the queued run cannot start:
+    // it would miss the faces that transaction stores.
+    sqlx::query("DELETE FROM jobs")
+        .execute(fx.pool())
+        .await
+        .unwrap();
+    squirrel_worker::jobs::request_clustering(&mut conn, alice.id)
+        .await
+        .unwrap();
+    let mut storing = fx.pool().begin().await.unwrap();
+    squirrel_worker::jobs::request_clustering(&mut storing, alice.id)
+        .await
+        .unwrap();
+    // The queue's claim: `FOR UPDATE SKIP LOCKED` on queued rows.
+    let claimable = || async {
+        sqlx::query_scalar::<_, i64>(
+            "SELECT count(*) FROM (SELECT id FROM jobs WHERE status = 'queued' \
+               FOR UPDATE SKIP LOCKED) j",
+        )
+        .fetch_one(fx.pool())
+        .await
+        .unwrap()
+    };
+    assert_eq!(
+        claimable().await,
+        0,
+        "the storing transaction holds the queued run"
+    );
+    storing.commit().await.unwrap();
+    assert_eq!(claimable().await, 1);
 }

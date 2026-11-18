@@ -4,7 +4,7 @@
 //! are on, so turning faces off never interleaves with a batch. Faces pinned
 //! by the user are never read as candidates nor written.
 
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 use std::time::{Duration, Instant};
 
 use serde::Deserialize;
@@ -16,7 +16,6 @@ use time::OffsetDateTime;
 use uuid::Uuid;
 
 use crate::context::MediaContext;
-use crate::jobs;
 
 /// Faces decided per transaction.
 pub const BATCH: i64 = 200;
@@ -41,14 +40,10 @@ pub enum Left {
     #[default]
     Nothing,
     /// Out of time: the run continues at once (the job is rescheduled).
+    /// Faces stored while a run goes are covered by a follow-up run
+    /// ([`crate::jobs::request_clustering`]).
     Budget,
-    /// Faces stored while it ran: their own `cluster_faces` request was
-    /// dropped as a duplicate of this running job, so it runs again later.
-    NewFaces,
 }
-
-/// Longest a `faces` transaction may run before it commits its faces.
-const STORE_MARGIN: Duration = Duration::from_secs(60);
 
 /// Time one run may take before it hands over to a fresh run of the job (its
 /// timeout is longer): short, as it holds the worker's ML slot and the next
@@ -71,7 +66,6 @@ pub async fn run(ctx: &MediaContext, job: JobContext) -> Result<(), JobError> {
     match done.left {
         Left::Nothing => Ok(()),
         Left::Budget => Err(JobError::Reschedule(Duration::ZERO)),
-        Left::NewFaces => Err(JobError::Reschedule(jobs::cluster_delay())),
     }
 }
 
@@ -86,10 +80,6 @@ pub async fn cluster_owner(
     budget: Duration,
 ) -> Result<ClusterRun, squirrel_db::DbError> {
     let started = Instant::now();
-    // Rows stored by transactions that began before the run carry an older
-    // `created_at`: the margin covers them.
-    let since = OffsetDateTime::now_utc() - STORE_MARGIN;
-    let mut seen = HashSet::new();
     let mut total = ClusterRun::default();
     let mut after = None;
     let mut newest = None;
@@ -117,15 +107,10 @@ pub async fn cluster_owner(
         let page = clustering::unclustered_page(&mut tx, owner, watermark, after, BATCH).await?;
         let Some(last) = page.last() else {
             total.people_deleted = clustering::delete_empty_people(&mut tx, owner).await?;
-            let recent = clustering::unclustered_since(&mut tx, owner, since).await?;
-            if recent.iter().any(|id| !seen.contains(id)) {
-                total.left = Left::NewFaces;
-            }
             tx.commit().await?;
             return Ok(total);
         };
         after = Some((last.created_at, last.id));
-        seen.extend(page.iter().map(|f| f.id));
         let batch = cluster_batch(&mut tx, owner, &page, params, watermark).await?;
         tx.commit().await?;
         total.faces_assigned += batch.faces_assigned;

@@ -277,7 +277,8 @@ pub async fn turn_off(pool: &PgPool, owner: Uuid) -> Result<FaceCounts, DbError>
         .await?;
     sqlx::query(
         "DELETE FROM jobs WHERE status = 'queued' \
-            AND ((kind = 'cluster_faces' AND dedupe_key = 'cluster_faces:' || $1::text) \
+            AND ((kind = 'cluster_faces' AND dedupe_key IN ('cluster_faces:' || $1::text, \
+                                                       'cluster_faces:' || $1::text || ':next')) \
               OR (kind = 'face_backfill' AND (dedupe_key = 'face_backfill:' || $1::text \
                                            OR dedupe_key LIKE 'face_backfill:' || $1::text || ':%')))",
     )
