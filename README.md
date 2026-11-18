@@ -29,7 +29,7 @@ request logs may include invitation tokens (they appear in `/api/join/{token}` p
 
 | Variable | Default | Purpose |
 | --- | --- | --- |
-| `SQUIRREL_DATABASE_URL` | (required) | Postgres connection string (also read by `squirrel migrate` and `squirrel admin`) |
+| `SQUIRREL_DATABASE_URL` | (required) | Postgres 17 with pgvector 0.8 (see below). Also read by `squirrel migrate` and `squirrel admin` |
 | `SQUIRREL_DATA_DIR` | (required) | Where file contents are stored (`blobs/`, `tmp/`). Created if missing; `tmp/` and `blobs/` must be on the same filesystem |
 | `SQUIRREL_BIND` | `0.0.0.0:8080` | Listen address |
 | `SQUIRREL_COOKIE_SECURE` | `true` | Set to `false` only for local HTTP development |
@@ -103,6 +103,11 @@ Quotas are in bytes and count live files (not the trash). Users see their usage 
 `squirrel admin` never migrates: it refuses to run while migrations are pending
 (run `squirrel migrate`, or start the server, first).
 
+**Postgres** needs the pgvector extension (`deploy/docker-compose.dev.yml` pins the
+`pgvector/pgvector:0.8.7-pg17` image by digest). pgvector is not a trusted extension: the
+role that migrates must be a superuser (the compose role is), or a superuser must run
+`CREATE EXTENSION vector;` in the database first. The server refuses to migrate otherwise.
+
 ## Media processing
 
 Thumbnails, photo metadata (date, camera, place) and document text are computed in the
@@ -119,6 +124,9 @@ by a backfill job queued at every worker start.
 | Variable | Default | Purpose |
 | --- | --- | --- |
 | `SQUIRREL_WORKER_CONCURRENCY` | half the cores, at most 2 | Jobs run at once |
+| `SQUIRREL_WORKER_KINDS` | every kind | Comma-separated job kinds this worker runs, e.g. `clip_embed,faces,cluster_faces` on a separate ML machine. Unknown names stop the worker |
+| `SQUIRREL_WORKER_EXCLUDE_KINDS` | none | Comma-separated job kinds this worker leaves to others. Not with `SQUIRREL_WORKER_KINDS` |
+| `SQUIRREL_ML_CONCURRENCY` | `1` | Model inference jobs (`clip_embed`, `faces`) run at once, so another slot stays free for fresh uploads |
 | `SQUIRREL_MEDIA_EXEC` | `subprocess` | `subprocess` decodes untrusted files in short-lived `squirrel media-exec` children with memory, CPU and file limits; `in-process` is for tests only |
 | `SQUIRREL_PDFIUM_DIR` | unset | Directory holding the pdfium library. Without it, PDFs get no thumbnail or text |
 | `SQUIRREL_GEODATA_FILE` | `<data_dir>/geo/…` | Another place-name file (tests, custom extracts); used without the SHA-256 pin |

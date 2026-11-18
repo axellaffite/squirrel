@@ -40,8 +40,51 @@ pub async fn connect(database_url: &str) -> Result<PgPool, sqlx::Error> {
         .await
 }
 
-pub async fn migrate(pool: &PgPool) -> Result<(), MigrateError> {
-    MIGRATOR.run(pool).await
+/// Why the database cannot hold Squirrel's schema.
+#[derive(Debug, thiserror::Error)]
+pub enum ExtensionError {
+    #[error(
+        "the pgvector extension is not available on this Postgres server: \
+         use the pgvector/pgvector image or install pgvector 0.8"
+    )]
+    VectorUnavailable,
+    /// pgvector is not a trusted extension: only a superuser may create it.
+    #[error("pgvector must be installed by a superuser: CREATE EXTENSION vector;")]
+    VectorNeedsSuperuser,
+    #[error("checking the pgvector extension: {0}")]
+    Db(#[from] sqlx::Error),
+}
+
+#[derive(Debug, thiserror::Error)]
+pub enum MigrationError {
+    #[error(transparent)]
+    Extension(#[from] ExtensionError),
+    #[error(transparent)]
+    Migrate(#[from] MigrateError),
+}
+
+/// Checks that the migrations will be able to `CREATE EXTENSION vector`:
+/// it is installed already, or available and the current role is a superuser.
+pub async fn check_vector_extension(pool: &PgPool) -> Result<(), ExtensionError> {
+    let (installed, available, superuser): (bool, bool, bool) = sqlx::query_as(
+        "SELECT EXISTS (SELECT 1 FROM pg_extension WHERE extname = 'vector'), \
+                EXISTS (SELECT 1 FROM pg_available_extensions WHERE name = 'vector'), \
+                (SELECT rolsuper FROM pg_roles WHERE rolname = current_user)",
+    )
+    .fetch_one(pool)
+    .await?;
+    match (installed, available, superuser) {
+        (true, _, _) | (false, true, true) => Ok(()),
+        (false, false, _) => Err(ExtensionError::VectorUnavailable),
+        (false, true, false) => Err(ExtensionError::VectorNeedsSuperuser),
+    }
+}
+
+/// Applies pending migrations, after checking the extensions they need.
+pub async fn migrate(pool: &PgPool) -> Result<(), MigrationError> {
+    check_vector_extension(pool).await?;
+    MIGRATOR.run(pool).await?;
+    Ok(())
 }
 
 /// Versions of [`MIGRATOR`] not successfully applied to the database (all of
