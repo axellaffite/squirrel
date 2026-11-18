@@ -1910,7 +1910,10 @@ Server and web parts of Phase 6 (Tasks 1–13) are done; Milestones D–I are no
   (SHA-256, unique) and `upload_token_device_id`, the device the token was issued to.
 - **Issuing:**
   - A bearer `POST /api/uploads` that opens or resumes a session returns `upload_token` (`squ_…`).
-    Each open or resume issues a new one, and the old one stops working.
+    Each open or resume issues a new one. The token before it stays valid (migration
+    `20261116000006_previous_upload_tokens.sql`), so chunks the phone queued with it still land
+    after a relaunch; one rotation later it is refused. Both live tokens keep the same scope and
+    die together on completion, abort, expiry, revocation or a disabled owner.
   - Browsers and deduplicated (200) uploads get no token.
 - **Accepting:**
   - `UploadCaller` takes a session, a device bearer, or `Authorization: Upload squ_…`, on
