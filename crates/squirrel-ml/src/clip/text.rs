@@ -120,6 +120,32 @@ mod tests {
         assert_eq!(tokens[CONTEXT - 2], 74);
     }
 
+    /// Ids recorded once from the pinned tokenizer: framed, padded, 77 long.
+    #[test]
+    fn a_search_text_becomes_77_framed_ids() {
+        let Some(models) = crate::testutil::test_models_for(&[crate::models::ModelGroup::ClipText])
+        else {
+            return;
+        };
+        let tokenizer = Tokenizer::from_file(models.file(TOKENIZER)).unwrap();
+        let ids = frame(
+            tokenizer
+                .encode("A dog on the beach", false)
+                .unwrap()
+                .get_ids(),
+        );
+        assert_eq!(ids.len(), CONTEXT);
+        assert_eq!(&ids[..7], [START, 320, 1929, 525, 518, 2117, END]);
+        let long = "dog ".repeat(300);
+        let ids = frame(tokenizer.encode(long.as_str(), false).unwrap().get_ids());
+        assert_eq!(ids.len(), CONTEXT);
+        assert_eq!(
+            (ids[0], ids[CONTEXT - 1]),
+            (START, END),
+            "the end token is kept"
+        );
+    }
+
     #[test]
     fn the_real_tokenizer_matches_clip() {
         let Some(models) = crate::testutil::test_models_for(&[crate::models::ModelGroup::ClipText])

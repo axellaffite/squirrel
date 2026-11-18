@@ -145,6 +145,17 @@ pub struct AppState {
     /// Streaming file bodies; a slot lives as long as its body.
     pub downloads: Slots,
     pub free_space: FreeSpace,
+    /// Photo search's text encoder; `None` when the text model is not installed.
+    pub text_encoder: Option<Arc<crate::ml::TextEncoder>>,
+    /// Model groups installed where the server looks (media status).
+    pub models_installed: ModelsInstalled,
+}
+
+/// What the server found in its models directory at start.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct ModelsInstalled {
+    pub clip: bool,
+    pub faces: bool,
 }
 
 impl AppState {
@@ -161,6 +172,21 @@ impl AppState {
                 .sync_check_rate
                 .map(|rate| Arc::new(UserRateLimiter::new(rate))),
             config: Arc::new(config),
+            text_encoder: None,
+            models_installed: ModelsInstalled::default(),
+        }
+    }
+
+    /// This state, with photo search's text encoder and the models it found.
+    pub fn with_ml(
+        self,
+        text_encoder: Option<crate::ml::TextEncoder>,
+        models_installed: ModelsInstalled,
+    ) -> Self {
+        Self {
+            text_encoder: text_encoder.map(Arc::new),
+            models_installed,
+            ..self
         }
     }
 
