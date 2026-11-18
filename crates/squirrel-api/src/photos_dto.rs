@@ -1,6 +1,7 @@
 //! Response bodies of the photo timeline.
 
 use serde::{Deserialize, Serialize};
+use squirrel_db::explore::MlCounts;
 use squirrel_db::media::MediaState;
 use squirrel_db::ml_status::{MlState, MlStatus};
 use squirrel_db::timeline::{AssetDetailRecord, AssetSummaryRecord, MonthCount, StatusCounts};
@@ -192,10 +193,12 @@ pub struct AssetDetails {
     pub camera: Option<CameraDto>,
     /// Albums of the caller holding this photo, by name.
     pub albums: Vec<AlbumRef>,
+    /// Tags of this photo (slugs), best first.
+    pub tags: Vec<String>,
 }
 
 impl AssetDetails {
-    pub fn new(record: &AssetDetailRecord, albums: Vec<AlbumRef>) -> Self {
+    pub fn new(record: &AssetDetailRecord, albums: Vec<AlbumRef>, tags: Vec<String>) -> Self {
         let place = record.place_name.clone().map(|name| PlaceDto {
             name,
             admin1: record.place_admin1.clone(),
@@ -227,6 +230,7 @@ impl AssetDetails {
             location,
             camera: (!camera.is_empty()).then_some(camera),
             albums,
+            tags,
         }
     }
 }
@@ -257,14 +261,22 @@ pub struct MediaStatus {
 }
 
 impl MediaStatus {
-    pub fn new(counts: StatusCounts, ml: MlStatus) -> Self {
+    pub fn new(counts: StatusCounts, ml: MlStatusDto) -> Self {
         Self {
             queued: counts.queued,
             processing: counts.processing,
             failed: counts.failed,
-            ml: ml.into(),
+            ml,
         }
     }
+}
+
+/// Which model groups this server found installed.
+#[derive(Debug, Serialize, ToSchema)]
+pub struct ModelsInstalledDto {
+    /// Photo tags and text search (the CLIP image model).
+    pub clip: bool,
+    pub faces: bool,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, ToSchema)]
@@ -274,22 +286,39 @@ pub enum MlStateDto {
     Unavailable,
 }
 
-/// Whether a worker can run the ML models, and if not, a generic reason.
+/// Whether a worker can run the ML models, and the caller's photos still to
+/// analyse.
 #[derive(Debug, Serialize, ToSchema)]
 pub struct MlStatusDto {
     pub state: MlStateDto,
     /// Why ML is unavailable (e.g. "models not installed"); null when ready.
     pub reason: Option<String>,
+    /// The caller's photos waiting for tags and search.
+    pub queued: i64,
+    /// The caller's photos that could not be analysed.
+    pub failed: i64,
+    /// What the server found in its models directory.
+    pub models_installed: ModelsInstalledDto,
 }
 
-impl From<MlStatus> for MlStatusDto {
-    fn from(status: MlStatus) -> Self {
+impl MlStatusDto {
+    pub fn new(
+        status: MlStatus,
+        counts: MlCounts,
+        installed: crate::state::ModelsInstalled,
+    ) -> Self {
         Self {
             state: match status.state {
                 MlState::Ready => MlStateDto::Ready,
                 MlState::Unavailable => MlStateDto::Unavailable,
             },
             reason: status.reason,
+            queued: counts.queued,
+            failed: counts.failed,
+            models_installed: ModelsInstalledDto {
+                clip: installed.clip,
+                faces: installed.faces,
+            },
         }
     }
 }

@@ -9,6 +9,7 @@ mod devices_dto;
 mod downloads;
 mod dto;
 mod error;
+mod explore_dto;
 mod extract;
 mod files_dto;
 mod filter_dto;
@@ -66,11 +67,11 @@ const CHUNK_TIMEOUT: Duration = Duration::from_secs(5 * 60);
         (name = "system"), (name = "setup"), (name = "auth"), (name = "invitations"),
         (name = "admin"), (name = "files"), (name = "uploads"), (name = "trash"),
         (name = "storage"), (name = "jobs"), (name = "photos"), (name = "albums"),
-        (name = "search"), (name = "devices"), (name = "sync")
+        (name = "search"), (name = "devices"), (name = "sync"), (name = "explore")
     ),
     // Schemas only referenced from query parameters are not collected from
     // the routes: list them here.
-    components(schemas(filter_dto::PhotoKindFilter)),
+    components(schemas(filter_dto::PhotoKindFilter, explore_dto::PlaceLevel)),
     modifiers(&SecuritySchemes)
 )]
 struct ApiDoc;
@@ -217,6 +218,9 @@ fn json_routes() -> OpenApiRouter<AppState> {
         .routes(routes!(routes::photos::photo_months))
         .routes(routes!(routes::photos::get_photo))
         .routes(routes!(routes::photos::media_status))
+        .routes(routes!(routes::explore::list_tags))
+        .routes(routes!(routes::explore::list_places))
+        .routes(routes!(routes::explore::list_cameras))
         .routes(routes!(
             routes::albums::list_albums,
             routes::albums::create_album

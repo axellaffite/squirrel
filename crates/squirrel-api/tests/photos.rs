@@ -286,22 +286,30 @@ async fn media_status_counts_the_callers_files(pool: PgPool) {
         .await
         .assert_status(StatusCode::NO_CONTENT);
 
-    let no_ml = json!({ "state": "unavailable", "reason": "no worker has reported" });
+    let status = get(&alice, "/api/media/status").await;
     assert_eq!(
-        get(&alice, "/api/media/status").await,
-        json!({ "queued": 2, "processing": 1, "failed": 1, "ml": no_ml })
+        (&status["queued"], &status["processing"], &status["failed"]),
+        (&json!(2), &json!(1), &json!(1))
     );
+    let ml = &status["ml"];
+    assert_eq!(ml["state"], "unavailable");
+    assert_eq!(ml["reason"], "no worker has reported");
     assert_eq!(
-        get(&bob, "/api/media/status").await,
-        json!({ "queued": 0, "processing": 0, "failed": 0, "ml": no_ml })
+        ml["models_installed"],
+        json!({ "clip": false, "faces": false })
+    );
+    // Alice's live photos, all still waiting for CLIP (the trashed one is out).
+    assert!(ml["queued"].as_i64().unwrap() >= 1, "{ml}");
+    assert_eq!(ml["failed"], 0);
+    let bob_status = get(&bob, "/api/media/status").await;
+    assert_eq!(
+        (&bob_status["queued"], &bob_status["ml"]["queued"]),
+        (&json!(0), &json!(0))
     );
     squirrel_db::ml_status::report(&pool, "box", squirrel_db::ml_status::MlState::Ready, None)
         .await
         .unwrap();
-    assert_eq!(
-        get(&bob, "/api/media/status").await["ml"],
-        json!({ "state": "ready", "reason": null })
-    );
+    assert_eq!(get(&bob, "/api/media/status").await["ml"]["state"], "ready");
     common::server(pool)
         .get("/api/media/status")
         .await

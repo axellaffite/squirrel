@@ -228,6 +228,22 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/cameras": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["list_cameras"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/devices": {
         parameters: {
             query?: never;
@@ -485,6 +501,22 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/places": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["list_places"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/search/documents": {
         parameters: {
             query?: never;
@@ -607,6 +639,22 @@ export interface paths {
         get?: never;
         put?: never;
         post: operations["sync_folder"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/tags": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["list_tags"];
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -787,6 +835,8 @@ export interface components {
              * @description Bytes.
              */
             size: number;
+            /** @description Tags of this photo (slugs), best first. */
+            tags: string[];
         };
         /** @enum {string} */
         AssetKindDto: "photo" | "screenshot";
@@ -828,6 +878,13 @@ export interface components {
             iso?: number | null;
             lens?: string | null;
             make?: string | null;
+            model?: string | null;
+        };
+        /** @description A camera the caller's photos were taken with. */
+        CameraGroupDto: {
+            /** Format: int64 */
+            count: number;
+            make: string;
             model?: string | null;
         };
         CreateAlbumRequest: {
@@ -1073,11 +1130,32 @@ export interface components {
         };
         /** @enum {string} */
         MlStateDto: "ready" | "unavailable";
-        /** @description Whether a worker can run the ML models, and if not, a generic reason. */
+        /**
+         * @description Whether a worker can run the ML models, and the caller's photos still to
+         *     analyse.
+         */
         MlStatusDto: {
+            /**
+             * Format: int64
+             * @description The caller's photos that could not be analysed.
+             */
+            failed: number;
+            /** @description What the server found in its models directory. */
+            models_installed: components["schemas"]["ModelsInstalledDto"];
+            /**
+             * Format: int64
+             * @description The caller's photos waiting for tags and search.
+             */
+            queued: number;
             /** @description Why ML is unavailable (e.g. "models not installed"); null when ready. */
             reason?: string | null;
             state: components["schemas"]["MlStateDto"];
+        };
+        /** @description Which model groups this server found installed. */
+        ModelsInstalledDto: {
+            /** @description Photo tags and text search (the CLIP image model). */
+            clip: boolean;
+            faces: boolean;
         };
         MonthCountDto: {
             /** Format: int64 */
@@ -1145,6 +1223,27 @@ export interface components {
             country_code?: string | null;
             name: string;
         };
+        /**
+         * @description A place the caller's photos were taken (filter with `country`, `region`
+         *     and `city` on `GET /api/photos`).
+         */
+        PlaceGroupDto: {
+            /** @description `null` at country level. */
+            city?: string | null;
+            /** Format: int64 */
+            count: number;
+            country?: string | null;
+            country_code: string;
+            /** @description The newest photo taken there. */
+            cover: components["schemas"]["AssetSummary"];
+            /** @description `null` at country level, or for a place without a region. */
+            region?: string | null;
+        };
+        /**
+         * @description How places are grouped.
+         * @enum {string}
+         */
+        PlaceLevel: "country" | "city";
         RefreshRequest: {
             /** @description The current (or, after a lost response, the previous) `sqr_…` token. */
             refresh_token: string;
@@ -1223,6 +1322,15 @@ export interface components {
              * @description `Photos/<device name>/<year>`, created if needed.
              */
             folder_id: string;
+        };
+        /** @description A tag of the caller's photos. */
+        TagGroupDto: {
+            /** Format: int64 */
+            count: number;
+            /** @description The newest photo with this tag. */
+            cover: components["schemas"]["AssetSummary"];
+            /** @description Stable English slug, e.g. `beach` (display names are the UI's). */
+            tag: string;
         };
         /** @description A ready thumbnail of a file. */
         ThumbnailRef: {
@@ -1981,6 +2089,26 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    list_cameras: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Most used first, at most 200 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CameraGroupDto"][];
                 };
             };
         };
@@ -2818,6 +2946,29 @@ export interface operations {
             };
         };
     };
+    list_places: {
+        parameters: {
+            query?: {
+                /** @description `city` (default): one entry per place; `country`: per country. */
+                level?: components["schemas"]["PlaceLevel"];
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Most photographed first, at most 200 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PlaceGroupDto"][];
+                };
+            };
+        };
+    };
     search_documents: {
         parameters: {
             query?: {
@@ -3138,6 +3289,26 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    list_tags: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Most used first, at most 200 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TagGroupDto"][];
                 };
             };
         };
