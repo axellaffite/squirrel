@@ -108,7 +108,21 @@ pub async fn store_scan(
     faces: &[NewFace],
 ) -> Result<bool, DbError> {
     let mut tx = pool.begin().await?;
-    lock_owner(&mut tx, owner, false).await?;
+    let stored = store_scan_in(&mut tx, owner, sha256, model, faces).await?;
+    tx.commit().await?;
+    Ok(stored)
+}
+
+/// [`store_scan`] in the caller's transaction (whatever else the caller
+/// queues with the scan commits with it, or not at all).
+pub async fn store_scan_in(
+    tx: &mut PgConnection,
+    owner: Uuid,
+    sha256: &str,
+    model: &str,
+    faces: &[NewFace],
+) -> Result<bool, DbError> {
+    lock_owner(tx, owner, false).await?;
     let enabled = crate::ml_settings::faces_enabled(&mut *tx, owner).await?;
     if !enabled {
         return Ok(false);
@@ -157,7 +171,6 @@ pub async fn store_scan(
         .execute(&mut *tx)
         .await?;
     }
-    tx.commit().await?;
     Ok(true)
 }
 

@@ -54,15 +54,17 @@ pub async fn run(ctx: &MediaContext, ml: &MlContext, job: JobContext) -> Result<
     };
     let rows: Vec<NewFace> = found.into_iter().map(new_face).collect();
     for owner in owners {
-        let stored = faces::store_scan(&ctx.pool, owner, &sha256, FACE_MODEL_ID, &rows)
+        // The scan and its clustering run commit together.
+        let mut tx = ctx.pool.begin().await.map_err(JobError::retry)?;
+        let stored = faces::store_scan_in(&mut tx, owner, &sha256, FACE_MODEL_ID, &rows)
             .await
             .map_err(JobError::retry)?;
         if stored && !rows.is_empty() {
-            let mut conn = ctx.pool.acquire().await.map_err(JobError::retry)?;
-            squirrel_jobs::enqueue(&mut conn, &jobs::cluster_faces(owner))
+            squirrel_jobs::enqueue(&mut tx, &jobs::cluster_faces(owner))
                 .await
                 .map_err(JobError::retry)?;
         }
+        tx.commit().await.map_err(JobError::retry)?;
     }
     media::set_state(&ctx.pool, &sha256, Step::Faces, MediaState::Ready, None)
         .await
