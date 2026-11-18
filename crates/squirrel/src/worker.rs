@@ -82,8 +82,6 @@ pub struct WorkerOptions {
     /// Run every job kind but these (comma-separated).
     #[arg(long, env = "SQUIRREL_WORKER_EXCLUDE_KINDS", value_delimiter = ',')]
     pub exclude_kinds: Vec<String>,
-    /// Model inference jobs run at once (each already uses several cores), so
-    /// the other slots stay free for fresh uploads.
     /// Pinned model files (`scripts/fetch-models.sh`). Default: `<data_dir>/models`.
     /// Verified against their SHA-256 at start, wherever they come from.
     #[arg(long, env = "SQUIRREL_MODELS_DIR")]
@@ -98,6 +96,8 @@ pub struct WorkerOptions {
     /// Where model inference runs: `subprocess` (isolated, default) or `in-process`.
     #[arg(long, env = "SQUIRREL_ML_EXEC", value_enum, default_value_t = MlExecMode::Subprocess)]
     pub ml_exec: MlExecMode,
+    /// Model inference jobs run at once (each already uses several cores), so
+    /// the other slots stay free for fresh uploads.
     #[arg(long, env = "SQUIRREL_ML_CONCURRENCY", default_value_t = 1, value_parser = clap::value_parser!(u16).range(1..=64))]
     pub ml_concurrency: u16,
 }
