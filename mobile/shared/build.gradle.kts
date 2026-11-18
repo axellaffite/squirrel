@@ -43,6 +43,21 @@ openApiGenerate {
     validateSpec.set(true)
 }
 
+// The app meets servers older than its openapi.json: a required list an older server does not send
+// yet (a field added later, e.g. AssetDetails.tags) decodes as empty instead of failing the whole
+// response. Unknown fields from newer servers are ignored by ApiJson (ignoreUnknownKeys).
+tasks.named("openApiGenerate") {
+    val models = generatedApiDir.map { it.dir("src/commonMain/kotlin/app/squirrel/api/models") }
+    doLast {
+        val requiredList = Regex("""@Required val (\w+): kotlin\.collections\.List<(.+)>,""")
+        models.get().asFile.listFiles().orEmpty().filter { it.extension == "kt" }.forEach { file ->
+            val text = file.readText()
+            val patched = requiredList.replace(text) { "val ${it.groupValues[1]}: kotlin.collections.List<${it.groupValues[2]}> = emptyList()," }
+            if (patched != text) file.writeText(patched)
+        }
+    }
+}
+
 // Models that carry passwords or tokens print as "<redacted>": a stray log line or crash report
 // must never contain a secret. Patched into the generated sources (no template fork needed).
 tasks.named("openApiGenerate") {
