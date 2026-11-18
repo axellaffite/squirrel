@@ -1,14 +1,15 @@
-# Squirrel label bank, version 2 (LABELS_VERSION in src/clip/labels.rs).
-# slug<TAB>English class names separated by |[<TAB>minimum cosine]. Every name
-# goes through every prompt template (src/clip/templates.rs); the label's
-# embedding is their average. One label per concept: near-synonyms are names
-# of one label, not labels competing with each other. The optional third
-# column overrides the model's default cosine threshold for that label only.
-# "background" is reserved (the generic prompts every label must beat).
+# Squirrel label bank, version 3 (LABELS_VERSION in src/clip/labels.rs).
+# slug<TAB>English class names separated by |[<TAB>group]. Every name goes
+# through every prompt template (src/clip/templates.rs); the label's embedding
+# is their average. One label per concept: near-synonyms are names of one
+# label, not labels competing with each other. Labels a photo is easily
+# mistaken between (dog and cat, car and truck) share a group: only the best of
+# a group can become a tag, and only by a clear margin over its siblings; a
+# search close to a grouped label must beat that label's siblings too.
 # Changing anything here means a new file and a new LABELS_VERSION.
-beach	beach|sea|ocean|seaside
-lake	lake
-river	river
+beach	beach|sea|ocean|seaside	water
+lake	lake	water
+river	river	water
 waterfall	waterfall
 mountain	mountain|mountains
 snow	snow|snowy landscape
@@ -36,8 +37,8 @@ street	street|road|highway
 skyscraper	skyscraper
 bridge	bridge
 castle	castle
-church	church|cathedral
-temple	temple
+church	church|cathedral	worship
+temple	temple	worship
 ruins	ruins
 monument	monument|statue
 tower	tower
@@ -45,17 +46,17 @@ lighthouse	lighthouse
 harbour	harbour|port|marina
 village	village
 house	house
-apartment	apartment interior|living room
-kitchen	kitchen
-bedroom	bedroom|bed
-bathroom	bathroom
-office	office
-classroom	classroom
+apartment	apartment interior|living room	room
+kitchen	kitchen	room
+bedroom	bedroom|bed	room
+bathroom	bathroom	room
+office	office	room
+classroom	classroom	room
 library	library|bookshelf
 museum	museum|art gallery
-restaurant	restaurant
-cafe	cafe|coffee shop
-bar	bar|pub
+restaurant	restaurant	venue
+cafe	cafe|coffee shop	venue
+bar	bar|pub	venue
 shop	shop|store|supermarket
 market	market|street market
 stadium	stadium
@@ -73,59 +74,59 @@ cycling	cycling|cyclist
 running	running|runner
 surfing	surfing|surfer
 boat	boat|ship|sailboat|sailing
-car	car
-motorcycle	motorcycle
-bicycle	bicycle|bike
-bus	bus
+car	car	road_vehicle
+motorcycle	motorcycle	two_wheeler
+bicycle	bicycle|bike	two_wheeler
+bus	bus	road_vehicle
 train	train
 airplane	airplane|plane
-truck	truck
-tractor	tractor
-dog	dog|puppy
-cat	cat|kitten
-horse	horse
-cow	cow
-sheep	sheep
-pig	pig
-chicken	chicken|hen
-bird	bird
-duck	duck
-swan	swan
+truck	truck	road_vehicle
+tractor	tractor	road_vehicle
+dog	dog|puppy	small_mammal
+cat	cat|kitten	small_mammal
+horse	horse	large_mammal
+cow	cow	large_mammal
+sheep	sheep	large_mammal
+pig	pig	large_mammal
+chicken	chicken|hen	bird
+bird	bird	bird
+duck	duck	bird
+swan	swan	bird
 fish	fish
 insect	insect|butterfly
-rabbit	rabbit
-squirrel	squirrel
-deer	deer
-fox	fox
-bear	bear
-elephant	elephant
-giraffe	giraffe
-lion	lion
-monkey	monkey
+rabbit	rabbit	small_mammal
+squirrel	squirrel	small_mammal
+deer	deer	large_mammal
+fox	fox	small_mammal
+bear	bear	large_mammal
+elephant	elephant	large_mammal
+giraffe	giraffe	large_mammal
+lion	lion	large_mammal
+monkey	monkey	large_mammal
 zoo	zoo
 aquarium	aquarium
-baby	baby|newborn
-child	child|kid
+baby	baby|newborn	young
+child	child|kid	young
 group	group of people|crowd|family photo
 couple	couple
 portrait	portrait|selfie
-wedding	wedding|bride and groom
-birthday	birthday party
-christmas	christmas|christmas tree
-halloween	halloween|carved pumpkin
+wedding	wedding|bride and groom	occasion
+birthday	birthday party	occasion
+christmas	christmas|christmas tree	occasion
+halloween	halloween|carved pumpkin	occasion
 fireworks	fireworks
 party	party|celebration
-graduation	graduation ceremony
-football	football match|soccer
-basketball	basketball
-tennis	tennis
-golf	golf
+graduation	graduation ceremony	occasion
+football	football match|soccer	ball_sport
+basketball	basketball	ball_sport
+tennis	tennis	ball_sport
+golf	golf	ball_sport
 food	food|meal|dish
-pizza	pizza
-burger	burger|hamburger
-pasta	pasta
-salad	salad
-sushi	sushi
+pizza	pizza	dish
+burger	burger|hamburger	dish
+pasta	pasta	dish
+salad	salad	dish
+sushi	sushi	dish
 cheese	cheese
 bread	bread|baguette
 cake	cake|birthday cake|dessert|pastry|ice cream
@@ -133,21 +134,21 @@ fruit	fruit
 vegetables	vegetables
 breakfast	breakfast
 barbecue	barbecue|grill
-coffee	coffee|cup of coffee
-wine	wine|glass of wine
-beer	beer
-cocktail	cocktail
+coffee	coffee|cup of coffee	drink
+wine	wine|glass of wine	drink
+beer	beer	drink
+cocktail	cocktail	drink
 picnic	picnic
-document	document|paper document|handwritten note|text
-receipt	receipt
+document	document|paper document|handwritten note|text	paper
+receipt	receipt	paper
 screenshot	screenshot|phone screenshot
 book	book
-map	map
-ticket	ticket
+map	map	paper
+ticket	ticket	paper
 whiteboard	whiteboard
-computer	computer|laptop
-phone	smartphone|mobile phone
-television	television|tv
+computer	computer|laptop	screen
+phone	smartphone|mobile phone	screen
+television	television|tv	screen
 camera	camera
 toy	toy|toys
 lego	lego bricks
@@ -155,8 +156,8 @@ game	board game|video game
 art	painting|drawing|artwork|sketch|street art|graffiti
 sculpture	sculpture
 musical_instrument	musical instrument
-guitar	guitar
-piano	piano
+guitar	guitar	instrument
+piano	piano	instrument
 furniture	furniture|sofa
 table	table|dining table
 window	window
@@ -180,10 +181,10 @@ tools	tools|workshop
 plant	houseplant|potted plant
 vegetable_garden	vegetable garden
 pumpkin	pumpkin
-autumn	autumn leaves|fall foliage
-spring_blossom	cherry blossom|blossoming tree
-winter	winter landscape
-summer	summer
+autumn	autumn leaves|fall foliage	season
+spring_blossom	cherry blossom|blossoming tree	season
+winter	winter landscape	season
+summer	summer	season
 underwater	underwater|scuba diving
 aerial	aerial view|drone photo
 macro	macro photo|close-up

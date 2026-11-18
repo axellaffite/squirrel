@@ -68,16 +68,15 @@ pub async fn ensure(pool: &PgPool, text: &MlClient, model: &str) -> anyhow::Resu
     Ok(true)
 }
 
-/// Every label and the background are stored.
+/// Every label is stored, and nothing else.
 fn complete(stored: &[(String, Vec<f32>)], labels: &[Label]) -> bool {
-    stored.len() == labels.len() + 1
-        && stored.iter().any(|(slug, _)| slug == labels::BACKGROUND)
+    stored.len() == labels.len()
         && labels
             .iter()
             .all(|label| stored.iter().any(|(slug, _)| *slug == label.slug))
 }
 
-/// Every prompt of every label (and the background prompts), encoded in
+/// Every prompt of every label, encoded in
 /// batches of [`BATCH`], averaged per bank entry.
 async fn compute(text: &MlClient, labels: &[Label]) -> anyhow::Result<Vec<(String, Vec<f32>)>> {
     let prompts = labels::bank_prompts(labels);

@@ -1,10 +1,10 @@
-//! Tags every image of a directory with the committed label bank and prints,
-//! per photo, the best labels (cosine, margin over the background, kept or
+//! Tags every image of the given directories with the committed label bank and
+//! prints, per photo, the best labels (probability, logit, group, kept or
 //! not), then how many tags photos get and the share with none: to calibrate
-//! the thresholds in `src/clip/labels.rs` by eye.
+//! the tag thresholds in `src/clip/labels.rs` by eye.
 //!
 //!     SQUIRREL_ORT_DYLIB=… SQUIRREL_MODELS_DIR=… cargo run --release -p squirrel-ml \
-//!       --features test-util --example tag_report -- <dir>
+//!       --features test-util --example tag_report -- <dir>…
 
 use squirrel_ml::clip::labels::{self, TOP_K};
 use squirrel_ml::clip::{ClipImage, ClipText};
@@ -13,9 +13,8 @@ use squirrel_ml::models::{CLIP_MODEL_ID, ModelGroup};
 use squirrel_ml::testutil::test_ml_for;
 
 fn main() -> anyhow::Result<()> {
-    let dir = std::env::args()
-        .nth(1)
-        .ok_or_else(|| anyhow::anyhow!("usage: tag_report <dir>"))?;
+    let dirs: Vec<String> = std::env::args().skip(1).collect();
+    anyhow::ensure!(!dirs.is_empty(), "usage: tag_report <dir>…");
     let (dylib, models) = test_ml_for(&[ModelGroup::ClipImage, ModelGroup::ClipText])
         .ok_or_else(|| anyhow::anyhow!("set SQUIRREL_ORT_DYLIB and SQUIRREL_MODELS_DIR"))?;
     squirrel_ml::runtime::init(&dylib)?;
@@ -25,10 +24,21 @@ fn main() -> anyhow::Result<()> {
     let bank = labels::compute_bank(&mut text, &label_list)?;
     let thresholds = labels::thresholds(CLIP_MODEL_ID).expect("thresholds for the pinned model");
     println!("thresholds: {thresholds:?}");
-    let mut files: Vec<_> = std::fs::read_dir(&dir)?
-        .filter_map(|e| e.ok().map(|e| e.path()))
-        .filter(|p| p.is_file())
-        .collect();
+    let group = |slug: &str| {
+        label_list
+            .iter()
+            .find(|l| l.slug == slug)
+            .and_then(|l| l.group.clone())
+            .unwrap_or_default()
+    };
+    let mut files = Vec::new();
+    for dir in &dirs {
+        files.extend(
+            std::fs::read_dir(dir)?
+                .filter_map(|e| e.ok().map(|e| e.path()))
+                .filter(|p| p.is_file()),
+        );
+    }
     files.sort();
     let mut counts = Vec::new();
     for file in files {
@@ -45,8 +55,12 @@ fn main() -> anyhow::Result<()> {
                 " "
             };
             println!(
-                "  {mark} {:<20} cos={:.3} margin={:+.3}",
-                s.slug, s.cosine, s.margin
+                "  {mark} {:<20} p={:.4} logit={:+6.2} cos={:.4} {}",
+                s.slug,
+                s.probability,
+                s.logit,
+                s.cosine,
+                group(&s.slug)
             );
         }
         counts.push(kept.len());
