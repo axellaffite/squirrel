@@ -4,10 +4,16 @@ use sqlx::PgPool;
 use sqlx::postgres::PgConnectOptions;
 use squirrel_db::ExtensionError;
 
-/// A superuser (the test role) can create the extension: the check passes.
+/// A superuser (the test role) gets the extension created by the check.
 #[sqlx::test(migrations = false)]
 async fn a_superuser_passes_the_vector_check(pool: PgPool) {
     squirrel_db::check_vector_extension(&pool).await.unwrap();
+    let version: String =
+        sqlx::query_scalar("SELECT extversion FROM pg_extension WHERE extname = 'vector'")
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+    assert!(version.starts_with("0."), "{version}");
 }
 
 /// A role that is not a superuser cannot `CREATE EXTENSION vector` (it is not
@@ -43,12 +49,18 @@ async fn a_plain_role_without_the_extension_is_told_what_to_run(pool: PgPool) {
         .await
         .unwrap();
     let err = result.unwrap_err();
-    assert!(matches!(err, ExtensionError::VectorNeedsSuperuser), "{err}");
     assert!(
-        err.to_string()
-            .contains("pgvector must be installed by a superuser: CREATE EXTENSION vector;"),
+        matches!(err, ExtensionError::VectorNeedsSuperuser { .. }),
         "{err}"
     );
+    let database: String = sqlx::query_scalar("SELECT current_database()")
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+    let message = err.to_string();
+    assert!(message.contains("by a superuser"), "{message}");
+    assert!(message.contains(&database), "names the database: {message}");
+    assert!(message.contains("CREATE EXTENSION vector;"), "{message}");
 }
 
 /// Once a superuser created it, anyone passes.

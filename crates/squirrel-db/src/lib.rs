@@ -48,16 +48,29 @@ pub async fn connect(database_url: &str) -> Result<PgPool, sqlx::Error> {
 #[derive(Debug, thiserror::Error)]
 pub enum ExtensionError {
     #[error(
-        "the pgvector extension is not available on this Postgres server: \
-         use the pgvector/pgvector image or install pgvector 0.8"
+        "the pgvector extension is not available to database {database}: use the \
+         pgvector/pgvector image or install pgvector >= {MIN_VECTOR_VERSION} on the server"
     )]
-    VectorUnavailable,
+    VectorUnavailable { database: String },
     /// pgvector is not a trusted extension: only a superuser may create it.
-    #[error("pgvector must be installed by a superuser: CREATE EXTENSION vector;")]
-    VectorNeedsSuperuser,
+    #[error(
+        "pgvector must be installed by a superuser in database {database}: \
+         CREATE EXTENSION vector;"
+    )]
+    VectorNeedsSuperuser { database: String },
+    #[error("database {database} cannot create the pgvector extension: {message}")]
+    VectorUnsupported { database: String, message: String },
+    #[error(
+        "database {database} has pgvector {found}; Squirrel needs >= {MIN_VECTOR_VERSION} \
+         (ALTER EXTENSION vector UPDATE;)"
+    )]
+    VectorTooOld { database: String, found: String },
     #[error("checking the pgvector extension: {0}")]
     Db(#[from] sqlx::Error),
 }
+
+/// `halfvec` and the iterative index scans arrived with 0.7.
+pub const MIN_VECTOR_VERSION: &str = "0.7";
 
 #[derive(Debug, thiserror::Error)]
 pub enum MigrationError {
@@ -67,21 +80,74 @@ pub enum MigrationError {
     Migrate(#[from] MigrateError),
 }
 
-/// Checks that the migrations will be able to `CREATE EXTENSION vector`:
-/// it is installed already, or available and the current role is a superuser.
+/// Makes sure pgvector (>= 0.7) is installed in the database: creates it when
+/// missing (which needs a superuser, or a superuser's prior
+/// `CREATE EXTENSION vector`), with a clear message for each way that fails.
 pub async fn check_vector_extension(pool: &PgPool) -> Result<(), ExtensionError> {
-    let (installed, available, superuser): (bool, bool, bool) = sqlx::query_as(
-        "SELECT EXISTS (SELECT 1 FROM pg_extension WHERE extname = 'vector'), \
-                EXISTS (SELECT 1 FROM pg_available_extensions WHERE name = 'vector'), \
-                (SELECT rolsuper FROM pg_roles WHERE rolname = current_user)",
-    )
-    .fetch_one(pool)
-    .await?;
-    match (installed, available, superuser) {
-        (true, _, _) | (false, true, true) => Ok(()),
-        (false, false, _) => Err(ExtensionError::VectorUnavailable),
-        (false, true, false) => Err(ExtensionError::VectorNeedsSuperuser),
+    let database: String = sqlx::query_scalar("SELECT current_database()")
+        .fetch_one(pool)
+        .await?;
+    let installed = installed_vector(pool).await?;
+    let version = match installed {
+        Some(version) => version,
+        None => {
+            if let Err(err) = sqlx::query("CREATE EXTENSION IF NOT EXISTS vector")
+                .execute(pool)
+                .await
+            {
+                return Err(create_error(err, database));
+            }
+            installed_vector(pool).await?.unwrap_or_default()
+        }
+    };
+    if !version_at_least(&version, MIN_VECTOR_VERSION) {
+        return Err(ExtensionError::VectorTooOld {
+            database,
+            found: version,
+        });
     }
+    Ok(())
+}
+
+async fn installed_vector(pool: &PgPool) -> Result<Option<String>, sqlx::Error> {
+    sqlx::query_scalar("SELECT extversion FROM pg_extension WHERE extname = 'vector'")
+        .fetch_optional(pool)
+        .await
+}
+
+/// SQLSTATE of a failed `CREATE EXTENSION`, mapped to what the operator must do.
+fn create_error(err: sqlx::Error, database: String) -> ExtensionError {
+    let code = err
+        .as_database_error()
+        .and_then(|db| db.code())
+        .map(|code| code.into_owned());
+    match code.as_deref() {
+        // insufficient_privilege
+        Some("42501") => ExtensionError::VectorNeedsSuperuser { database },
+        // undefined_file: no vector.control on the server
+        Some("58P01") => ExtensionError::VectorUnavailable { database },
+        // feature_not_supported (e.g. a version the server cannot load)
+        Some("0A000") => ExtensionError::VectorUnsupported {
+            database,
+            message: err
+                .as_database_error()
+                .map_or_else(String::new, |db| db.message().to_owned()),
+        },
+        _ => ExtensionError::Db(err),
+    }
+}
+
+/// `found >= wanted`, comparing dotted numeric versions ("0.8.7" >= "0.7").
+fn version_at_least(found: &str, wanted: &str) -> bool {
+    let parse =
+        |v: &str| -> Vec<u32> { v.split('.').map(|part| part.parse().unwrap_or(0)).collect() };
+    let (found, wanted) = (parse(found), parse(wanted));
+    let len = found.len().max(wanted.len());
+    let at = |v: &[u32], i: usize| v.get(i).copied().unwrap_or(0);
+    (0..len)
+        .map(|i| at(&found, i).cmp(&at(&wanted, i)))
+        .find(|order| order.is_ne())
+        .is_none_or(|order| order.is_gt())
 }
 
 /// Applies pending migrations, after checking the extensions they need.
@@ -110,4 +176,18 @@ pub async fn pending_migrations(pool: &PgPool) -> Result<Vec<i64>, DbError> {
         .map(|migration| migration.version)
         .filter(|version| !applied.contains(version))
         .collect())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn versions_compare_numerically() {
+        assert!(version_at_least("0.8.7", "0.7"));
+        assert!(version_at_least("0.7", "0.7"));
+        assert!(version_at_least("0.10.0", "0.7"));
+        assert!(!version_at_least("0.6.2", "0.7"));
+        assert!(!version_at_least("", "0.7"));
+    }
 }
