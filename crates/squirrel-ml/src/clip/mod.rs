@@ -2,7 +2,9 @@
 //! producing L2-normalised 512-d vectors in the same space.
 
 pub mod image;
+pub mod labels;
 pub mod preprocess;
+pub mod templates;
 pub mod text;
 
 #[cfg(test)]
