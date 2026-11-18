@@ -1,9 +1,10 @@
 /** The timeline's data: month counts, and the items of the months loaded so far. */
+import { normalizeFilter, sameFilter, type PhotoFilter } from '#lib/explore/filters.ts';
 import { listMonth, listMonths, type AssetSummary, type MonthCount, type Outcome } from '#lib/photos/api.ts';
 
 export interface TimelineSource {
-	listMonths: () => Promise<Outcome<MonthCount[]>>;
-	listMonth: (month: string) => Promise<Outcome<AssetSummary[]>>;
+	listMonths: (filter: PhotoFilter) => Promise<Outcome<MonthCount[]>>;
+	listMonth: (month: string, filter: PhotoFilter) => Promise<Outcome<AssetSummary[]>>;
 }
 
 /** What became of one month request. */
@@ -20,6 +21,8 @@ export class TimelineData {
 	error: string | null = $state(null);
 	/** Items per loaded month, newest first. Replaced, never mutated. */
 	items: Readonly<Record<string, readonly AssetSummary[]>> = $state.raw({});
+	/** Only photos matching it are listed (the timeline's filter chips). */
+	filter: PhotoFilter = $state.raw({});
 
 	readonly #source: TimelineSource;
 	#loading = new Set<string>();
@@ -54,10 +57,24 @@ export class TimelineData {
 		return (this.months ?? []).flatMap((entry) => this.items[entry.month] ?? []);
 	}
 
+	/**
+	 * Shows only photos matching `filter`: nothing loaded so far is kept (it may not match), and
+	 * the months are listed again. The same filter again changes nothing.
+	 */
+	async setFilter(filter: PhotoFilter): Promise<void> {
+		if (sameFilter(filter, this.filter)) return;
+		this.filter = normalizeFilter(filter);
+		this.months = null;
+		this.items = {};
+		this.#loaded = new Set();
+		this.#failed = new Set();
+		await this.reload();
+	}
+
 	/** (Re)loads the month list. Loaded items stay shown until their month is fetched again. */
 	async reload(): Promise<void> {
 		const generation = ++this.#generation;
-		const result = await this.#source.listMonths();
+		const result = await this.#source.listMonths(this.filter);
 		if (generation !== this.#generation) return;
 		if (!result.ok) {
 			this.error = result.error;
@@ -77,7 +94,7 @@ export class TimelineData {
 		const generation = this.#generation;
 		this.#loading.add(month);
 		try {
-			const result = await this.#source.listMonth(month);
+			const result = await this.#source.listMonth(month, this.filter);
 			if (generation !== this.#generation) return { status: 'stale' };
 			if (!result.ok) {
 				this.error = result.error;
