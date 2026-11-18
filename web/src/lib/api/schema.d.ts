@@ -1456,7 +1456,10 @@ export interface components {
         /** @description A group of the caller's faces, named or not. */
         PersonDto: {
             cover?: null | components["schemas"]["FaceCrop"];
-            /** Format: int64 */
+            /**
+             * Format: int64
+             * @description Faces on photos outside the trash.
+             */
             face_count: number;
             /** @description Left out of lists unless asked for; still clustered. */
             hidden: boolean;

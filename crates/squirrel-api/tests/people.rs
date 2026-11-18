@@ -514,3 +514,17 @@ async fn merge_chains_end_in_one_person(pool: PgPool) {
         1
     );
 }
+
+#[sqlx::test(migrator = "squirrel_db::MIGRATOR")]
+async fn face_counts_leave_out_trashed_photos(pool: PgPool) {
+    let w = world(&pool).await;
+    let (id, _) = person(&pool, w.owner, None, &w.photos).await;
+    sqlx::query("UPDATE nodes SET deleted_at = now(), trash_root = id WHERE id = $1")
+        .bind(w.photos[2])
+        .execute(&pool)
+        .await
+        .unwrap();
+    let person = get(&w.alice, &format!("/api/people/{id}")).await;
+    assert_eq!(person["face_count"], 2);
+    assert_eq!(person["cover"]["photo_id"], w.photos[1].to_string());
+}
