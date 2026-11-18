@@ -1996,11 +1996,13 @@ Server and web parts of Phase 6 (Tasks 1–13) are done; Milestones D–I are no
     otherwise a Kotlin exception crashes the app. Names starting with `new` reach Swift with a
     `do` prefix (`doNewApi`).
 - **End to end (Task 44):**
-  - `BackupEndToEndTests` signs in through `IosGraph`, runs the engine and checks
-    `Photos/<device>/<year>/` through the API, with a cookie session.
-  - The simulator's library holds the same bytes under two names. Content the server already
-    has is usually linked rather than stored again, so the test bounds the file count between
-    the distinct hashes and the photos instead of matching it exactly.
+  - `BackupEndToEndTests` signs in through `IosGraph`, runs the engine, then asks the server
+    with `POST /api/sync/check` (`SquirrelApi.missingOnServer`) whether any photo's content is
+    missing, as Task 31 does. Counting files in `Photos/<device>/` was fragile: content the server
+    already has is linked rather than stored again, and a device left signed in by an earlier run
+    gets `<name> (2)`.
+  - The test signs out and waits for it (`AppGraph.awaitSignedOut`), then checks through the web
+    session that the device is no longer signed in.
   - `xcodebuild test` reports its results, then lingers for about 10 minutes before exiting on
     this machine. The results are final when "Test Suite 'All tests'" is printed.
   - The scheme's `$(SQUIRREL_SERVER)` is not filled from an `xcodebuild` build setting. Run it
@@ -2009,7 +2011,7 @@ Server and web parts of Phase 6 (Tasks 1–13) are done; Milestones D–I are no
     analysis touches freshly added photos (`d199f83`).
 - **Verified on the iPhone 17 simulator (iOS 27), 2026-11-17**, against a throwaway server on
   127.0.0.1:8188 with database `squirrel_mobile_e2e_ios`:
-  - XCTests: all 9 pass in one run, the end-to-end test included. K/N: 109 `shared` tests and 55 `ui` tests.
+  - XCTests: all 10 pass in one run, the end-to-end test included. K/N: 109 `shared` tests and 55 `ui` tests.
   - Sign-in, and the session survives a relaunch. Password autofill: the Passwords key shows
     once the fields use native input (see above).
   - No access, then limited access with 3 photos (backed up), then full access: 44, then 46
