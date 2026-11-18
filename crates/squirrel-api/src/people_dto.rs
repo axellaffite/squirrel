@@ -143,7 +143,8 @@ pub enum FaceAssignedBy {
     /// `squirrel admin faces recluster` (after a threshold change) moves it.
     Auto,
     /// The user; clustering never moves it (a `null` person: "not this
-    /// person", never grouped again).
+    /// person", never grouped again). Deleting the photo for good drops the
+    /// face and its pin.
     User,
 }
 
