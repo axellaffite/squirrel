@@ -1185,7 +1185,10 @@ export interface components {
          * @enum {string}
          */
         FaceAssignedBy: "auto" | "user";
-        /** @description A face's box, relative to the displayed image (0–1). */
+        /**
+         * @description A face's box, relative to the displayed image and to every thumbnail size
+         *     (0–1, from the top left).
+         */
         FaceBoxDto: {
             /** Format: float */
             height: number;
@@ -1196,6 +1199,30 @@ export interface components {
             /** Format: float */
             y: number;
         };
+        /**
+         * @description How to show a face. There is no face image on the server: a client crops
+         *     the photo's thumbnail itself, `GET /api/files/{photo_id}/thumbnail?size=thumb&v={thumbnail_version}`,
+         *     to `box` (e.g. CSS `object-fit`/`object-position`, or a Compose crop).
+         */
+        FaceCrop: {
+            box: components["schemas"]["FaceBoxDto"];
+            /** Format: uuid */
+            face_id: string;
+            /**
+             * Format: uuid
+             * @description The photo (file node) whose thumbnail holds the face.
+             */
+            photo_id: string;
+            /**
+             * Format: int32
+             * @description The thumbnail's `v`; `null` while the photo has no thumbnail yet.
+             */
+            thumbnail_version?: number | null;
+        };
+        /**
+         * @description A face. Show it by cropping the photo's thumbnail to `box` (see
+         *     [`FaceCrop`]): the server stores no face images.
+         */
         FaceDto: {
             assigned_by: components["schemas"]["FaceAssignedBy"];
             box: components["schemas"]["FaceBoxDto"];
@@ -1212,6 +1239,11 @@ export interface components {
              * @description Detector confidence, 0–1.
              */
             score: number;
+            /**
+             * Format: int32
+             * @description The photo thumbnail's `v`; `null` while it has none.
+             */
+            thumbnail_version?: number | null;
         };
         FacesPage: {
             /** @description Newest photo first. */
@@ -1423,12 +1455,7 @@ export interface components {
         };
         /** @description A group of the caller's faces, named or not. */
         PersonDto: {
-            /**
-             * Format: uuid
-             * @description The face to show for this person (the chosen one, else the best
-             *     scoring one); `null` for a named person left without faces.
-             */
-            cover_face_id?: string | null;
+            cover?: null | components["schemas"]["FaceCrop"];
             /** Format: int64 */
             face_count: number;
             /** @description Left out of lists unless asked for; still clustered. */

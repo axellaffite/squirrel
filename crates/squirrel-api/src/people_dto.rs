@@ -23,21 +23,51 @@ pub struct PersonDto {
     /// Left out of lists unless asked for; still clustered.
     pub hidden: bool,
     pub face_count: i64,
-    /// The face to show for this person (the chosen one, else the best
-    /// scoring one); `null` for a named person left without faces.
-    pub cover_face_id: Option<Uuid>,
+    /// The face to show for this person: the one chosen with `cover_face_id`,
+    /// else the best-scoring face on a photo with a ready thumbnail. `null`
+    /// for a person without a face on a live photo.
+    pub cover: Option<FaceCrop>,
 }
 
 impl From<PersonRecord> for PersonDto {
     fn from(record: PersonRecord) -> Self {
+        let c = record.cover;
+        let cover = match (c.cover_face_id, c.cover_photo_id) {
+            (Some(face_id), Some(photo_id)) => Some(FaceCrop {
+                face_id,
+                photo_id,
+                thumbnail_version: c.cover_thumbs_version,
+                bbox: FaceBoxDto {
+                    x: c.cover_box_x.unwrap_or_default(),
+                    y: c.cover_box_y.unwrap_or_default(),
+                    width: c.cover_box_w.unwrap_or_default(),
+                    height: c.cover_box_h.unwrap_or_default(),
+                },
+            }),
+            _ => None,
+        };
         Self {
             id: record.id,
             name: record.name,
             hidden: record.hidden,
             face_count: record.face_count,
-            cover_face_id: record.cover_face_id,
+            cover,
         }
     }
+}
+
+/// How to show a face. There is no face image on the server: a client crops
+/// the photo's thumbnail itself, `GET /api/files/{photo_id}/thumbnail?size=thumb&v={thumbnail_version}`,
+/// to `box` (e.g. CSS `object-fit`/`object-position`, or a Compose crop).
+#[derive(Debug, Serialize, ToSchema)]
+pub struct FaceCrop {
+    pub face_id: Uuid,
+    /// The photo (file node) whose thumbnail holds the face.
+    pub photo_id: Uuid,
+    /// The thumbnail's `v`; `null` while the photo has no thumbnail yet.
+    pub thumbnail_version: Option<i16>,
+    #[serde(rename = "box")]
+    pub bbox: FaceBoxDto,
 }
 
 /// A person as other objects refer to it.
@@ -110,7 +140,8 @@ pub enum FaceAssignedBy {
     User,
 }
 
-/// A face's box, relative to the displayed image (0–1).
+/// A face's box, relative to the displayed image and to every thumbnail size
+/// (0–1, from the top left).
 #[derive(Debug, Serialize, ToSchema)]
 pub struct FaceBoxDto {
     pub x: f32,
@@ -119,11 +150,15 @@ pub struct FaceBoxDto {
     pub height: f32,
 }
 
+/// A face. Show it by cropping the photo's thumbnail to `box` (see
+/// [`FaceCrop`]): the server stores no face images.
 #[derive(Debug, Serialize, ToSchema)]
 pub struct FaceDto {
     pub id: Uuid,
     /// The photo it is on (`GET /api/photos/{id}`).
     pub photo_id: Uuid,
+    /// The photo thumbnail's `v`; `null` while it has none.
+    pub thumbnail_version: Option<i16>,
     #[serde(rename = "box")]
     pub bbox: FaceBoxDto,
     /// Detector confidence, 0–1.
@@ -137,6 +172,7 @@ impl From<FaceRow> for FaceDto {
         Self {
             id: row.id,
             photo_id: row.photo_id,
+            thumbnail_version: row.thumbs_version,
             bbox: FaceBoxDto {
                 x: row.box_x,
                 y: row.box_y,
