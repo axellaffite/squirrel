@@ -10,7 +10,8 @@
 
 	const tabs = [
 		{ href: '/photos', label: 'Timeline' },
-		{ href: '/photos/albums', label: 'Albums' }
+		{ href: '/photos/albums', label: 'Albums' },
+		{ href: '/explore', label: 'Explore' }
 	];
 
 	// The timeline is only "/photos" itself; Albums covers its sub-pages.
