@@ -37,6 +37,26 @@ pub fn normalize(values: &[f32]) -> Vec<f32> {
     values.iter().map(|v| v / norm).collect()
 }
 
+/// What a stored embedding must be: [`EMBEDDING_DIM`] finite values of unit
+/// length (± 1e-2, half precision included). Anything else is a broken model
+/// or child, never stored.
+pub fn check_embedding(values: &[f32]) -> Result<(), String> {
+    if values.len() != EMBEDDING_DIM {
+        return Err(format!(
+            "{} values instead of {EMBEDDING_DIM}",
+            values.len()
+        ));
+    }
+    if values.iter().any(|v| !v.is_finite()) {
+        return Err("non-finite values".into());
+    }
+    let norm = values.iter().map(|v| v * v).sum::<f32>().sqrt();
+    if (norm - 1.0).abs() > 1e-2 {
+        return Err(format!("norm {norm} instead of 1"));
+    }
+    Ok(())
+}
+
 /// Dot product of two unit vectors.
 pub fn cosine(a: &[f32], b: &[f32]) -> f32 {
     a.iter().zip(b).map(|(x, y)| x * y).sum()
@@ -51,5 +71,23 @@ mod tests {
         assert_eq!(normalize(&[3.0, 4.0]), [0.6, 0.8]);
         assert_eq!(normalize(&[0.0, 0.0]), [0.0, 0.0]);
         assert!((cosine(&[0.6, 0.8], &[0.6, 0.8]) - 1.0).abs() < 1e-6);
+    }
+
+    #[test]
+    fn only_unit_512_d_finite_vectors_pass() {
+        let mut unit = vec![0.0; EMBEDDING_DIM];
+        unit[0] = 1.0;
+        assert!(check_embedding(&unit).is_ok());
+        assert!(check_embedding(&unit[..511]).is_err());
+        let mut nan = unit.clone();
+        nan[1] = f32::NAN;
+        assert!(check_embedding(&nan).is_err());
+        assert!(
+            check_embedding(&vec![0.5; EMBEDDING_DIM]).is_err(),
+            "norm 11"
+        );
+        let mut almost = unit.clone();
+        almost[0] = 1.005;
+        assert!(check_embedding(&almost).is_ok());
     }
 }

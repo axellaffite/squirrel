@@ -100,16 +100,22 @@ pub fn bank() -> Vec<Label> {
     parse(LABELS_TSV).unwrap_or_default()
 }
 
-/// A label's text embedding: the re-normalised mean of its prompts' embeddings.
-pub fn mean_embedding(prompt_embeddings: &[Vec<f32>]) -> Vec<f32> {
+/// A label's text embedding: the re-normalised mean of its prompts'
+/// embeddings, which must all have the same length.
+pub fn mean_embedding(prompt_embeddings: &[Vec<f32>]) -> Result<Vec<f32>, ClipError> {
     let dim = prompt_embeddings.first().map_or(0, Vec::len);
+    if dim == 0 || prompt_embeddings.iter().any(|e| e.len() != dim) {
+        return Err(ClipError::Inference(
+            "prompt embeddings of different lengths".into(),
+        ));
+    }
     let mut sum = vec![0.0f32; dim];
     for embedding in prompt_embeddings {
         for (total, value) in sum.iter_mut().zip(embedding) {
             *total += value;
         }
     }
-    normalize(&sum)
+    Ok(normalize(&sum))
 }
 
 /// The whole bank, encoded in this process (tests, examples; the worker goes
@@ -125,7 +131,7 @@ pub fn compute_bank(
                 .iter()
                 .map(|prompt| text.embed(prompt))
                 .collect::<Result<Vec<_>, _>>()?;
-            Ok((label.slug.clone(), mean_embedding(&embeddings)))
+            Ok((label.slug.clone(), mean_embedding(&embeddings)?))
         })
         .collect()
 }
@@ -176,7 +182,9 @@ mod tests {
 
     #[test]
     fn a_label_is_the_normalised_mean_of_its_prompts() {
-        let mean = mean_embedding(&[vec![1.0, 0.0], vec![0.0, 1.0]]);
+        let mean = mean_embedding(&[vec![1.0, 0.0], vec![0.0, 1.0]]).unwrap();
+        assert!(mean_embedding(&[vec![1.0, 0.0], vec![1.0]]).is_err());
+        assert!(mean_embedding(&[]).is_err());
         assert!((mean[0] - mean[1]).abs() < 1e-6);
         assert!((cosine(&mean, &mean) - 1.0).abs() < 1e-6);
     }
