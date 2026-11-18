@@ -4,6 +4,7 @@
 use std::collections::HashMap;
 use std::future::Future;
 use std::pin::Pin;
+use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
 use std::time::Duration;
 
@@ -52,6 +53,11 @@ impl Registry {
         self.handlers.insert(kind, Handler { run, timeout });
     }
 
+    /// Keeps only the kinds for which `keep` is true.
+    pub fn retain(&mut self, mut keep: impl FnMut(&str) -> bool) {
+        self.handlers.retain(|kind, _| keep(kind));
+    }
+
     /// Registered kinds, sorted.
     pub fn kinds(&self) -> Vec<&'static str> {
         let mut kinds: Vec<_> = self.handlers.keys().copied().collect();
@@ -70,6 +76,10 @@ pub struct WorkerConfig {
     pub shutdown_grace: Duration,
     /// Shown to admins as `claimed_by`, e.g. "minipc:4242".
     pub name: String,
+    /// Kinds that run model inference: at most `ml_concurrency` of them run at
+    /// once, so the other slots stay free for fresh uploads.
+    pub ml_kinds: Vec<&'static str>,
+    pub ml_concurrency: usize,
 }
 
 type InFlight = Arc<Mutex<HashMap<i64, ClaimedJob>>>;
@@ -124,20 +134,22 @@ impl Worker {
     /// Runs until `stop` turns true (or its sender is dropped), then drains
     /// (see [`WorkerConfig::shutdown_grace`]).
     pub async fn run(self, mut stop: watch::Receiver<bool>) -> anyhow::Result<()> {
-        let kinds = self.registry.kinds();
+        let kinds = ClaimKinds::new(self.registry.kinds(), &self.config.ml_kinds);
+        let ml_running = Arc::new(AtomicUsize::new(0));
         let mut wakeups = Wakeups::default();
         wakeups.connect(&self.pool, self.config.poll_interval).await;
         let slots = Arc::new(Semaphore::new(self.config.concurrency.max(1)));
         let mut running = JoinSet::new();
         tracing::info!(
             worker = %self.config.name,
-            ?kinds,
+            kinds = ?kinds.all,
             concurrency = self.config.concurrency,
+            ml_concurrency = self.config.ml_concurrency,
             "worker started"
         );
         while !*stop.borrow() {
             while running.try_join_next().is_some() {}
-            if let Err(err) = self.fill(&kinds, &slots, &mut running).await {
+            if let Err(err) = self.fill(&kinds, &slots, &ml_running, &mut running).await {
                 tracing::error!(error = %err, "claiming jobs failed");
             }
             if wakeups.should_reconnect() {
@@ -164,11 +176,13 @@ impl Worker {
         Ok(())
     }
 
-    /// Reaps expired leases, then claims as many jobs as there are free slots.
+    /// Reaps expired leases, then claims as many jobs as there are free slots,
+    /// never more ML jobs than [`WorkerConfig::ml_concurrency`] allows.
     async fn fill(
         &self,
-        kinds: &[&str],
+        kinds: &ClaimKinds,
         slots: &Arc<Semaphore>,
+        ml_running: &Arc<AtomicUsize>,
         running: &mut JoinSet<()>,
     ) -> anyhow::Result<()> {
         let reaped = queue::reap_expired(&self.pool).await?;
@@ -177,15 +191,19 @@ impl Worker {
         }
         loop {
             let free = slots.available_permits();
-            if free == 0 {
+            let free_ml = self
+                .config
+                .ml_concurrency
+                .saturating_sub(ml_running.load(Ordering::SeqCst));
+            let Some((claimable, limit)) = kinds.plan(free, free_ml) else {
                 return Ok(());
-            }
+            };
             // Taken before the claim: the lease cannot have started earlier.
             let claimed_at = Instant::now();
             let jobs = queue::claim(
                 &self.pool,
-                kinds,
-                i64::try_from(free)?,
+                claimable,
+                i64::try_from(limit)?,
                 self.config.lease,
                 &self.config.name,
             )
@@ -193,6 +211,9 @@ impl Worker {
             let claimed = jobs.len();
             for job in jobs {
                 let permit = slots.clone().acquire_owned().await?;
+                let ml_slot = kinds
+                    .is_ml(&job.kind)
+                    .then(|| MlSlot::take(ml_running.clone()));
                 lock(&self.in_flight).insert(job.id, job.clone());
                 let pool = self.pool.clone();
                 let registry = self.registry.clone();
@@ -201,6 +222,7 @@ impl Worker {
                 let fault = self.heartbeat_fault.clone();
                 running.spawn(async move {
                     let _permit = permit;
+                    let _ml_slot = ml_slot;
                     let run = Run {
                         pool: &pool,
                         config: &config,
@@ -211,7 +233,7 @@ impl Worker {
                     lock(&in_flight).remove(&job.id);
                 });
             }
-            if claimed < free {
+            if claimed < limit {
                 return Ok(());
             }
         }
@@ -244,6 +266,58 @@ impl Worker {
             }
         }
         tracing::info!(worker = %self.config.name, "worker stopped");
+    }
+}
+
+/// The registered kinds, split for claims that must not take an ML slot.
+#[derive(Debug)]
+struct ClaimKinds {
+    all: Vec<&'static str>,
+    ml: Vec<&'static str>,
+    not_ml: Vec<&'static str>,
+}
+
+impl ClaimKinds {
+    fn new(all: Vec<&'static str>, ml_kinds: &[&'static str]) -> Self {
+        let (ml, not_ml) = all.iter().partition(|kind| ml_kinds.contains(kind));
+        Self { all, ml, not_ml }
+    }
+
+    fn is_ml(&self, kind: &str) -> bool {
+        self.ml.contains(&kind)
+    }
+
+    /// What to claim with `free` slots of which `free_ml` may run ML jobs:
+    /// every kind when the claim cannot exceed the ML budget, only non-ML
+    /// kinds when that budget is spent, otherwise every kind but at most
+    /// `free_ml` jobs (the loop claims again for the remaining slots).
+    fn plan(&self, free: usize, free_ml: usize) -> Option<(&[&'static str], usize)> {
+        if free == 0 {
+            return None;
+        }
+        if self.ml.is_empty() || free_ml >= free {
+            return Some((&self.all, free));
+        }
+        if free_ml == 0 {
+            return (!self.not_ml.is_empty()).then_some((self.not_ml.as_slice(), free));
+        }
+        Some((&self.all, free_ml))
+    }
+}
+
+/// One running ML job, counted until dropped (also when the task is aborted).
+struct MlSlot(Arc<AtomicUsize>);
+
+impl MlSlot {
+    fn take(running: Arc<AtomicUsize>) -> Self {
+        running.fetch_add(1, Ordering::SeqCst);
+        Self(running)
+    }
+}
+
+impl Drop for MlSlot {
+    fn drop(&mut self) {
+        self.0.fetch_sub(1, Ordering::SeqCst);
     }
 }
 
@@ -440,5 +514,27 @@ async fn record(pool: &PgPool, job: &ClaimedJob, outcome: Result<(), JobError>) 
             tracing::debug!(job_id = job.id, kind = %job.kind, ?delay, "job rescheduled")
         }
         _ => tracing::debug!(job_id = job.id, kind = %job.kind, "job done"),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn claims_never_exceed_the_ml_budget() {
+        let kinds = ClaimKinds::new(
+            vec!["clip_embed", "faces", "thumbnails"],
+            &["clip_embed", "faces"],
+        );
+        assert!(kinds.is_ml("faces") && !kinds.is_ml("thumbnails"));
+        assert_eq!(kinds.plan(0, 1), None);
+        assert_eq!(kinds.plan(1, 1), Some((&kinds.all[..], 1)));
+        assert_eq!(kinds.plan(2, 1), Some((&kinds.all[..], 1)));
+        assert_eq!(kinds.plan(2, 0), Some((&["thumbnails"][..], 2)));
+        let only_ml = ClaimKinds::new(vec!["faces"], &["faces"]);
+        assert_eq!(only_ml.plan(2, 0), None);
+        let no_ml = ClaimKinds::new(vec!["thumbnails"], &["faces"]);
+        assert_eq!(no_ml.plan(2, 0), Some((&["thumbnails"][..], 2)));
     }
 }

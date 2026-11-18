@@ -14,6 +14,10 @@ pub mod priority {
     pub const TEXT: i16 = 40;
     pub const GEOCODE: i16 = 30;
     pub const BACKFILL: i16 = 0;
+    /// Machine learning runs after every other step, fresh or backfilled.
+    pub const CLIP: i16 = -25;
+    pub const FACES: i16 = -30;
+    pub const CLUSTER: i16 = -35;
     /// Subtracted from work that comes from backfill rather than a fresh upload.
     pub const BACKGROUND_PENALTY: i16 = 50;
 
@@ -144,6 +148,22 @@ mod tests {
         }
         assert!(background(THUMBNAILS) <= GEOCODE);
         assert!(background(INTERACTIVE) > BACKFILL);
+    }
+
+    #[test]
+    fn machine_learning_runs_after_every_media_step() {
+        use priority::*;
+        let lowest_media = background(GEOCODE);
+        for media in [INTERACTIVE, THUMBNAILS, METADATA, TEXT, GEOCODE] {
+            assert!(background(media) >= lowest_media, "{media}");
+        }
+        // fresh media > backfilled media > fresh CLIP > fresh faces > cluster > backfilled ML
+        assert!(lowest_media > CLIP);
+        const {
+            assert!(CLIP > FACES && FACES > CLUSTER);
+            assert!(CLUSTER > background(CLIP));
+            assert!(background(CLIP) > background(FACES));
+        }
     }
 
     #[test]
