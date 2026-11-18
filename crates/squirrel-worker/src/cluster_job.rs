@@ -50,9 +50,10 @@ pub enum Left {
 /// Longest a `faces` transaction may run before it commits its faces.
 const STORE_MARGIN: Duration = Duration::from_secs(60);
 
-/// Time one run may take before it hands over to a fresh run of the job
-/// (its timeout is longer).
-pub const RUN_BUDGET: Duration = Duration::from_secs(2 * 60);
+/// Time one run may take before it hands over to a fresh run of the job (its
+/// timeout is longer): short, as it holds the worker's ML slot and the next
+/// run goes on where it stopped.
+pub const RUN_BUDGET: Duration = Duration::from_secs(20);
 
 pub async fn run(ctx: &MediaContext, job: JobContext) -> Result<(), JobError> {
     let Payload { owner_id } = job.payload()?;
