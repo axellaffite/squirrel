@@ -99,7 +99,8 @@ export class PhotoSearcher {
 
 	/** The next page of the current results. */
 	more(): void {
-		if (!this.hasMore || this.loading || this.items.length >= MAX_PHOTO_RESULTS) return;
+		// Not while a request (or its retry) is pending: it would replace it.
+		if (!this.hasMore || this.loading || this.#pending !== null || this.items.length >= MAX_PHOTO_RESULTS) return;
 		void this.#fetch(this.query, this.items.length);
 	}
 
@@ -150,6 +151,8 @@ export class PhotoSearcher {
 			const wait = result.retryAfterMs;
 			if (result.status === 429 && !retried && wait !== undefined && wait <= MAX_RETRY_WAIT_MS) {
 				this.error = result.error;
+				// Still this query's request: typing it again waits for the retry, never sooner.
+				this.#pending = query;
 				this.#retry = setTimeout(() => void this.#fetch(query, offset, true), wait);
 				return;
 			}

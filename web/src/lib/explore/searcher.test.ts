@@ -145,4 +145,36 @@ describe('PhotoSearcher', () => {
 		expect(searcher.error).toBe(TOO_LONG);
 		expect(run).toHaveBeenCalledTimes(1);
 	});
+
+	it('waits out a rate limit: the same query typed again sends nothing sooner', async () => {
+		let calls = 0;
+		const run = vi.fn<RunPhotoSearch>(async () =>
+			++calls === 1 ? { ok: false, error: 'slow down', status: 429, retryAfterMs: 1000 } : results(['a'])
+		);
+		const searcher = new PhotoSearcher(run, 10);
+		searcher.now('dog');
+		await vi.advanceTimersByTimeAsync(0);
+		searcher.type('dog');
+		await vi.advanceTimersByTimeAsync(500);
+		expect(run).toHaveBeenCalledTimes(1);
+		await vi.advanceTimersByTimeAsync(500);
+		expect(run).toHaveBeenCalledTimes(2);
+		expect(ids(searcher)).toEqual(['a']);
+	});
+
+	it('loads no next page while a request is pending', async () => {
+		let release: (() => void) | undefined;
+		const run = vi.fn<RunPhotoSearch>((_q, offset) =>
+			offset === 0 ? Promise.resolve(results(['a'], true)) : new Promise((resolve) => (release = () => resolve(results(['b']))))
+		);
+		const searcher = new PhotoSearcher(run, 10);
+		searcher.now('dog');
+		await vi.advanceTimersByTimeAsync(0);
+		searcher.more();
+		searcher.more();
+		expect(run).toHaveBeenCalledTimes(2);
+		release?.();
+		await vi.advanceTimersByTimeAsync(0);
+		expect(ids(searcher)).toEqual(['a', 'b']);
+	});
 });
