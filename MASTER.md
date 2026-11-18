@@ -164,6 +164,10 @@ Presses, sheets and dialogs still animate there.
   (album card minimum width), `--album-ratio` 4 / 3 (album covers), `--picker-max` 352 px (tallest
   the album picker's list grows before it scrolls), `--scrubber-w` 56 px, `--scrub-tick` 2 px, `--info-w` 360 px (lightbox
   info panel from 1024 px), `--locator-dot` 6 px. Grid gaps are `--space-1` (4 px).
+- **Explore tokens** (validated 2026-11-18): `--chip-h` 36 px (filter chips, = `--control-sm`),
+  `--chip-clear` 20 px (a chip's clear icon), `--face-sm` 40 px, `--face-md` 64 px, `--face-lg`
+  112 px (face avatars), `--person-min` 112 px (people grid minimum column), `--face-box` 2 px
+  (face box outline in the lightbox).
 
 ## Components (states: default, hover, focus-visible, active, disabled)
 
@@ -248,6 +252,30 @@ press. Disabled: 45 % opacity, no shadow or glow, `cursor: not-allowed`. Hover o
 - **Album picker**: a dialog / bottom sheet listing albums by name as rows in a `--tint` well (a
   40 px round white well with the cover, name, count), "New album…" first; the list scrolls past
   `--picker-max`.
+
+### Explore and people (validated 2026-11-18)
+
+No new colour: every value below is an existing token or one of the Explore tokens above.
+
+- **Filter chip**: a `--chip-h` (36 px, 44 px hit area) pill on `--tint`, `--ink-muted` label with
+  its leading icon (person avatar, `tag`, `map-pin`, `camera`, `image`). An active chip is a chosen
+  segment: `--card` fill, `--shadow-knob`, `--ink` label, and a trailing `--chip-clear` (20 px) `x`
+  button named "Remove filter …" with its subject ("Remove filter Paris"). Chips wrap; "Clear
+  filters" is a quiet button after them. Hover `--tint-strong` (inactive) or `--shadow-hover`
+  (active).
+- **Face avatar**: a circle (`--radius-full`) of `--face-sm` 40, `--face-md` 64 or `--face-lg` 112
+  px, `overflow: hidden`, on `--tint`. It is a **client-side crop** of the photo's thumbnail to the
+  face box (`object-fit: cover`, the image scaled by 1 / box size and offset by the box): no face
+  image exists on the server. Small faces (box height under about 0.08) crop the preview instead.
+  While loading, or without a face, the circle shows the `user` icon in `--ink-muted`.
+- **People grid**: `auto-fill` of `--person-min` (112 px) columns, 3 columns on phones; each person is
+  a `--face-lg` avatar over the name (500, or "Unnamed" in `--ink-muted`) and the count
+  (`--ink-muted`, tabular).
+- **Face box** (lightbox, only while "People" is open in the info panel): a `--face-box` (2 px)
+  `--photo-ring` outline, `--radius-tile`, over the face on the photo; no fill.
+- **Tag and place cards**: the album card unchanged (cover, name, count). A place card adds the
+  locator (well, `--tint-strong` land, `--locator-dot` `--accent` dot) under its name. Places are
+  grouped under country headings (section heading style); no map tiles, no map library.
 
 ### Phone app (validated 2026-11-16)
 

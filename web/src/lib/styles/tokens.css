@@ -145,6 +145,15 @@
 	--info-w: 22.5rem;
 	--locator-dot: 0.375rem;
 
+	/* Explore and people (validated 2026-11-18) */
+	--chip-h: var(--control-sm);
+	--chip-clear: var(--icon-sm);
+	--face-sm: 2.5rem;
+	--face-md: 4rem;
+	--face-lg: 7rem;
+	--person-min: 7rem;
+	--face-box: 2px;
+
 	/* Motion */
 	--dur-fast: 160ms;
 	--dur: 240ms;
