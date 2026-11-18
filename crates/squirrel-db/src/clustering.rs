@@ -94,14 +94,22 @@ pub async fn mark_waiting(
     Ok(())
 }
 
+/// Longest a clustering transaction's statements may run: a bound on the
+/// exact scans, far above their cost at home sizes.
+pub const SCAN_TIMEOUT: &str = "60s";
+
 /// The `k` nearest faces of each of `faces` among `owner`'s faces, leaving
 /// out faces pinned to nobody. Exact scans: only this owner's rows are read.
+/// Bounds the caller's transaction to [`SCAN_TIMEOUT`] per statement.
 pub async fn neighbours(
     conn: &mut PgConnection,
     owner: Uuid,
     faces: &[Uuid],
     k: i64,
 ) -> Result<Vec<NeighbourRow>, DbError> {
+    sqlx::query(&format!("SET LOCAL statement_timeout = '{SCAN_TIMEOUT}'"))
+        .execute(&mut *conn)
+        .await?;
     Ok(sqlx::query_as(
         "SELECT q.id AS face, n.id AS neighbour, n.person_id, n.distance \
            FROM faces q \
@@ -117,7 +125,7 @@ pub async fn neighbours(
     .bind(owner)
     .bind(faces)
     .bind(k)
-    .fetch_all(conn)
+    .fetch_all(&mut *conn)
     .await?)
 }
 

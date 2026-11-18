@@ -620,3 +620,18 @@ async fn reclustering_starts_automatic_assignments_over(pool: PgPool) {
         "faces are off"
     );
 }
+
+#[sqlx::test(migrator = "squirrel_db::MIGRATOR")]
+async fn neighbour_scans_are_bounded(pool: PgPool) {
+    let fx = Fixture::new(pool);
+    let alice = admin(fx.pool()).await;
+    let mut tx = fx.pool().begin().await.unwrap();
+    squirrel_db::clustering::neighbours(&mut tx, alice.id, &[Uuid::now_v7()], 16)
+        .await
+        .unwrap();
+    let timeout: String = sqlx::query_scalar("SHOW statement_timeout")
+        .fetch_one(&mut *tx)
+        .await
+        .unwrap();
+    assert_eq!(timeout, "1min");
+}
