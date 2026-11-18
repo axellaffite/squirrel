@@ -201,9 +201,27 @@ async fn rename_hide_and_choose_a_cover(pool: PgPool) {
     )
     .await
     .assert_status(StatusCode::UNPROCESSABLE_ENTITY);
-    let cleared: Value = send(&w.alice, &w.alice_me, "PATCH", &url, json!({"name": null}))
+    send(
+        &w.alice,
+        &w.alice_me,
+        "PATCH",
+        &url,
+        json!({"name": "x", "clear_name": true}),
+    )
+    .await
+    .assert_status(StatusCode::UNPROCESSABLE_ENTITY);
+    send(&w.alice, &w.alice_me, "PATCH", &url, json!({"name": null}))
         .await
-        .json();
+        .assert_status(StatusCode::UNPROCESSABLE_ENTITY);
+    let cleared: Value = send(
+        &w.alice,
+        &w.alice_me,
+        "PATCH",
+        &url,
+        json!({"clear_name": true}),
+    )
+    .await
+    .json();
     assert_eq!(cleared["name"], Value::Null);
 }
 

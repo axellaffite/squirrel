@@ -69,16 +69,23 @@ pub async fn update_person(
     ApiPath(id): ApiPath<Uuid>,
     ApiJson(request): ApiJson<UpdatePersonRequest>,
 ) -> Result<Json<PersonDto>, ApiError> {
-    if request.name.is_none() && request.hidden.is_none() && request.cover_face_id.is_none() {
+    let name = match (request.name.as_deref(), request.clear_name) {
+        (Some(_), true) => {
+            return Err(ApiError::Validation(
+                "give name or clear_name, not both".into(),
+            ));
+        }
+        (Some(raw), false) => Some(Some(person_name(raw)?)),
+        (None, true) => Some(None),
+        (None, false) => None,
+    };
+    if name.is_none() && request.hidden.is_none() && request.cover_face_id.is_none() {
         return Err(ApiError::Validation(
-            "give a name, hidden or cover_face_id".into(),
+            "give name, clear_name, hidden or cover_face_id".into(),
         ));
     }
     let changes = PersonUpdate {
-        name: request
-            .name
-            .map(|name| name.as_deref().map(person_name).transpose())
-            .transpose()?,
+        name,
         hidden: request.hidden,
         cover_face_id: request.cover_face_id,
     };

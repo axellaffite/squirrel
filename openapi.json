@@ -6219,8 +6219,12 @@
       },
       "UpdatePersonRequest": {
         "type": "object",
-        "description": "Rename, hide or choose the cover. At least one field is required.",
+        "description": "Rename (or clear the name), hide or choose the cover. At least one change\nis required.",
         "properties": {
+          "clear_name": {
+            "type": "boolean",
+            "description": "`true` removes the name (not with `name`)."
+          },
           "cover_face_id": {
             "type": [
               "string",
@@ -6240,7 +6244,7 @@
               "string",
               "null"
             ],
-            "description": "1–100 characters once trimmed; `null` clears the name."
+            "description": "A new name, 1–100 characters once trimmed."
           }
         }
       },

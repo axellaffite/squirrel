@@ -85,13 +85,16 @@ pub struct PeopleQuery {
     pub include_hidden: Option<bool>,
 }
 
-/// Rename, hide or choose the cover. At least one field is required.
+/// Rename (or clear the name), hide or choose the cover. At least one change
+/// is required.
 #[derive(Debug, Deserialize, ToSchema)]
 pub struct UpdatePersonRequest {
-    /// 1–100 characters once trimmed; `null` clears the name.
-    #[serde(default, deserialize_with = "present")]
-    #[schema(value_type = Option<String>, nullable)]
-    pub name: Option<Option<String>>,
+    /// A new name, 1–100 characters once trimmed.
+    #[serde(default)]
+    pub name: Option<String>,
+    /// `true` removes the name (not with `name`).
+    #[serde(default)]
+    pub clear_name: bool,
     #[serde(default)]
     pub hidden: Option<bool>,
     /// One of this person's faces; `null` goes back to the best one.
@@ -249,14 +252,12 @@ mod tests {
 
     #[test]
     fn a_name_is_kept_cleared_or_set() {
-        let parse = |json: &str| {
-            serde_json::from_str::<UpdatePersonRequest>(json)
-                .unwrap()
-                .name
-        };
-        assert_eq!(parse(r#"{"hidden": true}"#), None);
-        assert_eq!(parse(r#"{"name": null}"#), Some(None));
-        assert_eq!(parse(r#"{"name": "Anna"}"#), Some(Some("Anna".into())));
+        let parse = |json: &str| serde_json::from_str::<UpdatePersonRequest>(json).unwrap();
+        let kept = parse(r#"{"hidden": true}"#);
+        assert_eq!((kept.name, kept.clear_name), (None, false));
+        let cleared = parse(r#"{"clear_name": true}"#);
+        assert_eq!((cleared.name, cleared.clear_name), (None, true));
+        assert_eq!(parse(r#"{"name": "Anna"}"#).name.as_deref(), Some("Anna"));
     }
 
     #[test]
