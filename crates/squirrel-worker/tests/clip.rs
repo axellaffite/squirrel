@@ -369,6 +369,18 @@ async fn backfill_retries_any_image_without_an_embedding(pool: PgPool) {
 }
 
 #[sqlx::test(migrator = "squirrel_db::MIGRATOR")]
+async fn a_label_bank_stored_later_is_picked_up(pool: PgPool) {
+    let (_fake, ml) = fake_ml(false);
+    assert!(ml.label_bank(&pool).await.unwrap().is_empty());
+    store_bank(&pool).await;
+    assert_eq!(
+        ml.label_bank(&pool).await.unwrap().len(),
+        2,
+        "empty was not cached"
+    );
+}
+
+#[sqlx::test(migrator = "squirrel_db::MIGRATOR")]
 async fn a_worker_without_clip_queues_no_clip_work(pool: PgPool) {
     let fx = Fixture::new(pool);
     photo(&fx, true).await;
