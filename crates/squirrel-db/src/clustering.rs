@@ -152,11 +152,12 @@ pub async fn assign(
     .rows_affected())
 }
 
-/// Deletes `owner`'s unnamed people left without a face (a named person
-/// stays, so a rename survives a re-scan); returns how many.
+/// Deletes `owner`'s unnamed, unhidden people left without a face (a named or
+/// hidden person stays, so a rename or a hide survives a re-scan); returns
+/// how many.
 pub async fn delete_empty_people(conn: &mut PgConnection, owner: Uuid) -> Result<u64, DbError> {
     Ok(sqlx::query(
-        "DELETE FROM people p WHERE p.owner_id = $1 AND p.name IS NULL \
+        "DELETE FROM people p WHERE p.owner_id = $1 AND p.name IS NULL AND NOT p.hidden \
            AND NOT EXISTS (SELECT 1 FROM faces f WHERE f.owner_id = $1 AND f.person_id = p.id)",
     )
     .bind(owner)
