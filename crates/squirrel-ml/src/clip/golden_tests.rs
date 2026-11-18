@@ -5,7 +5,7 @@ use std::collections::HashMap;
 
 use super::{ClipImage, ClipText, cosine};
 use crate::models::{CLIP_MODEL_ID, ModelGroup};
-use crate::testutil::{Shape, shape_image, test_ml};
+use crate::testutil::{Shape, shape_image, test_ml_for};
 
 #[derive(serde::Deserialize)]
 struct Golden {
@@ -34,7 +34,7 @@ fn the_golden_file_is_for_the_pinned_model() {
 /// CPU kernels differ slightly across x86/ARM and versions: cosine ≥ 0.999.
 #[test]
 fn image_embeddings_match_the_golden_vectors() {
-    let Some((dylib, models)) = test_ml() else {
+    let Some((dylib, models)) = test_ml_for(&[ModelGroup::ClipImage]) else {
         return;
     };
     models.verify(ModelGroup::ClipImage).unwrap();
@@ -53,7 +53,7 @@ fn image_embeddings_match_the_golden_vectors() {
 /// Each picture is closest to its own description among the three.
 #[test]
 fn the_text_tower_reads_the_shapes() {
-    let Some((dylib, models)) = test_ml() else {
+    let Some((dylib, models)) = test_ml_for(&[ModelGroup::ClipText]) else {
         return;
     };
     crate::runtime::init(&dylib).unwrap();

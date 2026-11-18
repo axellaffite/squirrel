@@ -230,7 +230,7 @@ mod tests {
     /// With the real models: only the installed groups are loaded.
     #[test]
     fn only_the_installed_groups_are_enabled() {
-        let Some(real) = squirrel_ml::testutil::test_models() else {
+        let Some(real) = squirrel_ml::testutil::test_models_for(&[ModelGroup::Faces]) else {
             return;
         };
         let dir = tempfile::tempdir().unwrap();

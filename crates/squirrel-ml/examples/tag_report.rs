@@ -9,13 +9,14 @@ use squirrel_ml::clip::labels::{self, TOP_K};
 use squirrel_ml::clip::{ClipImage, ClipText};
 use squirrel_ml::input::{MAX_PREVIEW_PIXELS, load_preview};
 use squirrel_ml::models::CLIP_MODEL_ID;
-use squirrel_ml::testutil::test_ml;
+use squirrel_ml::models::ModelGroup;
+use squirrel_ml::testutil::test_ml_for;
 
 fn main() -> anyhow::Result<()> {
     let dir = std::env::args()
         .nth(1)
         .ok_or_else(|| anyhow::anyhow!("usage: tag_report <dir>"))?;
-    let (dylib, models) = test_ml()
+    let (dylib, models) = test_ml_for(&[ModelGroup::ClipImage, ModelGroup::ClipText])
         .ok_or_else(|| anyhow::anyhow!("set SQUIRREL_ORT_DYLIB and SQUIRREL_MODELS_DIR"))?;
     squirrel_ml::runtime::init(&dylib)?;
     let mut text = ClipText::load(&models, 4)?;

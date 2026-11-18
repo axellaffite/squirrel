@@ -366,7 +366,9 @@ async fn the_label_bank_is_computed_once(pool: PgPool) {
 /// With the real runtime and models: a generated picture end to end, in-process.
 #[sqlx::test(migrator = "squirrel_db::MIGRATOR")]
 async fn a_real_photo_gets_a_real_embedding(pool: PgPool) {
-    let Some((dylib, models)) = squirrel_ml::testutil::test_ml() else {
+    let Some((dylib, models)) =
+        squirrel_ml::testutil::test_ml_for(&[squirrel_ml::ModelGroup::ClipImage])
+    else {
         return;
     };
     let engine = squirrel_ml::serve::Engine::load(&squirrel_ml::serve::EngineConfig {

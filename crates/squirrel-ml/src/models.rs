@@ -483,10 +483,10 @@ mod pinned_files {
     /// With the real models (`scripts/fetch-models.sh`), every group verifies.
     #[test]
     fn the_installed_models_verify() {
-        let Some(dir) = crate::testutil::test_models() else {
+        let Some(dir) = crate::testutil::test_models_for(&[]) else {
             return;
         };
-        for group in ModelGroup::ALL {
+        for group in ModelGroup::ALL.into_iter().filter(|g| dir.installed(*g)) {
             dir.verify(group)
                 .unwrap_or_else(|err| panic!("{}: {err}", group.name()));
         }

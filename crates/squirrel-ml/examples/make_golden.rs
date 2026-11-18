@@ -10,10 +10,10 @@ use std::collections::BTreeMap;
 
 use squirrel_ml::clip::ClipImage;
 use squirrel_ml::models::{CLIP_MODEL_ID, ModelGroup};
-use squirrel_ml::testutil::{Shape, shape_image, test_ml};
+use squirrel_ml::testutil::{Shape, shape_image, test_ml_for};
 
 fn main() -> anyhow::Result<()> {
-    let (dylib, models) = test_ml()
+    let (dylib, models) = test_ml_for(&[ModelGroup::ClipImage])
         .ok_or_else(|| anyhow::anyhow!("set SQUIRREL_ORT_DYLIB and SQUIRREL_MODELS_DIR"))?;
     models.verify(ModelGroup::ClipImage)?;
     squirrel_ml::runtime::init(&dylib)?;
