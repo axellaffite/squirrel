@@ -10,6 +10,21 @@ use ort::session::builder::GraphOptimizationLevel;
 
 /// The ONNX Runtime minor version the fetch script pins (1.31.x).
 pub const ORT_MINOR: u32 = 31;
+/// The exact build the library pins below identify (its build info only says
+/// `git-branch=HEAD`).
+pub const ORT_VERSION: &str = "1.31.1";
+
+/// SHA-256 of `libonnxruntime` 1.31.1 per platform, as extracted by
+/// `scripts/fetch-onnxruntime.sh` (a test keeps both lists equal). Checked
+/// before the library is loaded: it is native code run in-process.
+pub const PINNED_LIBRARIES: [&str; 3] = [
+    // linux-x64
+    "a96f132e5eb5ca04e23a7d2fc1078fb95aa591e8d71d0f237702ece3a1e0f4ea",
+    // linux-arm64
+    "7e17c55d675be73f67a218dbecb55522395f61dafb3da03ebc7ade56a4c2f813",
+    // osx-arm64
+    "2685dc296147c47b0dbd8e0615547b12fc0c445d158d1f374cbd0705d9626fdc",
+];
 
 #[derive(Debug, thiserror::Error)]
 pub enum RuntimeError {
@@ -19,6 +34,10 @@ pub enum RuntimeError {
         "{path} is not ONNX Runtime 1.{ORT_MINOR}.x (found {found}); run scripts/fetch-onnxruntime.sh"
     )]
     Version { path: PathBuf, found: String },
+    #[error(
+        "{path} is not the pinned ONNX Runtime build (SHA-256 {actual}); run scripts/fetch-onnxruntime.sh"
+    )]
+    Unpinned { path: PathBuf, actual: String },
     #[error("ONNX Runtime is already loaded from {loaded}, not {path}")]
     OtherLibrary { loaded: PathBuf, path: PathBuf },
     #[error("loading ONNX Runtime from {path}: {message}")]
@@ -29,7 +48,6 @@ pub enum RuntimeError {
 
 struct Loaded {
     path: PathBuf,
-    version: String,
     environment: Environment,
 }
 
@@ -54,6 +72,7 @@ pub fn init(dylib: &Path) -> Result<&'static str, RuntimeError> {
             })
         };
     }
+    check_pinned(&path)?;
     match ort::util::probe(&path) {
         Some(ORT_MINOR) => {}
         Some(minor) => {
@@ -80,29 +99,31 @@ pub fn init(dylib: &Path) -> Result<&'static str, RuntimeError> {
         .with_telemetry(false)
         .build()
         .map_err(|err| load(err.to_string()))?;
-    let full = full_version(ort::info(), ORT_MINOR);
-    let _ = LOADED.set(Loaded {
-        path,
-        version: full,
-        environment,
-    });
+    let _ = LOADED.set(Loaded { path, environment });
     Ok(version())
 }
 
-/// The loaded ONNX Runtime's version, e.g. "1.31.1".
-fn version() -> &'static str {
-    LOADED
-        .get()
-        .map_or("unknown", |loaded| loaded.version.as_str())
+/// Refuses a library whose SHA-256 is not one of [`PINNED_LIBRARIES`].
+fn check_pinned(path: &Path) -> Result<(), RuntimeError> {
+    let actual = std::fs::File::open(path)
+        .and_then(|mut file| crate::models::sha256_hex(&mut file))
+        .map_err(|err| RuntimeError::Load {
+            path: path.to_owned(),
+            message: err.to_string(),
+        })?;
+    if PINNED_LIBRARIES.contains(&actual.as_str()) {
+        Ok(())
+    } else {
+        Err(RuntimeError::Unpinned {
+            path: path.to_owned(),
+            actual,
+        })
+    }
 }
 
-/// "1.31.1" from the build info ("… git-branch=rel-1.31.1, …"), else "1.<minor>".
-fn full_version(build_info: &str, minor: u32) -> String {
-    build_info
-        .split(|c: char| c == ',' || c.is_whitespace())
-        .find_map(|part| part.strip_prefix("git-branch=rel-"))
-        .filter(|v| v.starts_with(&format!("1.{minor}")))
-        .map_or_else(|| format!("1.{minor}"), str::to_owned)
+/// The loaded version: the hash pin identifies the build exactly.
+fn version() -> &'static str {
+    ORT_VERSION
 }
 
 /// A CPU session on the loaded runtime: `intra_threads` threads for one
@@ -160,7 +181,7 @@ mod tests {
         assert!(
             matches!(
                 err,
-                RuntimeError::Version { .. } | RuntimeError::OtherLibrary { .. }
+                RuntimeError::Unpinned { .. } | RuntimeError::OtherLibrary { .. }
             ),
             "{err}"
         );
@@ -177,10 +198,18 @@ mod tests {
     }
 
     #[test]
-    fn the_full_version_comes_from_the_build_info() {
-        let info = "ORT Build Info: git-branch=rel-1.31.1, git-commit-id=abc, build type=Release";
-        assert_eq!(full_version(info, 31), "1.31.1");
-        assert_eq!(full_version("ORT Build Info: git-branch=main", 31), "1.31");
+    fn the_fetch_script_pins_the_same_libraries() {
+        let script = include_str!("../../../scripts/fetch-onnxruntime.sh");
+        let mut listed: Vec<&str> = script
+            .split("LIB_SHA=")
+            .skip(1)
+            .filter_map(|rest| rest.get(..64))
+            .filter(|sha| sha.bytes().all(|b| b.is_ascii_hexdigit()))
+            .collect();
+        let mut pinned = PINNED_LIBRARIES.to_vec();
+        listed.sort_unstable();
+        pinned.sort_unstable();
+        assert_eq!(listed, pinned);
     }
 
     #[test]

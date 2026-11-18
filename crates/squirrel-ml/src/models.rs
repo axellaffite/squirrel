@@ -250,7 +250,7 @@ pub fn pinned(path: &str) -> &'static PinnedFile {
         .unwrap_or_else(|| panic!("{path} is not a pinned model file"))
 }
 
-fn sha256_hex(reader: &mut impl Read) -> std::io::Result<String> {
+pub(crate) fn sha256_hex(reader: &mut impl Read) -> std::io::Result<String> {
     let mut hasher = Sha256::new();
     let mut buf = vec![0u8; 1024 * 1024];
     loop {
