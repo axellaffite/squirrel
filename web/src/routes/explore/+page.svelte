@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { page } from '$app/state';
 	import { onMount } from 'svelte';
-	import FaceAvatar from '#lib/components/photos/FaceAvatar.svelte';
+	import PeopleGrid from '#lib/components/photos/PeopleGrid.svelte';
 	import PhotosTabs from '#lib/components/photos/PhotosTabs.svelte';
 	import PlaceCard from '#lib/components/photos/PlaceCard.svelte';
 	import TagCard from '#lib/components/photos/TagCard.svelte';
@@ -10,11 +10,11 @@
 	import Button from '#lib/components/ui/Button.svelte';
 	import EmptyState from '#lib/components/ui/EmptyState.svelte';
 	import { listPeople, listPlaces, listTags, type Person, type PlaceGroup, type TagGroup } from '#lib/explore/api.ts';
-	import { personLabel } from '#lib/explore/faces.ts';
-	import { photosHref } from '#lib/explore/filters.ts';
 
 	/** Cards shown per section before "See all". */
 	const PREVIEW = 6;
+	/** Two rows of the people grid on phones (3 columns). */
+	const PEOPLE_PREVIEW = 6;
 
 	let people: Person[] | null = $state(null);
 	let places: PlaceGroup[] | null = $state(null);
@@ -51,17 +51,11 @@
 	{:else}
 		{#if people && people.length > 0}
 			<section class="section" aria-labelledby="explore-people">
-				<h2 id="explore-people">People</h2>
-				<ul class="people">
-					{#each people.slice(0, 12) as person (person.id)}
-						<li>
-							<a class="person" href={photosHref({ person: person.id })}>
-								<FaceAvatar face={person.cover} size="md" />
-								<span class="name" class:unnamed={!person.name}>{personLabel(person.name)}</span>
-							</a>
-						</li>
-					{/each}
-				</ul>
+				<div class="head">
+					<h2 id="explore-people">People</h2>
+					<Button variant="quiet" size="sm" href="/explore/people">See all</Button>
+				</div>
+				<PeopleGrid people={people.slice(0, PEOPLE_PREVIEW)} />
 			</section>
 		{/if}
 
@@ -122,58 +116,6 @@
 		margin: 0;
 		padding: 0;
 		list-style: none;
-	}
-
-	.people {
-		display: flex;
-		gap: var(--space-3);
-		margin: 0;
-		padding: var(--space-1) 0 var(--space-2);
-		overflow-x: auto;
-		list-style: none;
-	}
-
-	.person {
-		display: grid;
-		justify-items: center;
-		gap: var(--space-2);
-		width: var(--person-min);
-		padding: var(--space-2);
-		border-radius: var(--radius-card);
-		color: var(--ink);
-		text-decoration: none;
-		transition:
-			background-color var(--dur-fast) var(--ease),
-			transform var(--dur-fast) var(--ease);
-	}
-
-	.name {
-		max-width: 100%;
-		overflow: hidden;
-		text-overflow: ellipsis;
-		white-space: nowrap;
-		font-size: var(--text-sm);
-		line-height: var(--text-sm-lh);
-		font-weight: var(--weight-label);
-	}
-
-	.unnamed {
-		color: var(--ink-muted);
-	}
-
-	@media (hover: hover) {
-		.person:hover {
-			background: var(--tint-strong);
-		}
-	}
-
-	.person:focus-visible {
-		outline: var(--ring-width) solid var(--accent);
-		outline-offset: var(--ring-offset);
-	}
-
-	.person:active {
-		transform: translateY(var(--press));
 	}
 
 	@media (min-width: 48rem) {
