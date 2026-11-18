@@ -36,6 +36,13 @@ if [[ -e "${DEST}" && ! -f "${DEST}/${MARKER}" ]] && [[ -n "$(ls -A "${DEST}")" 
 	echo "fetch-onnxruntime: ${DEST} is not empty and was not made by this script" >&2
 	exit 1
 fi
+STAMP="${VERSION} ${RID} ${NUPKG_SHA256} ${LIB_SHA}"
+# Already installed (e.g. restored from a CI cache): nothing to download.
+if [[ -f "${DEST}/${MARKER}" && "$(cat "${DEST}/${MARKER}")" == "${STAMP}" ]] &&
+	echo "${LIB_SHA}  ${DEST}/lib/${LIB}" | shasum -a 256 -c - >/dev/null 2>&1; then
+	echo "SQUIRREL_ORT_DYLIB=${DEST}/lib/${LIB}"
+	exit 0
+fi
 
 package_ok() {
 	echo "${NUPKG_SHA256}  $1" | shasum -a 256 -c - >/dev/null 2>&1 &&
@@ -55,7 +62,9 @@ if [[ ! -f "${PACKAGE}" ]] || ! package_ok "${PACKAGE}"; then
 	mv "${PACKAGE}.part" "${PACKAGE}"
 fi
 
-TMP="$(mktemp -d)"
+# Next to DEST: the final swap is two renames on one file system.
+mkdir -p "$(dirname "${DEST}")"
+TMP="$(mktemp -d "$(dirname "${DEST}")/.onnxruntime.XXXXXX")"
 trap 'rm -rf "${TMP}"' EXIT
 unzip -q -o "${PACKAGE}" "runtimes/${RID}/native/${LIB}" LICENSE ThirdPartyNotices.txt -d "${TMP}/x"
 mkdir -p "${TMP}/unpacked/lib"
@@ -65,9 +74,10 @@ if ! echo "${LIB_SHA}  ${TMP}/unpacked/lib/${LIB}" | shasum -a 256 -c - >/dev/nu
 	echo "fetch-onnxruntime: ${LIB} does not match its pinned SHA-256" >&2
 	exit 1
 fi
-echo "${VERSION} ${RID} ${NUPKG_SHA256} ${LIB_SHA}" > "${TMP}/unpacked/${MARKER}"
+echo "${STAMP}" > "${TMP}/unpacked/${MARKER}"
 
-rm -rf "${DEST}"
-mkdir -p "$(dirname "${DEST}")"
+if [[ -e "${DEST}" ]]; then
+	mv "${DEST}" "${TMP}/previous"
+fi
 mv "${TMP}/unpacked" "${DEST}"
 echo "SQUIRREL_ORT_DYLIB=${DEST}/lib/${LIB}"
