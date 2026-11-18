@@ -136,6 +136,18 @@ Setup / join / login; Photos (virtualized justified grid, timeline scrubber, lig
 - iOS: SwiftUI shell, `PHPhotoLibrary` observer, `BGProcessingTask`, background `URLSession` uploads.
 - Screens: server + login, sync status, backup settings (albums, Wi-Fi only), basic gallery and file browser.
 
+**Phase 6 as built** (corrects the bullets above; the code is the source of truth):
+- The UI is shared Compose Multiplatform on both platforms, not SwiftUI on iOS; Swift is only the host
+  (`SquirrelApp`, `AppDelegate`). The iOS platform code (PhotoKit, background `URLSession`,
+  `BGTaskScheduler`, Keychain) is Kotlin/Native.
+- Phones sign in with `POST /api/auth/device/login` and send `Authorization: Bearer sqa_…`; the
+  refresh token (`sqr_…`) rotates on use with a 30 s grace. Chunks from iOS background transfers carry
+  a per-upload token (`Authorization: Upload squ_…`; the current and the previous one are valid).
+- Backup asks `POST /api/sync/check` which hashes are missing and uploads only those, into
+  `Photos/<device name>/<year>/` (`POST /api/sync/folder`). Content deleted for good is never asked for
+  again. A phone token reads and backs up but cannot trash or delete.
+- Plan and as-built notes: `docs/plans/2026-11-16-phase-6-kmp-app.md`; setup: `mobile/README.md`.
+
 ## Errors and observability
 
 - API error envelope `{error: {code, message}}` from a `thiserror` enum; internal details logged only.

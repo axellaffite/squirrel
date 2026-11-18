@@ -186,9 +186,25 @@ chunks already sent.
   under an existing dev database. Reset it with `docker compose -f deploy/docker-compose.dev.yml down -v`
   (this destroys local dev data), then start it again. Never edit a migration once merged: add a new one.
 
+## Phone app
+
+The Android and iOS app lives in `mobile/` (Kotlin Multiplatform, one Compose UI for both); see
+`mobile/README.md` for the JDK 21 and Android SDK setup, installing the debug APK (USB or
+wireless `adb`), running on the iOS simulator, signing for your own iPhone and the end-to-end
+server script. In short, from `mobile/`:
+
+    ./gradlew build                                              # Android and shared code
+    ./gradlew :androidApp:installDebug                           # onto a connected phone
+    ./gradlew -Psquirrel.ios=true :shared:iosSimulatorArm64Test  # iOS targets (macOS only)
+
+A phone signs in with a username and password and gets a device token; Settings › Devices on
+the web lists the phones and revokes them. Plain HTTP is accepted only for home and VPN
+addresses; anything else needs HTTPS.
+
 ## API contract
 
 `openapi.json` is generated from the Rust code and committed. After changing an endpoint:
 
     cargo run -q -p squirrel -- openapi > openapi.json
     cd web && pnpm gen:api
+    cd mobile && ./gradlew :shared:checkApiClient   # the app's client is generated at build time
