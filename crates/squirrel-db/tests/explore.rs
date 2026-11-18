@@ -202,4 +202,15 @@ async fn ml_counts_are_the_callers_pending_and_failed_images(pool: PgPool) {
     set(&pool, b, "clip_state = 'failed'").await;
     let counts = explore::ml_counts(&pool, alice.id).await.unwrap();
     assert_eq!((counts.queued, counts.failed), (1, 1));
+    // A trashed pending photo and Bob's own photos do not count for Alice.
+    let gone = photo(&pool, alice.id, photos, "gone.jpg", when).await;
+    raw_trash(&pool, gone).await;
+    let bob = invited(&pool, &alice, "bob").await;
+    let bob_photos = root(&pool, bob.id, "Photos").await.id;
+    let bobs = photo(&pool, bob.id, bob_photos, "bob.jpg", when).await;
+    set(&pool, bobs, "clip_state = 'failed'").await;
+    let counts = explore::ml_counts(&pool, alice.id).await.unwrap();
+    assert_eq!((counts.queued, counts.failed), (1, 1));
+    let bob_counts = explore::ml_counts(&pool, bob.id).await.unwrap();
+    assert_eq!((bob_counts.queued, bob_counts.failed), (0, 1));
 }
