@@ -28,12 +28,21 @@ pub enum EncodeError {
 }
 
 pub struct TextEncoder {
-    client: MlClient,
+    /// Shared with the tasks requests run in.
+    client: Arc<MlClient>,
 }
 
 impl TextEncoder {
     pub fn new(client: MlClient) -> Self {
-        Self { client }
+        Self {
+            client: Arc::new(client),
+        }
+    }
+
+    /// The running child's process id (tests).
+    #[doc(hidden)]
+    pub async fn child_id(&self) -> Option<u32> {
+        self.client.child_id().await
     }
 
     /// The unit 512-d embedding of `text` (trimmed, 1–200 characters).
@@ -47,10 +56,12 @@ impl TextEncoder {
             texts: vec![text.to_owned()],
         };
         let unavailable = |why: String| EncodeError::Unavailable(why);
-        let answer = self
-            .client
-            .request(op)
+        // Its own task: an HTTP request cancelled mid-search (client gone,
+        // timeout) does not cancel the exchange with the shared child.
+        let client = self.client.clone();
+        let answer = tokio::spawn(async move { client.request(op).await })
             .await
+            .map_err(|err| unavailable(err.to_string()))?
             .map_err(|err: MlClientError| unavailable(err.to_string()))?;
         let embedding = match answer {
             MlBody::Ok(MlOutput::Embeddings { mut embeddings }) if embeddings.len() == 1 => {
@@ -134,6 +145,57 @@ mod tests {
             down.encode("dog").await,
             Err(EncodeError::Unavailable(_))
         ));
+    }
+
+    /// A shell script standing in for `squirrel ml-exec --groups clip-text`:
+    /// answers each `clip_text` after `delay` seconds with a unit vector.
+    fn script_child(dir: &std::path::Path, delay: &str) -> squirrel_ml::client::MlChildConfig {
+        use std::os::unix::fs::PermissionsExt;
+        let unit: Vec<String> = unit().iter().map(|v| v.to_string()).collect();
+        let path = dir.join("fake-squirrel");
+        let script = format!(
+            r#"#!/bin/sh
+echo '{{"ready":true,"groups":["clip-text"],"onnxruntime":null}}'
+while IFS= read -r line; do
+  id=$(echo "$line" | sed 's/.*"id":\([0-9]*\).*/\1/')
+  case "$line" in
+    *clip_text*) sleep {delay}; echo "{{\"id\":$id,\"status\":\"ok\",\"embeddings\":[[{}]]}}" ;;
+    *) echo "{{\"id\":$id,\"status\":\"ok\"}}" ;;
+  esac
+done
+"#,
+            unit.join(",")
+        );
+        std::fs::write(&path, script).unwrap();
+        std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o755)).unwrap();
+        squirrel_ml::client::MlChildConfig {
+            program: path,
+            args: Vec::new(),
+            ready_timeout: Duration::from_secs(10),
+            request_timeout: Duration::from_secs(10),
+            max_requests: 1000,
+            idle: Duration::from_secs(600),
+            restart_backoff: squirrel_ml::client::RESTART_BACKOFF,
+            max_restart_backoff: squirrel_ml::client::MAX_RESTART_BACKOFF,
+        }
+    }
+
+    /// A search cancelled mid-request (the HTTP client left) neither kills
+    /// nor poisons the shared child: the next search reuses it.
+    #[tokio::test]
+    async fn a_cancelled_search_leaves_the_child_usable() {
+        let dir = tempfile::tempdir().unwrap();
+        let encoder = TextEncoder::new(MlClient::new(MlBackend::Subprocess(script_child(
+            dir.path(),
+            "0.3",
+        ))));
+        encoder.encode("warm").await.unwrap();
+        let pid = encoder.child_id().await.unwrap();
+        let cancelled =
+            tokio::time::timeout(Duration::from_millis(50), encoder.encode("dog")).await;
+        assert!(cancelled.is_err(), "cancelled before the answer");
+        assert_eq!(encoder.encode("cat").await.unwrap(), unit());
+        assert_eq!(encoder.child_id().await, Some(pid), "the same child");
     }
 
     /// With the real models: a dog is closer to a puppy than to a car.
