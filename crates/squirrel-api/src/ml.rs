@@ -35,13 +35,51 @@ pub enum EncodeError {
 pub struct TextEncoder {
     /// Shared with the tasks requests run in.
     client: Arc<MlClient>,
+    /// Checked against their pins once, before the first use (`None`: the
+    /// caller vouches for them, e.g. tests).
+    models: Option<squirrel_ml::ModelDir>,
+    verified: tokio::sync::OnceCell<Result<(), String>>,
 }
 
 impl TextEncoder {
     pub fn new(client: MlClient) -> Self {
         Self {
             client: Arc::new(client),
+            models: None,
+            verified: tokio::sync::OnceCell::new(),
         }
+    }
+
+    /// Verifies the text model files in `models` (SHA-256) once, lazily,
+    /// before the first query or warm-up, as the worker does at its start.
+    pub fn verifying(self, models: squirrel_ml::ModelDir) -> Self {
+        Self {
+            models: Some(models),
+            ..self
+        }
+    }
+
+    /// The text model files match their pins (checked once; a mismatch stays).
+    async fn verified(&self) -> Result<(), EncodeError> {
+        let Some(models) = &self.models else {
+            return Ok(());
+        };
+        let outcome = self
+            .verified
+            .get_or_init(|| async {
+                let models = models.clone();
+                tokio::task::spawn_blocking(move || {
+                    models.verify(squirrel_ml::ModelGroup::ClipText)
+                })
+                .await
+                .map_err(|err| err.to_string())
+                .and_then(|result| result.map_err(|err| err.to_string()))
+            })
+            .await;
+        outcome.clone().map_err(|why| {
+            tracing::error!(error = %why, "the text model does not match its pin");
+            EncodeError::Unavailable(why)
+        })
     }
 
     /// The running child's process id (tests).
@@ -57,6 +95,7 @@ impl TextEncoder {
         if chars == 0 || chars > MAX_QUERY_CHARS {
             return Err(EncodeError::Length);
         }
+        self.verified().await?;
         let op = MlOp::ClipText {
             texts: vec![text.to_owned()],
         };
@@ -84,6 +123,9 @@ impl TextEncoder {
     pub fn warm_up(self: &Arc<Self>) {
         let encoder = self.clone();
         tokio::spawn(async move {
+            if encoder.verified().await.is_err() {
+                return;
+            }
             if let Err(err) = encoder.client.health().await {
                 tracing::warn!(error = %err, "warming up the text encoder failed");
             }
@@ -203,6 +245,21 @@ done
         assert!(cancelled.is_err(), "cancelled before the answer");
         assert_eq!(encoder.encode("cat").await.unwrap(), unit());
         assert_eq!(encoder.child_id().await, Some(pid), "the same child");
+    }
+
+    #[tokio::test]
+    async fn text_model_files_that_do_not_match_their_pins_are_never_used() {
+        let dir = tempfile::tempdir().unwrap();
+        let encoder = fake(|_| panic!("a mismatched model is never loaded"))
+            .verifying(squirrel_ml::ModelDir::new(dir.path()));
+        assert!(matches!(
+            encoder.encode("dog").await,
+            Err(EncodeError::Unavailable(_))
+        ));
+        assert!(matches!(
+            encoder.encode("dog").await,
+            Err(EncodeError::Unavailable(_))
+        ));
     }
 
     /// With the real models: a dog is closer to a puppy than to a car.
