@@ -28,10 +28,11 @@ impl ClipImage {
             path: cfg_path.clone(),
             message,
         };
-        let raw = std::fs::read(&cfg_path).map_err(|err| invalid(err.to_string()))?;
+        let raw = models.read_verified(PREPROCESS_CFG)?;
         let cfg = PreprocessCfg::parse(&raw).map_err(|err| invalid(err.to_string()))?;
+        let model = models.read_verified(IMAGE_MODEL)?;
         Ok(Self {
-            session: runtime::session(&models.file(IMAGE_MODEL), threads)?,
+            session: runtime::session_from_memory(&models.file(IMAGE_MODEL), &model, threads)?,
             cfg,
         })
     }

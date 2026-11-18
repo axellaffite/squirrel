@@ -28,12 +28,15 @@ pub struct ClipText {
 impl ClipText {
     pub fn load(models: &ModelDir, threads: usize) -> Result<Self, RuntimeError> {
         let path = models.file(TOKENIZER);
-        let tokenizer = Tokenizer::from_file(&path).map_err(|err| RuntimeError::Session {
-            path: path.clone(),
-            message: err.to_string(),
+        let tokenizer = Tokenizer::from_bytes(models.read_verified(TOKENIZER)?).map_err(|err| {
+            RuntimeError::Session {
+                path: path.clone(),
+                message: err.to_string(),
+            }
         })?;
         let model = models.file(TEXT_MODEL);
-        let session = runtime::session(&model, threads)?;
+        let session =
+            runtime::session_from_memory(&model, &models.read_verified(TEXT_MODEL)?, threads)?;
         let input_type = session
             .inputs()
             .first()

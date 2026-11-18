@@ -28,6 +28,9 @@ pub const PINNED_LIBRARIES: [&str; 3] = [
 
 #[derive(Debug, thiserror::Error)]
 pub enum RuntimeError {
+    /// A model file read for loading does not match its pin.
+    #[error(transparent)]
+    Model(#[from] crate::models::ModelError),
     #[error("ONNX Runtime library {path} not found (run scripts/fetch-onnxruntime.sh)")]
     Missing { path: PathBuf },
     #[error(
@@ -124,6 +127,32 @@ fn check_pinned(path: &Path) -> Result<(), RuntimeError> {
 /// The loaded version: the hash pin identifies the build exactly.
 fn version() -> &'static str {
     ORT_VERSION
+}
+
+/// A CPU session on the loaded runtime from model bytes already verified in
+/// memory (`ModelDir::read_verified`); `name` only labels errors.
+pub fn session_from_memory(
+    name: &Path,
+    model: &[u8],
+    intra_threads: usize,
+) -> Result<Session, RuntimeError> {
+    let fail = |message: String| RuntimeError::Session {
+        path: name.to_owned(),
+        message,
+    };
+    let loaded = LOADED
+        .get()
+        .ok_or_else(|| fail("ONNX Runtime is not loaded".into()))?;
+    Session::builder(&loaded.environment)
+        .map_err(|err| fail(err.to_string()))?
+        .with_optimization_level(GraphOptimizationLevel::Level3)
+        .map_err(|err| fail(err.to_string()))?
+        .with_intra_threads(intra_threads.max(1))
+        .map_err(|err| fail(err.to_string()))?
+        .with_inter_threads(1)
+        .map_err(|err| fail(err.to_string()))?
+        .commit_from_memory(model)
+        .map_err(|err| fail(err.to_string()))
 }
 
 /// A CPU session on the loaded runtime: `intra_threads` threads for one
