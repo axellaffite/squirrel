@@ -120,6 +120,10 @@ class AppGraph(
     @Throws(Exception::class)
     suspend fun awaitReady(): AppState = state.first { it != AppState.Loading }
 
+    /** After [signOut]: suspends until the server, the token store and the caches are done with. */
+    @Throws(Exception::class)
+    suspend fun awaitSignedOut(): AppState = state.first { it is AppState.NeedsSignIn }
+
     /** The live backup status for the screens. */
     @OptIn(ExperimentalCoroutinesApi::class)
     fun backupStatus(): Flow<BackupStatus> = syncEngine.flatMapLatest { engine ->
