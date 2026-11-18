@@ -404,3 +404,39 @@ mod tests {
         );
     }
 }
+
+#[cfg(test)]
+mod pinned_files {
+    use super::*;
+
+    /// `scripts/fetch-models.sh` downloads exactly the files pinned here.
+    #[test]
+    fn the_fetch_script_pins_the_same_files() {
+        let script = include_str!("../../../scripts/fetch-models.sh");
+        let mut listed: Vec<(&str, &str)> = script
+            .lines()
+            .filter(|line| !line.starts_with('#') && line.matches('|').count() == 3)
+            .map(|line| {
+                let fields: Vec<&str> = line.split('|').collect();
+                (fields[1], fields[3])
+            })
+            .collect();
+        let mut pinned: Vec<(&str, &str)> =
+            PINNED.iter().map(|file| (file.path, file.sha256)).collect();
+        listed.sort_unstable();
+        pinned.sort_unstable();
+        assert_eq!(listed, pinned);
+    }
+
+    /// With the real models (`scripts/fetch-models.sh`), every group verifies.
+    #[test]
+    fn the_installed_models_verify() {
+        let Some(dir) = crate::testutil::test_models() else {
+            return;
+        };
+        for group in ModelGroup::ALL {
+            dir.verify(group)
+                .unwrap_or_else(|err| panic!("{}: {err}", group.name()));
+        }
+    }
+}
