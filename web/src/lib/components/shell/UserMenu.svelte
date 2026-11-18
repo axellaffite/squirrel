@@ -69,6 +69,10 @@
 				<Icon name="smartphone" />
 				<span>Devices</span>
 			</a>
+			<a class="item" href="/settings/faces" onclick={() => close(false)}>
+				<Icon name="scan-face" />
+				<span>Faces</span>
+			</a>
 			<!-- On ≥ 1024 px "Log out" sits in the top bar instead, so only one is ever visible. -->
 			<button type="button" class="logout" onclick={onlogout}>
 				<Icon name="log-out" />
