@@ -1,24 +1,27 @@
 # Face test portraits
 
-Four public-domain portraits of two adults who are public officials, two photos each, used by
-the face detection, alignment and recognition tests. Each licence was checked on the file's
-Wikimedia Commons page on 2026-11-18, in its "Licensing" section, not assumed from the subject.
-The files are Commons' own 500 px thumbnails of the originals, committed unchanged. The SHA-256
-values below are those of the committed files.
+Four public-domain NASA astronaut portraits of two adults, two photos each, used by the face
+detection, alignment and recognition tests. Each licence was checked on the file's Wikimedia
+Commons page on 2026-11-18, in its "Licensing" section, not assumed from the subject: "This file is
+in the public domain in the United States because it was solely created by NASA" (PD-NASA). The
+files are Commons' own 500 px thumbnails of the originals, committed unchanged. The SHA-256 values
+are those of the committed files.
 
-| File | Commons page | Author | Licence (as stated on the page) | SHA-256 |
-|---|---|---|---|---|
-| `biden-2021.jpg` | [File:Joe_Biden_presidential_portrait.jpg](https://commons.wikimedia.org/wiki/File:Joe_Biden_presidential_portrait.jpg) | Adam Schultz, the White House | Public domain: a work of an employee of the Executive Office of the President of the United States, taken as part of official duties. As a work of the U.S. federal government, it is in the public domain. | `0fe50eafde03eb1d04582c408f869b07d7d548f267f9adc157adcb4df760df8a` |
-| `biden-2013.jpg` | [File:Joe_Biden_official_portrait_2013.jpg](https://commons.wikimedia.org/wiki/File:Joe_Biden_official_portrait_2013.jpg) | David Lienemann, the White House | Public domain (same Executive Office of the President statement) | `4cf27ad4f66d28c4851ca276f599f14b9129d95198ef979b852fe65ce67489ac` |
-| `harris-2021.jpg` | [File:Kamala_Harris_Vice_Presidential_Portrait.jpg](https://commons.wikimedia.org/wiki/File:Kamala_Harris_Vice_Presidential_Portrait.jpg) | Lawrence Jackson, the White House | Public domain (same Executive Office of the President statement) | `c2e81ac5f138e2e4e410bd06df06051dc6e910fa5818424ef07721ed1f8a53c1` |
-| `harris-2017.jpg` | [File:Senator_Harris_official_senate_portrait.jpg](https://commons.wikimedia.org/wiki/File:Senator_Harris_official_senate_portrait.jpg) | United States Senate | Public domain: a United States Congress image. As a work of the U.S. federal government, it is in the public domain. | `b7342479d33ac4eb9f9e64cbeff4c5c658102851978836dc708305dd5527a05a` |
+| File | Commons page | Author | SHA-256 |
+|---|---|---|---|
+| `koch-a.jpg` | [File:Christina_Koch_official_portrait_in_an_EMU.jpg](https://commons.wikimedia.org/wiki/File:Christina_Koch_official_portrait_in_an_EMU.jpg) | NASA/Bill Stafford | `2650073e4128e040111679f4c27f547848389b27ab760a7c2732fde24e39cfab` |
+| `koch-b.jpg` | [File:Christina_M._Hammock_portrait.jpg](https://commons.wikimedia.org/wiki/File:Christina_M._Hammock_portrait.jpg) | NASA/Robert Markowitz | `433a10dfd35a85033b8ea30673042f51809f2398eeee895d734c53f88a84d9c7` |
+| `glover-a.jpg` | [File:Victor_Glover_official_portrait_2020.jpg](https://commons.wikimedia.org/wiki/File:Victor_Glover_official_portrait_2020.jpg) | NASA/Norah Moran | `ee82c3739e2b3cc0b37c2d98fbf14edca113902d4efc3cb489af9fa18bd0cef9` |
+| `glover-b.jpg` | [File:Victor_J._Glover_official_portrait.jpg](https://commons.wikimedia.org/wiki/File:Victor_J._Glover_official_portrait.jpg) | NASA | `601929def358c63a306bcb381a1b585d83ee08c0a0afb18081c555dce39a0d2b` |
 
 Download URLs (the thumbnails, 500 px wide):
 
-- https://upload.wikimedia.org/wikipedia/commons/thumb/6/68/Joe_Biden_presidential_portrait.jpg/500px-Joe_Biden_presidential_portrait.jpg
-- https://upload.wikimedia.org/wikipedia/commons/thumb/f/f4/Joe_Biden_official_portrait_2013.jpg/500px-Joe_Biden_official_portrait_2013.jpg
-- https://upload.wikimedia.org/wikipedia/commons/thumb/4/41/Kamala_Harris_Vice_Presidential_Portrait.jpg/500px-Kamala_Harris_Vice_Presidential_Portrait.jpg
-- https://upload.wikimedia.org/wikipedia/commons/thumb/d/dd/Senator_Harris_official_senate_portrait.jpg/500px-Senator_Harris_official_senate_portrait.jpg
+- https://upload.wikimedia.org/wikipedia/commons/thumb/8/8c/Christina_Koch_official_portrait_in_an_EMU.jpg/500px-Christina_Koch_official_portrait_in_an_EMU.jpg
+- https://upload.wikimedia.org/wikipedia/commons/thumb/3/3f/Christina_M._Hammock_portrait.jpg/500px-Christina_M._Hammock_portrait.jpg
+- https://upload.wikimedia.org/wikipedia/commons/thumb/a/aa/Victor_Glover_official_portrait_2020.jpg/500px-Victor_Glover_official_portrait_2020.jpg
+- https://upload.wikimedia.org/wikipedia/commons/thumb/9/9e/Victor_J._Glover_official_portrait.jpg/500px-Victor_J._Glover_official_portrait.jpg
 
-Commons notes that the people shown may have personality rights. These images are used only
-as technical test data and are never shown in the application.
+Commons notes that NASA insignia are restricted and that the people shown may have personality
+rights. These images are used only as technical test data and are never shown in the application.
+
+`golden-yunet-sface-2021dec.json` holds this code's embeddings (`examples/make_golden.rs`).
