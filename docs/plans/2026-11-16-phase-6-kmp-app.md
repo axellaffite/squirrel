@@ -10,6 +10,76 @@ tokens, appears in a new **Settings › Devices** page on the web, asks `POST /a
 of its photos are missing, and passes the phone's capture time so it becomes step 3 of the
 capture-time chain.
 
+## As built (summary, 2026-11-18)
+
+Phase 6 shipped in scope: a phone signs in with its own revocable tokens, backs up its photos and
+videos (Android in the background, iOS through a background `URLSession` and `BGTaskScheduler`),
+and browses the photo timeline, albums and files, with one Compose UI on both platforms. The code is
+the source of truth and the task code below is the plan as written; detailed notes per milestone are
+at the end ("As built: Milestones A–C", "Task 37 as built", "As built: Milestone H, iOS").
+About 140 commits from `75100c9` to this summary (69 of them fixes), never pushed: the repository
+has no remote.
+
+**Milestones and their main commits**
+
+| Milestone | Main commits |
+|---|---|
+| A — Devices and bearer tokens | `75100c9` devices table · `de96094` prefixed tokens · `74d743a` device login/refresh · `25167c7` bearer beside sessions · `f8ccc75` data routes for devices · `39391fb` list, rename, revoke |
+| B — Sync protocol | `4c24c1f` device assets · `a5b59e1` `sync/check` · `6bf7221` `taken_at`/`device_asset_id` on uploads · `139ab39` capture-time step 3 · `68c5ed6` per-phone folders |
+| C — Web devices | `9dba903` helpers · `3e4a945` Settings › Devices |
+| A–C review | `ec9e677` refresh grace · `505baea` tombstones for deleted content · `fb9655b` deletion is session-only · `d4d979c` same-named phones · `3a2cbc1` redacted Debug |
+| D — Mobile foundation | `764c426` Gradle build · `fd72458` MASTER.md phone section · `908398d` generated theme · `dd1fb49` / `7135a81` generated client and drift check · `7f2e1f6` database, settings, token storage · `c1ad1bc` / `6c4cfcc` sign-in and shell |
+| E — Sync engine | `9b17560` SHA-256 · `825f94c` scanner and queue · `f41bbd0` resumable uploads · `5138d2b` engine · `d48537a` status |
+| F — Android backup | `0061c9e` permissions · `ee7ee93` MediaStore · `133075f` WorkManager · `712f88a` / `b3bf156` status and settings screens · `5f90911` emulator end to end |
+| G — Gallery and files | `fa3bcc9` thumbnails · `4c5ce69` timeline, viewer, albums · `6fe60b9` files |
+| H — iOS | `61abc44` / `2a15af4` upload tokens (two live) · `c4a0561` Xcode host · `e05e20f` Keychain · `171a663` PhotoKit · `8f2bd7f` background uploads · `f589233` BG tasks · `f325333` / `5740148` photo access, sharing, native text input · `0c1cbb3` simulator end to end |
+| I — CI and docs | `1ec19b5` CI jobs · `f32e67c` READMEs |
+
+**Deviations from the plan**
+
+- *Toolchain:* Kotlin 2.4.21, Gradle 9.7.1, AGP 9.3.3, CMP 1.12.2 as planned; `compileSdk` 37
+  (two AndroidX libraries require it) with `targetSdk` 36. Xcode 27 builds and tests the iOS app
+  locally although Kotlin 2.4.21 lists only Xcode 26.4; Kotlin 2.5.0 was still an RC.
+- *Server:* refresh tokens get a 30 s grace instead of counting a racing retry as reuse; content
+  deleted for good is tombstoned so no phone uploads it again; trash and delete routes are
+  session-only (a stolen phone token cannot destroy anything); same-named phones get
+  `<name> (2)` folders; per-upload tokens are an `apiKey` scheme in the contract, and the previous
+  token stays valid for one rotation (migrations `…05` and `…06`).
+- *App security:* plain HTTP only to home and VPN addresses, the bearer token only to the
+  server's own host, tokens and passwords never logged, the app hidden from recents screenshots
+  (Android), opened files protected until first unlock (iOS).
+- *iOS:* all platform code is Kotlin/Native (no Swift beyond the host and tests); Keychain tests run
+  in XCTest because the Kotlin/Native runner has no entitlement; "Back up now" uses
+  `app.squirrel.ios.backup.now` and falls back to an in-app run where the system refuses
+  continued processing (the simulator does); the sign-in fields use CMP 1.12.2's per-field native
+  iOS input, which brings password autofill (an earlier note wrongly said the option was missing);
+  the end-to-end tests check with `sync/check` rather than counting files.
+- *CI:* jobs for Android and iOS were added (Task 46) but have never run (no remote). The iOS job pins
+  `macos-26` with `Xcode_26.4`, which is a guess about the hosted image (Open question 17).
+
+**Final gate (2026-11-18)**
+
+- Server: `cargo fmt`, clippy with `-D warnings`, `cargo test --workspace` (751 passed, before Phase 5 code landed), `pnpm gen:api`
+  without drift.
+- Mobile JVM/Android: `./gradlew build`, `:shared:checkApiClient`, `:androidApp:lintDebug`; tests
+  `shared` 110, `ui` 61, `theme` 6, `androidApp` unit 39.
+- iOS (Xcode 27, iPhone 17 simulator, iOS 27): Kotlin/Native `shared` 128 and `ui` 59; XCTest 10 of 10,
+  the end-to-end test included. `pnpm check:native-tokens` without drift.
+- End to end against `mobile/scripts/mobile-e2e-server.sh`: the iOS simulator test (Task 44) passed
+  in this gate; the Android emulator test (Task 31) passed when Milestone F was built and was not
+  rerun here.
+
+**Still open**
+
+- Task 45, the manual pass on a physical iPhone signed with the user's Apple team: background
+  transfers that outlive suspension, BG tasks, iCloud originals, HEIC and Live Photos.
+- A soak of Android background backup on a real phone (days of WorkManager runs, Doze, reboots).
+- Scrolling the 5 000-photo timeline on a real phone (120 Hz on iPhone).
+- VoiceOver focus order on a device (the accessibility tree names every element; the simulator has
+  no VoiceOver).
+- Android 17 (API 37): the `ACCESS_LOCAL_NETWORK` runtime permission before targeting 37.
+- CI has never run.
+
 **Order:** decided on 2026-11-16, Phase 6 is built **before** Phase 4 (video) and Phase 5 (ML).
 Videos the phone backs up are uploaded and stored as ordinary files now; Phase 4's backfill job
 will give them posters, metadata and playback later, with no change to the app.
