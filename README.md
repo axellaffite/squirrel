@@ -138,7 +138,7 @@ by a backfill job queued at every worker start.
 | `SQUIRREL_GEODATA_FILE` | `<data_dir>/geo/…` | Another place-name file (tests, custom extracts); used without the SHA-256 pin |
 
 **Models** (photo tags, text search and faces) are fetched once, from revision-pinned URLs,
-and checked against their SHA-256 (about 640 MB; sources and licences in
+and checked against their SHA-256 (about 1.5 GB; sources and licences in
 `crates/squirrel-ml/MODELS.md`):
 
     scripts/fetch-models.sh               # prints SQUIRREL_MODELS_DIR=…/.cache/squirrel-assets/models
@@ -155,7 +155,7 @@ In production, make the models directory and the ONNX Runtime library **read-onl
 service user** (owned by root, mode 0644/0755): they are checked when loaded, but a writable
 library could be swapped between its check and `dlopen`. Models are hashed in memory and
 loaded from that same buffer, which briefly doubles the child's memory while it starts
-(peak ≈ 0.8 GB with the CLIP image model).
+(see "Memory" under "Machine learning").
 
 **pdfium** (PDF thumbnails and text) is downloaded, checked against its pinned SHA-256 and
 unpacked into `target/pdfium/` by:
@@ -184,15 +184,16 @@ per second).
 ### Machine learning
 
 With the models installed, the worker tags photos ("beach", "dog", "snow"), makes them
-searchable by what they show (in English: "dog on the beach"), and finds faces and groups
+searchable by what they show, in any language ("dog on the beach", "chien sur la plage"),
+and finds faces and groups
 them into people each user can name, merge, split and hide. Everything runs on this
 server's CPU, below thumbnails in priority, and nothing leaves the server. Without models
 these features are simply off (Media status says so).
 
 | What | Model | Size | Licence |
 | --- | --- | --- | --- |
-| Tags and search | OpenAI CLIP ViT-B/32 (ONNX export `immich-app/ViT-B-32__openai`, 512-d): image tower | 335 MB | MIT |
-| Search queries | the same CLIP's text tower, run by the server on the first search | 242 MB | MIT |
+| Tags and search | Google SigLIP2 ViT-B/16, 224 px, multilingual (ONNX export `immich-app/ViT-B-16-SigLIP2__webli`, 768-d): image tower | 354 MB | Apache-2.0 |
+| Search queries and the tag bank | the same SigLIP2's text tower (Gemma tokenizer), run by the server on the first search | 1 077 MB | Apache-2.0 |
 | Face detection | OpenCV Zoo YuNet (`face_detection_yunet_2026may`) | 0.2 MB | MIT |
 | Face recognition | OpenCV Zoo SFace (`face_recognition_sface_2021dec`, 128-d) | 37 MB | Apache-2.0 |
 | Runtime | ONNX Runtime 1.31.1, CPU (Microsoft's NuGet package) | ≈ 20 MB | MIT |
@@ -220,10 +221,13 @@ the child with `MALLOC_ARENA_MAX=2`: without it glibc reserves 64 MB per thread 
 need 8.9 GiB, which the limit refuses. The server's search model takes about 0.4 GB while
 searches happen and is stopped after 5 idle minutes. Plan for 4 GB of RAM on the box.
 
-**Time per photo** (measured on an Apple M4 Pro, release build, 2 threads): the CLIP image
-embedding takes about 27–36 ms and face detection with embedding about 21 ms, on top of the
-thumbnails. A mini PC is several times slower; the work runs in the background, below
-thumbnails, one photo at a time.
+**Time per photo** (measured on an Apple M4 Pro, release build, 2 threads): the SigLIP2 image
+embedding takes about 48 ms (43 ms in the model) and face detection with embedding about 21 ms,
+on top of the thumbnails; a search query takes about 15 ms once the text model is loaded
+(≈ 4 s to verify and load it). An Intel i3-1220P mini PC (NUC 12 Pro) should take roughly
+0.12–0.16 s per photo for the embedding and 0.2 s with faces (an estimate, not measured:
+about 3× slower per inference), so ≈ 18 000 photos an hour; a query about 40–50 ms. The work
+runs in the background, below thumbnails, one photo at a time.
 
 **Postgres** needs pgvector (see "Administration" above): embeddings are `halfvec` columns,
 searched exactly per user (no shared index), so one user's library never changes another's
@@ -234,14 +238,23 @@ separate faces and people for each. Settings › Faces turns them off, which at 
 all of that user's faces, people, names and corrections (turning them on again finds the faces
 anew, without names). Deleting a photo for good deletes its faces too.
 
-**Thresholds are provisional**: the tag thresholds (`src/clip/labels.rs`: cosine 0.25, margin
-0.045 over the background prompt), the search cut-offs (`SEARCH_MAX_DISTANCE` 0.78 and
-`SEARCH_RELATIVE_CUTOFF` 0.06), the face detector score (0.6) and the clustering parameters
-(`squirrel_ml::cluster::SFACE`: distance 0.50, 3 faces, detector score 0.7 to found a person) were set on test images and await
-calibration on a real library. To judge tags on your own photos:
+**How tags and search decide.** SigLIP2 scores every photo–text pair with a probability,
+`σ(112.67 · cosine − 16.77)` (its learned scale and bias). A tag needs a probability of
+0.0025 (logit −6), a search result 0.0005 (logit −7.6): SigLIP gives a bare word such as
+"dog" a low absolute probability even on a clear match (logit ≈ −3.6), while unrelated pairs
+score −8.7 or less on the test photos. Labels easily mistaken for each other share a group in
+the label bank (`crates/squirrel-ml/labels/labels-v3.tsv`: dog, cat, rabbit…; car, truck,
+bus…): only the best of a group can become a tag, and only one logit ahead of its siblings.
+A query close to such a label ("dog", "chien", "perro") must also beat that label's siblings
+on each photo, so a search for "dog" leaves out a photo where "cat" scores higher. These
+values were calibrated on the test photos (public-domain dogs, cats and portraits, and
+generated shapes) and await a check on a real library, like the face detector score (0.6)
+and the clustering parameters (`squirrel_ml::cluster::SFACE`: distance 0.50, 3 faces,
+detector score 0.7 to found a person). To judge tags or searches on your own photos:
 
     SQUIRREL_ORT_DYLIB=… SQUIRREL_MODELS_DIR=… cargo run --release -p squirrel-ml \
       --features test-util --example tag_report -- <a folder of photos>
+    … --example search_report -- <a folder of photos> "chien" "red car"
 
 After changing the clustering parameters, regroup a user's automatic faces (their own
 corrections, names and hidden people stay):
