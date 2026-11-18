@@ -32,6 +32,35 @@ struct Fake {
 }
 
 #[sqlx::test(migrator = "squirrel_db::MIGRATOR")]
+async fn invalid_embeddings_are_never_stored(pool: PgPool) {
+    let mut nan = axis(0);
+    nan[3] = f32::NAN;
+    for bad in [vec![0.5; 3], nan, vec![f32::INFINITY; 512]] {
+        let answer = bad.clone();
+        let client = MlClient::new(MlBackend::Fake(Arc::new(move |_: &MlOp| {
+            Ok(MlBody::Ok(MlOutput::Embedding {
+                embedding: answer.clone(),
+            }))
+        })));
+        let ml = Arc::new(MlContext::new(client, true, false));
+        let fx = Fixture::with_ml(pool.clone(), ml.clone());
+        sqlx::query("TRUNCATE users, blobs CASCADE")
+            .execute(fx.pool())
+            .await
+            .unwrap();
+        let sha = photo(&fx, true).await;
+        let err = clip_job::run(&fx.ctx, &ml, clip_job_for(&sha))
+            .await
+            .unwrap_err();
+        assert!(matches!(err, JobError::Retry(_)), "{err}");
+        let stored = squirrel_db::clip::embedding(fx.pool(), &sha, CLIP_MODEL_ID)
+            .await
+            .unwrap();
+        assert!(stored.is_none(), "{} values stored", bad.len());
+    }
+}
+
+#[sqlx::test(migrator = "squirrel_db::MIGRATOR")]
 async fn a_child_in_restart_backoff_reschedules_without_an_attempt(pool: PgPool) {
     let client = MlClient::new(MlBackend::Fake(Arc::new(|_: &MlOp| {
         Err(MlClientError::Backoff(std::time::Duration::from_secs(42)))

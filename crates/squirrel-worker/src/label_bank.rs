@@ -59,6 +59,13 @@ async fn compute(text: &MlClient, labels: &[Label]) -> anyhow::Result<Vec<(Strin
             other => anyhow::bail!("encoding the label prompts: {other:?}"),
         };
         anyhow::ensure!(embeddings.len() == batch.len(), "the child skipped prompts");
+        anyhow::ensure!(
+            embeddings
+                .iter()
+                .all(|e| e.len() == squirrel_ml::clip::EMBEDDING_DIM
+                    && e.iter().all(|v| v.is_finite())),
+            "the child answered an invalid text embedding"
+        );
         for ((index, _), embedding) in batch.iter().zip(embeddings) {
             per_label[*index].push(embedding);
         }
