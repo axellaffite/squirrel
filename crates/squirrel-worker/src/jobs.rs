@@ -16,8 +16,7 @@ pub const BACKFILL: &str = "backfill";
 /// Phase 5 (machine learning): registered only when their models are installed.
 pub const CLIP_EMBED: &str = "clip_embed";
 pub const FACES: &str = "faces";
-pub const CLUSTER_FACES: &str = "cluster_faces";
-pub const FACE_BACKFILL: &str = "face_backfill";
+pub use squirrel_jobs::kinds::{CLUSTER_FACES, FACE_BACKFILL};
 /// Encodes the label bank's prompts with the CLIP text tower.
 pub const LABEL_BANK: &str = "label_bank";
 

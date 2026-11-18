@@ -5,6 +5,7 @@ pub mod backfill;
 pub mod clip_job;
 pub mod context;
 pub mod exec;
+pub mod face_backfill;
 pub mod faces_job;
 mod facts;
 pub mod geocode;
@@ -127,6 +128,13 @@ fn register_ml(registry: &mut Registry, ctx: &Arc<MediaContext>) {
         );
     }
     if ml.faces {
+        register(
+            registry,
+            ctx,
+            jobs::FACE_BACKFILL,
+            BACKFILL_TIMEOUT,
+            |ctx, job| async move { face_backfill::run(&ctx, job).await },
+        );
         let faces = ml.clone();
         register(
             registry,

@@ -405,6 +405,22 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/me/ml-settings": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["get_ml_settings"];
+        put: operations["update_ml_settings"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/media/status": {
         parameters: {
             query?: never;
@@ -1128,6 +1144,20 @@ export interface components {
              */
             queued: number;
         };
+        MlSettingsDto: {
+            /**
+             * Format: int64
+             * @description Faces stored for the caller.
+             */
+            faces_count: number;
+            /** @description Faces are detected and grouped into people (on by default). */
+            faces_enabled: boolean;
+            /**
+             * Format: int64
+             * @description People (groups of faces) of the caller.
+             */
+            people_count: number;
+        };
         /** @enum {string} */
         MlStateDto: "ready" | "unavailable";
         /**
@@ -1397,6 +1427,10 @@ export interface components {
              */
             cover_node_id?: string | null;
             name?: string | null;
+        };
+        UpdateMlSettings: {
+            /** @description `false` deletes every face and person of the caller at once. */
+            faces_enabled: boolean;
         };
         /** @description Rename and/or move. At least one field is required. */
         UpdateNodeRequest: {
@@ -2621,6 +2655,80 @@ export interface operations {
                 };
             };
             410: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    get_ml_settings: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MlSettingsDto"];
+                };
+            };
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    update_ml_settings: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpdateMlSettings"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MlSettingsDto"];
+                };
+            };
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            403: {
                 headers: {
                     [name: string]: unknown;
                 };

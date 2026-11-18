@@ -7,6 +7,21 @@ use uuid::Uuid;
 use crate::{NewJob, priority};
 
 pub const PROCESS_MEDIA: &str = "process_media";
+/// Queues `faces` for a user's photos that have no scan (turning faces on).
+pub const FACE_BACKFILL: &str = "face_backfill";
+/// Clusters a user's new faces (Phase 5).
+pub const CLUSTER_FACES: &str = "cluster_faces";
+
+/// One page of a user's face backfill, after node `after` (`None`: the first).
+pub fn face_backfill(owner: Uuid, after: Option<Uuid>) -> NewJob {
+    let key = after.map_or_else(
+        || format!("{FACE_BACKFILL}:{owner}"),
+        |id| format!("{FACE_BACKFILL}:{owner}:{id}"),
+    );
+    NewJob::new(FACE_BACKFILL, json!({ "owner_id": owner, "after": after }))
+        .priority(priority::background(priority::FACES))
+        .dedupe(key)
+}
 
 /// Classify a stored file and queue its media work. `background`: from backfill.
 pub fn process_media(node_id: Uuid, background: bool) -> NewJob {

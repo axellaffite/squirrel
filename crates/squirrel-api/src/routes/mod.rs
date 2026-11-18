@@ -9,6 +9,7 @@ pub mod health;
 pub mod invitations;
 pub mod jobs;
 pub mod join;
+pub mod ml_settings;
 pub mod nodes;
 pub mod photo_search;
 pub mod photos;

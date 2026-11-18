@@ -67,7 +67,7 @@ const CHUNK_TIMEOUT: Duration = Duration::from_secs(5 * 60);
         (name = "system"), (name = "setup"), (name = "auth"), (name = "invitations"),
         (name = "admin"), (name = "files"), (name = "uploads"), (name = "trash"),
         (name = "storage"), (name = "jobs"), (name = "photos"), (name = "albums"),
-        (name = "search"), (name = "devices"), (name = "sync"), (name = "explore")
+        (name = "search"), (name = "devices"), (name = "sync"), (name = "explore"), (name = "ml")
     ),
     // Schemas only referenced from query parameters are not collected from
     // the routes: list them here.
@@ -221,6 +221,10 @@ fn json_routes() -> OpenApiRouter<AppState> {
         .routes(routes!(routes::explore::list_tags))
         .routes(routes!(routes::explore::list_places))
         .routes(routes!(routes::explore::list_cameras))
+        .routes(routes!(
+            routes::ml_settings::get_ml_settings,
+            routes::ml_settings::update_ml_settings
+        ))
         .routes(routes!(
             routes::albums::list_albums,
             routes::albums::create_album
