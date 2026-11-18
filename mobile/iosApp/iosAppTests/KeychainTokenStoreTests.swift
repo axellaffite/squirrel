@@ -27,7 +27,7 @@ final class KeychainTokenStoreTests: XCTestCase {
         try await store.clear() // nothing there: still fine
     }
 
-    func testTheTokenStaysOnThisDeviceAfterFirstUnlock() async throws {
+    func testTheTokenStaysOnThisDeviceAfterFirstUnlockAndIsNeverSynced() async throws {
         try await store.save(refreshToken: "sqr_1")
         XCTAssertTrue(store.isThisDeviceAfterFirstUnlock())
     }
