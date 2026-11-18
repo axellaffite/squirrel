@@ -47,10 +47,15 @@ internal const val REQUEST_TIMEOUT_MS = 30_000L
 private const val SYNC_CHECK_BATCH = 500
 private val REFUSED = setOf(400, 401, 403)
 
-/** JSON settings shared by every call: tolerant of new server fields, omits nulls. */
+/**
+ * JSON settings shared by every call: tolerant of new server fields, omits nulls. Defaults are
+ * written: a required list defaults to empty in the generated models (for older servers), and an
+ * empty one must still be sent.
+ */
 val ApiJson: Json = Json {
     ignoreUnknownKeys = true
     explicitNulls = false
+    encodeDefaults = true
 }
 
 /**
