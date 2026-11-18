@@ -50,7 +50,7 @@ pub struct MlContext {
     pub faces: bool,
     /// The label bank of the pinned CLIP model, read once from the database
     /// (computed at worker start, `label_bank::ensure`). Empty: no tags.
-    label_bank: tokio::sync::OnceCell<std::sync::Arc<LabelBank>>,
+    label_bank: std::sync::OnceLock<std::sync::Arc<LabelBank>>,
 }
 
 /// (slug, text embedding) per label, for the current labels version.
@@ -62,7 +62,7 @@ impl MlContext {
             client,
             clip,
             faces,
-            label_bank: tokio::sync::OnceCell::new(),
+            label_bank: std::sync::OnceLock::new(),
         }
     }
 
@@ -71,23 +71,27 @@ impl MlContext {
         ml_kinds(self.clip, self.faces)
     }
 
-    /// The current label bank (cached after the first read).
+    /// The current label bank, cached once found: an empty one (not computed
+    /// yet) is read again next time, so tags start as soon as it exists.
     pub async fn label_bank(
         &self,
         pool: &PgPool,
     ) -> Result<std::sync::Arc<LabelBank>, squirrel_db::DbError> {
-        self.label_bank
-            .get_or_try_init(|| async {
-                let bank = squirrel_db::clip::label_embeddings(
-                    pool,
-                    squirrel_ml::CLIP_MODEL_ID,
-                    squirrel_ml::clip::labels::LABELS_VERSION,
-                )
-                .await?;
-                Ok(std::sync::Arc::new(bank))
-            })
-            .await
-            .cloned()
+        if let Some(bank) = self.label_bank.get() {
+            return Ok(bank.clone());
+        }
+        let bank = std::sync::Arc::new(
+            squirrel_db::clip::label_embeddings(
+                pool,
+                squirrel_ml::CLIP_MODEL_ID,
+                squirrel_ml::clip::labels::LABELS_VERSION,
+            )
+            .await?,
+        );
+        if !bank.is_empty() {
+            let _ = self.label_bank.set(bank.clone());
+        }
+        Ok(bank)
     }
 }
 
