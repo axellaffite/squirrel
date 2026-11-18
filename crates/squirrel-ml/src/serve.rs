@@ -5,6 +5,7 @@ use std::io::{BufRead, Write};
 use std::path::PathBuf;
 
 use crate::clip::{ClipError, ClipImage, ClipText};
+use crate::faces::FaceAnalyzer;
 use crate::models::{ModelDir, ModelError, ModelGroup};
 use crate::protocol::{
     MAX_REQUEST_LINE, MAX_TEXTS, MlBody, MlOp, MlOutput, MlRequest, MlResponse, Ready,
@@ -40,18 +41,14 @@ pub struct Engine {
     onnxruntime: Option<String>,
     clip_image: Option<ClipImage>,
     clip_text: Option<ClipText>,
+    faces: Option<FaceAnalyzer>,
 }
 
 impl Engine {
-    /// Verifies every file of every group (SHA-256), then loads them.
+    /// Loads every group, each file checked against its SHA-256 as it is read.
     pub fn load(config: &EngineConfig) -> Result<Self, LoadError> {
-        // Loaded files are hashed in memory by their loaders (what is hashed
-        // is what is loaded); a group without a loader yet is checked here.
-        for group in &config.groups {
-            if *group == ModelGroup::Faces {
-                config.models.verify(*group)?;
-            }
-        }
+        // Each loader hashes its files in memory: what is hashed is what is
+        // loaded.
         let onnxruntime = if config.groups.is_empty() {
             None
         } else {
@@ -68,11 +65,17 @@ impl Engine {
         } else {
             None
         };
+        let faces = if config.groups.contains(&ModelGroup::Faces) {
+            Some(FaceAnalyzer::load(&config.models, config.threads)?)
+        } else {
+            None
+        };
         Ok(Self {
             groups: config.groups.clone(),
             onnxruntime,
             clip_image,
             clip_text,
+            faces,
         })
     }
 
@@ -104,7 +107,13 @@ impl Engine {
                     Err(err) => failure(err),
                 },
             },
-            MlOp::Faces { .. } => not_loaded(ModelGroup::Faces),
+            MlOp::Faces { input } => match &mut self.faces {
+                None => not_loaded(ModelGroup::Faces),
+                Some(faces) => match faces.analyze_file(input) {
+                    Ok(faces) => MlBody::Ok(MlOutput::Faces { faces }),
+                    Err(err) => failure(err),
+                },
+            },
         }
     }
 }
@@ -241,17 +250,23 @@ mod tests {
 
     #[test]
     fn a_broken_model_file_stops_the_load() {
+        let Some(dylib) = crate::testutil::test_ort() else {
+            return;
+        };
         let tmp = tempfile::tempdir().unwrap();
         let err = Engine::load(&EngineConfig {
             groups: vec![ModelGroup::Faces],
             models: ModelDir::new(tmp.path()),
-            ort_dylib: None,
+            ort_dylib: Some(dylib),
             threads: 1,
         })
         .err()
         .unwrap();
         assert!(
-            matches!(err, LoadError::Model(ModelError::Missing { .. })),
+            matches!(
+                err,
+                LoadError::Runtime(RuntimeError::Model(ModelError::Missing { .. }))
+            ),
             "{err}"
         );
     }

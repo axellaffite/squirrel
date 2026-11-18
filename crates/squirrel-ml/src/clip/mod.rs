@@ -45,11 +45,13 @@ pub fn normalize(values: &[f32]) -> Vec<f32> {
 /// length (± 1e-2, half precision included). Anything else is a broken model
 /// or child, never stored.
 pub fn check_embedding(values: &[f32]) -> Result<(), String> {
-    if values.len() != EMBEDDING_DIM {
-        return Err(format!(
-            "{} values instead of {EMBEDDING_DIM}",
-            values.len()
-        ));
+    check_unit_vector(values, EMBEDDING_DIM)
+}
+
+/// `dim` finite values of unit length (± 1e-2).
+pub fn check_unit_vector(values: &[f32], dim: usize) -> Result<(), String> {
+    if values.len() != dim {
+        return Err(format!("{} values instead of {dim}", values.len()));
     }
     if values.iter().any(|v| !v.is_finite()) {
         return Err("non-finite values".into());

@@ -78,6 +78,10 @@ pub enum MlOutput {
     Embeddings {
         embeddings: Vec<Vec<f32>>,
     },
+    /// `faces`: every face found, relative to the preview.
+    Faces {
+        faces: Vec<crate::faces::FaceFound>,
+    },
     /// `ping`: no payload. Last, as it matches any object.
     Pong {},
 }

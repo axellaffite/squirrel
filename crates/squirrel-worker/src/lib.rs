@@ -5,6 +5,7 @@ pub mod backfill;
 pub mod clip_job;
 pub mod context;
 pub mod exec;
+pub mod faces_job;
 mod facts;
 pub mod geocode;
 pub mod jobs;
@@ -36,6 +37,9 @@ const THUMBNAILS_TIMEOUT: Duration = Duration::from_secs(180);
 /// One inference (≈ 0.1–0.2 s on a mini PC) plus a cold `ml-exec` start
 /// (hashing and loading the models, a few seconds).
 const CLIP_TIMEOUT: Duration = Duration::from_secs(90);
+/// YuNet on a 640 px copy plus SFace per face (tens of milliseconds), and a
+/// cold `ml-exec` start.
+const FACES_TIMEOUT: Duration = Duration::from_secs(120);
 /// About 1 400 prompts in batches of 32 (≈ 30 s on a fast CPU, minutes on a
 /// mini PC).
 const LABEL_BANK_TIMEOUT: Duration = Duration::from_secs(20 * 60);
@@ -119,6 +123,19 @@ fn register_ml(registry: &mut Registry, ctx: &Arc<MediaContext>) {
             move |ctx, job| {
                 let ml = clip.clone();
                 async move { clip_job::run(&ctx, &ml, job).await }
+            },
+        );
+    }
+    if ml.faces {
+        let faces = ml.clone();
+        register(
+            registry,
+            ctx,
+            jobs::FACES,
+            FACES_TIMEOUT,
+            move |ctx, job| {
+                let ml = faces.clone();
+                async move { faces_job::run(&ctx, &ml, job).await }
             },
         );
     }
