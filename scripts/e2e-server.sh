@@ -72,6 +72,19 @@ export SQUIRREL_DATA_DIR="${DATA_DIR}"
 export SQUIRREL_EMBEDDED_WORKER=true
 export SQUIRREL_GEODATA_FILE="${PWD}/crates/squirrel-media/tests/fixtures/geo-sample.tsv"
 # PDF thumbnails and text when pdfium was fetched (scripts/fetch-pdfium.sh); otherwise PDFs are unsupported.
+# Machine learning when ONNX Runtime and the models are installed (scripts/fetch-onnxruntime.sh,
+# scripts/fetch-models.sh): the ML scenarios skip without them (and fail on CI, where they are).
+ASSETS="${PWD}/.cache/squirrel-assets"
+if [[ -z "${SQUIRREL_MODELS_DIR:-}" && -d "${ASSETS}/models" ]]; then
+	export SQUIRREL_MODELS_DIR="${ASSETS}/models"
+fi
+if [[ -z "${SQUIRREL_ORT_DYLIB:-}" ]]; then
+	for lib in "${ASSETS}/onnxruntime/lib/libonnxruntime.so" "${ASSETS}/onnxruntime/lib/libonnxruntime.dylib"; do
+		if [[ -f "${lib}" ]]; then export SQUIRREL_ORT_DYLIB="${lib}"; fi
+	done
+fi
+# People appear a second after their faces, not ten minutes.
+export SQUIRREL_CLUSTER_DELAY_SECS=1
 if [[ -z "${SQUIRREL_PDFIUM_DIR:-}" && -d "${PWD}/target/pdfium/lib" ]]; then
 	export SQUIRREL_PDFIUM_DIR="${PWD}/target/pdfium/lib"
 fi
