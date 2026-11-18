@@ -3,7 +3,7 @@
 //! assignments the clustering decides. Faces pinned by the user
 //! (`assigned_by = 'user'`) are never written here.
 
-use sqlx::{FromRow, PgConnection};
+use sqlx::{FromRow, PgConnection, PgPool};
 use time::OffsetDateTime;
 use uuid::Uuid;
 
@@ -164,4 +164,30 @@ pub async fn delete_empty_people(conn: &mut PgConnection, owner: Uuid) -> Result
     .execute(conn)
     .await?
     .rows_affected())
+}
+
+/// Clears `owner`'s automatic assignments so the next clustering run starts
+/// over (after a threshold change); pinned faces, named and hidden people
+/// stay. `None` when faces are off for `owner`, else how many faces were
+/// cleared.
+pub async fn reset_automatic(pool: &PgPool, owner: Uuid) -> Result<Option<u64>, DbError> {
+    let mut tx = pool.begin().await?;
+    if !lock_enabled(&mut tx, owner).await? {
+        return Ok(None);
+    }
+    let cleared = sqlx::query(
+        "UPDATE faces SET person_id = NULL, cluster_tried_at = NULL \
+          WHERE owner_id = $1 AND assigned_by = 'auto' AND person_id IS NOT NULL",
+    )
+    .bind(owner)
+    .execute(&mut *tx)
+    .await?
+    .rows_affected();
+    sqlx::query("UPDATE faces SET cluster_tried_at = NULL WHERE owner_id = $1")
+        .bind(owner)
+        .execute(&mut *tx)
+        .await?;
+    delete_empty_people(&mut tx, owner).await?;
+    tx.commit().await?;
+    Ok(Some(cleared))
 }
