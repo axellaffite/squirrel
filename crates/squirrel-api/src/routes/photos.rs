@@ -11,6 +11,7 @@ use crate::error::{ApiError, ErrorBody};
 use crate::extract::Caller;
 use crate::filter_dto::{PhotoFilterQuery, with_filters};
 use crate::input::{ApiPath, ApiQuery, known_params};
+use crate::people_dto::PersonRef;
 use crate::photos_dto::{
     AlbumRef, AssetDetails, AssetSummary, MediaStatus, MlStatusDto, MonthCountDto, TimelinePage,
     TimelineQuery,
@@ -129,7 +130,12 @@ pub async fn get_photo(
         })
         .collect();
     let tags = squirrel_db::explore::tags_of_photo(&state.pool, caller.user.id, id).await?;
-    Ok(Json(AssetDetails::new(&record, albums, tags)))
+    let people = squirrel_db::people::people_on(&state.pool, caller.user.id, id)
+        .await?
+        .into_iter()
+        .map(|(id, name)| PersonRef { id, name })
+        .collect();
+    Ok(Json(AssetDetails::new(&record, albums, tags, people)))
 }
 
 #[utoipa::path(get, path = "/api/media/status", security(("device_bearer" = []), ("session_cookie" = [])), tag = "photos",

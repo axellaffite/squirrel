@@ -19,6 +19,7 @@ pub mod ml_settings;
 pub mod ml_status;
 pub mod nodes;
 mod page;
+pub mod people;
 pub mod photo_filter;
 pub mod photo_search;
 pub mod quota;

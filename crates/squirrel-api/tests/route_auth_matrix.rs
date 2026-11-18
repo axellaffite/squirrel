@@ -40,6 +40,10 @@ const SESSION: &[&str] = &[
     "/api/devices",
     "/api/devices/{id}",
     "/api/me/ml-settings",
+    "PATCH /api/people/{id}",
+    "/api/people/{id}/merge",
+    "/api/people/{id}/split",
+    "/api/faces/{id}/person",
 ];
 
 /// Device bearer only.
@@ -68,6 +72,10 @@ const DATA: &[&str] = &[
     "/api/tags",
     "/api/places",
     "/api/cameras",
+    "/api/people",
+    "/api/people/{id}",
+    "/api/people/{id}/faces",
+    "/api/photos/{id}/faces",
     "/api/albums",
     "/api/albums/{id}",
     "/api/albums/{id}/items",

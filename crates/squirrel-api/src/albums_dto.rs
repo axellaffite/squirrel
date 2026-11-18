@@ -47,7 +47,7 @@ pub struct UpdateAlbumRequest {
 
 /// A field that is present, `null` included (`Some(None)`); an absent one is
 /// `None` through `#[serde(default)]`.
-fn present<'de, D, T>(deserializer: D) -> Result<Option<Option<T>>, D::Error>
+pub(crate) fn present<'de, D, T>(deserializer: D) -> Result<Option<Option<T>>, D::Error>
 where
     D: serde::Deserializer<'de>,
     T: Deserialize<'de>,
