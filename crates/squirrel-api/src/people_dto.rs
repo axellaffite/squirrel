@@ -148,8 +148,9 @@ pub enum FaceAssignedBy {
     User,
 }
 
-/// A face's box, relative to the displayed image and to every thumbnail size
-/// (0–1, from the top left).
+/// A face's box, 0–1 from the top left, in displayed coordinates: the photo as
+/// shown after its EXIF orientation, which is also the frame of every thumbnail
+/// size (`thumb`, `preview`). A client crops a thumbnail with it as is.
 #[derive(Debug, Serialize, ToSchema)]
 pub struct FaceBoxDto {
     pub x: f32,
