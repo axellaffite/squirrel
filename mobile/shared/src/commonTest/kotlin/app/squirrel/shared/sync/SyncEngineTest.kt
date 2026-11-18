@@ -75,6 +75,18 @@ class SyncEngineTest {
     }
 
     @Test
+    fun withoutPhotoAccessTheRunPausesBeforeAnyScan() = runApiTest {
+        source.access = MediaAccess.None
+        source.put("images:1")
+
+        val summary = engine().runOnce()
+
+        assertEquals(StopCause.Paused, summary.stoppedBy)
+        assertEquals(0, source.scans)
+        assertEquals(0, source.opened)
+    }
+
+    @Test
     fun aPassChecksInBatchesOf500AndUploadsOnlyWhatIsMissing() = runApiTest {
         repeat(1200) { source.put("images:$it", size = 64L + it) } // distinct sizes: distinct contents
         repeat(1195) { server.known += hashOf("images:$it") }
