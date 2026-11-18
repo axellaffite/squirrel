@@ -19,6 +19,9 @@ pub const EMBEDDING_DIM: usize = 512;
 /// to image similarities are small: ≈ 0.2–0.35 for a match). PROVISIONAL:
 /// to be calibrated on real photos together with the tag thresholds.
 pub const SEARCH_MAX_DISTANCE: f64 = 0.78;
+/// Photo search also drops results whose similarity is more than this below
+/// the best hit's. PROVISIONAL, like the floor above.
+pub const SEARCH_RELATIVE_CUTOFF: f64 = 0.06;
 
 #[derive(Debug, thiserror::Error)]
 pub enum ClipError {

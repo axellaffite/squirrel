@@ -29,13 +29,18 @@ pub struct PhotoQuery<'a> {
     pub embedding: &'a [f32],
     /// Results farther than this are dropped.
     pub max_distance: f64,
+    /// Results farther than the best hit's distance plus this are dropped
+    /// (a weak tail far behind a clear match is noise).
+    pub relative_cutoff: f64,
     pub filter: &'a PhotoFilter,
 }
 
 /// The distance is computed in a fenced subquery (`OFFSET 0`: never pulled
 /// up) over the caller's own joined rows, so the distance floor cannot be
 /// pushed down into a scan of every user's embeddings: only the caller's
-/// photos are ever scored. Ranked by distance, then node id.
+/// photos are ever scored. Within the floor, only results within
+/// `relative_cutoff` of the best one are kept (a window over the caller's
+/// rows). Ranked by distance, then node id.
 fn search_query<'a>(
     prefix: &str,
     owner_id: Uuid,
@@ -44,7 +49,7 @@ fn search_query<'a>(
     limit: u32,
 ) -> QueryBuilder<'a, Postgres> {
     let mut sql = QueryBuilder::<Postgres>::new(format!(
-        "{prefix}SELECT * FROM (SELECT {SUMMARY_COLUMNS}, (e.embedding <=> "
+        "{prefix}WITH ranked AS (SELECT * FROM (SELECT {SUMMARY_COLUMNS}, (e.embedding <=> "
     ));
     sql.push_bind(HalfVector::from_f32_slice(query.embedding))
         .push(format!(
@@ -57,6 +62,11 @@ fn search_query<'a>(
     query.filter.push(&mut sql);
     sql.push(" OFFSET 0) mine WHERE distance <= ")
         .push_bind(query.max_distance)
+        .push(
+            ") SELECT * FROM (SELECT ranked.*, min(distance) OVER () AS best FROM ranked) cut \
+               WHERE distance <= best + ",
+        )
+        .push_bind(query.relative_cutoff)
         .push(" ORDER BY distance, node_id OFFSET ")
         .push_bind(i64::from(offset))
         .push(" LIMIT ")
