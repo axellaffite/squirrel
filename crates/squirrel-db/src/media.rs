@@ -278,8 +278,8 @@ pub async fn set_metadata<'e>(
 /// image's CLIP embedding (computed from it) is dropped and its step goes
 /// back to `pending` (also retrying one left `unsupported` by a bad preview).
 /// `false`: the row is gone (the blob was collected meanwhile).
-pub async fn set_thumbnails(
-    pool: &PgPool,
+pub async fn set_thumbnails<'e>(
+    executor: impl PgExecutor<'e>,
     sha256: &str,
     version: i16,
     width: u32,
@@ -301,7 +301,7 @@ pub async fn set_thumbnails(
     .bind(width)
     .bind(height)
     .bind(blurhash)
-    .execute(pool)
+    .execute(executor)
     .await?;
     Ok(updated.rows_affected() == 1)
 }

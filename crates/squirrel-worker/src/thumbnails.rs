@@ -144,8 +144,10 @@ async fn install_for(
         }
         Err(err) => return Err(JobError::retry(err)),
     }
+    // The new preview and the ML jobs that read it commit together.
+    let mut tx = ctx.pool.begin().await.map_err(JobError::retry)?;
     let recorded = media::set_thumbnails(
-        &ctx.pool,
+        &mut *tx,
         hash.as_str(),
         THUMBS_VERSION,
         rendered.width,
@@ -155,8 +157,9 @@ async fn install_for(
     .await
     .map_err(JobError::retry)?;
     if recorded && let Some(job) = job {
-        queue_ml(ctx, hash.as_str(), job).await?;
+        queue_ml(&mut tx, hash.as_str(), job).await?;
     }
+    tx.commit().await.map_err(JobError::retry)?;
     if !recorded {
         // Collected while rendering: what was just installed belongs to nothing.
         let (derived, blob) = (ctx.storage.derived().clone(), hash.clone());
@@ -170,17 +173,20 @@ async fn install_for(
 
 /// Queues the image's pending ML steps. Queued whether or not this worker has
 /// models: a worker that has them (now or later) runs them.
-async fn queue_ml(ctx: &MediaContext, sha256: &str, job: &JobContext) -> Result<(), JobError> {
-    let Some(media) = media::find(&ctx.pool, sha256)
+async fn queue_ml(
+    conn: &mut sqlx::PgConnection,
+    sha256: &str,
+    job: &JobContext,
+) -> Result<(), JobError> {
+    let Some(media) = media::find(&mut *conn, sha256)
         .await
         .map_err(JobError::retry)?
     else {
         return Ok(());
     };
     let background = job.priority < squirrel_jobs::priority::THUMBNAILS;
-    let mut conn = ctx.pool.acquire().await.map_err(JobError::retry)?;
     for next in crate::jobs::ml_follow_ups(&media, background) {
-        squirrel_jobs::enqueue(&mut conn, &next)
+        squirrel_jobs::enqueue(&mut *conn, &next)
             .await
             .map_err(JobError::retry)?;
     }
