@@ -19,6 +19,9 @@ export const BUSY_RETRY_MS = 2000;
 /** …this many times, then the user is told to try again. */
 export const BUSY_RETRIES = 5;
 
+/** Shown for a query the server would refuse. */
+export const TOO_LONG = `Searches use at most ${MAX_PHOTO_QUERY} characters.`;
+
 /** Shown when the retry after a 429 was rate-limited again. */
 export const STILL_TOO_FAST = 'The server is still busy with searches. Wait a moment, then search again.';
 
@@ -66,6 +69,7 @@ export class PhotoSearcher {
 		if (!isPhotoQuery(query)) {
 			this.#cancel();
 			this.#clear();
+			if (query.length > MAX_PHOTO_QUERY) this.error = TOO_LONG;
 			return;
 		}
 		this.#timer = setTimeout(() => void this.#fetch(query, 0), this.#delay);
@@ -77,6 +81,11 @@ export class PhotoSearcher {
 		const query = normalizeQuery(raw);
 		this.#typed = query;
 		if (isPhotoQuery(query)) void this.#fetch(query, 0);
+		else if (query.length > MAX_PHOTO_QUERY) {
+			this.#cancel();
+			this.#clear();
+			this.error = TOO_LONG;
+		}
 	}
 
 	/** Narrows the results: searches the current query again at once. */

@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { SEARCH_BUSY, SEARCH_UNAVAILABLE } from '#lib/explore/api.ts';
-import { BUSY_RETRIES, BUSY_RETRY_MS, PhotoSearcher, STILL_TOO_FAST, type RunPhotoSearch } from '#lib/explore/searcher.svelte.ts';
+import { BUSY_RETRIES, BUSY_RETRY_MS, PhotoSearcher, STILL_TOO_FAST, TOO_LONG, type RunPhotoSearch } from '#lib/explore/searcher.svelte.ts';
 
 const photo = (id: string) => ({ id }) as never;
 const ids = (searcher: PhotoSearcher) => searcher.items.map((item) => (item as { id: string }).id);
@@ -131,5 +131,18 @@ describe('PhotoSearcher', () => {
 		await vi.advanceTimersByTimeAsync(BUSY_RETRY_MS);
 		expect(ids(searcher)).toEqual(['a']);
 		expect(searcher.loading).toBe(false);
+	});
+
+	it('says a query is too long instead of doing nothing', async () => {
+		const run = vi.fn<RunPhotoSearch>(async () => results(['a']));
+		const searcher = new PhotoSearcher(run, 10);
+		searcher.now('x'.repeat(201));
+		expect(searcher.error).toBe(TOO_LONG);
+		searcher.type('dog');
+		await vi.advanceTimersByTimeAsync(10);
+		expect(searcher.error).toBeNull();
+		searcher.type('y'.repeat(250));
+		expect(searcher.error).toBe(TOO_LONG);
+		expect(run).toHaveBeenCalledTimes(1);
 	});
 });
