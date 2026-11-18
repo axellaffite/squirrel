@@ -23,6 +23,10 @@ tokenizers.workspace = true
 name = "make_golden"
 required-features = ["test-util"]
 
+[[example]]
+name = "bench"
+required-features = ["test-util"]
+
 [dev-dependencies]
 anyhow.workspace = true
 tempfile.workspace = true
