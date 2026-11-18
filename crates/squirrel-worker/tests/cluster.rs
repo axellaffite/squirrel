@@ -500,3 +500,18 @@ async fn a_request_during_a_run_is_never_lost(pool: PgPool) {
     storing.commit().await.unwrap();
     assert_eq!(claimable().await, 1);
 }
+
+#[sqlx::test(migrator = "squirrel_db::MIGRATOR")]
+async fn an_emptied_hidden_person_stays_hidden(pool: PgPool) {
+    let fx = Fixture::new(pool);
+    let alice = admin(fx.pool()).await;
+    let hidden = Uuid::now_v7();
+    sqlx::query("INSERT INTO people (id, owner_id, hidden) VALUES ($1, $2, true)")
+        .bind(hidden)
+        .bind(alice.id)
+        .execute(fx.pool())
+        .await
+        .unwrap();
+    cluster(&fx, alice.id).await;
+    assert_eq!(people(fx.pool(), alice.id).await, 1, "the hide is kept");
+}
