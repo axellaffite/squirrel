@@ -326,3 +326,36 @@ fn child_logs_are_rate_limited_per_window() {
     assert_eq!(dropped, 10, "the previous window's drops are reported once");
     assert_eq!(budget.admit(start + Duration::from_secs(62)).1, 0);
 }
+
+/// Waiting for the child is bounded: a request queued behind others gives
+/// up with a retryable Busy instead of waiting forever.
+#[tokio::test]
+async fn waiting_for_a_busy_child_is_bounded() {
+    let dir = tempfile::tempdir().unwrap();
+    let mut config = fake_child(
+        dir.path(),
+        r#"sleep 0.8; echo "{\"id\":$id,\"status\":\"ok\"}""#,
+    );
+    config.ready_timeout = Duration::from_millis(100);
+    config.request_timeout = Duration::from_millis(1000);
+    let client = Arc::new(client(config));
+    client.request(MlOp::Ping).await.unwrap();
+    let requests: Vec<_> = (0..3)
+        .map(|_| {
+            let client = client.clone();
+            tokio::spawn(async move { client.request(image()).await })
+        })
+        .collect();
+    let mut busy = 0;
+    for request in requests {
+        match request.await.unwrap() {
+            Ok(_) => {}
+            Err(err @ MlClientError::Busy(_)) => {
+                assert!(err.retry_after().is_some());
+                busy += 1;
+            }
+            Err(other) => panic!("{other}"),
+        }
+    }
+    assert!(busy >= 1, "the third request should give up");
+}
