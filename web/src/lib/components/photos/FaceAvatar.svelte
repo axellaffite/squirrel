@@ -1,0 +1,74 @@
+<script lang="ts">
+	import Icon from '#lib/components/icons/Icon.svelte';
+	import { cropSource, cropStyle, type FaceCrop } from '#lib/explore/faces.ts';
+
+	interface Props {
+		/** The face to show; null shows the `user` icon. */
+		face: FaceCrop | null | undefined;
+		size?: 'sm' | 'md' | 'lg';
+	}
+
+	let { face, size = 'sm' }: Props = $props();
+
+	let failed = $state(false);
+	const source = $derived(face ? cropSource(face) : null);
+	const style = $derived(face ? cropStyle(face.box) : null);
+</script>
+
+<!-- MASTER "Face avatar": a client-side crop of the photo's thumbnail; the server stores no face images. -->
+<span class="avatar {size}">
+	<Icon name="user" />
+	{#if source && style && !failed}
+		<img
+			src={source}
+			alt=""
+			loading="lazy"
+			decoding="async"
+			style:height="{style.height}%"
+			style:top="{style.top}%"
+			style:transform="translateX({style.shift}%)"
+			onerror={() => (failed = true)}
+		/>
+	{/if}
+</span>
+
+<style>
+	.avatar {
+		position: relative;
+		display: inline-grid;
+		place-items: center;
+		flex: none;
+		overflow: hidden;
+		border-radius: var(--radius-full);
+		background: var(--tint);
+		color: var(--ink-muted);
+	}
+
+	.sm {
+		width: var(--face-sm);
+		height: var(--face-sm);
+	}
+
+	.md {
+		width: var(--face-md);
+		height: var(--face-md);
+	}
+
+	.lg {
+		width: var(--face-lg);
+		height: var(--face-lg);
+	}
+
+	img {
+		position: absolute;
+		left: 50%;
+		width: auto;
+		max-width: none;
+	}
+
+	@media (forced-colors: active) {
+		.avatar {
+			border: 1px solid CanvasText;
+		}
+	}
+</style>

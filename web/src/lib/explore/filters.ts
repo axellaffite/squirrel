@@ -75,7 +75,7 @@ export function sameFilter(a: PhotoFilter, b: PhotoFilter): boolean {
 }
 
 /** The filter in an address's query. */
-export function filterFromParams(params: URLSearchParams): PhotoFilter {
+export function filterFromParams(params: Pick<URLSearchParams, 'get'>): PhotoFilter {
 	const raw: PhotoFilter = {};
 	for (const key of FILTER_KEYS) {
 		const value = params.get(key);

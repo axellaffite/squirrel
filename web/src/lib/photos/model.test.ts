@@ -52,6 +52,15 @@ describe('layoutMonth', () => {
 		expect(layout.height).toBe(50 + 30 + 100 + 10 + 30 + 100);
 	});
 
+	it('keeps the given order without day headings when asked', () => {
+		const items = [asset('a', '2024-07-02T12:00:00'), asset('b', '2024-07-14T09:00:00'), asset('c', '2023-01-01T00:00:00')];
+		const layout = layoutMonth(items, 1000, M, 'en-GB', false);
+		expect(layout.blocks.every((b) => b.kind === 'row')).toBe(true);
+		const ids = layout.blocks.flatMap((b) => (b.kind === 'row' ? b.items.map((i) => i.item.asset.id) : []));
+		expect(ids).toEqual(['a', 'b', 'c']);
+		expect(layout.blocks[0].top).toBe(50);
+	});
+
 	it('treats an unknown size as square', () => {
 		const layout = layoutMonth([{ id: 'x', taken_at: '2024-07-01T00:00:00', width: null, height: null }], 1000, M);
 		const row = layout.blocks[1];

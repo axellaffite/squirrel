@@ -21,7 +21,7 @@
 	<nav aria-label="Main">
 		<ul>
 			{#each items as item (item.href)}
-				<li>
+				<li class:sidebar-only={item.sidebarOnly}>
 					<a href={item.href} class="item" aria-current={isActive(item.href, path) ? 'page' : undefined}>
 						<span class="dot"><Icon name={item.icon} /></span>
 						<span class="label">{item.label}</span>
@@ -68,6 +68,11 @@
 		display: flex;
 		justify-content: center;
 		min-width: 0;
+	}
+
+	/* The phone bar keeps five items (MASTER Layout); these join from 1024 px. */
+	.sidebar-only {
+		display: none;
 	}
 
 	.item {
@@ -168,7 +173,8 @@
 			gap: var(--space-1);
 		}
 
-		li {
+		li,
+		.sidebar-only {
 			display: block;
 		}
 
