@@ -158,3 +158,113 @@ jobs:
             web/playwright-report
             web/test-results
           retention-days: 7
+
+  # Phone apps (Phase 6). Slow jobs (about 10 min Android, 20 min iOS), so they run only when
+  # something they build from changed: the app, the API contract or the design tokens.
+  mobile-changes:
+    runs-on: ubuntu-latest
+    outputs:
+      mobile: ${{ steps.filter.outputs.mobile }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dorny/paths-filter@v3
+        id: filter
+        with:
+          filters: |
+            mobile:
+              - 'mobile/**'
+              - 'openapi.json'
+              - 'web/src/lib/styles/tokens.css'
+              - 'web/scripts/native-*.mjs'
+              - '.github/workflows/ci.yml'
+
+  mobile-android:
+    needs: mobile-changes
+    if: needs.mobile-changes.outputs.mobile == 'true'
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: mobile
+    steps:
+      - uses: actions/checkout@v4
+      # The same JDK as the Gradle toolchain (libs.versions.toml `jvm-toolchain`); auto-download is off.
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+      - uses: gradle/actions/setup-gradle@v4
+      - name: Android SDK platform 37 (compileSdk)
+        run: |
+          yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --licenses > /dev/null
+          "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" "platforms;android-37"
+      # The native theme is generated from web/src/lib/styles/tokens.css: no drift allowed.
+      - uses: pnpm/action-setup@v4
+        with:
+          package_json_file: web/package.json
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: web/.nvmrc
+          cache: pnpm
+          cache-dependency-path: web/pnpm-lock.yaml
+      - name: Native tokens and icons match tokens.css
+        working-directory: web
+        run: pnpm install --frozen-lockfile && pnpm check:native-tokens
+      - name: Generated API client matches openapi.json
+        run: ./gradlew :shared:checkApiClient
+      - run: ./gradlew :shared:jvmTest :theme:jvmTest :ui:jvmTest :androidApp:testDebugUnitTest
+      - run: ./gradlew :androidApp:lintDebug :androidApp:assembleDebug
+      - uses: actions/upload-artifact@v4
+        with:
+          name: squirrel-debug-apk
+          path: mobile/androidApp/build/outputs/apk/debug/*.apk
+          retention-days: 7
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: android-reports
+          path: |
+            mobile/*/build/reports
+          retention-days: 7
+
+  mobile-ios:
+    needs: mobile-changes
+    if: needs.mobile-changes.outputs.mobile == 'true'
+    # Kotlin 2.4.21 officially supports Xcode 26.4; the app is developed with Xcode 27 locally.
+    # Which Xcode versions the hosted images carry is not verified here (CI has never run): if
+    # Xcode_26.4 is missing, pick the newest 26.x the image lists under /Applications.
+    runs-on: macos-26
+    env:
+      XCODE_APP: /Applications/Xcode_26.4.app
+    defaults:
+      run:
+        working-directory: mobile
+    steps:
+      - uses: actions/checkout@v4
+      - name: Select Xcode
+        run: |
+          ls -d /Applications/Xcode*.app
+          sudo xcode-select -s "$XCODE_APP"
+          xcodebuild -version
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+      - uses: gradle/actions/setup-gradle@v4
+      - name: Kotlin/Native tests on the iOS simulator
+        run: ./gradlew -Psquirrel.ios=true :shared:iosSimulatorArm64Test :ui:iosSimulatorArm64Test
+      # XCTests run headless on a simulator. Without photo access the PhotoKit tests skip, and
+      # without SQUIRREL_SERVER the end-to-end test skips; the Keychain, transport and launch tests run.
+      - name: XCTests on a simulator
+        run: |
+          udid=$(xcrun simctl list devices available -j \
+            | python3 -c 'import json,sys; d=json.load(sys.stdin)["devices"]; print(next(x["udid"] for r in d if "iOS" in r for x in d[r] if x["name"].startswith("iPhone")))')
+          xcodebuild test -project iosApp/iosApp.xcodeproj -scheme iosApp \
+            -destination "platform=iOS Simulator,id=$udid"
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: ios-reports
+          path: |
+            mobile/*/build/reports
+            ~/Library/Developer/Xcode/DerivedData/*/Logs/Test
+          retention-days: 7
