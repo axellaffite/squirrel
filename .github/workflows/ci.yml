@@ -17,7 +17,7 @@ jobs:
         env:
           POSTGRES_USER: squirrel
           POSTGRES_PASSWORD: squirrel
-          POSTGRES_DB: squirrel
+          POSTGRES_DB: squirrel_dev
         # Same host port as deploy/docker-compose.dev.yml, so .cargo/config.toml's DATABASE_URL works.
         ports: ["55432:5432"]
         options: >-
@@ -77,7 +77,7 @@ jobs:
         env:
           POSTGRES_USER: squirrel
           POSTGRES_PASSWORD: squirrel
-          POSTGRES_DB: squirrel
+          POSTGRES_DB: squirrel_dev
         ports: ["55432:5432"]
         options: >-
           --health-cmd "pg_isready -U squirrel" --health-interval 2s --health-timeout 3s --health-retries 20
