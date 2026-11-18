@@ -2,6 +2,7 @@
 
 use serde::{Deserialize, Serialize};
 use squirrel_db::media::MediaState;
+use squirrel_db::ml_status::{MlState, MlStatus};
 use squirrel_db::timeline::{AssetDetailRecord, AssetSummaryRecord, MonthCount, StatusCounts};
 use time::PrimitiveDateTime;
 use time::macros::format_description;
@@ -251,14 +252,44 @@ pub struct MediaStatus {
     pub processing: i64,
     /// With a step that failed.
     pub failed: i64,
+    /// Photo tags, text search and faces on this server.
+    pub ml: MlStatusDto,
 }
 
-impl From<StatusCounts> for MediaStatus {
-    fn from(counts: StatusCounts) -> Self {
+impl MediaStatus {
+    pub fn new(counts: StatusCounts, ml: MlStatus) -> Self {
         Self {
             queued: counts.queued,
             processing: counts.processing,
             failed: counts.failed,
+            ml: ml.into(),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, ToSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum MlStateDto {
+    Ready,
+    Unavailable,
+}
+
+/// Whether a worker can run the ML models, and if not, a generic reason.
+#[derive(Debug, Serialize, ToSchema)]
+pub struct MlStatusDto {
+    pub state: MlStateDto,
+    /// Why ML is unavailable (e.g. "models not installed"); null when ready.
+    pub reason: Option<String>,
+}
+
+impl From<MlStatus> for MlStatusDto {
+    fn from(status: MlStatus) -> Self {
+        Self {
+            state: match status.state {
+                MlState::Ready => MlStateDto::Ready,
+                MlState::Unavailable => MlStateDto::Unavailable,
+            },
+            reason: status.reason,
         }
     }
 }

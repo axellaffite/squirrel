@@ -1026,6 +1026,8 @@ export interface components {
              * @description With a step that failed.
              */
             failed: number;
+            /** @description Photo tags, text search and faces on this server. */
+            ml: components["schemas"]["MlStatusDto"];
             /**
              * Format: int64
              * @description With a step in progress.
@@ -1036,6 +1038,14 @@ export interface components {
              * @description Waiting for their first processing step.
              */
             queued: number;
+        };
+        /** @enum {string} */
+        MlStateDto: "ready" | "unavailable";
+        /** @description Whether a worker can run the ML models, and if not, a generic reason. */
+        MlStatusDto: {
+            /** @description Why ML is unavailable (e.g. "models not installed"); null when ready. */
+            reason?: string | null;
+            state: components["schemas"]["MlStateDto"];
         };
         MonthCountDto: {
             /** Format: int64 */

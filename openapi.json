@@ -3982,13 +3982,18 @@
         "required": [
           "queued",
           "processing",
-          "failed"
+          "failed",
+          "ml"
         ],
         "properties": {
           "failed": {
             "type": "integer",
             "format": "int64",
             "description": "With a step that failed."
+          },
+          "ml": {
+            "$ref": "#/components/schemas/MlStatusDto",
+            "description": "Photo tags, text search and faces on this server."
           },
           "processing": {
             "type": "integer",
@@ -3999,6 +4004,32 @@
             "type": "integer",
             "format": "int64",
             "description": "Waiting for their first processing step."
+          }
+        }
+      },
+      "MlStateDto": {
+        "type": "string",
+        "enum": [
+          "ready",
+          "unavailable"
+        ]
+      },
+      "MlStatusDto": {
+        "type": "object",
+        "description": "Whether a worker can run the ML models, and if not, a generic reason.",
+        "required": [
+          "state"
+        ],
+        "properties": {
+          "reason": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Why ML is unavailable (e.g. \"models not installed\"); null when ready."
+          },
+          "state": {
+            "$ref": "#/components/schemas/MlStateDto"
           }
         }
       },

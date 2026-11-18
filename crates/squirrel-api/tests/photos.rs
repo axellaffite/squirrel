@@ -286,13 +286,21 @@ async fn media_status_counts_the_callers_files(pool: PgPool) {
         .await
         .assert_status(StatusCode::NO_CONTENT);
 
+    let no_ml = json!({ "state": "unavailable", "reason": "no worker has reported" });
     assert_eq!(
         get(&alice, "/api/media/status").await,
-        json!({ "queued": 2, "processing": 1, "failed": 1 })
+        json!({ "queued": 2, "processing": 1, "failed": 1, "ml": no_ml })
     );
     assert_eq!(
         get(&bob, "/api/media/status").await,
-        json!({ "queued": 0, "processing": 0, "failed": 0 })
+        json!({ "queued": 0, "processing": 0, "failed": 0, "ml": no_ml })
+    );
+    squirrel_db::ml_status::report(&pool, "box", squirrel_db::ml_status::MlState::Ready, None)
+        .await
+        .unwrap();
+    assert_eq!(
+        get(&bob, "/api/media/status").await["ml"],
+        json!({ "state": "ready", "reason": null })
     );
     common::server(pool)
         .get("/api/media/status")
