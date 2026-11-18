@@ -63,3 +63,89 @@ fn a_landscape_has_no_face() {
     });
     assert!(detector.detect(&landscape).unwrap().is_empty());
 }
+
+fn analyzer() -> Option<super::FaceAnalyzer> {
+    let (dylib, models) = test_ml_for(&[ModelGroup::Faces])?;
+    crate::runtime::init(&dylib).unwrap();
+    Some(super::FaceAnalyzer::load(&models, 2).unwrap())
+}
+
+#[test]
+fn the_same_person_matches_and_two_people_do_not() {
+    let Some(mut analyzer) = analyzer() else {
+        return;
+    };
+    let embed = |analyzer: &mut super::FaceAnalyzer, name: &str| {
+        let faces = analyzer.analyze(&portrait(name)).unwrap();
+        assert_eq!(faces.len(), 1, "{name}");
+        faces[0].embedding.clone()
+    };
+    let b1 = embed(&mut analyzer, "biden-2021");
+    let b2 = embed(&mut analyzer, "biden-2013");
+    let h1 = embed(&mut analyzer, "harris-2021");
+    let h2 = embed(&mut analyzer, "harris-2017");
+    let cos = crate::clip::cosine;
+    for (same, a, b) in [("biden", &b1, &b2), ("harris", &h1, &h2)] {
+        assert!(cos(a, b) >= super::SAME_PERSON, "{same}: {}", cos(a, b));
+    }
+    for (a, b) in [(&b1, &h1), (&b1, &h2), (&b2, &h1), (&b2, &h2)] {
+        assert!(
+            cos(a, b) < super::SAME_PERSON,
+            "different people: {}",
+            cos(a, b)
+        );
+    }
+}
+
+#[test]
+fn faces_are_relative_to_the_preview() {
+    let Some(mut analyzer) = analyzer() else {
+        return;
+    };
+    let faces = analyzer.analyze(&portrait("harris-2021")).unwrap();
+    let [x, y, w, h] = faces[0].bbox;
+    assert!(
+        x > 0.0 && y > 0.0 && x + w < 1.0 && y + h < 1.0,
+        "{:?}",
+        faces[0].bbox
+    );
+    assert!(faces[0].landmarks.iter().all(|v| (0.0..=1.0).contains(v)));
+    // A large preview gives the same relative box as the original.
+    let big = image::imageops::resize(
+        &portrait("harris-2021"),
+        1000,
+        1250,
+        image::imageops::FilterType::CatmullRom,
+    );
+    let on_big = analyzer.analyze(&big).unwrap();
+    for (a, b) in faces[0].bbox.iter().zip(on_big[0].bbox) {
+        assert!(
+            (a - b).abs() < 0.02,
+            "{:?} vs {:?}",
+            faces[0].bbox,
+            on_big[0].bbox
+        );
+    }
+}
+
+#[derive(serde::Deserialize)]
+struct Golden {
+    faces: std::collections::HashMap<String, Vec<f32>>,
+}
+
+/// Golden embeddings from `examples/make_golden.rs`: ≥ 0.999 cosine.
+#[test]
+fn face_embeddings_match_the_golden_vectors() {
+    let Some(mut analyzer) = analyzer() else {
+        return;
+    };
+    let golden: Golden = serde_json::from_str(include_str!(
+        "../../tests/fixtures/faces/golden-yunet-sface-2021dec.json"
+    ))
+    .unwrap();
+    for name in PORTRAITS {
+        let faces = analyzer.analyze(&portrait(name)).unwrap();
+        let similarity = crate::clip::cosine(&faces[0].embedding, &golden.faces[name]);
+        assert!(similarity >= 0.999, "{name}: {similarity}");
+    }
+}
