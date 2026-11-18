@@ -25,3 +25,5 @@ Commons notes that NASA insignia are restricted and that the people shown may ha
 rights. These images are used only as technical test data and are never shown in the application.
 
 `golden-yunet-sface-2021dec.json` holds this code's embeddings (`examples/make_golden.rs`).
+`opencv-reference.json` holds OpenCV 5.1's embeddings of the same portraits with the same pinned
+models (`tools/opencv_reference.py`: optional, run by hand, never part of the build).

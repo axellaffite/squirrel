@@ -149,3 +149,24 @@ fn face_embeddings_match_the_golden_vectors() {
         assert!(similarity >= 0.999, "{name}: {similarity}");
     }
 }
+
+/// OpenCV's own pipeline (`FaceDetectorYN` + `alignCrop` + `FaceRecognizerSF`
+/// on the same pinned models, `tools/opencv_reference.py`) as an independent
+/// reference: decoding, landmarks, alignment and channel order all agree when
+/// the embeddings are ≥ 0.95 apart in cosine.
+#[test]
+fn face_embeddings_agree_with_opencv() {
+    let Some(mut analyzer) = analyzer() else {
+        return;
+    };
+    let reference: Golden = serde_json::from_str(include_str!(
+        "../../tests/fixtures/faces/opencv-reference.json"
+    ))
+    .unwrap();
+    for name in PORTRAITS {
+        let faces = analyzer.analyze(&portrait(name)).unwrap();
+        let similarity = crate::clip::cosine(&faces[0].embedding, &reference.faces[name]);
+        eprintln!("opencv agreement {name}: {similarity:.4}");
+        assert!(similarity >= 0.95, "{name}: {similarity}");
+    }
+}
