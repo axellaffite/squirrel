@@ -1,5 +1,6 @@
 <script lang="ts">
 	import Icon from '#lib/components/icons/Icon.svelte';
+	import type { IconName } from '#lib/components/icons/paths.ts';
 	import { thumbnailUrl, type AssetSummary, type ThumbnailSize } from '#lib/photos/api.ts';
 	import { averageColor, isBlurhash } from '#lib/photos/blurhash.ts';
 
@@ -7,9 +8,11 @@
 		/** The album's cover photo; null for an empty album. */
 		cover: AssetSummary | null;
 		size?: ThumbnailSize;
+		/** Shown without a cover. */
+		icon?: IconName;
 	}
 
-	let { cover, size = 'thumb' }: Props = $props();
+	let { cover, size = 'thumb', icon = 'library' }: Props = $props();
 
 	const ready = $derived(cover?.thumbnail.state === 'ready');
 	const tone = $derived(cover && isBlurhash(cover.blurhash) ? averageColor(cover.blurhash) : undefined);
@@ -20,7 +23,7 @@
 	{#if cover && ready}
 		<img src={thumbnailUrl(cover.id, size, cover.thumbnail.version)} alt="" loading="lazy" decoding="async" />
 	{:else}
-		<Icon name="library" />
+		<Icon name={icon} />
 	{/if}
 </span>
 
