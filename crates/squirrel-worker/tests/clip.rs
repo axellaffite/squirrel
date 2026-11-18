@@ -324,6 +324,30 @@ async fn backfill_queues_missing_embeddings_and_stale_tags(pool: PgPool) {
 }
 
 #[sqlx::test(migrator = "squirrel_db::MIGRATOR")]
+async fn backfill_retries_any_image_without_an_embedding(pool: PgPool) {
+    let (_fake, ml) = fake_ml(false);
+    let fx = Fixture::with_ml(pool, ml.clone());
+    let sha = photo(&fx, true).await;
+    media::set_state(
+        fx.pool(),
+        &sha,
+        Step::Clip,
+        MediaState::Unsupported,
+        Some("bad preview"),
+    )
+    .await
+    .unwrap();
+    sqlx::query("DELETE FROM jobs")
+        .execute(fx.pool())
+        .await
+        .unwrap();
+    backfill::run_page(&fx.ctx, job("backfill", json!({})), 500)
+        .await
+        .unwrap();
+    assert_eq!(queued(fx.pool(), "clip_embed").await.len(), 1);
+}
+
+#[sqlx::test(migrator = "squirrel_db::MIGRATOR")]
 async fn a_worker_without_clip_queues_no_clip_work(pool: PgPool) {
     let fx = Fixture::new(pool);
     photo(&fx, true).await;
