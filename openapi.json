@@ -4946,7 +4946,7 @@
       },
       "FaceBoxDto": {
         "type": "object",
-        "description": "A face's box, relative to the displayed image and to every thumbnail size\n(0–1, from the top left).",
+        "description": "A face's box, 0–1 from the top left, in displayed coordinates: the photo as\nshown after its EXIF orientation, which is also the frame of every thumbnail\nsize (`thumb`, `preview`). A client crops a thumbnail with it as is.",
         "required": [
           "x",
           "y",

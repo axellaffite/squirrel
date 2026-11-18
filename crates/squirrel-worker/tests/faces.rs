@@ -297,6 +297,52 @@ async fn a_real_portrait_gets_one_face(pool: PgPool) {
     let f = &found[0];
     assert!(f.box_x > 0.2 && f.box_x + f.box_w < 0.8, "{f:?}");
     assert!(f.box_y > 0.05 && f.box_y + f.box_h < 0.7, "{f:?}");
+
+    // The same portrait stored sideways with EXIF orientation 6 (shown turned 90° clockwise):
+    // boxes are in displayed (EXIF-oriented) coordinates, like the thumbnails they are cropped
+    // from, so the face lands where it does on the upright copy.
+    let upright = image::load_from_memory(&portrait).unwrap().to_rgb8();
+    let stored = image::imageops::rotate270(&upright);
+    let sideways = jpeg_with_orientation(&stored, 6);
+    let bob = invited(fx.pool(), &alice, "bob").await;
+    let turned = copy(&fx, bob.id, &sideways).await;
+    thumbnails::run(&fx.ctx, thumbs_job(&turned)).await.unwrap();
+    faces_job::run(&fx.ctx, &ml, faces_job_for(&turned))
+        .await
+        .unwrap();
+    let rotated = faces::faces_of(fx.pool(), bob.id, &turned).await.unwrap();
+    assert_eq!(rotated.len(), 1);
+    let r = &rotated[0];
+    for (a, b) in [
+        (f.box_x, r.box_x),
+        (f.box_y, r.box_y),
+        (f.box_w, r.box_w),
+        (f.box_h, r.box_h),
+    ] {
+        assert!((a - b).abs() < 0.03, "upright {f:?}, oriented {r:?}");
+    }
+}
+
+/// `img` as a JPEG whose EXIF orientation tag is `orientation`.
+fn jpeg_with_orientation(img: &image::RgbImage, orientation: u16) -> Vec<u8> {
+    let mut data = Vec::new();
+    img.write_to(
+        &mut std::io::Cursor::new(&mut data),
+        image::ImageFormat::Jpeg,
+    )
+    .unwrap();
+    let payload = squirrel_media::testutil::exif_payload(&ExifSpec {
+        orientation: Some(orientation),
+        ..ExifSpec::default()
+    })
+    .unwrap();
+    let mut out = data[..2].to_vec();
+    out.extend_from_slice(&[0xFF, 0xE1]);
+    out.extend_from_slice(&u16::try_from(payload.len() + 8).unwrap().to_be_bytes());
+    out.extend_from_slice(b"Exif\0\0");
+    out.extend_from_slice(&payload);
+    out.extend_from_slice(&data[2..]);
+    out
 }
 
 /// Bob turns faces on later: his backfill queues the photo, whose run writes
