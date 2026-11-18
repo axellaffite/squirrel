@@ -131,7 +131,7 @@ by a backfill job queued at every worker start.
 | `SQUIRREL_MODELS_DIR` | `<data_dir>/models` | Pinned ML models (`scripts/fetch-models.sh`). Checked against their SHA-256 at start: a mismatch stops the worker. Without models, photo tags, search and faces are off |
 | `SQUIRREL_ORT_DYLIB` | unset | The pinned ONNX Runtime library (`scripts/fetch-onnxruntime.sh`), required once models are installed |
 | `SQUIRREL_ML_THREADS` | half the cores | Threads for one inference |
-| `SQUIRREL_ML_EXEC` | `subprocess` | `subprocess` runs inference in a long-lived `squirrel ml-exec` child (resource limits, restarted on crash, stopped after 10 idle minutes); `in-process` is for tests only |
+| `SQUIRREL_ML_EXEC` | `subprocess` | `subprocess` runs inference in a long-lived `squirrel ml-exec` child (resource limits, restarted on crash, stopped after 10 idle minutes; the server's search model after 5); `in-process` is for tests only: it loads the models at start and keeps them loaded |
 | `SQUIRREL_MEDIA_EXEC` | `subprocess` | `subprocess` decodes untrusted files in short-lived `squirrel media-exec` children with memory, CPU and file limits; `in-process` is for tests only |
 | `SQUIRREL_PDFIUM_DIR` | unset | Directory holding the pdfium library. Without it, PDFs get no thumbnail or text |
 | `SQUIRREL_GEODATA_FILE` | `<data_dir>/geo/…` | Another place-name file (tests, custom extracts); used without the SHA-256 pin |

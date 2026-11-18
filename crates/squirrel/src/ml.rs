@@ -173,6 +173,10 @@ fn backend(
 /// and ONNX Runtime are installed; its child starts on the first search) and
 /// which groups are installed (media status). Never fails the server: a
 /// problem only turns text search off, logged.
+///
+/// With `SQUIRREL_ML_EXEC=in-process` (tests only) the text model is loaded
+/// here, at start, and stays loaded for the server's lifetime: there is no
+/// child to start lazily or stop when idle.
 pub fn server_ml(
     settings: &MlSettings,
 ) -> (Option<squirrel_api::ml::TextEncoder>, ModelsInstalled) {
