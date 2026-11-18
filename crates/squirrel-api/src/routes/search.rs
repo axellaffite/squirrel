@@ -49,7 +49,8 @@ fn validate(query: &SearchQuery) -> Result<(&str, u32, u32), ApiError> {
 
 #[utoipa::path(get, path = "/api/search/documents", security(("device_bearer" = []), ("session_cookie" = [])), tag = "search", params(SearchQuery),
     responses((status = 200, body = DocumentResults),
-              (status = 422, body = ErrorBody, description = "Invalid q, offset or limit")))]
+              (status = 422, body = ErrorBody, description = "Invalid q, offset or limit"),
+              (status = 429, body = ErrorBody, description = "Too many searches from this client")))]
 pub async fn search_documents(
     State(state): State<AppState>,
     caller: Caller,

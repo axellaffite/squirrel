@@ -2437,6 +2437,16 @@
                 }
               }
             }
+          },
+          "422": {
+            "description": "Unknown level",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
           }
         },
         "security": [
@@ -2473,6 +2483,7 @@
             "schema": {
               "type": "integer",
               "format": "int32",
+              "maximum": 199,
               "minimum": 0
             }
           },
@@ -2484,7 +2495,8 @@
             "schema": {
               "type": "integer",
               "format": "int32",
-              "minimum": 0
+              "maximum": 50,
+              "minimum": 1
             }
           }
         ],
@@ -2501,6 +2513,16 @@
           },
           "422": {
             "description": "Invalid q, offset or limit",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Too many searches from this client",
             "content": {
               "application/json": {
                 "schema": {
@@ -2525,7 +2547,8 @@
         "tags": [
           "search"
         ],
-        "summary": "Pagination is by offset, not by cursor: results are ranked, at most 200\ncan be reached (`offset + limit ≤ 200`), and `has_more` is false past\nthem. Only the caller's own live photos are searched.",
+        "summary": "Search the caller's photos by text (English, CLIP).",
+        "description": "Pagination is by offset, not by cursor: results are ranked, at most 200\ncan be reached (`offset + limit ≤ 200`), and `has_more` is false past\nthem. Only the caller's own live photos are searched.",
         "operationId": "search_photos",
         "parameters": [
           {
@@ -2545,6 +2568,7 @@
             "schema": {
               "type": "integer",
               "format": "int32",
+              "maximum": 199,
               "minimum": 0
             }
           },
@@ -2556,7 +2580,8 @@
             "schema": {
               "type": "integer",
               "format": "int32",
-              "minimum": 0
+              "maximum": 100,
+              "minimum": 1
             }
           },
           {
@@ -2643,6 +2668,16 @@
               }
             }
           },
+          "429": {
+            "description": "Too many searches from this client",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
           "503": {
             "description": "`ml_unavailable`: no text model on this server; `busy`: try again",
             "content": {
@@ -2673,6 +2708,16 @@
         "responses": {
           "204": {
             "description": "The text model is loading (or loaded): the next search is fast"
+          },
+          "429": {
+            "description": "Too many warm-ups from this client",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
           },
           "503": {
             "description": "`ml_unavailable`: no text model on this server",

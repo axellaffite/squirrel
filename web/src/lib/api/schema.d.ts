@@ -557,7 +557,8 @@ export interface paths {
             cookie?: never;
         };
         /**
-         * Pagination is by offset, not by cursor: results are ranked, at most 200
+         * Search the caller's photos by text (English, CLIP).
+         * @description Pagination is by offset, not by cursor: results are ranked, at most 200
          *     can be reached (`offset + limit ≤ 200`), and `has_more` is false past
          *     them. Only the caller's own live photos are searched.
          */
@@ -3090,6 +3091,15 @@ export interface operations {
                     "application/json": components["schemas"]["PlaceGroupDto"][];
                 };
             };
+            /** @description Unknown level */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
         };
     };
     search_documents: {
@@ -3121,6 +3131,15 @@ export interface operations {
             };
             /** @description Invalid q, offset or limit */
             422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Too many searches from this client */
+            429: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -3179,6 +3198,15 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorBody"];
                 };
             };
+            /** @description Too many searches from this client */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
             /** @description `ml_unavailable`: no text model on this server; `busy`: try again */
             503: {
                 headers: {
@@ -3205,6 +3233,15 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+            /** @description Too many warm-ups from this client */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
             };
             /** @description `ml_unavailable`: no text model on this server */
             503: {

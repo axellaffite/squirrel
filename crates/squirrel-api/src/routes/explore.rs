@@ -9,7 +9,7 @@ use squirrel_db::explore;
 use squirrel_db::timeline::{self, AssetSummaryRecord};
 use uuid::Uuid;
 
-use crate::error::ApiError;
+use crate::error::{ApiError, ErrorBody};
 use crate::explore_dto::{CameraGroupDto, PlaceGroupDto, PlaceLevel, PlacesQuery, TagGroupDto};
 use crate::extract::Caller;
 use crate::input::ApiQuery;
@@ -57,7 +57,8 @@ pub async fn list_tags(
 }
 
 #[utoipa::path(get, path = "/api/places", security(("device_bearer" = []), ("session_cookie" = [])), tag = "explore", params(PlacesQuery),
-    responses((status = 200, body = Vec<PlaceGroupDto>, description = "Most photographed first, at most 200")))]
+    responses((status = 200, body = Vec<PlaceGroupDto>, description = "Most photographed first, at most 200"),
+              (status = 422, body = ErrorBody, description = "Unknown level")))]
 pub async fn list_places(
     State(state): State<AppState>,
     caller: Caller,
