@@ -15,8 +15,7 @@ pub const EXTRACT_TEXT: &str = "extract_text";
 pub const BACKFILL: &str = "backfill";
 /// Phase 5 (machine learning): registered only when their models are installed.
 pub const CLIP_EMBED: &str = "clip_embed";
-pub const FACES: &str = "faces";
-pub use squirrel_jobs::kinds::{CLUSTER_FACES, FACE_BACKFILL};
+pub use squirrel_jobs::kinds::{CLUSTER_FACES, FACE_BACKFILL, FACES, faces};
 /// Encodes the label bank's prompts with the CLIP text tower.
 pub const LABEL_BANK: &str = "label_bank";
 
@@ -71,11 +70,6 @@ pub fn geocode(sha256: &str, background: bool) -> NewJob {
 /// CLIP embedding and tags of an image blob (shared by every owner).
 pub fn clip_embed(sha256: &str, background: bool) -> NewJob {
     per_blob(CLIP_EMBED, sha256, priority::CLIP, background)
-}
-
-/// Face detection of an image blob (rows are written per owner, Milestone D).
-pub fn faces(sha256: &str, background: bool) -> NewJob {
-    per_blob(FACES, sha256, priority::FACES, background)
 }
 
 /// Computes the label bank of `model` for the current labels version (one

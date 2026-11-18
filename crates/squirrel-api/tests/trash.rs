@@ -191,3 +191,50 @@ async fn trash_is_private(pool: PgPool) {
         .await
         .assert_status(StatusCode::NOT_FOUND);
 }
+
+#[sqlx::test(migrator = "squirrel_db::MIGRATOR")]
+async fn a_restored_photo_without_a_face_scan_is_queued_for_faces(pool: PgPool) {
+    let instance = common::Instance::new(pool.clone());
+    let browser = instance.browser();
+    let me = common::setup_admin(&browser, "alice").await;
+    let parent = files::root_id(&instance, &me, "Photos").await;
+    let node = files::upload(&browser, &me, parent, "a.jpg", b"not really a jpeg").await;
+    let id = node["id"].as_str().unwrap();
+    // Rendered and analysed while the photo sat in the trash: no scan for Alice.
+    sqlx::query(
+        "INSERT INTO media (sha256, kind, metadata_state, thumbs_state, thumbs_version) \
+         SELECT blob_sha256, 'image', 'ready', 'ready', 1 FROM nodes WHERE id = $1::uuid",
+    )
+    .bind(id)
+    .execute(&pool)
+    .await
+    .unwrap();
+    sqlx::query(
+        "INSERT INTO assets (node_id, owner_id, sha256, kind, taken_at, taken_source) \
+         SELECT id, owner_id, blob_sha256, 'photo', now(), 'upload' FROM nodes WHERE id = $1::uuid",
+    )
+    .bind(id)
+    .execute(&pool)
+    .await
+    .unwrap();
+    delete(&browser, &me, &format!("/api/nodes/{id}"))
+        .await
+        .assert_status(StatusCode::NO_CONTENT);
+    sqlx::query("DELETE FROM jobs")
+        .execute(&pool)
+        .await
+        .unwrap();
+
+    post(&browser, &me, &format!("/api/trash/{id}/restore"))
+        .await
+        .assert_status_ok();
+    let queued: Vec<(String, bool)> = sqlx::query_as(
+        "SELECT j.kind, j.payload->>'sha256' = n.blob_sha256 FROM jobs j, nodes n \
+          WHERE n.id = $1::uuid ORDER BY j.id",
+    )
+    .bind(id)
+    .fetch_all(&pool)
+    .await
+    .unwrap();
+    assert_eq!(queued, [("faces".to_owned(), true)]);
+}

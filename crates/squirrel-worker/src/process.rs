@@ -3,8 +3,11 @@
 use serde::Deserialize;
 use squirrel_core::MediaKind;
 use squirrel_db::assets;
+use squirrel_db::faces;
+use squirrel_db::media::MediaState;
 use squirrel_db::{media, nodes};
 use squirrel_jobs::{JobContext, JobError};
+use squirrel_ml::FACE_MODEL_ID;
 use time::OffsetDateTime;
 use uuid::Uuid;
 
@@ -45,6 +48,17 @@ pub async fn run(ctx: &MediaContext, job: JobContext) -> Result<(), JobError> {
         assets::upsert(&mut tx, &asset)
             .await
             .map_err(JobError::retry)?;
+        // The thumbnails step queued `faces` for the owners it saw; a new
+        // owner of a rendered photo is queued here.
+        if media.thumbs_state() == MediaState::Ready
+            && faces::owner_needs_scan(&mut tx, asset.owner_id, &sha, FACE_MODEL_ID)
+                .await
+                .map_err(JobError::retry)?
+        {
+            squirrel_jobs::enqueue(&mut tx, &jobs::faces(&sha, payload.background))
+                .await
+                .map_err(JobError::retry)?;
+        }
     }
     for follow_up in jobs::follow_ups(&media, payload.background) {
         squirrel_jobs::enqueue(&mut tx, &follow_up)

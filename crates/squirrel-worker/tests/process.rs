@@ -272,3 +272,83 @@ async fn the_phones_capture_time_is_used_when_the_file_has_none(pool: PgPool) {
         .unwrap();
     expect_device(assets::find(fx.pool(), node.id).await.unwrap().unwrap());
 }
+
+/// Marks the blob's preview made (and every other step settled), with no job left.
+async fn rendered(fx: &Fixture, sha: &str) {
+    sqlx::query(
+        "UPDATE media SET thumbs_state = 'ready', metadata_state = 'ready', \
+           text_state = 'unsupported', faces_state = 'ready' WHERE sha256 = $1",
+    )
+    .bind(sha)
+    .execute(fx.pool())
+    .await
+    .unwrap();
+    sqlx::query("DELETE FROM jobs")
+        .execute(fx.pool())
+        .await
+        .unwrap();
+}
+
+fn queued_faces(queued: Vec<(String, i16)>) -> Vec<(String, i16)> {
+    queued.into_iter().filter(|(k, _)| k == "faces").collect()
+}
+
+#[sqlx::test(migrator = "squirrel_db::MIGRATOR")]
+async fn a_new_owner_of_a_rendered_photo_gets_a_faces_job(pool: PgPool) {
+    let fx = Fixture::new(pool);
+    let alice = admin(fx.pool()).await;
+    let bob = invited(fx.pool(), &alice, "bob").await;
+    let jpeg = jpeg_with_exif(&ExifSpec::default());
+    let mine = fx
+        .store_file(alice.id, photos(&fx, &alice).await, "a.jpg", &jpeg)
+        .await;
+    process(&fx, mine.id, false).await.unwrap();
+    let sha = mine.blob_sha256.clone().unwrap();
+    rendered(&fx, &sha).await;
+    squirrel_db::faces::store_scan(fx.pool(), alice.id, &sha, squirrel_ml::FACE_MODEL_ID, &[])
+        .await
+        .unwrap();
+
+    // Another copy of Alice's: she has her scan already.
+    let again = fx
+        .store_file(alice.id, photos(&fx, &alice).await, "b.jpg", &jpeg)
+        .await;
+    process(&fx, again.id, false).await.unwrap();
+    assert!(queued_kinds(fx.pool()).await.is_empty());
+
+    // Bob's copy: the thumbnails step will not run again, so this queues it.
+    let theirs = fx
+        .store_file(bob.id, photos(&fx, &bob).await, "c.jpg", &jpeg)
+        .await;
+    process(&fx, theirs.id, false).await.unwrap();
+    assert_eq!(
+        queued_kinds(fx.pool()).await,
+        kinds(&[("faces", squirrel_jobs::priority::FACES)])
+    );
+}
+
+#[sqlx::test(migrator = "squirrel_db::MIGRATOR")]
+async fn no_faces_job_before_the_preview_or_with_faces_off(pool: PgPool) {
+    let fx = Fixture::new(pool);
+    let alice = admin(fx.pool()).await;
+    let bob = invited(fx.pool(), &alice, "bob").await;
+    let jpeg = jpeg_with_exif(&ExifSpec::default());
+    let mine = fx
+        .store_file(alice.id, photos(&fx, &alice).await, "a.jpg", &jpeg)
+        .await;
+    process(&fx, mine.id, false).await.unwrap();
+    assert!(
+        queued_faces(queued_kinds(fx.pool()).await).is_empty(),
+        "the thumbnails step queues it once the preview exists"
+    );
+
+    rendered(&fx, mine.blob_sha256.as_deref().unwrap()).await;
+    squirrel_db::ml_settings::set_faces_enabled(fx.pool(), bob.id, false)
+        .await
+        .unwrap();
+    let theirs = fx
+        .store_file(bob.id, photos(&fx, &bob).await, "b.jpg", &jpeg)
+        .await;
+    process(&fx, theirs.id, false).await.unwrap();
+    assert!(queued_kinds(fx.pool()).await.is_empty());
+}

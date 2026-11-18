@@ -80,6 +80,57 @@ pub async fn wanted<'e>(
     .await?)
 }
 
+/// Whether `owner` has faces on, a live copy of `sha256` and no scan of it
+/// by `model` (a copy that appears after the thumbnails step queued `faces`).
+pub async fn owner_needs_scan(
+    conn: &mut PgConnection,
+    owner: Uuid,
+    sha256: &str,
+    model: &str,
+) -> Result<bool, DbError> {
+    Ok(sqlx::query_scalar(
+        "SELECT EXISTS (SELECT 1 FROM assets a \
+           JOIN nodes n ON n.id = a.node_id AND n.deleted_at IS NULL \
+          WHERE a.owner_id = $1 AND a.sha256 = $2 \
+            AND COALESCE((SELECT s.faces_enabled FROM user_ml_settings s \
+                           WHERE s.user_id = a.owner_id), true) \
+            AND NOT EXISTS (SELECT 1 FROM face_scans f \
+                             WHERE f.owner_id = a.owner_id AND f.sha256 = a.sha256 \
+                               AND f.model = $3))",
+    )
+    .bind(owner)
+    .bind(sha256)
+    .bind(model)
+    .fetch_one(&mut *conn)
+    .await?)
+}
+
+/// Rendered photos of trash entry `trash_root` (a batch about to be
+/// restored) that `owner`, with faces on, has no scan of by `model`.
+pub async fn unscanned_in_batch(
+    conn: &mut PgConnection,
+    owner: Uuid,
+    trash_root: Uuid,
+    model: &str,
+) -> Result<Vec<String>, DbError> {
+    Ok(sqlx::query_scalar(
+        "SELECT DISTINCT a.sha256 FROM nodes n \
+           JOIN assets a ON a.node_id = n.id \
+           JOIN media m ON m.sha256 = a.sha256 AND m.thumbs_state = 'ready' \
+          WHERE n.owner_id = $1 AND n.trash_root = $2 \
+            AND COALESCE((SELECT s.faces_enabled FROM user_ml_settings s \
+                           WHERE s.user_id = $1), true) \
+            AND NOT EXISTS (SELECT 1 FROM face_scans f \
+                             WHERE f.owner_id = $1 AND f.sha256 = a.sha256 AND f.model = $3) \
+          ORDER BY 1",
+    )
+    .bind(owner)
+    .bind(trash_root)
+    .bind(model)
+    .fetch_all(&mut *conn)
+    .await?)
+}
+
 /// Locks `owner`'s row: storing a scan shares it, turning faces off takes it
 /// exclusively, so neither interleaves with the other.
 pub(crate) async fn lock_owner(

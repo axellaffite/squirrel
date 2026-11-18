@@ -12,6 +12,22 @@ pub const FACE_BACKFILL: &str = "face_backfill";
 /// Clusters a user's new faces (Phase 5).
 pub const CLUSTER_FACES: &str = "cluster_faces";
 
+/// Face detection of an image blob (rows are written per owner).
+pub const FACES: &str = "faces";
+
+/// The `faces` job of a blob; queued by the thumbnails step, and for a copy
+/// that becomes someone's (upload) or live again (restore) after it.
+pub fn faces(sha256: &str, background: bool) -> NewJob {
+    let base = if background {
+        priority::background(priority::FACES)
+    } else {
+        priority::FACES
+    };
+    NewJob::new(FACES, json!({ "sha256": sha256 }))
+        .priority(base)
+        .dedupe(format!("{FACES}:{sha256}"))
+}
+
 /// One page of a user's face backfill, after node `after` (`None`: the first).
 pub fn face_backfill(owner: Uuid, after: Option<Uuid>) -> NewJob {
     let key = after.map_or_else(

@@ -6,7 +6,7 @@ mod delete;
 mod restore;
 
 pub use delete::{delete_forever, empty, purge_older_than};
-pub use restore::restore;
+pub use restore::{Restored, restore, restore_in};
 
 use sqlx::{PgConnection, PgPool};
 use time::OffsetDateTime;
