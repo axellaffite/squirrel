@@ -71,6 +71,8 @@ struct Running {
 #[derive(Default)]
 struct State {
     running: Option<Running>,
+    /// What the last child said when it got ready.
+    ready: Option<Ready>,
     next_id: u64,
     generation: u64,
 }
@@ -105,6 +107,25 @@ impl MlClient {
         }
     }
 
+    /// Starts the child if needed and pings it: what it loaded.
+    pub async fn health(&self) -> Result<Ready, MlClientError> {
+        let body = self.request(MlOp::Ping).await?;
+        if !matches!(body, MlBody::Ok(_)) {
+            return Err(MlClientError::Protocol(format!("ping answered {body:?}")));
+        }
+        Ok(match &self.backend {
+            MlBackend::InProcess(engine) => engine
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner)
+                .ready(),
+            MlBackend::Subprocess(_) => self.state.lock().await.ready.clone().unwrap_or(Ready {
+                ready: true,
+                groups: Vec::new(),
+                onnxruntime: None,
+            }),
+        })
+    }
+
     /// The running child's process id (`None` when stopped or in-process).
     pub async fn child_id(&self) -> Option<u32> {
         let state = self.state.lock().await;
@@ -130,8 +151,9 @@ impl MlClient {
         let mut state = self.state.lock().await;
         if state.running.is_none() {
             state.generation += 1;
-            let running = start(config, state.generation).await?;
+            let (running, ready) = start(config, state.generation).await?;
             state.running = Some(running);
+            state.ready = Some(ready);
             watch_idle(Arc::downgrade(&self.state), config.idle, state.generation);
         }
         state.next_id += 1;
@@ -169,7 +191,7 @@ impl MlClient {
     }
 }
 
-async fn start(config: &MlChildConfig, generation: u64) -> Result<Running, MlClientError> {
+async fn start(config: &MlChildConfig, generation: u64) -> Result<(Running, Ready), MlClientError> {
     let mut command = Command::new(&config.program);
     command.env_clear();
     for name in PASSED_ENV {
@@ -220,7 +242,7 @@ async fn start(config: &MlChildConfig, generation: u64) -> Result<Running, MlCli
                 pid = running.child.id(),
                 "ML child ready"
             );
-            Ok(running)
+            Ok((running, ready))
         }
         Ok(_) => {
             kill(running).await;
