@@ -1,55 +1,65 @@
-//! The label bank (`labels/labels-v2.tsv`) and zero-shot tagging against it.
+//! The label bank (`labels/labels-v3.tsv`) and zero-shot tagging against it.
 //!
-//! Each label is scored on its own (no softmax: labels do not compete): a
-//! photo gets a label when its cosine with the label reaches an absolute
-//! threshold (the model's default, or the label's own) **and** beats the
-//! generic "background" prompts by a margin, so a concept must be more
-//! present than "a photo" itself. At most [`TOP_K`] tags, best first.
+//! Each label is scored on its own with SigLIP's match probability (a sigmoid:
+//! labels do not share one probability mass). A photo gets a label when its
+//! probability reaches [`Thresholds::min_p`]. Labels that are easily mistaken
+//! for each other (dog and cat, car and truck) share a **group**: only the
+//! best label of a group can become a tag, and only when its logit beats the
+//! second best sibling's by [`Thresholds::contrast`]. At most [`TOP_K`] tags,
+//! best first.
 
-use super::{ClipError, ClipText, cosine, normalize, templates};
+use super::{ClipError, ClipText, LOGIT_BIAS, LOGIT_SCALE, cosine, normalize, templates};
 
-/// Bumped with every change to the label file, the templates, the background
-/// prompts or the model (blobs are then re-tagged from their stored embedding).
-pub const LABELS_VERSION: i16 = 2;
-pub const LABELS_TSV: &str = include_str!("../../labels/labels-v2.tsv");
-/// The reserved bank entry holding the background prompts' embedding.
-pub const BACKGROUND: &str = "background";
+/// Bumped with every change to the label file, the templates or the model
+/// (blobs are then re-tagged from their stored embedding).
+pub const LABELS_VERSION: i16 = 3;
+pub const LABELS_TSV: &str = include_str!("../../labels/labels-v3.tsv");
 /// At most this many tags per photo.
 pub const TOP_K: usize = 5;
 
 /// When a scored label becomes a tag, per model (see [`thresholds`]).
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct Thresholds {
-    /// Minimum cosine between the image and a label without its own threshold.
-    pub cosine: f32,
-    /// Minimum `cos(label) − cos(background)`.
-    pub margin: f32,
+    /// Minimum match probability of a label.
+    pub min_p: f32,
+    /// Minimum logit lead of a grouped label over its best sibling.
+    pub contrast: f32,
 }
 
-/// PROVISIONAL for `openai-vit-b32-224`, set on generated pictures only (no
-/// real photo library was available): to be calibrated on ~200 real photos
-/// with `examples/tag_report.rs` so that ≥ 80 % of shown tags are right.
+/// For `siglip2-vit-b16-224`, calibrated on the committed fixtures (pets,
+/// portraits, generated shapes): see the Milestone I calibration in the
+/// Phase 5 plan. To be re-checked on real photos with `examples/tag_report.rs`.
 pub fn thresholds(model: &str) -> Option<Thresholds> {
     match model {
         crate::models::CLIP_MODEL_ID => Some(Thresholds {
-            cosine: 0.25,
-            margin: 0.045,
+            min_p: TAG_MIN_P,
+            contrast: TAG_CONTRAST,
         }),
         _ => None,
     }
 }
 
+/// See [`Thresholds::min_p`] (logit ≈ −6.0). On the fixtures, a dog or cat
+/// photo scores its label at logit −3.5 … −4.2, and no label of an unrelated
+/// picture (portraits, flat shapes) reached −6.4. SigLIP's probabilities for
+/// the templated labels are small even on a clear match (≈ 0.015–0.03):
+/// the floor sits between the two, not at 0.5.
+pub const TAG_MIN_P: f32 = 0.0025;
+/// See [`Thresholds::contrast`] (logits: e^1 ≈ 2.7 times the odds). On the
+/// fixtures the right pet led the other by > 5 logits.
+pub const TAG_CONTRAST: f32 = 1.0;
+
 #[derive(Debug, Clone, PartialEq)]
 pub struct Label {
     pub slug: String,
     pub names: Vec<String>,
-    /// Overrides [`Thresholds::cosine`] for this label only.
-    pub min_cosine: Option<f32>,
+    /// Labels a photo is easily mistaken between share a group.
+    pub group: Option<String>,
 }
 
 #[derive(Debug, thiserror::Error, PartialEq, Eq)]
 pub enum LabelError {
-    #[error("line {line}: expected `slug<TAB>name|name[<TAB>min_cosine]`")]
+    #[error("line {line}: expected `slug<TAB>name|name[<TAB>group]`")]
     Shape { line: usize },
     #[error("line {line}: bad slug {slug:?}")]
     Slug { line: usize, slug: String },
@@ -57,8 +67,8 @@ pub enum LabelError {
     Duplicate { line: usize, slug: String },
     #[error("line {line}: empty class name")]
     EmptyName { line: usize },
-    #[error("line {line}: the minimum cosine must be a number in (0, 1)")]
-    Threshold { line: usize },
+    #[error("line {line}: bad group {group:?}")]
+    Group { line: usize, group: String },
 }
 
 /// Slugs as `asset_tags.tag` accepts them: `^[a-z][a-z0-9_]{0,47}$`.
@@ -80,21 +90,20 @@ pub fn parse(tsv: &str) -> Result<Vec<Label>, LabelError> {
             continue;
         }
         let fields: Vec<&str> = raw.split('\t').collect();
-        let (slug, names, min_cosine) = match fields.as_slice() {
+        let (slug, names, group) = match fields.as_slice() {
             [slug, names] => (*slug, *names, None),
-            [slug, names, min] => {
-                let min: f32 = min
-                    .trim()
-                    .parse()
-                    .map_err(|_| LabelError::Threshold { line })?;
-                if !(min > 0.0 && min < 1.0) {
-                    return Err(LabelError::Threshold { line });
+            [slug, names, group] => {
+                if !is_slug(group) {
+                    return Err(LabelError::Group {
+                        line,
+                        group: (*group).to_owned(),
+                    });
                 }
-                (*slug, *names, Some(min))
+                (*slug, *names, Some((*group).to_owned()))
             }
             _ => return Err(LabelError::Shape { line }),
         };
-        if !is_slug(slug) || slug == BACKGROUND {
+        if !is_slug(slug) {
             return Err(LabelError::Slug {
                 line,
                 slug: slug.to_owned(),
@@ -113,23 +122,20 @@ pub fn parse(tsv: &str) -> Result<Vec<Label>, LabelError> {
         labels.push(Label {
             slug: slug.to_owned(),
             names,
-            min_cosine,
+            group,
         });
     }
     Ok(labels)
 }
 
-/// SHA-256 (hex) of everything the bank is computed from: the label file, the
-/// prompt templates and the background prompts. Stored with a bank; a stored
-/// bank with another digest is computed again.
+/// SHA-256 (hex) of everything the bank is computed from: the label file and
+/// the prompt templates. Stored with a bank; a stored bank with another
+/// digest is computed again.
 pub fn bank_digest() -> String {
     use sha2::{Digest, Sha256};
     let mut hasher = Sha256::new();
     hasher.update(LABELS_TSV.as_bytes());
-    for part in templates::TEMPLATES
-        .iter()
-        .chain(&templates::BACKGROUND_PROMPTS)
-    {
+    for part in templates::TEMPLATES {
         hasher.update([0u8]);
         hasher.update(part.as_bytes());
     }
@@ -163,8 +169,8 @@ pub fn mean_embedding(prompt_embeddings: &[Vec<f32>]) -> Result<Vec<f32>, ClipEr
     Ok(normalize(&sum))
 }
 
-/// Every prompt to encode, as (bank entry, prompt): each label's names through
-/// every template, then the background prompts under [`BACKGROUND`].
+/// Every prompt to encode, as (label slug, prompt): each label's names through
+/// every template.
 pub fn bank_prompts(labels: &[Label]) -> Vec<(String, String)> {
     labels
         .iter()
@@ -173,11 +179,6 @@ pub fn bank_prompts(labels: &[Label]) -> Vec<(String, String)> {
                 .into_iter()
                 .map(|prompt| (label.slug.clone(), prompt))
         })
-        .chain(
-            templates::BACKGROUND_PROMPTS
-                .iter()
-                .map(|prompt| (BACKGROUND.to_owned(), (*prompt).to_owned())),
-        )
         .collect()
 }
 
@@ -205,53 +206,86 @@ pub fn compute_bank(
 pub struct Score {
     pub slug: String,
     pub cosine: f32,
-    /// `cosine − cos(background)`.
-    pub margin: f32,
+    /// `scale · cosine + bias`: SigLIP's logit.
+    pub logit: f32,
+    /// `σ(logit)`.
+    pub probability: f32,
 }
 
-/// Every label's cosine and margin over the background, best cosine first.
-/// The background entry itself is not a label.
+/// Every label's cosine, logit and probability, best first.
 pub fn score(image: &[f32], bank: &[(String, Vec<f32>)]) -> Vec<Score> {
-    let background = bank
-        .iter()
-        .find(|(slug, _)| slug == BACKGROUND)
-        .map_or(0.0, |(_, text)| cosine(image, text));
     let mut scores: Vec<Score> = bank
         .iter()
-        .filter(|(slug, _)| slug != BACKGROUND)
         .map(|(slug, text)| {
             let cosine = cosine(image, text);
             Score {
                 slug: slug.clone(),
                 cosine,
-                margin: cosine - background,
+                logit: LOGIT_SCALE * cosine + LOGIT_BIAS,
+                probability: super::match_probability(cosine),
             }
         })
         .collect();
-    scores.sort_by(|a, b| b.cosine.total_cmp(&a.cosine));
+    scores.sort_by(|a, b| b.logit.total_cmp(&a.logit));
     scores
 }
 
-/// The tags to keep, as (slug, cosine): over the label's threshold and the
-/// background margin, at most `top_k`, best first.
+/// The group of `slug` in `labels`, if any.
+fn group_of<'a>(labels: &'a [Label], slug: &str) -> Option<&'a str> {
+    labels
+        .iter()
+        .find(|label| label.slug == slug)
+        .and_then(|label| label.group.as_deref())
+}
+
+/// The tags to keep, as (slug, probability): probable enough, and for a
+/// grouped label, the best of its group by `contrast` logits; at most `top_k`,
+/// best first. `scores` must hold every label (as [`score`] returns them).
 pub fn select(
     scores: &[Score],
     labels: &[Label],
     thresholds: Thresholds,
     top_k: usize,
 ) -> Vec<(String, f32)> {
-    let threshold = |slug: &str| {
-        labels
+    let leads_its_group = |s: &Score| {
+        let Some(group) = group_of(labels, &s.slug) else {
+            return true;
+        };
+        scores
             .iter()
-            .find(|label| label.slug == slug)
-            .and_then(|label| label.min_cosine)
-            .unwrap_or(thresholds.cosine)
+            .filter(|other| other.slug != s.slug && group_of(labels, &other.slug) == Some(group))
+            .all(|sibling| s.logit - sibling.logit >= thresholds.contrast)
     };
     scores
         .iter()
-        .filter(|s| s.cosine >= threshold(&s.slug) && s.margin >= thresholds.margin)
+        .filter(|s| s.probability >= thresholds.min_p && leads_its_group(s))
         .take(top_k)
-        .map(|s| (s.slug.clone(), s.cosine))
+        .map(|s| (s.slug.clone(), s.probability))
+        .collect()
+}
+
+/// The labels a search for `query` must beat on each photo: when the query's
+/// text embedding is within `min_cosine` of a grouped label (the closest one),
+/// that label's siblings; otherwise none. `bank` holds the label embeddings.
+pub fn search_rivals<'a>(
+    query: &[f32],
+    bank: &'a [(String, Vec<f32>)],
+    labels: &[Label],
+    min_cosine: f32,
+) -> Vec<(&'a str, &'a [f32])> {
+    let closest = bank
+        .iter()
+        .map(|(slug, text)| (slug.as_str(), cosine(query, text)))
+        .max_by(|a, b| a.1.total_cmp(&b.1));
+    let Some((matched, similarity)) = closest else {
+        return Vec::new();
+    };
+    let Some(group) = group_of(labels, matched).filter(|_| similarity >= min_cosine) else {
+        return Vec::new();
+    };
+    bank.iter()
+        .filter(|(slug, _)| slug != matched && group_of(labels, slug) == Some(group))
+        .map(|(slug, text)| (slug.as_str(), text.as_slice()))
         .collect()
 }
 
@@ -267,15 +301,15 @@ mod tests {
         assert_eq!(bank().len(), labels.len());
     }
 
-    /// Changing the labels, templates or background prompts must come with a
-    /// new LABELS_VERSION: update both here together.
+    /// Changing the labels or templates must come with a new LABELS_VERSION:
+    /// update both here together.
     #[test]
     fn the_bank_digest_is_pinned_to_its_labels_version() {
         assert_eq!(
             (LABELS_VERSION, bank_digest().as_str()),
             (
-                2,
-                "3416ccdcea95271c07241d35741887f66589019c02f4ea03d2ccacaf739aff47"
+                3,
+                "a8fcc0bc71550ca3c53bd4c384f7d119b75f7e5b7dd269da1058626476599b40"
             ),
             "the bank changed: bump LABELS_VERSION and pin the new digest"
         );
@@ -292,6 +326,31 @@ mod tests {
     }
 
     #[test]
+    fn confusable_labels_share_a_group() {
+        let labels = bank();
+        for (a, b) in [
+            ("dog", "cat"),
+            ("car", "truck"),
+            ("beach", "lake"),
+            ("baby", "child"),
+        ] {
+            let (ga, gb) = (group_of(&labels, a), group_of(&labels, b));
+            assert!(ga.is_some() && ga == gb, "{a} {b}");
+        }
+        assert_eq!(group_of(&labels, "sunset"), None);
+        // A group of one would never compete: every group has siblings.
+        for label in &labels {
+            if let Some(group) = &label.group {
+                let size = labels
+                    .iter()
+                    .filter(|l| l.group.as_ref() == Some(group))
+                    .count();
+                assert!(size >= 2, "{group}");
+            }
+        }
+    }
+
+    #[test]
     fn bad_files_are_refused() {
         assert_eq!(
             parse("dog\tdog\ndog\tpuppy"),
@@ -301,10 +360,6 @@ mod tests {
             })
         );
         assert!(matches!(parse("Dog\tdog"), Err(LabelError::Slug { .. })));
-        assert!(matches!(
-            parse("background\tthing"),
-            Err(LabelError::Slug { .. })
-        ));
         assert!(matches!(
             parse("dog-cat\tdog"),
             Err(LabelError::Slug { .. })
@@ -316,18 +371,17 @@ mod tests {
         assert!(matches!(parse("dog\t"), Err(LabelError::EmptyName { .. })));
         assert!(matches!(parse("dog"), Err(LabelError::Shape { .. })));
         assert!(matches!(
-            parse("dog\tdog\tx"),
-            Err(LabelError::Threshold { .. })
+            parse("dog\tdog\tPets"),
+            Err(LabelError::Group { .. })
         ));
         assert!(matches!(
-            parse("dog\tdog\t1.5"),
-            Err(LabelError::Threshold { .. })
-        ));
-        assert!(matches!(
-            parse("dog\tdog\t0.3\tz"),
+            parse("dog\tdog\tpet\tz"),
             Err(LabelError::Shape { .. })
         ));
-        assert_eq!(parse("dog\tdog\t0.3").unwrap()[0].min_cosine, Some(0.3));
+        assert_eq!(
+            parse("dog\tdog\tpet").unwrap()[0].group.as_deref(),
+            Some("pet")
+        );
         assert_eq!(parse("# comment\n\n").unwrap(), []);
     }
 
@@ -341,81 +395,98 @@ mod tests {
     }
 
     #[test]
-    fn the_background_prompts_close_the_prompt_list() {
+    fn every_prompt_belongs_to_a_label() {
         let labels = parse("dog\tdog|puppy").unwrap();
         let prompts = bank_prompts(&labels);
-        assert_eq!(prompts.len(), 14 + templates::BACKGROUND_PROMPTS.len());
-        assert_eq!(prompts.last().unwrap().0, BACKGROUND);
+        assert_eq!(prompts.len(), 2 * templates::TEMPLATES.len());
+        assert!(prompts.iter().all(|(slug, _)| slug == "dog"));
     }
 
-    fn unit(angle: f32) -> Vec<f32> {
-        vec![angle.cos(), angle.sin()]
+    /// A unit vector whose cosine with `axis()` is `cos`.
+    fn at(cos: f32) -> Vec<f32> {
+        vec![cos, (1.0 - cos * cos).sqrt()]
+    }
+
+    fn axis() -> Vec<f32> {
+        vec![1.0, 0.0]
+    }
+
+    /// Scores straight from cosines: labels as unit vectors, image on the axis.
+    fn scores(cosines: &[(&str, f32)]) -> Vec<Score> {
+        let bank: Vec<(String, Vec<f32>)> = cosines
+            .iter()
+            .map(|(slug, cos)| ((*slug).to_owned(), at(*cos)))
+            .collect();
+        score(&axis(), &bank)
+    }
+
+    const RULE: Thresholds = Thresholds {
+        min_p: 0.5,
+        contrast: 1.0,
+    };
+
+    #[test]
+    fn scores_are_siglip_probabilities_best_first() {
+        let scored = scores(&[("a", 0.10), ("b", 0.20)]);
+        assert_eq!(scored[0].slug, "b");
+        assert!((scored[0].logit - (LOGIT_SCALE * 0.20 + LOGIT_BIAS)).abs() < 1e-3);
+        assert!(scored[0].probability > 0.99 && scored[1].probability < 0.01);
     }
 
     #[test]
-    fn labels_must_beat_the_background_and_their_threshold() {
-        let labels = parse("a\ta\nb\tb\t0.95\nc\tc").unwrap();
+    fn a_tag_needs_its_probability() {
+        let labels = parse("a\ta\nb\tb").unwrap();
+        // 0.1489 is p = 0.5: a just passes, b does not.
+        let tags = select(&scores(&[("a", 0.150), ("b", 0.147)]), &labels, RULE, TOP_K);
+        assert_eq!(tags.len(), 1);
+        assert_eq!(tags[0].0, "a");
+        let tags = select(&scores(&[("a", 0.2), ("b", 0.2)]), &labels, RULE, 1);
+        assert_eq!(tags.len(), 1, "top k");
+    }
+
+    #[test]
+    fn a_grouped_tag_must_beat_its_siblings_by_the_contrast() {
+        let labels = parse("dog\tdog\tpet\ncat\tcat\tpet\nsofa\tsofa").unwrap();
+        // 1 logit ≈ 0.0089 of cosine.
+        let close = scores(&[("dog", 0.200), ("cat", 0.195), ("sofa", 0.180)]);
+        let slugs = |tags: Vec<(String, f32)>| tags.into_iter().map(|t| t.0).collect::<Vec<_>>();
+        assert_eq!(
+            slugs(select(&close, &labels, RULE, TOP_K)),
+            ["sofa"],
+            "dog and cat too close: neither; the ungrouped sofa stays"
+        );
+        let clear = scores(&[("dog", 0.200), ("cat", 0.180), ("sofa", 0.180)]);
+        assert_eq!(slugs(select(&clear, &labels, RULE, TOP_K)), ["dog", "sofa"]);
+        // A sibling below the probability floor still counts as a rival.
+        let low = scores(&[("dog", 0.150), ("cat", 0.146)]);
+        assert!(select(&low, &labels, RULE, TOP_K).is_empty());
+    }
+
+    #[test]
+    fn a_search_close_to_a_grouped_label_meets_its_siblings() {
+        let labels =
+            parse("dog\tdog\tpet\ncat\tcat\tpet\nrabbit\trabbit\tpet\nsofa\tsofa").unwrap();
         let bank = vec![
-            ("a".to_owned(), unit(0.0)),
-            ("b".to_owned(), unit(0.1)),
-            ("c".to_owned(), unit(0.6)),
-            (BACKGROUND.to_owned(), unit(0.5)),
+            ("cat".to_owned(), vec![0.0, 1.0, 0.0]),
+            ("dog".to_owned(), vec![1.0, 0.0, 0.0]),
+            ("rabbit".to_owned(), vec![0.0, 0.0, 1.0]),
+            ("sofa".to_owned(), vec![0.6, 0.0, 0.8]),
         ];
-        let scores = score(&unit(0.05), &bank);
-        assert_eq!(scores.len(), 3, "the background is not a label");
-        assert_eq!(scores[0].slug, "a");
-        let thresholds = Thresholds {
-            cosine: 0.5,
-            margin: 0.05,
-        };
-        let tags = select(&scores, &labels, thresholds, TOP_K);
-        let slugs: Vec<&str> = tags.iter().map(|(s, _)| s.as_str()).collect();
-        // b: cos 0.9988 passes 0.95; c: cos 0.90 but below the background
-        // (cos 0.90 vs 0.90): no margin.
-        assert_eq!(slugs, ["a", "b"]);
-        let strict = parse("a\ta\t0.9999\nb\tb\t0.9999\nc\tc").unwrap();
-        assert!(select(&scores, &strict, thresholds, TOP_K).is_empty());
-        assert_eq!(select(&scores, &labels, thresholds, 1).len(), 1);
-    }
-
-    /// With the real models: the generated shapes get no unrelated tag.
-    #[test]
-    fn generated_shapes_get_no_unrelated_tag() {
-        use crate::models::ModelGroup;
-        let Some((dylib, models)) =
-            crate::testutil::test_ml_for(&[ModelGroup::ClipImage, ModelGroup::ClipText])
-        else {
-            return;
-        };
-        crate::runtime::init(&dylib).unwrap();
-        let mut text = ClipText::load(&models, 2).unwrap();
-        let mut image = super::super::ClipImage::load(&models, 2).unwrap();
-        let labels = bank();
-        let bank = compute_bank(&mut text, &labels).unwrap();
-        let thresholds = thresholds(crate::models::CLIP_MODEL_ID).unwrap();
-        // Fair readings of flat shapes on white: a flag (a red disc is
-        // Japan's), a sign, art; a green triangle is a Christmas tree.
-        let related = [
-            "flag",
-            "sign",
-            "art",
-            "macro",
-            "christmas",
-            "forest",
-            "document",
-        ];
-        for shape in crate::testutil::Shape::ALL {
-            let embedding = image
-                .embed(&crate::testutil::shape_image(shape, 512))
-                .unwrap();
-            let tags = select(&score(&embedding, &bank), &labels, thresholds, TOP_K);
-            for (tag, cosine) in &tags {
-                assert!(
-                    related.contains(&tag.as_str()),
-                    "{}: unrelated tag {tag} ({cosine})",
-                    shape.name()
-                );
-            }
-        }
+        let query = normalize(&[0.9, 0.1, 0.0]);
+        let rivals: Vec<&str> = search_rivals(&query, &bank, &labels, 0.8)
+            .iter()
+            .map(|(slug, _)| *slug)
+            .collect();
+        assert_eq!(rivals, ["cat", "rabbit"]);
+        assert!(
+            search_rivals(&query, &bank, &labels, 0.999).is_empty(),
+            "not close enough"
+        );
+        let sofa = normalize(&[0.6, 0.0, 0.8]);
+        assert!(
+            search_rivals(&sofa, &bank, &labels, 0.8).is_empty(),
+            "no group"
+        );
+        assert!(search_rivals(&query, &[], &labels, 0.8).is_empty());
     }
 }

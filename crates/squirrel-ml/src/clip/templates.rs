@@ -12,15 +12,6 @@ pub const TEMPLATES: [&str; 7] = [
     "a cropped photo of a {}.",
 ];
 
-/// Generic prompts: their mean is the "background" every label must beat by a
-/// margin (a photo is always "a photo"; a tag must say more than that).
-pub const BACKGROUND_PROMPTS: [&str; 4] = [
-    "a photo.",
-    "an image.",
-    "a picture.",
-    "a photo of something.",
-];
-
 /// Every prompt for `names`, template-major.
 pub fn prompts(names: &[String]) -> Vec<String> {
     TEMPLATES

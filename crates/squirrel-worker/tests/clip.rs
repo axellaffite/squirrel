@@ -17,9 +17,9 @@ use squirrel_worker::context::MlContext;
 use squirrel_worker::ml_client::{MlBackend, MlClient, MlClientError};
 use squirrel_worker::{backfill, clip_job, label_bank, thumbnails};
 
-/// A unit vector along axis `axis` of 512.
+/// A unit vector along axis `axis` of the embedding space.
 fn axis(axis: usize) -> Vec<f32> {
-    (0..512)
+    (0..squirrel_ml::clip::EMBEDDING_DIM)
         .map(|i| if i == axis { 1.0 } else { 0.0 })
         .collect()
 }
@@ -35,7 +35,12 @@ struct Fake {
 async fn invalid_embeddings_are_never_stored(pool: PgPool) {
     let mut nan = axis(0);
     nan[3] = f32::NAN;
-    for bad in [vec![0.5; 3], nan, vec![f32::INFINITY; 512], vec![0.5; 512]] {
+    for bad in [
+        vec![0.5; 3],
+        nan,
+        vec![f32::INFINITY; squirrel_ml::clip::EMBEDDING_DIM],
+        vec![0.5; squirrel_ml::clip::EMBEDDING_DIM],
+    ] {
         let answer = bad.clone();
         let client = MlClient::new(MlBackend::Fake(Arc::new(move |_: &MlOp| {
             Ok(MlBody::Ok(MlOutput::Embedding {
@@ -409,11 +414,7 @@ async fn the_label_bank_is_computed_once(pool: PgPool) {
     let bank = squirrel_db::clip::label_embeddings(&pool, CLIP_MODEL_ID, LABELS_VERSION, &digest)
         .await
         .unwrap();
-    assert_eq!(
-        bank.len(),
-        squirrel_ml::clip::labels::bank().len() + 1,
-        "and the background"
-    );
+    assert_eq!(bank.len(), squirrel_ml::clip::labels::bank().len());
     assert!(
         !label_bank::ensure(&pool, &ml.client, CLIP_MODEL_ID)
             .await

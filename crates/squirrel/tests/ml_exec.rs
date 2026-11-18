@@ -99,10 +99,10 @@ async fn the_child_runs_under_its_address_space_limit() {
     client.stop().await;
 }
 
-/// With ONNX Runtime and the models: the CLIP image tower answers with a
-/// 512-d unit vector.
+/// With ONNX Runtime and the models: the image tower answers with a 768-d
+/// unit vector.
 #[tokio::test]
-async fn clip_image_returns_512_floats() {
+async fn clip_image_returns_768_floats() {
     let Some((dylib, models)) = squirrel_ml::testutil::test_ml_for(&[
         squirrel_ml::ModelGroup::ClipImage,
         squirrel_ml::ModelGroup::Faces,
@@ -126,7 +126,7 @@ async fn clip_image_returns_512_floats() {
     let MlBody::Ok(MlOutput::Embedding { embedding }) = body else {
         panic!("{body:?}");
     };
-    assert_eq!(embedding.len(), 512);
+    assert_eq!(embedding.len(), squirrel_ml::clip::EMBEDDING_DIM);
     let norm: f32 = embedding.iter().map(|v| v * v).sum::<f32>().sqrt();
     assert!((norm - 1.0).abs() < 1e-4, "{norm}");
     client.stop().await;
