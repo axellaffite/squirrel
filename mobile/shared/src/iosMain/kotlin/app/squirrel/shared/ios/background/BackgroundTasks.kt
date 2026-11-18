@@ -5,6 +5,7 @@ import kotlinx.cinterop.BetaInteropApi
 import kotlinx.cinterop.ExperimentalForeignApi
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.launch
 import platform.BackgroundTasks.BGAppRefreshTaskRequest
 import platform.BackgroundTasks.BGContinuedProcessingTask
@@ -53,6 +54,7 @@ interface BackgroundRunner {
 @OptIn(ExperimentalForeignApi::class, BetaInteropApi::class)
 class BackgroundTasks(private val runner: BackgroundRunner, private val scope: CoroutineScope, private val now: () -> Long) {
     private val scheduler get() = BGTaskScheduler.sharedScheduler
+    private val here = RunCoalescer(scope) { manual -> runWithExtraTime(manual) }
 
     fun register() {
         scheduler.registerForTaskWithIdentifier(PROCESSING_TASK, usingQueue = null) { task -> handle(task!!, deadline = null) }
@@ -111,26 +113,34 @@ class BackgroundTasks(private val runner: BackgroundRunner, private val scope: C
 
     private fun handleNow(task: BGContinuedProcessingTask) {
         val job = scope.launch {
-            runner.run(deadline = null, manual = true) { done, total ->
-                task.progress.totalUnitCount = total
-                task.progress.completedUnitCount = done
-                task.updateTitle("Backing up", subtitle = "$done of $total")
+            try {
+                runner.run(deadline = null, manual = true) { done, total ->
+                    task.progress.totalUnitCount = total
+                    task.progress.completedUnitCount = done
+                    task.updateTitle("Backing up", subtitle = "$done of $total")
+                }
+            } finally {
+                schedule(runner.settings())
             }
         }
         task.expirationHandler = { job.cancel() }
         job.invokeOnCompletion { task.setTaskCompletedWithSuccess(it == null) }
     }
 
-    private fun runHere(manual: Boolean) {
-        var extra: UIBackgroundTaskIdentifier = UIBackgroundTaskInvalid
+    /** A run in the app; one at a time, so repeated requests never stack background time. */
+    private fun runHere(manual: Boolean) = here.request(manual)
+
+    /** The run asks for extra time when the app leaves the screen, and gives it back after. */
+    private suspend fun runWithExtraTime(manual: Boolean) {
+        val application = UIApplication.sharedApplication
         var job: Job? = null
-        extra = UIApplication.sharedApplication.beginBackgroundTaskWithExpirationHandler { job?.cancel() }
-        job = scope.launch {
-            try {
-                runner.run(deadline = null, manual = manual)
-            } finally {
-                if (extra != UIBackgroundTaskInvalid) UIApplication.sharedApplication.endBackgroundTask(extra)
+        val extra: UIBackgroundTaskIdentifier = application.beginBackgroundTaskWithExpirationHandler { job?.cancel() }
+        try {
+            coroutineScope {
+                job = launch { runner.run(deadline = null, manual = manual) }
             }
+        } finally {
+            if (extra != UIBackgroundTaskInvalid) application.endBackgroundTask(extra)
         }
     }
 
