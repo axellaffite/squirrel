@@ -2,6 +2,7 @@ mod admin;
 mod data_dir;
 mod geodata;
 mod media_exec;
+mod ml;
 mod ml_exec;
 mod tasks;
 mod worker;

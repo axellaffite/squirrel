@@ -14,6 +14,8 @@ use squirrel_storage::BlobStore;
 use squirrel_worker::MediaContext;
 use squirrel_worker::exec::{Executor, SubprocessConfig};
 use squirrel_worker::geocode::GeoCache;
+
+use crate::ml::{MlExecMode, MlSettings};
 use tokio::sync::watch;
 
 /// A claimed job is someone else's after this long without a heartbeat.
@@ -81,6 +83,20 @@ pub struct WorkerOptions {
     pub exclude_kinds: Vec<String>,
     /// Model inference jobs run at once (each already uses several cores), so
     /// the other slots stay free for fresh uploads.
+    /// Pinned model files (`scripts/fetch-models.sh`). Default: `<data_dir>/models`.
+    /// Verified against their SHA-256 at start, wherever they come from.
+    #[arg(long, env = "SQUIRREL_MODELS_DIR")]
+    pub models_dir: Option<PathBuf>,
+    /// The pinned ONNX Runtime library (`scripts/fetch-onnxruntime.sh`),
+    /// needed once models are installed.
+    #[arg(long, env = "SQUIRREL_ORT_DYLIB")]
+    pub ort_dylib: Option<PathBuf>,
+    /// Threads for one inference. Default: half the cores.
+    #[arg(long, env = "SQUIRREL_ML_THREADS", value_parser = clap::value_parser!(u16).range(1..=64))]
+    pub ml_threads: Option<u16>,
+    /// Where model inference runs: `subprocess` (isolated, default) or `in-process`.
+    #[arg(long, env = "SQUIRREL_ML_EXEC", value_enum, default_value_t = MlExecMode::Subprocess)]
+    pub ml_exec: MlExecMode,
     #[arg(long, env = "SQUIRREL_ML_CONCURRENCY", default_value_t = 1, value_parser = clap::value_parser!(u16).range(1..=64))]
     pub ml_concurrency: u16,
 }
@@ -275,6 +291,8 @@ pub async fn run(
         decode_limits: DecodeLimits::default(),
         geo: GeoCache::new(geo),
     });
+    // Kept for the worker's lifetime: dropping it stops the ML child.
+    let _ml = start_ml(&options, &data_dir).await?;
     if let Err(err) = enqueue_backfill(&pool).await {
         tracing::warn!(error = %format!("{err:#}"), "could not queue the media backfill");
     }
@@ -283,6 +301,40 @@ pub async fn run(
         .run(stop)
         .await
         .context("running the job worker")
+}
+
+/// Verifies the installed models and checks the `ml-exec` child loads them.
+/// Their handlers register in later milestones (`clip_embed`, `faces`).
+async fn start_ml(
+    options: &WorkerOptions,
+    data_dir: &Path,
+) -> anyhow::Result<Option<squirrel_worker::context::MlContext>> {
+    let settings = MlSettings {
+        models_dir: options
+            .models_dir
+            .clone()
+            .unwrap_or_else(|| data_dir.join("models")),
+        ort_dylib: options.ort_dylib.clone(),
+        threads: options
+            .ml_threads
+            .map_or_else(squirrel_ml::runtime::default_threads, usize::from),
+        mode: options.ml_exec,
+    };
+    let Some(ml) = tokio::task::spawn_blocking(move || crate::ml::worker_context(&settings))
+        .await
+        .context("verifying the models")??
+    else {
+        return Ok(None);
+    };
+    let ready = ml.client.health().await.context("starting the ML child")?;
+    tracing::info!(
+        groups = ?ready.groups,
+        kinds = ?ml.kinds(),
+        "ML: {} ready (ONNX Runtime {})",
+        ready.groups.join(", "),
+        ready.onnxruntime.as_deref().unwrap_or("not loaded")
+    );
+    Ok(Some(ml))
 }
 
 #[cfg(test)]
@@ -435,6 +487,10 @@ mod tests {
             kinds: Vec::new(),
             exclude_kinds: Vec::new(),
             ml_concurrency: 1,
+            models_dir: None,
+            ort_dylib: None,
+            ml_threads: None,
+            ml_exec: MlExecMode::InProcess,
         };
         let dir = tempfile::tempdir().unwrap();
         let storage = BlobStore::open(dir.path()).unwrap();

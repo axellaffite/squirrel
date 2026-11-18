@@ -39,3 +39,45 @@ impl MediaContext {
         })
     }
 }
+
+/// What the ML handlers need: the supervised `ml-exec` child and which model
+/// groups it loads.
+pub struct MlContext {
+    pub client: crate::ml_client::MlClient,
+    pub clip: bool,
+    pub faces: bool,
+}
+
+impl MlContext {
+    /// The job kinds this worker can run with its models.
+    pub fn kinds(&self) -> Vec<&'static str> {
+        ml_kinds(self.clip, self.faces)
+    }
+}
+
+/// `clip_embed` needs the CLIP image tower; the face kinds need the face models.
+pub fn ml_kinds(clip: bool, faces: bool) -> Vec<&'static str> {
+    use crate::jobs::{CLIP_EMBED, CLUSTER_FACES, FACE_BACKFILL, FACES};
+    let clip_kinds = clip.then_some(CLIP_EMBED);
+    let face_kinds = faces
+        .then_some([FACES, CLUSTER_FACES, FACE_BACKFILL])
+        .into_iter()
+        .flatten();
+    clip_kinds.into_iter().chain(face_kinds).collect()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn ml_kinds_follow_the_installed_models() {
+        assert!(ml_kinds(false, false).is_empty());
+        assert_eq!(ml_kinds(true, false), ["clip_embed"]);
+        assert_eq!(
+            ml_kinds(false, true),
+            ["faces", "cluster_faces", "face_backfill"]
+        );
+        assert_eq!(ml_kinds(true, true).len(), 4);
+    }
+}
