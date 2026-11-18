@@ -13,6 +13,29 @@ pub const THUMBNAILS: &str = "thumbnails";
 pub const GEOCODE: &str = "geocode";
 pub const EXTRACT_TEXT: &str = "extract_text";
 pub const BACKFILL: &str = "backfill";
+/// Phase 5 (machine learning): registered only when their models are installed.
+pub const CLIP_EMBED: &str = "clip_embed";
+pub const FACES: &str = "faces";
+pub const CLUSTER_FACES: &str = "cluster_faces";
+pub const FACE_BACKFILL: &str = "face_backfill";
+
+/// Kinds that run model inference: they share the worker's ML slots
+/// (`--ml-concurrency`). Clustering and face backfill are SQL work.
+pub const ML_KINDS: [&str; 2] = [CLIP_EMBED, FACES];
+
+/// Every kind this crate can register, whether or not it is registered now.
+pub const KNOWN_KINDS: [&str; 10] = [
+    squirrel_jobs::kinds::PROCESS_MEDIA,
+    EXTRACT_METADATA,
+    THUMBNAILS,
+    EXTRACT_TEXT,
+    GEOCODE,
+    BACKFILL,
+    CLIP_EMBED,
+    FACES,
+    CLUSTER_FACES,
+    FACE_BACKFILL,
+];
 
 /// Payload of every per-blob job.
 #[derive(Debug, Deserialize)]

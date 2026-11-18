@@ -67,6 +67,22 @@ pub struct WorkerOptions {
     /// it is set (the next start queues them again).
     #[arg(long, env = "SQUIRREL_PDFIUM_DIR")]
     pub pdfium_dir: Option<PathBuf>,
+    /// Run only these job kinds (comma-separated), e.g. `clip_embed,faces,cluster_faces`
+    /// on a separate ML machine.
+    #[arg(
+        long,
+        env = "SQUIRREL_WORKER_KINDS",
+        value_delimiter = ',',
+        conflicts_with = "exclude_kinds"
+    )]
+    pub kinds: Vec<String>,
+    /// Run every job kind but these (comma-separated).
+    #[arg(long, env = "SQUIRREL_WORKER_EXCLUDE_KINDS", value_delimiter = ',')]
+    pub exclude_kinds: Vec<String>,
+    /// Model inference jobs run at once (each already uses several cores), so
+    /// the other slots stay free for fresh uploads.
+    #[arg(long, env = "SQUIRREL_ML_CONCURRENCY", default_value_t = 1, value_parser = clap::value_parser!(u16).range(1..=64))]
+    pub ml_concurrency: u16,
 }
 
 /// `(min(cores, 4) / 2).max(1)`: the mini PC also serves HTTP.
@@ -130,12 +146,55 @@ pub fn pdfium_dir(configured: Option<&Path>) -> anyhow::Result<Option<PathBuf>> 
     Ok(Some(dir))
 }
 
-/// The job kinds this binary executes.
-fn registry(media: Arc<MediaContext>) -> Registry {
+/// Every job kind this binary knows, registered or not.
+fn known_kinds() -> Vec<&'static str> {
+    let mut known: Vec<_> = std::iter::once(NOOP)
+        .chain(squirrel_worker::jobs::KNOWN_KINDS)
+        .collect();
+    known.sort_unstable();
+    known
+}
+
+/// The job kinds this binary executes, narrowed by `--kinds` / `--exclude-kinds`.
+fn registry(media: Arc<MediaContext>, options: &WorkerOptions) -> anyhow::Result<Registry> {
     let mut registry = Registry::new();
     registry.register(NOOP, NOOP_TIMEOUT, |_ctx| async { Ok(()) });
     squirrel_worker::register_all(&mut registry, media);
-    registry
+    select_kinds(&mut registry, &options.kinds, &options.exclude_kinds)?;
+    Ok(registry)
+}
+
+/// Keeps the kinds of `only` (when given), minus those of `except`. A name
+/// this binary does not know is an error (a typo would silently stop a kind).
+fn select_kinds(registry: &mut Registry, only: &[String], except: &[String]) -> anyhow::Result<()> {
+    if !only.is_empty() && !except.is_empty() {
+        anyhow::bail!("--kinds and --exclude-kinds cannot be used together");
+    }
+    let known = known_kinds();
+    let unknown: Vec<&str> = only
+        .iter()
+        .chain(except)
+        .map(String::as_str)
+        .filter(|name| !known.contains(name))
+        .collect();
+    if !unknown.is_empty() {
+        anyhow::bail!(
+            "unknown job kinds: {} (known kinds: {})",
+            unknown.join(", "),
+            known.join(", ")
+        );
+    }
+    let registered = registry.kinds();
+    for name in only {
+        if !registered.contains(&name.as_str()) {
+            tracing::warn!(kind = %name, "--kinds names a kind this worker cannot run (missing models?)");
+        }
+    }
+    if !only.is_empty() {
+        registry.retain(|kind| only.iter().any(|name| name == kind));
+    }
+    registry.retain(|kind| !except.iter().any(|name| name == kind));
+    Ok(())
 }
 
 /// Queues the first backfill page (a no-op if one is already queued or running).
@@ -153,6 +212,8 @@ fn config(options: &WorkerOptions) -> WorkerConfig {
         poll_interval: POLL_INTERVAL,
         shutdown_grace: SHUTDOWN_GRACE,
         name: worker_name(),
+        ml_kinds: squirrel_worker::jobs::ML_KINDS.to_vec(),
+        ml_concurrency: usize::from(options.ml_concurrency),
     }
 }
 
@@ -217,7 +278,7 @@ pub async fn run(
     if let Err(err) = enqueue_backfill(&pool).await {
         tracing::warn!(error = %format!("{err:#}"), "could not queue the media backfill");
     }
-    Worker::new(pool, registry(media), config(&options))
+    Worker::new(pool, registry(media, &options)?, config(&options))
         .context("configuring the job worker")?
         .run(stop)
         .await
@@ -295,6 +356,66 @@ mod tests {
         assert!(found.is_absolute());
     }
 
+    fn names(list: &[&str]) -> Vec<String> {
+        list.iter().map(|s| (*s).to_owned()).collect()
+    }
+
+    fn sample_registry() -> Registry {
+        let mut registry = Registry::new();
+        for kind in [NOOP, "thumbnails", "geocode", "faces"] {
+            registry.register(kind, NOOP_TIMEOUT, |_ctx| async { Ok(()) });
+        }
+        registry
+    }
+
+    #[test]
+    fn kinds_keeps_only_the_named_kinds() {
+        let mut registry = sample_registry();
+        select_kinds(&mut registry, &names(&["faces", "noop"]), &[]).unwrap();
+        assert_eq!(registry.kinds(), ["faces", "noop"]);
+    }
+
+    #[test]
+    fn exclude_kinds_removes_the_named_kinds() {
+        let mut registry = sample_registry();
+        select_kinds(&mut registry, &[], &names(&["faces", "clip_embed"])).unwrap();
+        assert_eq!(registry.kinds(), ["geocode", "noop", "thumbnails"]);
+    }
+
+    #[test]
+    fn unknown_kinds_are_refused_with_the_known_list() {
+        let mut registry = sample_registry();
+        let err = select_kinds(&mut registry, &names(&["thumbnail"]), &[]).unwrap_err();
+        let message = err.to_string();
+        assert!(message.contains("thumbnail"), "{message}");
+        assert!(
+            message.contains("clip_embed") && message.contains("thumbnails"),
+            "{message}"
+        );
+        assert!(select_kinds(&mut registry, &[], &names(&["nope"])).is_err());
+        assert_eq!(registry.kinds().len(), 4, "nothing removed on error");
+    }
+
+    #[test]
+    fn kinds_and_exclude_kinds_together_are_refused() {
+        let mut registry = sample_registry();
+        let err =
+            select_kinds(&mut registry, &names(&["faces"]), &names(&["geocode"])).unwrap_err();
+        assert!(err.to_string().contains("together"), "{err}");
+        #[derive(clap::Parser)]
+        struct Cli {
+            #[command(flatten)]
+            options: WorkerOptions,
+        }
+        use clap::Parser;
+        assert!(
+            Cli::try_parse_from(["x", "--kinds", "faces", "--exclude-kinds", "geocode"]).is_err()
+        );
+        let cli = Cli::try_parse_from(["x", "--kinds", "faces,cluster_faces"]).unwrap();
+        assert_eq!(cli.options.kinds, names(&["faces", "cluster_faces"]));
+        assert_eq!(cli.options.ml_concurrency, 1);
+    }
+
     #[sqlx::test(migrator = "squirrel_db::MIGRATOR")]
     async fn a_migrated_database_needs_no_wait(pool: PgPool) {
         tokio::time::timeout(Duration::from_secs(5), wait_for_migrations(&pool))
@@ -311,6 +432,9 @@ mod tests {
             media_exec: MediaExecMode::InProcess,
             geodata_file: None,
             pdfium_dir: None,
+            kinds: Vec::new(),
+            exclude_kinds: Vec::new(),
+            ml_concurrency: 1,
         };
         let dir = tempfile::tempdir().unwrap();
         let storage = BlobStore::open(dir.path()).unwrap();

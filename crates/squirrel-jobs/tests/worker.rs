@@ -15,6 +15,8 @@ fn config() -> WorkerConfig {
         poll_interval: Duration::from_millis(50),
         shutdown_grace: Duration::from_secs(2),
         name: "test-worker".into(),
+        ml_kinds: Vec::new(),
+        ml_concurrency: 1,
     }
 }
 
@@ -471,4 +473,67 @@ async fn configurations_heartbeats_cannot_serve_are_refused(pool: PgPool) {
     let mut ok = config();
     ok.lease = Duration::from_millis(300);
     assert!(Worker::new(pool, noop_registry(), ok).is_ok());
+}
+
+/// ML jobs never take more than `ml_concurrency` slots: a fresh upload's
+/// thumbnails start at once even with a backlog of inference jobs.
+#[sqlx::test(migrator = "squirrel_db::MIGRATOR")]
+async fn ml_jobs_leave_a_slot_for_other_work(pool: PgPool) {
+    #[derive(Default)]
+    struct Seen {
+        ml_running: AtomicUsize,
+        ml_max: AtomicUsize,
+        ml_done: AtomicUsize,
+        /// (ML jobs running, ML jobs done) when the thumbnails job started.
+        at_thumbnails: std::sync::Mutex<Option<(usize, usize)>>,
+    }
+    let seen = Arc::new(Seen::default());
+    let mut registry = Registry::new();
+    let ml = seen.clone();
+    registry.register("infer", Duration::from_secs(30), move |_ctx| {
+        let seen = ml.clone();
+        async move {
+            let now = seen.ml_running.fetch_add(1, Ordering::SeqCst) + 1;
+            seen.ml_max.fetch_max(now, Ordering::SeqCst);
+            tokio::time::sleep(Duration::from_millis(400)).await;
+            seen.ml_running.fetch_sub(1, Ordering::SeqCst);
+            seen.ml_done.fetch_add(1, Ordering::SeqCst);
+            Ok(())
+        }
+    });
+    let thumbs = seen.clone();
+    registry.register("thumbnails", Duration::from_secs(30), move |_ctx| {
+        let seen = thumbs.clone();
+        async move {
+            let state = (
+                seen.ml_running.load(Ordering::SeqCst),
+                seen.ml_done.load(Ordering::SeqCst),
+            );
+            *seen.at_thumbnails.lock().unwrap() = Some(state);
+            Ok(())
+        }
+    });
+    let mut cfg = config();
+    cfg.ml_kinds = vec!["infer"];
+    let worker = start(&pool, registry, cfg);
+    for n in 0..5 {
+        add(&pool, NewJob::new("infer", json!({ "n": n }))).await;
+    }
+    wait_until(
+        &pool,
+        "SELECT count(*) FROM jobs WHERE kind = 'infer' AND status = 'running'",
+        1,
+    )
+    .await;
+    add(&pool, NewJob::new("thumbnails", json!({}))).await;
+    wait_until(&pool, "SELECT count(*) FROM jobs", 0).await;
+    worker.stop().await;
+    assert_eq!(seen.ml_max.load(Ordering::SeqCst), 1);
+    assert_eq!(seen.ml_done.load(Ordering::SeqCst), 5);
+    let (running, done) = seen.at_thumbnails.lock().unwrap().expect("thumbnails ran");
+    assert_eq!(running, 1, "an ML job was running");
+    assert_eq!(
+        done, 0,
+        "the thumbnails job did not wait for an ML job to end"
+    );
 }
