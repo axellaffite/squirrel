@@ -943,6 +943,37 @@
         ]
       }
     },
+    "/api/cameras": {
+      "get": {
+        "tags": [
+          "explore"
+        ],
+        "operationId": "list_cameras",
+        "responses": {
+          "200": {
+            "description": "Most used first, at most 200",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/CameraGroupDto"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "device_bearer": []
+          },
+          {
+            "session_cookie": []
+          }
+        ]
+      }
+    },
     "/api/devices": {
       "get": {
         "tags": [
@@ -2277,6 +2308,48 @@
         ]
       }
     },
+    "/api/places": {
+      "get": {
+        "tags": [
+          "explore"
+        ],
+        "operationId": "list_places",
+        "parameters": [
+          {
+            "name": "level",
+            "in": "query",
+            "description": "`city` (default): one entry per place; `country`: per country.",
+            "required": false,
+            "schema": {
+              "$ref": "#/components/schemas/PlaceLevel"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Most photographed first, at most 200",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/PlaceGroupDto"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "device_bearer": []
+          },
+          {
+            "session_cookie": []
+          }
+        ]
+      }
+    },
     "/api/search/documents": {
       "get": {
         "tags": [
@@ -2783,6 +2856,37 @@
         "security": [
           {
             "device_bearer": []
+          }
+        ]
+      }
+    },
+    "/api/tags": {
+      "get": {
+        "tags": [
+          "explore"
+        ],
+        "operationId": "list_tags",
+        "responses": {
+          "200": {
+            "description": "Most used first, at most 200",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/TagGroupDto"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "device_bearer": []
+          },
+          {
+            "session_cookie": []
           }
         ]
       }
@@ -3499,7 +3603,8 @@
         "required": [
           "asset",
           "size",
-          "albums"
+          "albums",
+          "tags"
         ],
         "properties": {
           "albums": {
@@ -3554,6 +3659,13 @@
             "type": "integer",
             "format": "int64",
             "description": "Bytes."
+          },
+          "tags": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Tags of this photo (slugs), best first."
           }
         }
       },
@@ -3674,6 +3786,29 @@
               "string",
               "null"
             ]
+          },
+          "model": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        }
+      },
+      "CameraGroupDto": {
+        "type": "object",
+        "description": "A camera the caller's photos were taken with.",
+        "required": [
+          "make",
+          "count"
+        ],
+        "properties": {
+          "count": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "make": {
+            "type": "string"
           },
           "model": {
             "type": [
@@ -4327,11 +4462,28 @@
       },
       "MlStatusDto": {
         "type": "object",
-        "description": "Whether a worker can run the ML models, and if not, a generic reason.",
+        "description": "Whether a worker can run the ML models, and the caller's photos still to\nanalyse.",
         "required": [
-          "state"
+          "state",
+          "queued",
+          "failed",
+          "models_installed"
         ],
         "properties": {
+          "failed": {
+            "type": "integer",
+            "format": "int64",
+            "description": "The caller's photos that could not be analysed."
+          },
+          "models_installed": {
+            "$ref": "#/components/schemas/ModelsInstalledDto",
+            "description": "What the server found in its models directory."
+          },
+          "queued": {
+            "type": "integer",
+            "format": "int64",
+            "description": "The caller's photos waiting for tags and search."
+          },
           "reason": {
             "type": [
               "string",
@@ -4341,6 +4493,23 @@
           },
           "state": {
             "$ref": "#/components/schemas/MlStateDto"
+          }
+        }
+      },
+      "ModelsInstalledDto": {
+        "type": "object",
+        "description": "Which model groups this server found installed.",
+        "required": [
+          "clip",
+          "faces"
+        ],
+        "properties": {
+          "clip": {
+            "type": "boolean",
+            "description": "Photo tags and text search (the CLIP image model)."
+          },
+          "faces": {
+            "type": "boolean"
           }
         }
       },
@@ -4549,6 +4718,56 @@
           }
         }
       },
+      "PlaceGroupDto": {
+        "type": "object",
+        "description": "A place the caller's photos were taken (filter with `country`, `region`\nand `city` on `GET /api/photos`).",
+        "required": [
+          "country_code",
+          "count",
+          "cover"
+        ],
+        "properties": {
+          "city": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "`null` at country level."
+          },
+          "count": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "country": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "country_code": {
+            "type": "string"
+          },
+          "cover": {
+            "$ref": "#/components/schemas/AssetSummary",
+            "description": "The newest photo taken there."
+          },
+          "region": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "`null` at country level, or for a place without a region."
+          }
+        }
+      },
+      "PlaceLevel": {
+        "type": "string",
+        "description": "How places are grouped.",
+        "enum": [
+          "country",
+          "city"
+        ]
+      },
       "RefreshRequest": {
         "type": "object",
         "required": [
@@ -4742,6 +4961,29 @@
             "type": "string",
             "format": "uuid",
             "description": "`Photos/<device name>/<year>`, created if needed."
+          }
+        }
+      },
+      "TagGroupDto": {
+        "type": "object",
+        "description": "A tag of the caller's photos.",
+        "required": [
+          "tag",
+          "count",
+          "cover"
+        ],
+        "properties": {
+          "count": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "cover": {
+            "$ref": "#/components/schemas/AssetSummary",
+            "description": "The newest photo with this tag."
+          },
+          "tag": {
+            "type": "string",
+            "description": "Stable English slug, e.g. `beach` (display names are the UI's)."
           }
         }
       },
@@ -5041,6 +5283,9 @@
     },
     {
       "name": "sync"
+    },
+    {
+      "name": "explore"
     }
   ]
 }

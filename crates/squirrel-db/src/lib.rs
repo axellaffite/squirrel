@@ -8,6 +8,7 @@ pub mod device_assets;
 pub mod devices;
 pub mod documents;
 mod error;
+pub mod explore;
 pub mod instance;
 pub mod invitations;
 pub mod media;

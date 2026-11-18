@@ -12,7 +12,8 @@ use crate::extract::Caller;
 use crate::filter_dto::PhotoFilterQuery;
 use crate::input::{ApiPath, ApiQuery};
 use crate::photos_dto::{
-    AlbumRef, AssetDetails, AssetSummary, MediaStatus, MonthCountDto, TimelinePage, TimelineQuery,
+    AlbumRef, AssetDetails, AssetSummary, MediaStatus, MlStatusDto, MonthCountDto, TimelinePage,
+    TimelineQuery,
 };
 use crate::state::AppState;
 
@@ -123,7 +124,8 @@ pub async fn get_photo(
             name: album.name,
         })
         .collect();
-    Ok(Json(AssetDetails::new(&record, albums)))
+    let tags = squirrel_db::explore::tags_of_photo(&state.pool, caller.user.id, id).await?;
+    Ok(Json(AssetDetails::new(&record, albums, tags)))
 }
 
 #[utoipa::path(get, path = "/api/media/status", security(("device_bearer" = []), ("session_cookie" = [])), tag = "photos",
@@ -134,6 +136,8 @@ pub async fn media_status(
 ) -> Result<Json<MediaStatus>, ApiError> {
     let counts = timeline::status_counts(&state.pool, caller.user.id).await?;
     let ml = squirrel_db::ml_status::current(&state.pool).await?;
+    let ml_counts = squirrel_db::explore::ml_counts(&state.pool, caller.user.id).await?;
+    let ml = MlStatusDto::new(ml, ml_counts, state.models_installed);
     Ok(Json(MediaStatus::new(counts, ml)))
 }
 
