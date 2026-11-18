@@ -14,6 +14,21 @@ use crate::runtime::{self, RuntimeError};
 
 pub const IMAGE_MODEL: &str = "clip/visual/model.onnx";
 pub const PREPROCESS_CFG: &str = "clip/visual/preprocess_cfg.json";
+/// Longer than 20:1 (a panorama strip, a corrupt header): the centre crop
+/// would show a sliver, and resizing the short side to 224 would make the
+/// long one huge. Refused rather than guessed.
+pub const MAX_ASPECT: u32 = 20;
+
+/// [`MAX_ASPECT`] as an `Unsupported` error.
+pub fn check_aspect(width: u32, height: u32) -> Result<(), ClipError> {
+    let (short, long) = (width.min(height), width.max(height));
+    if short == 0 || u64::from(long) > u64::from(short) * u64::from(MAX_ASPECT) {
+        return Err(ClipError::Unsupported(format!(
+            "{width} × {height} is more elongated than {MAX_ASPECT}:1"
+        )));
+    }
+    Ok(())
+}
 
 pub struct ClipImage {
     session: Session,
@@ -49,6 +64,7 @@ impl ClipImage {
     }
 
     pub fn embed(&mut self, image: &RgbImage) -> Result<Vec<f32>, ClipError> {
+        check_aspect(image.width(), image.height())?;
         let input =
             preprocess(image, &self.cfg).map_err(|err| ClipError::Inference(err.to_string()))?;
         let fail = |err: ort::Error| ClipError::Inference(err.to_string());
@@ -62,5 +78,28 @@ impl ClipImage {
             )));
         }
         Ok(normalize(values))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn strips_longer_than_twenty_to_one_are_refused() {
+        assert!(check_aspect(1440, 960).is_ok());
+        assert!(check_aspect(2000, 100).is_ok(), "exactly 20:1");
+        assert!(matches!(
+            check_aspect(2001, 100),
+            Err(ClipError::Unsupported(_))
+        ));
+        assert!(matches!(
+            check_aspect(100, 4000),
+            Err(ClipError::Unsupported(_))
+        ));
+        assert!(matches!(
+            check_aspect(0, 10),
+            Err(ClipError::Unsupported(_))
+        ));
     }
 }
