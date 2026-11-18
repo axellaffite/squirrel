@@ -127,3 +127,30 @@ async fn browser_rejects_bad_level(browser: &TestServer) {
             .is_client_error()
     );
 }
+
+#[sqlx::test(migrator = "squirrel_db::MIGRATOR")]
+async fn unknown_query_parameters_are_refused(pool: PgPool) {
+    let instance = common::Instance::new(pool);
+    let browser = instance.browser();
+    common::setup_admin(&browser, "alice").await;
+    for url in [
+        "/api/tags?x=1",
+        "/api/places?level=city&contry=FR",
+        "/api/cameras?limit=5",
+        "/api/photos?contry=FR",
+        "/api/photos?month=2024-01&limt=5",
+        "/api/photos/months?q=dog",
+        "/api/search/photos?q=dog&contry=FR",
+    ] {
+        browser
+            .get(url)
+            .await
+            .assert_status(axum::http::StatusCode::UNPROCESSABLE_ENTITY);
+    }
+    for url in [
+        "/api/places?level=country",
+        "/api/photos?month=2024-01&limit=5&tag=dog",
+    ] {
+        get(&browser, url).await;
+    }
+}

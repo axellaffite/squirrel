@@ -1,7 +1,7 @@
 //! The photo timeline: every live image file of the caller, by capture time.
 
 use axum::Json;
-use axum::extract::State;
+use axum::extract::{RawQuery, State};
 use squirrel_db::albums;
 use squirrel_db::timeline::{self, Filter, month_bounds};
 use uuid::Uuid;
@@ -9,8 +9,8 @@ use uuid::Uuid;
 use crate::cursor;
 use crate::error::{ApiError, ErrorBody};
 use crate::extract::Caller;
-use crate::filter_dto::PhotoFilterQuery;
-use crate::input::{ApiPath, ApiQuery};
+use crate::filter_dto::{PhotoFilterQuery, with_filters};
+use crate::input::{ApiPath, ApiQuery, known_params};
 use crate::photos_dto::{
     AlbumRef, AssetDetails, AssetSummary, MediaStatus, MlStatusDto, MonthCountDto, TimelinePage,
     TimelineQuery,
@@ -64,9 +64,11 @@ pub fn timeline_page(page: squirrel_db::Page<timeline::AssetSummaryRecord>) -> T
 pub async fn list_photos(
     State(state): State<AppState>,
     caller: Caller,
+    RawQuery(raw): RawQuery,
     ApiQuery(query): ApiQuery<TimelineQuery>,
     ApiQuery(filters): ApiQuery<PhotoFilterQuery>,
 ) -> Result<Json<TimelinePage>, ApiError> {
+    known_params(raw.as_deref(), &with_filters(&["month", "cursor", "limit"]))?;
     let photos = filters.filter()?;
     let filter = match query.month.as_deref() {
         None => Filter::All,
@@ -99,8 +101,10 @@ pub async fn list_photos(
 pub async fn photo_months(
     State(state): State<AppState>,
     caller: Caller,
+    RawQuery(raw): RawQuery,
     ApiQuery(filters): ApiQuery<PhotoFilterQuery>,
 ) -> Result<Json<Vec<MonthCountDto>>, ApiError> {
+    known_params(raw.as_deref(), &with_filters(&[]))?;
     let months = timeline::months(&state.pool, caller.user.id, &filters.filter()?).await?;
     Ok(Json(months.into_iter().map(MonthCountDto::from).collect()))
 }
