@@ -296,3 +296,72 @@ async fn a_real_portrait_gets_one_face(pool: PgPool) {
     assert!(f.box_x > 0.2 && f.box_x + f.box_w < 0.8, "{f:?}");
     assert!(f.box_y > 0.05 && f.box_y + f.box_h < 0.7, "{f:?}");
 }
+
+/// Bob turns faces on later: his backfill queues the photo, whose run writes
+/// his rows without touching Alice's.
+#[sqlx::test(migrator = "squirrel_db::MIGRATOR")]
+async fn turning_faces_on_later_backfills_only_that_user(pool: PgPool) {
+    let (calls, ml) = fake(vec![found(0.1)]);
+    let p = pair(ml.clone(), pool).await;
+    faces_job::run(&p.fx.ctx, &ml, faces_job_for(&p.sha))
+        .await
+        .unwrap();
+    let alice_before = faces::faces_of(p.fx.pool(), p.alice, &p.sha).await.unwrap();
+    ml_settings::set_faces_enabled(p.fx.pool(), p.bob, true)
+        .await
+        .unwrap();
+    sqlx::query("DELETE FROM jobs")
+        .execute(p.fx.pool())
+        .await
+        .unwrap();
+    let backfill = job("face_backfill", json!({ "owner_id": p.bob, "after": null }));
+    squirrel_worker::face_backfill::run_page(&p.fx.ctx, backfill, 500)
+        .await
+        .unwrap();
+    let queued: Vec<(String, i16)> =
+        sqlx::query_as("SELECT dedupe_key, priority FROM jobs WHERE kind = 'faces'")
+            .fetch_all(p.fx.pool())
+            .await
+            .unwrap();
+    assert_eq!(
+        queued,
+        [(
+            format!("faces:{}", p.sha),
+            priority::background(priority::FACES)
+        )]
+    );
+    faces_job::run(&p.fx.ctx, &ml, faces_job_for(&p.sha))
+        .await
+        .unwrap();
+    assert_eq!(calls.load(Ordering::SeqCst), 2);
+    assert_eq!(
+        faces::faces_of(p.fx.pool(), p.bob, &p.sha)
+            .await
+            .unwrap()
+            .len(),
+        1
+    );
+    assert_eq!(
+        faces::faces_of(p.fx.pool(), p.alice, &p.sha).await.unwrap(),
+        alice_before
+    );
+}
+
+#[sqlx::test(migrator = "squirrel_db::MIGRATOR")]
+async fn a_backfill_for_a_user_with_faces_off_queues_nothing(pool: PgPool) {
+    let (_calls, ml) = fake(vec![found(0.1)]);
+    let p = pair(ml.clone(), pool).await;
+    sqlx::query("DELETE FROM jobs")
+        .execute(p.fx.pool())
+        .await
+        .unwrap();
+    let backfill = job("face_backfill", json!({ "owner_id": p.bob, "after": null }));
+    squirrel_worker::face_backfill::run_page(&p.fx.ctx, backfill, 500)
+        .await
+        .unwrap();
+    let queued: i64 = sqlx::query_scalar("SELECT count(*) FROM jobs")
+        .fetch_one(p.fx.pool())
+        .await
+        .unwrap();
+    assert_eq!(queued, 0);
+}

@@ -1726,6 +1726,105 @@
         ]
       }
     },
+    "/api/me/ml-settings": {
+      "get": {
+        "tags": [
+          "ml"
+        ],
+        "operationId": "get_ml_settings",
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MlSettingsDto"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "session_cookie": []
+          }
+        ]
+      },
+      "put": {
+        "tags": [
+          "ml"
+        ],
+        "operationId": "update_ml_settings",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateMlSettings"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MlSettingsDto"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "csrf_token": [],
+            "session_cookie": []
+          }
+        ]
+      }
+    },
     "/api/media/status": {
       "get": {
         "tags": [
@@ -4453,6 +4552,30 @@
           }
         }
       },
+      "MlSettingsDto": {
+        "type": "object",
+        "required": [
+          "faces_enabled",
+          "faces_count",
+          "people_count"
+        ],
+        "properties": {
+          "faces_count": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Faces stored for the caller."
+          },
+          "faces_enabled": {
+            "type": "boolean",
+            "description": "Faces are detected and grouped into people (on by default)."
+          },
+          "people_count": {
+            "type": "integer",
+            "format": "int64",
+            "description": "People (groups of faces) of the caller."
+          }
+        }
+      },
       "MlStateDto": {
         "type": "string",
         "enum": [
@@ -5144,6 +5267,18 @@
           }
         }
       },
+      "UpdateMlSettings": {
+        "type": "object",
+        "required": [
+          "faces_enabled"
+        ],
+        "properties": {
+          "faces_enabled": {
+            "type": "boolean",
+            "description": "`false` deletes every face and person of the caller at once."
+          }
+        }
+      },
       "UpdateNodeRequest": {
         "type": "object",
         "description": "Rename and/or move. At least one field is required.",
@@ -5286,6 +5421,9 @@
     },
     {
       "name": "explore"
+    },
+    {
+      "name": "ml"
     }
   ]
 }

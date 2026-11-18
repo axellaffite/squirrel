@@ -178,6 +178,70 @@ pub async fn scan_count(pool: &PgPool, owner: Uuid, sha256: &str) -> Result<Opti
     )
 }
 
+/// Turns faces off for `owner` and deletes all their face data (faces,
+/// people, scans) and their queued clustering and face backfill jobs, in one
+/// transaction. Returns what was deleted. Other users are untouched.
+pub async fn turn_off(pool: &PgPool, owner: Uuid) -> Result<FaceCounts, DbError> {
+    let mut tx = pool.begin().await?;
+    lock_owner(&mut tx, owner, true).await?;
+    crate::ml_settings::set_faces_enabled(&mut *tx, owner, false).await?;
+    let faces = sqlx::query("DELETE FROM faces WHERE owner_id = $1")
+        .bind(owner)
+        .execute(&mut *tx)
+        .await?
+        .rows_affected();
+    let people = sqlx::query("DELETE FROM people WHERE owner_id = $1")
+        .bind(owner)
+        .execute(&mut *tx)
+        .await?
+        .rows_affected();
+    sqlx::query("DELETE FROM face_scans WHERE owner_id = $1")
+        .bind(owner)
+        .execute(&mut *tx)
+        .await?;
+    sqlx::query(
+        "DELETE FROM jobs WHERE status = 'queued' \
+            AND ((kind = 'cluster_faces' AND dedupe_key = 'cluster_faces:' || $1::text) \
+              OR (kind = 'face_backfill' AND (dedupe_key = 'face_backfill:' || $1::text \
+                                           OR dedupe_key LIKE 'face_backfill:' || $1::text || ':%')))",
+    )
+    .bind(owner)
+    .execute(&mut *tx)
+    .await?;
+    tx.commit().await?;
+    Ok(FaceCounts {
+        faces: i64::try_from(faces).unwrap_or(i64::MAX),
+        people: i64::try_from(people).unwrap_or(i64::MAX),
+    })
+}
+
+/// `owner`'s next page of photos without a scan with `model` (ready
+/// previews, live copies), after node `after`: (node id, sha256).
+pub async fn unscanned_page(
+    pool: &PgPool,
+    owner: Uuid,
+    model: &str,
+    after: Option<Uuid>,
+    limit: i64,
+) -> Result<Vec<(Uuid, String)>, DbError> {
+    Ok(sqlx::query_as(
+        "SELECT a.node_id, a.sha256 FROM assets a \
+           JOIN nodes n ON n.id = a.node_id AND n.deleted_at IS NULL \
+           JOIN media m ON m.sha256 = a.sha256 AND m.kind = 'image' AND m.thumbs_state = 'ready' \
+          WHERE a.owner_id = $1 AND a.node_id > $2 \
+            AND NOT EXISTS (SELECT 1 FROM face_scans f \
+                             WHERE f.owner_id = a.owner_id AND f.sha256 = a.sha256 \
+                               AND f.model = $3) \
+          ORDER BY a.node_id LIMIT $4",
+    )
+    .bind(owner)
+    .bind(after.unwrap_or(Uuid::nil()))
+    .bind(model)
+    .bind(limit)
+    .fetch_all(pool)
+    .await?)
+}
+
 /// How much face data `owner` has.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, FromRow)]
 pub struct FaceCounts {

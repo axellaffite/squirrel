@@ -39,6 +39,7 @@ const SESSION: &[&str] = &[
     "/api/admin/jobs/{id}/retry",
     "/api/devices",
     "/api/devices/{id}",
+    "/api/me/ml-settings",
 ];
 
 /// Device bearer only.
