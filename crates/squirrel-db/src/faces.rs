@@ -132,7 +132,8 @@ pub async fn unscanned_in_batch(
 }
 
 /// Locks `owner`'s row: storing a scan shares it, turning faces off takes it
-/// exclusively, so neither interleaves with the other.
+/// exclusively, so neither interleaves with the other. Deleting an asset holds
+/// it too (`quota::lock_owner`), which the `assets_drop_faces` trigger relies on.
 pub(crate) async fn lock_owner(
     conn: &mut PgConnection,
     owner: Uuid,
