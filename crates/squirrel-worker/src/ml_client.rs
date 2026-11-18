@@ -93,6 +93,10 @@ struct Running {
     last_used: Instant,
     /// Tells the idle watcher of a stopped child from its successor.
     generation: u64,
+    /// Set around each exchange: still set when a request starts means the
+    /// previous caller was cancelled mid-exchange, leaving its answer (or
+    /// half a request) in the pipes. That child is replaced.
+    busy: bool,
 }
 
 #[derive(Default)]
@@ -186,6 +190,12 @@ impl MlClient {
         op: MlOp,
     ) -> Result<MlBody, MlClientError> {
         let mut state = self.state.lock().await;
+        if state.running.as_ref().is_some_and(|running| running.busy)
+            && let Some(stale) = state.running.take()
+        {
+            tracing::warn!("a cancelled ML request left the child mid-exchange; restarting it");
+            kill(stale).await;
+        }
         if state.running.is_none() {
             if let Some(until) = state.blocked_until {
                 let left = until.saturating_duration_since(Instant::now());
@@ -219,8 +229,10 @@ impl MlClient {
         let Some(running) = state.running.as_mut() else {
             unreachable!("started above");
         };
+        running.busy = true;
         let outcome =
             tokio::time::timeout(config.request_timeout, exchange(running, &request)).await;
+        running.busy = false;
         let result = match outcome {
             Ok(result) => result,
             Err(_) => Err(MlClientError::TimedOut(config.request_timeout)),
@@ -278,6 +290,7 @@ async fn start(config: &MlChildConfig, generation: u64) -> Result<(Running, Read
         served: 0,
         last_used: Instant::now(),
         generation,
+        busy: false,
     };
     let ready = tokio::time::timeout(config.ready_timeout, read_line(&mut running.stdout)).await;
     let ready = match ready {
