@@ -55,6 +55,7 @@
 		}
 	}
 
+	/* No side padding: a --person-min column holds a full --face-lg avatar. */
 	.person {
 		width: 100%;
 		border: 0;
@@ -64,7 +65,7 @@
 		display: grid;
 		justify-items: center;
 		gap: var(--space-1);
-		padding: var(--space-2);
+		padding: var(--space-2) 0;
 		border-radius: var(--radius-card);
 		color: var(--ink);
 		text-align: center;
