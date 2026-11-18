@@ -45,12 +45,28 @@ jobs:
       # PDF tests need pdfium; with CI set they fail rather than skip when it is missing.
       - name: Fetch pdfium
         run: scripts/fetch-pdfium.sh && echo "SQUIRREL_PDFIUM_DIR=$PWD/target/pdfium/lib" >> "$GITHUB_ENV"
+      # ML tests need ONNX Runtime and the models (~800 MB); with CI set they fail rather than skip.
+      - name: Cache ONNX Runtime and models
+        uses: actions/cache@v4
+        with:
+          path: |
+            target/onnxruntime-cache
+            target/models
+          key: ml-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('scripts/fetch-onnxruntime.sh', 'scripts/fetch-models.sh') }}
+      - name: Fetch ONNX Runtime and models
+        run: |
+          set -o pipefail
+          scripts/fetch-onnxruntime.sh | tail -n 1 >> "$GITHUB_ENV"
+          scripts/fetch-models.sh | tail -n 1 >> "$GITHUB_ENV"
       - run: cargo test --workspace
       - name: The Linux-only sandbox memory limit test is part of the suite
         run: |
           cargo test -p squirrel --test media_exec -- --list 2>/dev/null \
             | grep -q '^the_memory_limit_stops_a_large_decode: test$' \
             || { echo "::error::the RLIMIT_AS test did not compile into the suite"; exit 1; }
+          cargo test -p squirrel --test ml_exec -- --list 2>/dev/null \
+            | grep -q '^the_child_runs_under_its_address_space_limit: test$' \
+            || { echo "::error::the ml-exec RLIMIT_AS test did not compile into the suite"; exit 1; }
 
   rust-heic:
     # HEIC/HEIF decoding through the system libheif (>= 1.17, with the libde265 HEVC plugin).
@@ -82,6 +98,19 @@ jobs:
           key: heic
       - name: Fetch pdfium
         run: scripts/fetch-pdfium.sh && echo "SQUIRREL_PDFIUM_DIR=$PWD/target/pdfium/lib" >> "$GITHUB_ENV"
+      # ML tests need ONNX Runtime and the models (~800 MB); with CI set they fail rather than skip.
+      - name: Cache ONNX Runtime and models
+        uses: actions/cache@v4
+        with:
+          path: |
+            target/onnxruntime-cache
+            target/models
+          key: ml-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('scripts/fetch-onnxruntime.sh', 'scripts/fetch-models.sh') }}
+      - name: Fetch ONNX Runtime and models
+        run: |
+          set -o pipefail
+          scripts/fetch-onnxruntime.sh | tail -n 1 >> "$GITHUB_ENV"
+          scripts/fetch-models.sh | tail -n 1 >> "$GITHUB_ENV"
       - run: cargo test -p squirrel-media -p squirrel-worker --features squirrel-media/heic
       # The sandboxed path: `squirrel media-exec` registers the HEIC decoder in the child.
       - run: cargo test -p squirrel --features squirrel/heic
