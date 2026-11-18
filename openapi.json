@@ -2348,6 +2348,181 @@
         ]
       }
     },
+    "/api/search/photos": {
+      "get": {
+        "tags": [
+          "search"
+        ],
+        "operationId": "search_photos",
+        "parameters": [
+          {
+            "name": "q",
+            "in": "query",
+            "description": "What to look for, in English (1–200 characters), e.g. `dog on the beach`.",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "offset",
+            "in": "query",
+            "description": "Results to skip; `offset + limit` is at most 200.",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "format": "int32",
+              "minimum": 0
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "description": "Page size, 1–100, default 50.",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "format": "int32",
+              "minimum": 0
+            }
+          },
+          {
+            "name": "tag",
+            "in": "query",
+            "description": "A tag (`GET /api/tags`), e.g. `beach`.",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "country",
+            "in": "query",
+            "description": "A country code (`GET /api/places`), e.g. `FR`.",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "region",
+            "in": "query",
+            "description": "A region of `country`; needs `country`.",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "city",
+            "in": "query",
+            "description": "A place of `country` (and `region` when given); needs `country`.",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "camera_make",
+            "in": "query",
+            "description": "A camera make (`GET /api/cameras`).",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "camera_model",
+            "in": "query",
+            "description": "A camera model; needs `camera_make`.",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "kind",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "$ref": "#/components/schemas/PhotoKindFilter"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PhotoSearchResults"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Invalid q, offset, limit or filter",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "`ml_unavailable`: no text model on this server; `busy`: try again",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "device_bearer": []
+          },
+          {
+            "session_cookie": []
+          }
+        ]
+      }
+    },
+    "/api/search/warmup": {
+      "post": {
+        "tags": [
+          "search"
+        ],
+        "operationId": "warm_up_search",
+        "responses": {
+          "204": {
+            "description": "The text model is loading (or loaded): the next search is fast"
+          },
+          "503": {
+            "description": "`ml_unavailable`: no text model on this server",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "device_bearer": []
+          },
+          {
+            "csrf_token": [],
+            "session_cookie": []
+          }
+        ]
+      }
+    },
     "/api/setup/admin": {
       "post": {
         "tags": [
@@ -4324,6 +4499,25 @@
           "photo",
           "screenshot"
         ]
+      },
+      "PhotoSearchResults": {
+        "type": "object",
+        "description": "The caller's photos that look like the query, best match first.",
+        "required": [
+          "items",
+          "has_more"
+        ],
+        "properties": {
+          "has_more": {
+            "type": "boolean"
+          },
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/AssetSummary"
+            }
+          }
+        }
       },
       "PlaceDto": {
         "type": "object",

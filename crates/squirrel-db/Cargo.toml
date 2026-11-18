@@ -17,4 +17,5 @@ unicode-normalization.workspace = true
 uuid.workspace = true
 
 [dev-dependencies]
+pgvector.workspace = true
 tokio.workspace = true

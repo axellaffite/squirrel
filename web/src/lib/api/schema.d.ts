@@ -501,6 +501,38 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/search/photos": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["search_photos"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/search/warmup": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["warm_up_search"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/setup/admin": {
         parameters: {
             query?: never;
@@ -1101,6 +1133,11 @@ export interface components {
          * @enum {string}
          */
         PhotoKindFilter: "photo" | "screenshot";
+        /** @description The caller's photos that look like the query, best match first. */
+        PhotoSearchResults: {
+            has_more: boolean;
+            items: components["schemas"]["AssetSummary"][];
+        };
         /** @description Where a photo was taken, named from the offline GeoNames dataset. */
         PlaceDto: {
             admin1?: string | null;
@@ -2810,6 +2847,90 @@ export interface operations {
             };
             /** @description Invalid q, offset or limit */
             422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    search_photos: {
+        parameters: {
+            query?: {
+                /** @description What to look for, in English (1–200 characters), e.g. `dog on the beach`. */
+                q?: string;
+                /** @description Results to skip; `offset + limit` is at most 200. */
+                offset?: number;
+                /** @description Page size, 1–100, default 50. */
+                limit?: number;
+                /** @description A tag (`GET /api/tags`), e.g. `beach`. */
+                tag?: string;
+                /** @description A country code (`GET /api/places`), e.g. `FR`. */
+                country?: string;
+                /** @description A region of `country`; needs `country`. */
+                region?: string;
+                /** @description A place of `country` (and `region` when given); needs `country`. */
+                city?: string;
+                /** @description A camera make (`GET /api/cameras`). */
+                camera_make?: string;
+                /** @description A camera model; needs `camera_make`. */
+                camera_model?: string;
+                kind?: components["schemas"]["PhotoKindFilter"];
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PhotoSearchResults"];
+                };
+            };
+            /** @description Invalid q, offset, limit or filter */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description `ml_unavailable`: no text model on this server; `busy`: try again */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    warm_up_search: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The text model is loading (or loaded): the next search is fast */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description `ml_unavailable`: no text model on this server */
+            503: {
                 headers: {
                     [name: string]: unknown;
                 };

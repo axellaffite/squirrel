@@ -37,6 +37,7 @@ utoipa-axum.workspace = true
 uuid.workspace = true
 
 [dev-dependencies]
+pgvector.workspace = true
 squirrel-ml = { workspace = true, features = ["test-util"] }
 squirrel-storage = { workspace = true, features = ["test-util"] }
 axum-test.workspace = true

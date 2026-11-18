@@ -78,6 +78,16 @@ impl Instance {
         }
     }
 
+    /// This server with photo search's text encoder (usually a fake).
+    pub fn with_text_encoder(self, encoder: squirrel_api::ml::TextEncoder) -> Self {
+        Self {
+            state: self
+                .state
+                .with_ml(Some(encoder), squirrel_api::ModelsInstalled::default()),
+            data: self.data,
+        }
+    }
+
     pub fn data_dir(&self) -> &Path {
         self.data.path()
     }
