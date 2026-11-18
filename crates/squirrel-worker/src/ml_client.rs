@@ -408,8 +408,49 @@ fn watch_idle(state: Weak<Mutex<State>>, idle: Duration, generation: u64) {
     });
 }
 
+/// At most this many child log lines per [`LOG_WINDOW`]; the rest are counted
+/// and summarised (a looping child must not flood the worker's log).
+const LOG_LINES_PER_WINDOW: u32 = 20;
+const LOG_WINDOW: Duration = Duration::from_secs(60);
+
+/// A fixed-window line budget.
+pub(crate) struct LogBudget {
+    window_start: Instant,
+    logged: u32,
+    dropped: u32,
+}
+
+impl LogBudget {
+    pub(crate) fn new(now: Instant) -> Self {
+        Self {
+            window_start: now,
+            logged: 0,
+            dropped: 0,
+        }
+    }
+
+    /// Whether to log a line seen at `now`, and how many lines were dropped
+    /// in the window that just ended (to report once).
+    pub(crate) fn admit(&mut self, now: Instant) -> (bool, u32) {
+        let mut dropped_before = 0;
+        if now.duration_since(self.window_start) >= LOG_WINDOW {
+            dropped_before = std::mem::take(&mut self.dropped);
+            self.window_start = now;
+            self.logged = 0;
+        }
+        if self.logged < LOG_LINES_PER_WINDOW {
+            self.logged += 1;
+            (true, dropped_before)
+        } else {
+            self.dropped += 1;
+            (false, dropped_before)
+        }
+    }
+}
+
 async fn log_stderr(mut stderr: BufReader<tokio::process::ChildStderr>) {
     let mut line = Vec::new();
+    let mut budget = LogBudget::new(Instant::now());
     loop {
         line.clear();
         match (&mut stderr)
@@ -419,9 +460,13 @@ async fn log_stderr(mut stderr: BufReader<tokio::process::ChildStderr>) {
         {
             Ok(0) | Err(_) => return,
             Ok(_) => {
+                let (admitted, dropped) = budget.admit(Instant::now());
+                if dropped > 0 {
+                    tracing::warn!(target: "ml_exec", dropped, "ML child log lines dropped");
+                }
                 let text = String::from_utf8_lossy(&line);
                 let text: String = text.trim_end().chars().take(MAX_LOG_LINE).collect();
-                if !text.is_empty() {
+                if admitted && !text.is_empty() {
                     tracing::warn!(target: "ml_exec", "{text}");
                 }
             }

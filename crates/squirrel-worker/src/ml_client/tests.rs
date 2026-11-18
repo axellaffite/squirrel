@@ -314,3 +314,15 @@ async fn stopping_kills_what_the_child_started() {
     client.stop().await;
     wait_dead(grandchild).await;
 }
+
+#[test]
+fn child_logs_are_rate_limited_per_window() {
+    let start = Instant::now();
+    let mut budget = LogBudget::new(start);
+    let admitted = (0..30).filter(|_| budget.admit(start).0).count();
+    assert_eq!(admitted, 20);
+    let (admitted, dropped) = budget.admit(start + Duration::from_secs(61));
+    assert!(admitted);
+    assert_eq!(dropped, 10, "the previous window's drops are reported once");
+    assert_eq!(budget.admit(start + Duration::from_secs(62)).1, 0);
+}
