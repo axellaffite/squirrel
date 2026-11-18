@@ -14,6 +14,11 @@ export type RunPhotoSearch = (
 	signal: AbortSignal
 ) => Promise<PhotoSearchOutcome>;
 
+/** While the server's text model starts (503 `busy`), the search is tried again this often… */
+export const BUSY_RETRY_MS = 2000;
+/** …this many times, then the user is told to try again. */
+export const BUSY_RETRIES = 5;
+
 /** Shown when the retry after a 429 was rate-limited again. */
 export const STILL_TOO_FAST = 'The server is still busy with searches. Wait a moment, then search again.';
 
@@ -105,7 +110,7 @@ export class PhotoSearcher {
 		this.loading = false;
 	}
 
-	async #fetch(query: string, offset: number, retried = false) {
+	async #fetch(query: string, offset: number, retried = false, busyTries = 0) {
 		this.#cancel();
 		const controller = new AbortController();
 		this.#controller = controller;
@@ -120,6 +125,14 @@ export class PhotoSearcher {
 		if (!result.ok) {
 			if ('aborted' in result) return;
 			this.unavailable = result.unavailable === true;
+			// Busy: the text model is starting (the page warmed it up). Keep the query and try again.
+			if (result.status === 503 && !this.unavailable && busyTries < BUSY_RETRIES) {
+				this.error = null;
+				this.loading = true;
+				this.#pending = query;
+				this.#timer = setTimeout(() => void this.#fetch(query, offset, retried, busyTries + 1), BUSY_RETRY_MS);
+				return;
+			}
 			const wait = result.retryAfterMs;
 			if (result.status === 429 && !retried && wait !== undefined && wait <= MAX_RETRY_WAIT_MS) {
 				this.error = result.error;
