@@ -82,6 +82,13 @@ async fn the_child_runs_under_its_address_space_limit() {
         .find(|l| l.starts_with("Max core file size"))
         .unwrap();
     assert!(core.split_whitespace().nth(4) == Some("0"), "{core}");
+    let environ = std::fs::read(format!("/proc/{pid}/environ")).unwrap();
+    assert!(
+        environ
+            .split(|b| *b == 0)
+            .any(|var| var == b"MALLOC_ARENA_MAX=2"),
+        "the child caps glibc's malloc arenas"
+    );
     let status = std::fs::read_to_string(format!("/proc/{pid}/status")).unwrap();
     assert!(
         status
@@ -132,4 +139,53 @@ fn image_fixture(path: &std::path::Path) {
         &squirrel_media::testutil::ExifSpec::default(),
     );
     std::fs::write(path, bytes).unwrap();
+}
+
+/// Every group loads and answers under the default address-space limit, even
+/// with the most threads the worker allows (Linux only: macOS has no
+/// RLIMIT_AS). Without the child's malloc arena cap, glibc's per-thread arenas
+/// reserve 64 MB each and this fails from about 24 threads.
+#[cfg(target_os = "linux")]
+#[tokio::test]
+async fn every_group_runs_under_the_default_memory_limit() {
+    use squirrel_ml::ModelGroup;
+    let Some((dylib, models)) = squirrel_ml::testutil::test_ml_for(&[
+        ModelGroup::ClipImage,
+        ModelGroup::ClipText,
+        ModelGroup::Faces,
+    ]) else {
+        return;
+    };
+    let threads = "64";
+    // No `--max-memory-mb`: the child's default, which the worker passes too.
+    let client = MlClient::new(MlBackend::Subprocess(config(&[
+        "--groups".as_ref(),
+        "clip-image,clip-text,faces".as_ref(),
+        "--models-dir".as_ref(),
+        models.path().as_os_str(),
+        "--ort-dylib".as_ref(),
+        dylib.as_os_str(),
+        "--threads".as_ref(),
+        threads.as_ref(),
+    ])));
+    let dir = tempfile::tempdir().unwrap();
+    let input = dir.path().join("preview.jpg");
+    image_fixture(&input);
+    for op in [
+        MlOp::ClipImage {
+            input: input.clone(),
+        },
+        MlOp::Faces { input },
+        MlOp::ClipText {
+            texts: vec!["a dog on a beach".into()],
+        },
+    ] {
+        let body = client.request(op).await.unwrap();
+        assert!(matches!(body, MlBody::Ok(_)), "{body:?}");
+    }
+    let pid = client.child_id().await.unwrap();
+    let status = std::fs::read_to_string(format!("/proc/{pid}/status")).unwrap();
+    let peak = status.lines().find(|l| l.starts_with("VmPeak")).unwrap();
+    println!("ml-exec with {threads} threads: {peak}");
+    client.stop().await;
 }
