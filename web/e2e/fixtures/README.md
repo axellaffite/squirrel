@@ -7,7 +7,9 @@ cargo run -p squirrel-media --example make_fixtures --features test-util -- web/
 ```
 
 from `squirrel_media::testutil` (JPEGs with chosen EXIF, a PNG, a one-page PDF and a text file).
-They are project content: no photo, document or other material from third parties. Regenerate
+They are project content: no photo, document or other material from third parties, except
+`faces/`, which mirrors the public-domain NASA portraits of `crates/squirrel-ml/tests/fixtures/faces`
+(see its `SOURCES.md`). Regenerate
 them with the command above when the generator changes.
 
 | File | What the E2E scenarios rely on |
@@ -17,3 +19,5 @@ them with the command above when the generator changes.
 | `Screenshot_2024-07-15-10-00-00.png` | 1080 × 2400, no EXIF: dated and marked a screenshot from its name |
 | `notes.txt` | "Quarterly squirrel budget: acorns, hazelnuts and winter storage." |
 | `invoice.pdf` | one page reading "Invoice 2026 for acorn storage" |
+| `red-circle.jpg`, `blue-square.jpg`, `green-triangle.jpg` | 640 × 480 plain shapes on white, no EXIF: photo search ("red circle") and tags |
+| `faces/<name>-mirrored.jpg` | the four portraits mirrored: with the originals (read from `crates/squirrel-ml/tests/fixtures/faces`), four photos of each person, enough for clustering |
