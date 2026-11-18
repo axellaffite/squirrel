@@ -27,6 +27,10 @@ required-features = ["test-util"]
 name = "bench"
 required-features = ["test-util"]
 
+[[example]]
+name = "tag_report"
+required-features = ["test-util"]
+
 [dev-dependencies]
 anyhow.workspace = true
 tempfile.workspace = true
