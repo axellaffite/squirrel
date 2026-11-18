@@ -67,7 +67,7 @@ pub fn decide<F, P>(
 ) -> Decision<F, P>
 where
     F: Copy + Eq,
-    P: Copy + Eq + Hash,
+    P: Copy + Ord + Hash,
 {
     let close: Vec<&Neighbour<F, P>> = neighbours
         .iter()
@@ -92,8 +92,9 @@ where
 }
 
 /// The person most `close` neighbours belong to, with its vote count; ties go
-/// to the person with the nearest face.
-fn majority<F, P: Copy + Eq + Hash>(close: &[&Neighbour<F, P>]) -> Option<(P, usize)> {
+/// to the person with the nearest face, then to the smallest id
+/// (deterministic whatever the order of the neighbours).
+fn majority<F, P: Copy + Ord + Hash>(close: &[&Neighbour<F, P>]) -> Option<(P, usize)> {
     let mut votes: HashMap<P, (usize, f32)> = HashMap::new();
     for n in close {
         if let Some(person) = n.person {
@@ -104,9 +105,14 @@ fn majority<F, P: Copy + Eq + Hash>(close: &[&Neighbour<F, P>]) -> Option<(P, us
     }
     votes
         .into_iter()
-        .max_by(|(_, (a_count, a_near)), (_, (b_count, b_near))| {
-            a_count.cmp(b_count).then_with(|| b_near.total_cmp(a_near))
-        })
+        .max_by(
+            |(a_person, (a_count, a_near)), (b_person, (b_count, b_near))| {
+                a_count
+                    .cmp(b_count)
+                    .then_with(|| b_near.total_cmp(a_near))
+                    .then_with(|| b_person.cmp(a_person))
+            },
+        )
         .map(|(person, (votes, _))| (person, votes))
 }
 
