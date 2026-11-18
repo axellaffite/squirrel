@@ -35,27 +35,42 @@ pub struct CoverColumns {
     pub cover_thumbs_version: Option<i16>,
 }
 
-const PERSON_SELECT: &str = "SELECT p.id, p.name, p.hidden, \
-       (SELECT count(*) FROM faces f WHERE f.owner_id = p.owner_id AND f.person_id = p.id \
-           AND EXISTS (SELECT 1 FROM assets a JOIN nodes n ON n.id = a.node_id AND n.deleted_at IS NULL \
-                        WHERE a.owner_id = f.owner_id AND a.sha256 = f.sha256)) AS face_count, \
-       cv.id AS cover_face_id, cv.node_id AS cover_photo_id, cv.box_x AS cover_box_x, \
-       cv.box_y AS cover_box_y, cv.box_w AS cover_box_w, cv.box_h AS cover_box_h, \
-       cv.thumbs_version AS cover_thumbs_version \
-  FROM people p \
-  LEFT JOIN LATERAL ( \
-    SELECT f.id, c.node_id, f.box_x, f.box_y, f.box_w, f.box_h, \
-           CASE WHEN m.thumbs_state = 'ready' THEN m.thumbs_version END AS thumbs_version \
-      FROM faces f \
-      JOIN media m ON m.sha256 = f.sha256 \
-      CROSS JOIN LATERAL (SELECT a.node_id FROM assets a \
-           JOIN nodes n ON n.id = a.node_id AND n.deleted_at IS NULL \
-          WHERE a.owner_id = f.owner_id AND a.sha256 = f.sha256 \
-          ORDER BY a.taken_at DESC, a.node_id DESC LIMIT 1) c \
-     WHERE f.owner_id = p.owner_id AND f.person_id = p.id \
-     ORDER BY f.id = p.cover_face_id DESC NULLS LAST, m.thumbs_state = 'ready' DESC, \
-              f.score DESC, f.id \
-     LIMIT 1) cv ON true";
+/// People of `$1` with their counts and covers, in one pass over the owner's
+/// grouped faces on live photos. `faces` and `people` narrow both sides (to
+/// one person for [`find`]).
+fn person_select(faces: &str, people: &str) -> String {
+    format!(
+        "WITH live AS ( \
+           SELECT f.id, f.person_id, f.sha256, f.box_x, f.box_y, f.box_w, f.box_h, f.score \
+             FROM faces f \
+            WHERE f.owner_id = $1 AND f.person_id IS NOT NULL {faces} \
+              AND EXISTS (SELECT 1 FROM assets a \
+                            JOIN nodes n ON n.id = a.node_id AND n.deleted_at IS NULL \
+                           WHERE a.owner_id = $1 AND a.sha256 = f.sha256)), \
+         counts AS (SELECT person_id, count(*) AS n FROM live GROUP BY person_id), \
+         covers AS ( \
+           SELECT DISTINCT ON (l.person_id) l.person_id, l.id, l.sha256, \
+                  l.box_x, l.box_y, l.box_w, l.box_h, \
+                  CASE WHEN m.thumbs_state = 'ready' THEN m.thumbs_version END AS thumbs_version \
+             FROM live l \
+             JOIN people p ON p.id = l.person_id AND p.owner_id = $1 \
+             JOIN media m ON m.sha256 = l.sha256 \
+            ORDER BY l.person_id, l.id = p.cover_face_id DESC NULLS LAST, \
+                     m.thumbs_state = 'ready' DESC, l.score DESC, l.id) \
+         SELECT p.id, p.name, p.hidden, COALESCE(c.n, 0) AS face_count, \
+                cv.id AS cover_face_id, ph.node_id AS cover_photo_id, \
+                cv.box_x AS cover_box_x, cv.box_y AS cover_box_y, cv.box_w AS cover_box_w, \
+                cv.box_h AS cover_box_h, cv.thumbs_version AS cover_thumbs_version \
+           FROM people p \
+           LEFT JOIN counts c ON c.person_id = p.id \
+           LEFT JOIN covers cv ON cv.person_id = p.id \
+           LEFT JOIN LATERAL (SELECT a.node_id FROM assets a \
+                  JOIN nodes n ON n.id = a.node_id AND n.deleted_at IS NULL \
+                 WHERE a.owner_id = $1 AND a.sha256 = cv.sha256 \
+                 ORDER BY a.taken_at DESC, a.node_id DESC LIMIT 1) ph ON true \
+          WHERE p.owner_id = $1 {people}"
+    )
+}
 
 /// Most people listed at once.
 pub const MAX_PEOPLE: i64 = 5_000;
@@ -67,8 +82,9 @@ pub async fn list(
     include_hidden: bool,
 ) -> Result<Vec<PersonRecord>, DbError> {
     let sql = format!(
-        "SELECT * FROM ({PERSON_SELECT} WHERE p.owner_id = $1 AND ($2 OR NOT p.hidden)) x \
-          ORDER BY x.name IS NULL, x.face_count DESC, lower(x.name), x.id LIMIT $3"
+        "SELECT * FROM ({}) x \
+          ORDER BY x.name IS NULL, x.face_count DESC, lower(x.name), x.id LIMIT $3",
+        person_select("", "AND ($2 OR NOT p.hidden)")
     );
     Ok(sqlx::query_as(&sql)
         .bind(owner)
@@ -83,7 +99,7 @@ pub async fn find<'e>(
     owner: Uuid,
     id: Uuid,
 ) -> Result<Option<PersonRecord>, DbError> {
-    let sql = format!("{PERSON_SELECT} WHERE p.owner_id = $1 AND p.id = $2");
+    let sql = person_select("AND f.person_id = $2", "AND p.id = $2");
     Ok(sqlx::query_as(&sql)
         .bind(owner)
         .bind(id)
