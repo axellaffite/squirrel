@@ -15,6 +15,10 @@ pub use text::ClipText;
 
 /// Embedding dimensions of the pinned model.
 pub const EMBEDDING_DIM: usize = 512;
+/// Photo search keeps photos within this cosine distance of the query (text
+/// to image similarities are small: ≈ 0.2–0.35 for a match). PROVISIONAL:
+/// to be calibrated on real photos together with the tag thresholds.
+pub const SEARCH_MAX_DISTANCE: f64 = 0.78;
 
 #[derive(Debug, thiserror::Error)]
 pub enum ClipError {

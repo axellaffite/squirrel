@@ -9,6 +9,7 @@ pub mod invitations;
 pub mod jobs;
 pub mod join;
 pub mod nodes;
+pub mod photo_search;
 pub mod photos;
 pub mod search;
 pub mod setup;

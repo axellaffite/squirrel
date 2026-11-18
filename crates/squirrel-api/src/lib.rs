@@ -240,18 +240,29 @@ fn json_routes() -> OpenApiRouter<AppState> {
         .layer(DefaultBodyLimit::max(API_BODY_LIMIT))
 }
 
-/// Document search: an ordinary JSON endpoint, rate limited per client
-/// (every search scans text indexes).
+/// Document and photo search: ordinary JSON endpoints, rate limited per
+/// client (every search scans text indexes or embeddings).
 fn search_routes(config: &ApiConfig) -> OpenApiRouter<AppState> {
     let routes = OpenApiRouter::new()
         .routes(routes!(routes::search::search_documents))
+        .routes(routes!(routes::photo_search::search_photos))
         .layer(DefaultBodyLimit::max(API_BODY_LIMIT));
-    rate_limit::apply(
+    let searches = rate_limit::apply(
         routes,
         config.search_rate_limit,
         Method::GET,
         &config.trusted_proxies,
-    )
+    );
+    // Warming up starts a model process: limited like searches.
+    let warm_up = OpenApiRouter::new()
+        .routes(routes!(routes::photo_search::warm_up_search))
+        .layer(DefaultBodyLimit::max(API_BODY_LIMIT));
+    searches.merge(rate_limit::apply(
+        warm_up,
+        config.search_rate_limit,
+        Method::POST,
+        &config.trusted_proxies,
+    ))
 }
 
 /// The phone's sync check: larger bodies (a 500-item batch), rate limited per

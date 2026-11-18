@@ -3027,6 +3027,7 @@ dependencies = [
  "http-range-header",
  "ipnet",
  "percent-encoding",
+ "pgvector",
  "rust-embed",
  "serde",
  "serde_json",

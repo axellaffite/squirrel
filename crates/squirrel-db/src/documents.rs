@@ -19,7 +19,7 @@ const MAX_QUERY_WORDS: usize = 16;
 const MAX_WORD_CHARS: usize = 64;
 /// A search may not run longer than this (a pathological query or a huge
 /// library); it then fails as [`DbError::Busy`].
-const SEARCH_TIMEOUT: &str = "5s";
+pub(crate) const SEARCH_TIMEOUT: &str = "5s";
 /// SQLSTATE of a statement cancelled by `statement_timeout`.
 const QUERY_CANCELED: &str = "57014";
 /// Marks around matched words in [`SearchHit::snippet`].
@@ -133,7 +133,7 @@ pub async fn search(
     Ok(Page::from_overfetch(rows, limit))
 }
 
-fn timed_out_is_busy(err: sqlx::Error) -> DbError {
+pub(crate) fn timed_out_is_busy(err: sqlx::Error) -> DbError {
     match &err {
         sqlx::Error::Database(db) if db.code().as_deref() == Some(QUERY_CANCELED) => {
             DbError::Busy(err)

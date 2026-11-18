@@ -16,6 +16,7 @@ pub mod ml_status;
 pub mod nodes;
 mod page;
 pub mod photo_filter;
+pub mod photo_search;
 pub mod quota;
 mod retry;
 pub mod sessions;

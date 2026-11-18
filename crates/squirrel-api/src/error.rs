@@ -40,6 +40,9 @@ pub enum ApiError {
     RateLimited,
     #[error("the server is busy, try again in a moment")]
     Busy,
+    /// Photo search needs the CLIP text model, not installed on this server.
+    #[error("photo search is not set up on this server")]
+    MlUnavailable,
     #[error("too many uploads in progress; finish or cancel some first")]
     TooManyUploads,
     #[error("{0}")]
@@ -93,6 +96,7 @@ impl ApiError {
             }
             ApiError::RateLimited => (StatusCode::TOO_MANY_REQUESTS, "rate_limited"),
             ApiError::Busy => (StatusCode::SERVICE_UNAVAILABLE, "busy"),
+            ApiError::MlUnavailable => (StatusCode::SERVICE_UNAVAILABLE, "ml_unavailable"),
             ApiError::TooManyUploads => (StatusCode::TOO_MANY_REQUESTS, "too_many_uploads"),
             ApiError::Conflict(_) => (StatusCode::CONFLICT, "conflict"),
             ApiError::InvitationInvalid => (StatusCode::GONE, "invitation_invalid"),
