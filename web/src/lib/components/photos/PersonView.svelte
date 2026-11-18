@@ -93,27 +93,40 @@
 		document.getElementById('person-name')?.focus();
 	}
 
+	let renameButton: HTMLButtonElement | HTMLAnchorElement | undefined = $state();
+	let savingName = $state(false);
+
+	/** Closes the name field and gives the keyboard back to the Rename button. */
+	async function stopRenaming() {
+		renaming = false;
+		await tick();
+		renameButton?.focus();
+	}
+
 	async function saveName(event: SubmitEvent) {
 		event.preventDefault();
+		if (savingName) return;
 		const clean = name.trim() === '' ? null : cleanName(name);
 		if (name.trim() !== '' && clean === null) {
-			nameError = 'Names use 1 to 100 characters.';
+			nameError = 'Names use 1 to 100 characters, without control characters.';
 			return;
 		}
+		savingName = true;
 		const result = await renamePerson(id, clean);
+		savingName = false;
 		if (!result.ok) {
 			nameError = result.error;
 			return;
 		}
 		person = result.data;
-		renaming = false;
 		notice = clean ? `Renamed to ${clean}.` : 'Name removed.';
+		await stopRenaming();
 	}
 
 	function nameKeys(event: KeyboardEvent) {
 		if (event.key === 'Escape') {
 			event.preventDefault();
-			renaming = false;
+			void stopRenaming();
 		}
 	}
 
@@ -233,7 +246,7 @@
 	{/snippet}
 	{#snippet actions()}
 		{#if person}
-			<Button variant="secondary" onclick={startRename}><Icon name="pencil" />{person.name ? 'Rename' : 'Add a name'}</Button>
+			<Button variant="secondary" bind:element={renameButton} onclick={startRename}><Icon name="pencil" />{person.name ? 'Rename' : 'Add a name'}</Button>
 			<Button variant="secondary" onclick={toggleHidden}><Icon name="eye-off" />{person.hidden ? 'Unhide' : 'Hide'}</Button>
 			<Button variant="secondary" onclick={() => (picking = 'merge')}><Icon name="merge" />Merge into…</Button>
 		{/if}
@@ -246,8 +259,8 @@
 				<form class="rename" onsubmit={saveName}>
 					<TextField id="person-name" label={`Name of ${label}`} bind:value={name} error={nameError} maxlength={100} onkeydown={nameKeys} hint="Enter saves, Escape cancels. Empty removes the name." />
 					<div class="rename-actions">
-						<Button type="submit" size="sm">Save</Button>
-						<Button variant="quiet" size="sm" onclick={() => (renaming = false)}>Cancel</Button>
+						<Button type="submit" size="sm" disabled={savingName}>Save</Button>
+						<Button variant="quiet" size="sm" onclick={() => void stopRenaming()}>Cancel</Button>
 					</div>
 				</form>
 			{/if}
