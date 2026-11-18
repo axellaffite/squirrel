@@ -23,9 +23,8 @@ pub struct Embedder {
 
 impl Embedder {
     pub fn load(models: &ModelDir, threads: usize) -> Result<Self, RuntimeError> {
-        let model = models.read_verified(EMBEDDER_MODEL)?;
         Ok(Self {
-            session: runtime::session_from_memory(&models.file(EMBEDDER_MODEL), &model, threads)?,
+            session: runtime::session(&models.open_verified(EMBEDDER_MODEL)?, threads)?,
         })
     }
 

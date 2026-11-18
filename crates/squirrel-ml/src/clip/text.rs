@@ -38,8 +38,7 @@ impl ClipText {
             }
         })?;
         let model = models.file(TEXT_MODEL);
-        let session =
-            runtime::session_from_memory(&model, &models.read_verified(TEXT_MODEL)?, threads)?;
+        let session = runtime::session(&models.open_verified(TEXT_MODEL)?, threads)?;
         let input_type = session
             .inputs()
             .first()

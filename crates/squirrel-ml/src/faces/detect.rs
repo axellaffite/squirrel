@@ -45,9 +45,8 @@ pub struct Detector {
 
 impl Detector {
     pub fn load(models: &ModelDir, threads: usize) -> Result<Self, RuntimeError> {
-        let model = models.read_verified(DETECTOR_MODEL)?;
         Ok(Self {
-            session: runtime::session_from_memory(&models.file(DETECTOR_MODEL), &model, threads)?,
+            session: runtime::session(&models.open_verified(DETECTOR_MODEL)?, threads)?,
         })
     }
 

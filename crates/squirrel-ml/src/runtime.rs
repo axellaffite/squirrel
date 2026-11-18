@@ -1,6 +1,7 @@
 //! The pinned ONNX Runtime, loaded at run time (`scripts/fetch-onnxruntime.sh`),
 //! and sessions built on it. CPU only.
 
+use crate::models::VerifiedFile;
 use std::path::{Path, PathBuf};
 use std::sync::{Mutex, OnceLock, PoisonError};
 
@@ -129,15 +130,13 @@ fn version() -> &'static str {
     ORT_VERSION
 }
 
-/// A CPU session on the loaded runtime from model bytes already verified in
-/// memory (`ModelDir::read_verified`); `name` only labels errors.
-pub fn session_from_memory(
-    name: &Path,
-    model: &[u8],
-    intra_threads: usize,
-) -> Result<Session, RuntimeError> {
+/// A CPU session on the loaded runtime, loaded by ONNX Runtime from a model
+/// file already verified through its open descriptor
+/// (`ModelDir::open_verified`): `intra_threads` threads for one inference, one
+/// inter-op thread, full graph optimisation.
+pub fn session(model: &VerifiedFile, intra_threads: usize) -> Result<Session, RuntimeError> {
     let fail = |message: String| RuntimeError::Session {
-        path: name.to_owned(),
+        path: model.path().to_owned(),
         message,
     };
     let loaded = LOADED
@@ -151,29 +150,7 @@ pub fn session_from_memory(
         .map_err(|err| fail(err.to_string()))?
         .with_inter_threads(1)
         .map_err(|err| fail(err.to_string()))?
-        .commit_from_memory(model)
-        .map_err(|err| fail(err.to_string()))
-}
-
-/// A CPU session on the loaded runtime: `intra_threads` threads for one
-/// inference, one inter-op thread, full graph optimisation.
-pub fn session(model: &Path, intra_threads: usize) -> Result<Session, RuntimeError> {
-    let fail = |message: String| RuntimeError::Session {
-        path: model.to_owned(),
-        message,
-    };
-    let loaded = LOADED
-        .get()
-        .ok_or_else(|| fail("ONNX Runtime is not loaded".into()))?;
-    Session::builder(&loaded.environment)
-        .map_err(|err| fail(err.to_string()))?
-        .with_optimization_level(GraphOptimizationLevel::Level3)
-        .map_err(|err| fail(err.to_string()))?
-        .with_intra_threads(intra_threads.max(1))
-        .map_err(|err| fail(err.to_string()))?
-        .with_inter_threads(1)
-        .map_err(|err| fail(err.to_string()))?
-        .commit_from_file(model)
+        .commit_from_file(model.load_path())
         .map_err(|err| fail(err.to_string()))
 }
 
