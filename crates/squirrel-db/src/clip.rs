@@ -1,4 +1,4 @@
-//! CLIP image embeddings (one per blob and model) and the label bank's text
+//! Image embeddings (SigLIP2; the tables keep the generic "clip" name) (one per blob and model) and the label bank's text
 //! embeddings. Content-derived, like `media`: never answer a user from them
 //! without resolving one of the caller's own assets first.
 
@@ -8,8 +8,8 @@ use sqlx::{PgConnection, PgPool};
 
 use crate::DbError;
 
-/// Dimensions of the stored embeddings (`halfvec(512)`).
-pub const DIM: usize = 512;
+/// Dimensions of the stored embeddings (`halfvec(768)`, SigLIP2 ViT-B/16).
+pub const DIM: usize = 768;
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct StoredEmbedding {

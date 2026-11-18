@@ -7,7 +7,7 @@ use squirrel_db::media::{self, MediaState};
 use squirrel_db::tags::{self, TagSource};
 use squirrel_db::{clip, ml_settings};
 
-const MODEL: &str = "openai-vit-b32-224";
+const MODEL: &str = "siglip2-vit-b16-224";
 
 /// An image blob with its media row, filled with `fill`.
 async fn image(pool: &PgPool, fill: char) -> String {
@@ -42,7 +42,9 @@ async fn file(pool: &PgPool, fill: char, kind: MediaKind) -> String {
 }
 
 fn vector(seed: f32) -> Vec<f32> {
-    (0..512).map(|i| ((i as f32) * seed).sin() / 16.0).collect()
+    (0..clip::DIM)
+        .map(|i| ((i as f32) * seed).sin() / 16.0)
+        .collect()
 }
 
 #[sqlx::test(migrator = "squirrel_db::MIGRATOR")]
@@ -53,7 +55,7 @@ async fn embeddings_round_trip_at_half_precision(pool: PgPool) {
         .await
         .unwrap();
     let stored = clip::embedding(&pool, &sha, MODEL).await.unwrap().unwrap();
-    assert_eq!(stored.values.len(), 512);
+    assert_eq!(stored.values.len(), clip::DIM);
     assert_eq!(stored.tagged_labels_version, None);
     for (a, b) in values.iter().zip(&stored.values) {
         assert!((a - b).abs() < 1e-3, "{a} {b}");
@@ -69,7 +71,7 @@ async fn embeddings_round_trip_at_half_precision(pool: PgPool) {
 #[sqlx::test(migrator = "squirrel_db::MIGRATOR")]
 async fn a_wrong_dimension_is_refused(pool: PgPool) {
     let sha = image(&pool, 'a').await;
-    let short = vec![0.1; 511];
+    let short = vec![0.1; clip::DIM - 1];
     assert!(
         clip::store_embedding(&pool, &sha, MODEL, &short)
             .await
