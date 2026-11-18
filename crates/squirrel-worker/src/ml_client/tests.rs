@@ -32,6 +32,8 @@ done
         request_timeout: Duration::from_secs(10),
         max_requests: 1000,
         idle: Duration::from_secs(600),
+        restart_backoff: RESTART_BACKOFF,
+        max_restart_backoff: MAX_RESTART_BACKOFF,
     }
 }
 
@@ -215,4 +217,42 @@ async fn in_process_answers_ping() {
         client.request(MlOp::Ping).await.unwrap(),
         MlBody::Ok(MlOutput::Pong {})
     );
+}
+
+#[tokio::test]
+async fn failed_starts_back_off_with_a_growing_delay() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("broken");
+    std::fs::write(&path, "#!/bin/sh\nexit 1\n").unwrap();
+    std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o755)).unwrap();
+    let mut config = fake_child(dir.path(), "exit 1");
+    config.program = path.clone();
+    config.restart_backoff = Duration::from_millis(200);
+    config.max_restart_backoff = Duration::from_millis(300);
+    let client = client(config);
+    let err = client.request(MlOp::Ping).await.unwrap_err();
+    assert!(matches!(err, MlClientError::NotReady(_)), "{err}");
+    let err = client.request(MlOp::Ping).await.unwrap_err();
+    let wait = err.retry_after().expect("a backoff");
+    assert!(wait <= Duration::from_millis(200), "{wait:?}");
+    tokio::time::sleep(wait).await;
+    assert!(matches!(
+        client.request(MlOp::Ping).await.unwrap_err(),
+        MlClientError::NotReady(_)
+    ));
+    // Doubled, capped at 300 ms.
+    let wait = client
+        .request(MlOp::Ping)
+        .await
+        .unwrap_err()
+        .retry_after()
+        .unwrap();
+    assert!(
+        wait > Duration::from_millis(200) && wait <= Duration::from_millis(300),
+        "{wait:?}"
+    );
+    // Fixed install: the next start after the pause works and resets the delay.
+    std::fs::copy(dir.path().join("fake-squirrel"), &path).unwrap();
+    tokio::time::sleep(wait).await;
+    client.request(MlOp::Ping).await.unwrap();
 }

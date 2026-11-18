@@ -107,6 +107,8 @@ pub fn worker_context(settings: &MlSettings) -> Result<Option<MlContext>, StartE
             request_timeout: REQUEST_TIMEOUT,
             max_requests: MAX_REQUESTS,
             idle: WORKER_IDLE,
+            restart_backoff: squirrel_worker::ml_client::RESTART_BACKOFF,
+            max_restart_backoff: squirrel_worker::ml_client::MAX_RESTART_BACKOFF,
         }),
         MlExecMode::InProcess => {
             let engine = Engine::load(&EngineConfig {

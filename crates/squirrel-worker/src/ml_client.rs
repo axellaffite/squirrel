@@ -19,6 +19,10 @@ use tokio::time::Instant;
 
 /// The only variables the child inherits (no database URL, no secrets).
 const PASSED_ENV: [&str; 1] = ["PATH"];
+/// After a child fails to start, no new start for this long, doubling up to
+/// [`MAX_RESTART_BACKOFF`] (a broken install must not respawn on every job).
+pub const RESTART_BACKOFF: Duration = Duration::from_secs(30);
+pub const MAX_RESTART_BACKOFF: Duration = Duration::from_secs(10 * 60);
 /// Longest stderr line logged from the child.
 const MAX_LOG_LINE: usize = 2000;
 
@@ -35,6 +39,9 @@ pub struct MlChildConfig {
     pub max_requests: u32,
     /// Stopped after this long without a request (frees its memory).
     pub idle: Duration,
+    /// First pause after a failed start, doubled after each further failure.
+    pub restart_backoff: Duration,
+    pub max_restart_backoff: Duration,
 }
 
 pub enum MlBackend {
@@ -62,6 +69,20 @@ pub enum MlClientError {
     Crashed(String),
     #[error("ML child protocol error: {0}")]
     Protocol(String),
+    /// The child failed to start recently: no new start before this delay.
+    /// Handlers reschedule (no attempt used) rather than fail.
+    #[error("the ML child failed to start; next start in {0:?}")]
+    Backoff(Duration),
+}
+
+impl MlClientError {
+    /// When to try again without spending an attempt (`Backoff`).
+    pub fn retry_after(&self) -> Option<Duration> {
+        match self {
+            Self::Backoff(delay) => Some(*delay),
+            _ => None,
+        }
+    }
 }
 
 struct Running {
@@ -81,6 +102,10 @@ struct State {
     ready: Option<Ready>,
     next_id: u64,
     generation: u64,
+    /// No start before this instant (after a failed start).
+    blocked_until: Option<Instant>,
+    /// The pause after the next failed start (`None`: the configured first one).
+    next_backoff: Option<Duration>,
 }
 
 pub struct MlClient {
@@ -162,10 +187,28 @@ impl MlClient {
     ) -> Result<MlBody, MlClientError> {
         let mut state = self.state.lock().await;
         if state.running.is_none() {
+            if let Some(until) = state.blocked_until {
+                let left = until.saturating_duration_since(Instant::now());
+                if !left.is_zero() {
+                    return Err(MlClientError::Backoff(left));
+                }
+            }
             state.generation += 1;
-            let (running, ready) = start(config, state.generation).await?;
-            state.running = Some(running);
-            state.ready = Some(ready);
+            match start(config, state.generation).await {
+                Ok((running, ready)) => {
+                    state.running = Some(running);
+                    state.ready = Some(ready);
+                    state.blocked_until = None;
+                    state.next_backoff = None;
+                }
+                Err(err) => {
+                    let pause = state.next_backoff.unwrap_or(config.restart_backoff);
+                    state.blocked_until = Some(Instant::now() + pause);
+                    state.next_backoff = Some((pause * 2).min(config.max_restart_backoff));
+                    tracing::error!(error = %err, next_start_in = ?pause, "the ML child failed to start");
+                    return Err(err);
+                }
+            }
             watch_idle(Arc::downgrade(&self.state), config.idle, state.generation);
         }
         state.next_id += 1;
