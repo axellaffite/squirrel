@@ -59,7 +59,9 @@ impl From<PersonRecord> for PersonDto {
 
 /// How to show a face. There is no face image on the server: a client crops
 /// the photo's thumbnail itself, `GET /api/files/{photo_id}/thumbnail?size=thumb&v={thumbnail_version}`,
-/// to `box` (e.g. CSS `object-fit`/`object-position`, or a Compose crop).
+/// to `box` (e.g. CSS `object-fit`/`object-position`, or a Compose crop). The
+/// thumb is 360 px tall: for a face smaller than about 120 px on the 1440 px
+/// preview (`box.height` under about 0.08), crop `size=preview` instead.
 #[derive(Debug, Serialize, ToSchema)]
 pub struct FaceCrop {
     pub face_id: Uuid,

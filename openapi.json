@@ -4974,7 +4974,7 @@
       },
       "FaceCrop": {
         "type": "object",
-        "description": "How to show a face. There is no face image on the server: a client crops\nthe photo's thumbnail itself, `GET /api/files/{photo_id}/thumbnail?size=thumb&v={thumbnail_version}`,\nto `box` (e.g. CSS `object-fit`/`object-position`, or a Compose crop).",
+        "description": "How to show a face. There is no face image on the server: a client crops\nthe photo's thumbnail itself, `GET /api/files/{photo_id}/thumbnail?size=thumb&v={thumbnail_version}`,\nto `box` (e.g. CSS `object-fit`/`object-position`, or a Compose crop). The\nthumb is 360 px tall: for a face smaller than about 120 px on the 1440 px\npreview (`box.height` under about 0.08), crop `size=preview` instead.",
         "required": [
           "face_id",
           "photo_id",
