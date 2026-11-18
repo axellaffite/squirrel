@@ -10,7 +10,7 @@ use uuid::Uuid;
 use crate::DbError;
 use crate::faces::lock_owner;
 
-/// A person with its face count and cover face.
+/// A person with its face count (faces on live photos) and cover face.
 #[derive(Debug, Clone, PartialEq, FromRow)]
 pub struct PersonRecord {
     pub id: Uuid,
@@ -36,7 +36,9 @@ pub struct CoverColumns {
 }
 
 const PERSON_SELECT: &str = "SELECT p.id, p.name, p.hidden, \
-       (SELECT count(*) FROM faces f WHERE f.owner_id = p.owner_id AND f.person_id = p.id) AS face_count, \
+       (SELECT count(*) FROM faces f WHERE f.owner_id = p.owner_id AND f.person_id = p.id \
+           AND EXISTS (SELECT 1 FROM assets a JOIN nodes n ON n.id = a.node_id AND n.deleted_at IS NULL \
+                        WHERE a.owner_id = f.owner_id AND a.sha256 = f.sha256)) AS face_count, \
        cv.id AS cover_face_id, cv.node_id AS cover_photo_id, cv.box_x AS cover_box_x, \
        cv.box_y AS cover_box_y, cv.box_w AS cover_box_w, cv.box_h AS cover_box_h, \
        cv.thumbs_version AS cover_thumbs_version \

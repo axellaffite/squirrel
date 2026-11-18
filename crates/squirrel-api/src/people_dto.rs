@@ -22,6 +22,7 @@ pub struct PersonDto {
     pub name: Option<String>,
     /// Left out of lists unless asked for; still clustered.
     pub hidden: bool,
+    /// Faces on photos outside the trash.
     pub face_count: i64,
     /// The face to show for this person: the one chosen with `cover_face_id`,
     /// else the best-scoring face on a photo with a ready thumbnail. `null`
