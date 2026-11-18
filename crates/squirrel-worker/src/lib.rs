@@ -2,11 +2,13 @@
 //! `squirrel-media`. Untrusted decoding goes through [`exec::Executor`].
 
 pub mod backfill;
+pub mod clip_job;
 pub mod context;
 pub mod exec;
 mod facts;
 pub mod geocode;
 pub mod jobs;
+pub mod label_bank;
 pub mod metadata;
 pub mod ml_client;
 mod outcome;
@@ -30,6 +32,9 @@ const BACKFILL_TIMEOUT: Duration = Duration::from_secs(60);
 const GEOCODE_TIMEOUT: Duration = Duration::from_secs(60);
 /// The sandbox's wall clock is 150 s and the lease 300 s: the sandbox gives up first.
 const THUMBNAILS_TIMEOUT: Duration = Duration::from_secs(180);
+/// One inference (≈ 0.1–0.2 s on a mini PC) plus a cold `ml-exec` start
+/// (hashing and loading the models, a few seconds).
+const CLIP_TIMEOUT: Duration = Duration::from_secs(90);
 /// PDF text runs in the sandbox too.
 const TEXT_TIMEOUT: Duration = Duration::from_secs(180);
 
@@ -92,4 +97,24 @@ pub fn register_all(registry: &mut Registry, ctx: Arc<MediaContext>) {
         BACKFILL_TIMEOUT,
         |ctx, job| async move { backfill::run(&ctx, job).await },
     );
+    register_ml(registry, &ctx);
+}
+
+/// The ML kinds this worker's models allow (none without `ctx.ml`).
+fn register_ml(registry: &mut Registry, ctx: &Arc<MediaContext>) {
+    let Some(ml) = ctx.ml.clone() else {
+        return;
+    };
+    if ml.clip {
+        register(
+            registry,
+            ctx,
+            jobs::CLIP_EMBED,
+            CLIP_TIMEOUT,
+            move |ctx, job| {
+                let ml = ml.clone();
+                async move { clip_job::run(&ctx, &ml, job).await }
+            },
+        );
+    }
 }

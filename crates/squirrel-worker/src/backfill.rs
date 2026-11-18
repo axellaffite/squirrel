@@ -49,6 +49,17 @@ pub async fn run_page(ctx: &MediaContext, job: JobContext, page: i64) -> Result<
         None => ctx.geo.installed_dataset_id().await,
         Some(_) => None,
     };
+    // Only a worker that runs `clip_embed` queues it (and re-tags only once a
+    // label bank exists).
+    let clip = match (&ctx.ml, after) {
+        (Some(ml), None) if ml.clip => Some(
+            !ml.label_bank(&ctx.pool)
+                .await
+                .map_err(JobError::retry)?
+                .is_empty(),
+        ),
+        _ => None,
+    };
     let mut tx = ctx.pool.begin().await.map_err(JobError::retry)?;
     for id in &ids {
         squirrel_jobs::enqueue(&mut tx, &kinds::process_media(*id, true))
@@ -57,6 +68,9 @@ pub async fn run_page(ctx: &MediaContext, job: JobContext, page: i64) -> Result<
     }
     if after.is_none() {
         requeue_stale_steps(&mut tx, dataset.as_deref()).await?;
+        if let Some(has_bank) = clip {
+            requeue_clip(&mut tx, has_bank).await?;
+        }
         if ctx.pdfium_dir.is_some() {
             requeue_pdfs_awaiting_pdfium(&mut tx).await?;
         }
@@ -111,6 +125,52 @@ async fn requeue_stale_steps(
         .bind(jobs::GEOCODE)
         .bind(priority::background(priority::GEOCODE))
         .bind(dataset)
+        .execute(&mut *conn)
+        .await
+        .map_err(JobError::retry)?;
+    Ok(())
+}
+
+/// CLIP work left to do:
+/// 1. images with a ready preview, still `pending`, and no embedding for the
+///    current model are queued;
+/// 2. images whose preview will never come are marked `unsupported`;
+/// 3. with a label bank, embedded blobs tagged with another labels version
+///    are queued again (the handler only re-tags: no image inference).
+async fn requeue_clip(conn: &mut PgConnection, has_bank: bool) -> Result<(), JobError> {
+    let missing = per_blob_insert(
+        "SELECT m.sha256 FROM media m \
+          WHERE m.kind = 'image' AND m.thumbs_state = 'ready' AND m.clip_state = 'pending' \
+            AND NOT EXISTS (SELECT 1 FROM clip_embeddings e \
+                             WHERE e.sha256 = m.sha256 AND e.model = $3)",
+    );
+    sqlx::query(&missing)
+        .bind(jobs::CLIP_EMBED)
+        .bind(priority::background(priority::CLIP))
+        .bind(squirrel_ml::CLIP_MODEL_ID)
+        .execute(&mut *conn)
+        .await
+        .map_err(JobError::retry)?;
+    sqlx::query(
+        "UPDATE media SET clip_state = 'unsupported', updated_at = now() \
+          WHERE kind = 'image' AND clip_state = 'pending' \
+            AND thumbs_state IN ('failed', 'unsupported')",
+    )
+    .execute(&mut *conn)
+    .await
+    .map_err(JobError::retry)?;
+    if !has_bank {
+        return Ok(());
+    }
+    let retag = per_blob_insert(
+        "SELECT e.sha256 FROM clip_embeddings e \
+          WHERE e.model = $3 AND e.tagged_labels_version IS DISTINCT FROM $4",
+    );
+    sqlx::query(&retag)
+        .bind(jobs::CLIP_EMBED)
+        .bind(priority::background(priority::CLIP))
+        .bind(squirrel_ml::CLIP_MODEL_ID)
+        .bind(squirrel_ml::clip::labels::LABELS_VERSION)
         .execute(&mut *conn)
         .await
         .map_err(JobError::retry)?;

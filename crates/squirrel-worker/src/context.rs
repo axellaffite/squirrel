@@ -26,6 +26,8 @@ pub struct MediaContext {
     pub decode_limits: DecodeLimits,
     /// The reverse geocoder's dataset.
     pub geo: GeoCache,
+    /// Model inference, when this worker has models (`None`: no ML kinds).
+    pub ml: Option<std::sync::Arc<MlContext>>,
 }
 
 impl MediaContext {
@@ -46,12 +48,46 @@ pub struct MlContext {
     pub client: crate::ml_client::MlClient,
     pub clip: bool,
     pub faces: bool,
+    /// The label bank of the pinned CLIP model, read once from the database
+    /// (computed at worker start, `label_bank::ensure`). Empty: no tags.
+    label_bank: tokio::sync::OnceCell<std::sync::Arc<LabelBank>>,
 }
 
+/// (slug, text embedding) per label, for the current labels version.
+pub type LabelBank = Vec<(String, Vec<f32>)>;
+
 impl MlContext {
+    pub fn new(client: crate::ml_client::MlClient, clip: bool, faces: bool) -> Self {
+        Self {
+            client,
+            clip,
+            faces,
+            label_bank: tokio::sync::OnceCell::new(),
+        }
+    }
+
     /// The job kinds this worker can run with its models.
     pub fn kinds(&self) -> Vec<&'static str> {
         ml_kinds(self.clip, self.faces)
+    }
+
+    /// The current label bank (cached after the first read).
+    pub async fn label_bank(
+        &self,
+        pool: &PgPool,
+    ) -> Result<std::sync::Arc<LabelBank>, squirrel_db::DbError> {
+        self.label_bank
+            .get_or_try_init(|| async {
+                let bank = squirrel_db::clip::label_embeddings(
+                    pool,
+                    squirrel_ml::CLIP_MODEL_ID,
+                    squirrel_ml::clip::labels::LABELS_VERSION,
+                )
+                .await?;
+                Ok(std::sync::Arc::new(bank))
+            })
+            .await
+            .cloned()
     }
 }
 

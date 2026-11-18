@@ -34,6 +34,14 @@ impl Fixture {
         Self::build(pool, executor, None, |_| GeoSource::Disabled)
     }
 
+    /// A fixture whose worker has ML (usually a fake client).
+    pub fn with_ml(pool: PgPool, ml: Arc<squirrel_worker::context::MlContext>) -> Self {
+        let mut fx = Self::new(pool);
+        let ctx = Arc::get_mut(&mut fx.ctx).expect("not shared yet");
+        ctx.ml = Some(ml);
+        fx
+    }
+
     /// A fixture whose geocoder reads `source(data_dir)`.
     pub fn with_geo(pool: PgPool, source: impl FnOnce(&Path) -> GeoSource) -> Self {
         Self::build(pool, Executor::InProcess, None, source)
@@ -54,6 +62,7 @@ impl Fixture {
             pdfium_dir: Some(pdfium_dir),
             decode_limits: DecodeLimits::default(),
             geo: GeoCache::disabled(),
+            ml: None,
         })
     }
 
@@ -72,6 +81,7 @@ impl Fixture {
             pdfium_dir,
             decode_limits: DecodeLimits::default(),
             geo: GeoCache::new(source(dir.path())),
+            ml: None,
         };
         Self {
             _dir: dir,

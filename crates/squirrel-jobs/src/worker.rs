@@ -453,6 +453,7 @@ async fn execute(registry: &Registry, run: Run<'_>, claimed_at: Instant) {
         id: job.id,
         kind: job.kind.clone(),
         payload: job.payload.clone(),
+        priority: job.priority,
         attempt: job.attempts,
         max_attempts: job.max_attempts,
     };
