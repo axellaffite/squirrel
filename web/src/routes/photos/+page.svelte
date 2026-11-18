@@ -14,6 +14,9 @@
 	import Alert from '#lib/components/ui/Alert.svelte';
 	import Button from '#lib/components/ui/Button.svelte';
 	import EmptyState from '#lib/components/ui/EmptyState.svelte';
+	import FilterBar from '#lib/components/photos/FilterBar.svelte';
+	import { listPeople, type Person } from '#lib/explore/api.ts';
+	import { filterFromParams, isEmptyFilter, withFilter, type PhotoFilter } from '#lib/explore/filters.ts';
 	import { listFolder, type FileNode } from '#lib/files/api.ts';
 	import { mediaStatus, photoDetails, type AssetSummary } from '#lib/photos/api.ts';
 	import { photoInAddress, withPhoto } from '#lib/photos/address.ts';
@@ -38,8 +41,17 @@
 	/** Photos the album picker is open for. */
 	let picking: readonly string[] | null = $state(null);
 	let notice: string | null = $state(null);
+	let people: Person[] = $state([]);
 
 	const total = $derived(data.total);
+	const filtering = $derived(!isEmptyFilter(data.filter));
+
+	/** Shows only matching photos, and keeps the filter in the address (`?tag=…`). */
+	function filterBy(filter: PhotoFilter) {
+		selection.clear();
+		replaceState(withFilter(page.url.href, filter), {});
+		void data.setFilter(filter);
+	}
 
 	const poller = createPoller({
 		fetch: mediaStatus,
@@ -131,7 +143,12 @@
 	}
 
 	onMount(() => {
-		void data.reload();
+		const initial = filterFromParams(page.url.searchParams);
+		if (isEmptyFilter(initial)) void data.reload();
+		else void data.setFilter(initial);
+		void listPeople().then((result) => {
+			if (result.ok) people = result.data;
+		});
 		void findPhotosFolder();
 		void openFromAddress();
 		poller.start();
@@ -153,7 +170,7 @@
 <svelte:window onkeydown={keydown} />
 
 <Page title="Photos">
-	{#snippet description()}{#if total !== null}<span class="tabular">{total} {total === 1 ? 'photo' : 'photos'}</span>{/if}{/snippet}
+	{#snippet description()}{#if total !== null}<span class="tabular">{total} {total === 1 ? 'photo' : 'photos'}{filtering ? ' match' : ''}</span>{/if}{/snippet}
 	{#snippet actions()}
 		<input bind:this={picker} type="file" accept="image/*" multiple class="visually-hidden" tabindex="-1" aria-hidden="true" onchange={chosen} />
 		<Button onclick={() => picker?.click()} disabled={!photosFolder} aria-label="Upload photos to Photos">
@@ -162,6 +179,7 @@
 	{/snippet}
 
 	<PhotosTabs path={page.url.pathname} />
+	<FilterBar filter={data.filter} {people} onChange={filterBy} />
 
 	<!-- Always rendered and never display: contents, so screen readers reliably hear the change. -->
 	<p class="visually-hidden" aria-live="polite">{notice ?? ''}</p>
@@ -172,6 +190,10 @@
 
 	{#if data.months === null}
 		{#if !data.error}<p class="muted" aria-live="polite">Loading…</p>{/if}
+	{:else if data.months.length === 0 && filtering}
+		<EmptyState icon="sliders-horizontal" title="No photos match these filters">
+			Remove a filter above, or clear them all to see every photo.
+		</EmptyState>
 	{:else if data.months.length === 0}
 		<EmptyState icon="images" title="No photos yet">
 			Upload photos, or add images anywhere in your drive: they appear here by date.
