@@ -92,6 +92,10 @@ async fn embed(
         }
         Ok(MlBody::Ok(other)) => format!("unexpected answer {other:?}"),
         Ok(MlBody::Failed { reason }) => reason,
+        // The child cannot start right now: wait without spending an attempt.
+        Err(err) if err.retry_after().is_some() => {
+            return Err(JobError::Reschedule(err.retry_after().unwrap_or_default()));
+        }
         Err(err) => err.to_string(),
     };
     outcome::give_up_or_retry(ctx, job, sha256, Step::Clip, reason).await?;

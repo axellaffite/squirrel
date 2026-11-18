@@ -31,6 +31,24 @@ struct Fake {
     fail: bool,
 }
 
+#[sqlx::test(migrator = "squirrel_db::MIGRATOR")]
+async fn a_child_in_restart_backoff_reschedules_without_an_attempt(pool: PgPool) {
+    let client = MlClient::new(MlBackend::Fake(Arc::new(|_: &MlOp| {
+        Err(MlClientError::Backoff(std::time::Duration::from_secs(42)))
+    })));
+    let ml = Arc::new(MlContext::new(client, true, false));
+    let fx = Fixture::with_ml(pool, ml.clone());
+    let sha = photo(&fx, true).await;
+    let err = clip_job::run(&fx.ctx, &ml, clip_job_for(&sha))
+        .await
+        .unwrap_err();
+    assert!(
+        matches!(err, JobError::Reschedule(d) if d == std::time::Duration::from_secs(42)),
+        "{err}"
+    );
+    assert_eq!(clip_state(fx.pool(), &sha).await, MediaState::Pending);
+}
+
 fn fake_ml(fail: bool) -> (Arc<Fake>, Arc<MlContext>) {
     let fake = Arc::new(Fake {
         images: AtomicUsize::new(0),

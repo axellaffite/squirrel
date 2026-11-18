@@ -93,6 +93,8 @@ async fn backfill_throughput(pool: PgPool) {
         request_timeout: Duration::from_secs(60),
         max_requests: 1000,
         idle: Duration::from_secs(600),
+        restart_backoff: squirrel_worker::ml_client::RESTART_BACKOFF,
+        max_restart_backoff: squirrel_worker::ml_client::MAX_RESTART_BACKOFF,
     };
     let started = Instant::now();
     let text = MlClient::new(MlBackend::Subprocess(child("clip-text")));
