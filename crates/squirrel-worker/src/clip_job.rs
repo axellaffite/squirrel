@@ -84,9 +84,7 @@ async fn embed(
         Ok(MlBody::Ok(MlOutput::Embedding { embedding })) => match check_embedding(&embedding) {
             Err(why) => format!("the ML child answered an invalid embedding: {why}"),
             Ok(()) => {
-                squirrel_db::clip::store_embedding(&ctx.pool, sha256, CLIP_MODEL_ID, &embedding)
-                    .await
-                    .map_err(JobError::retry)?;
+                store(ctx, sha256, &embedding).await?;
                 return Ok(Some(embedding));
             }
         },
@@ -106,8 +104,24 @@ async fn embed(
     Ok(None)
 }
 
-/// Replaces the blob's `clip` tags (no tag at all without a label bank) and
-/// marks the step ready, in one transaction.
+/// The embedding and the step's `ready` state commit together: tags are a
+/// second, separate step (re-done from the stored embedding if it fails).
+async fn store(ctx: &MediaContext, sha256: &str, embedding: &[f32]) -> Result<(), JobError> {
+    let mut tx = ctx.pool.begin().await.map_err(JobError::retry)?;
+    squirrel_db::clip::store_embedding(&mut *tx, sha256, CLIP_MODEL_ID, embedding)
+        .await
+        .map_err(JobError::retry)?;
+    sqlx::query("UPDATE media SET clip_state = 'ready', updated_at = now() WHERE sha256 = $1")
+        .bind(sha256)
+        .execute(&mut *tx)
+        .await
+        .map_err(JobError::retry)?;
+    tx.commit().await.map_err(JobError::retry)
+}
+
+/// Replaces the blob's `clip` tags and records their labels version, in one
+/// transaction. Without a label bank (yet) nothing is tagged: backfill re-tags
+/// once it exists.
 async fn tag(
     ctx: &MediaContext,
     ml: &MlContext,
@@ -116,19 +130,15 @@ async fn tag(
 ) -> Result<(), JobError> {
     let bank = ml.label_bank(&ctx.pool).await.map_err(JobError::retry)?;
     let thresholds = labels::thresholds(CLIP_MODEL_ID);
+    let (false, Some(thresholds)) = (bank.is_empty(), thresholds) else {
+        return Ok(());
+    };
     let mut tx = ctx.pool.begin().await.map_err(JobError::retry)?;
-    if let (false, Some(thresholds)) = (bank.is_empty(), thresholds) {
-        let selected = labels::select(&labels::score(embedding, &bank), thresholds, TOP_K);
-        tags::replace_tags(&mut tx, sha256, TagSource::Clip, &selected, LABELS_VERSION)
-            .await
-            .map_err(JobError::retry)?;
-        squirrel_db::clip::mark_tagged(&mut tx, sha256, CLIP_MODEL_ID, LABELS_VERSION)
-            .await
-            .map_err(JobError::retry)?;
-    }
-    sqlx::query("UPDATE media SET clip_state = 'ready', updated_at = now() WHERE sha256 = $1")
-        .bind(sha256)
-        .execute(&mut *tx)
+    let selected = labels::select(&labels::score(embedding, &bank), thresholds, TOP_K);
+    tags::replace_tags(&mut tx, sha256, TagSource::Clip, &selected, LABELS_VERSION)
+        .await
+        .map_err(JobError::retry)?;
+    squirrel_db::clip::mark_tagged(&mut tx, sha256, CLIP_MODEL_ID, LABELS_VERSION)
         .await
         .map_err(JobError::retry)?;
     tx.commit().await.map_err(JobError::retry)
