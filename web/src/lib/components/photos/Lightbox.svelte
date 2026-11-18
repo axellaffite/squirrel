@@ -59,6 +59,7 @@
 		const id = asset.id;
 		faces = [];
 		facesError = null;
+		faceNotice = null;
 		if (showFaces) void loadFaces(id);
 	});
 
