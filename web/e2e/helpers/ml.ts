@@ -8,6 +8,7 @@ export const ML_TIMEOUT = 180_000;
 
 const PORTRAITS = fileURLToPath(new URL('../../../crates/squirrel-ml/tests/fixtures/faces/', import.meta.url));
 const MIRRORED = fileURLToPath(new URL('../fixtures/faces/', import.meta.url));
+const PETS = fileURLToPath(new URL('../../../crates/squirrel-ml/tests/fixtures/pets/', import.meta.url));
 
 interface MlStatus {
 	ml: { queued: number; state: string; models_installed: { clip: boolean; faces: boolean } };
@@ -71,6 +72,11 @@ export function portraits(): UploadFile[] {
 		{ name: `${name}.jpg`, mimeType: 'image/jpeg', buffer: readFileSync(`${PORTRAITS}${name}.jpg`) },
 		{ name: `${name}-mirrored.jpg`, mimeType: 'image/jpeg', buffer: readFileSync(`${MIRRORED}${name}-mirrored.jpg`) }
 	]);
+}
+
+/** A public-domain pet photo (`dog-a`, `dog-b`, `cat-a`, `cat-b`): tagged and searchable. */
+export function pet(name: string): UploadFile {
+	return { name: `${name}.jpg`, mimeType: 'image/jpeg', buffer: readFileSync(`${PETS}${name}.jpg`) };
 }
 
 /** One original portrait (the same bytes as in `portraits()`). */
