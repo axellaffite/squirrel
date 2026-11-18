@@ -9,6 +9,7 @@ pub mod devices;
 pub mod documents;
 mod error;
 pub mod explore;
+pub mod faces;
 pub mod instance;
 pub mod invitations;
 pub mod media;
