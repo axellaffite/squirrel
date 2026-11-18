@@ -9,8 +9,10 @@
 	let { label, checked = $bindable(false), disabled = false, onchange }: Props = $props();
 
 	function toggle() {
-		checked = !checked;
-		onchange?.(checked);
+		// Read before writing: with a function binding the parent may keep the old value.
+		const next = !checked;
+		checked = next;
+		onchange?.(next);
 	}
 </script>
 
