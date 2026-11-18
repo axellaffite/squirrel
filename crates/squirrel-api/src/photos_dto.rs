@@ -1,5 +1,6 @@
 //! Response bodies of the photo timeline.
 
+use crate::people_dto::PersonRef;
 use serde::{Deserialize, Serialize};
 use squirrel_db::explore::MlCounts;
 use squirrel_db::media::MediaState;
@@ -195,10 +196,17 @@ pub struct AssetDetails {
     pub albums: Vec<AlbumRef>,
     /// Tags of this photo (slugs), best first.
     pub tags: Vec<String>,
+    /// People on this photo (not hidden ones), named first.
+    pub people: Vec<PersonRef>,
 }
 
 impl AssetDetails {
-    pub fn new(record: &AssetDetailRecord, albums: Vec<AlbumRef>, tags: Vec<String>) -> Self {
+    pub fn new(
+        record: &AssetDetailRecord,
+        albums: Vec<AlbumRef>,
+        tags: Vec<String>,
+        people: Vec<PersonRef>,
+    ) -> Self {
         let place = record.place_name.clone().map(|name| PlaceDto {
             name,
             admin1: record.place_admin1.clone(),
@@ -231,6 +239,7 @@ impl AssetDetails {
             camera: (!camera.is_empty()).then_some(camera),
             albums,
             tags,
+            people,
         }
     }
 }

@@ -16,6 +16,7 @@ mod filter_dto;
 mod input;
 pub mod maintenance;
 pub mod ml;
+mod people_dto;
 mod photos_dto;
 mod rate_limit;
 mod routes;
@@ -67,11 +68,11 @@ const CHUNK_TIMEOUT: Duration = Duration::from_secs(5 * 60);
         (name = "system"), (name = "setup"), (name = "auth"), (name = "invitations"),
         (name = "admin"), (name = "files"), (name = "uploads"), (name = "trash"),
         (name = "storage"), (name = "jobs"), (name = "photos"), (name = "albums"),
-        (name = "search"), (name = "devices"), (name = "sync"), (name = "explore"), (name = "ml")
+        (name = "search"), (name = "devices"), (name = "sync"), (name = "explore"), (name = "ml"), (name = "people")
     ),
     // Schemas only referenced from query parameters are not collected from
     // the routes: list them here.
-    components(schemas(filter_dto::PhotoKindFilter, explore_dto::PlaceLevel)),
+    components(schemas(filter_dto::PhotoKindFilter, explore_dto::PlaceLevel, people_dto::FaceAssignedBy)),
     modifiers(&SecuritySchemes)
 )]
 struct ApiDoc;
@@ -221,6 +222,19 @@ fn json_routes() -> OpenApiRouter<AppState> {
         .routes(routes!(routes::explore::list_tags))
         .routes(routes!(routes::explore::list_places))
         .routes(routes!(routes::explore::list_cameras))
+        .routes(routes!(routes::people::list_people))
+        .routes(routes!(
+            routes::people::get_person,
+            routes::people::update_person
+        ))
+        .routes(routes!(routes::people::merge_people))
+        .routes(routes!(routes::people::split_person))
+        .routes(routes!(routes::people::person_faces))
+        .routes(routes!(routes::faces::photo_faces))
+        .routes(routes!(
+            routes::faces::assign_face,
+            routes::faces::unassign_face
+        ))
         .routes(routes!(
             routes::ml_settings::get_ml_settings,
             routes::ml_settings::update_ml_settings

@@ -292,6 +292,22 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/faces/{id}/person": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put: operations["assign_face"];
+        post?: never;
+        delete: operations["unassign_face"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/files/{id}/content": {
         parameters: {
             query?: never;
@@ -469,6 +485,86 @@ export interface paths {
         patch: operations["update_node"];
         trace?: never;
     };
+    "/api/people": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["list_people"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/people/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["get_person"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch: operations["update_person"];
+        trace?: never;
+    };
+    "/api/people/{id}/faces": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["person_faces"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/people/{id}/merge": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["merge_people"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/people/{id}/split": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["split_person"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/photos": {
         parameters: {
             query?: never;
@@ -509,6 +605,22 @@ export interface paths {
             cookie?: never;
         };
         get: operations["get_photo"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/photos/{id}/faces": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["photo_faces"];
         put?: never;
         post?: never;
         delete?: never;
@@ -851,6 +963,8 @@ export interface components {
              * @description The folder holding the file.
              */
             parent_id?: string | null;
+            /** @description People on this photo (not hidden ones), named first. */
+            people: components["schemas"]["PersonRef"][];
             place?: null | components["schemas"]["PlaceDto"];
             /**
              * Format: int64
@@ -888,6 +1002,15 @@ export interface components {
              * @description Displayed size, once known. The grid treats unknown as square.
              */
             width?: number | null;
+        };
+        /**
+         * @description Where a face goes: an existing person (`person_id`) or a new one
+         *     (`new_person`). Exactly one.
+         */
+        AssignFaceRequest: {
+            new_person?: null | components["schemas"]["NewPersonDto"];
+            /** Format: uuid */
+            person_id?: string | null;
         };
         CameraDto: {
             /** @description As recorded, e.g. `1/250`. */
@@ -1047,6 +1170,55 @@ export interface components {
             /** @description Human-readable message, safe to display. */
             message: string;
         };
+        /** @description The face's person after an assignment. */
+        FaceAssigned: {
+            /** Format: uuid */
+            face_id: string;
+            /**
+             * Format: uuid
+             * @description `null`: pinned to nobody.
+             */
+            person_id?: string | null;
+        };
+        /**
+         * @description Who decided a face's person.
+         * @enum {string}
+         */
+        FaceAssignedBy: "auto" | "user";
+        /** @description A face's box, relative to the displayed image (0–1). */
+        FaceBoxDto: {
+            /** Format: float */
+            height: number;
+            /** Format: float */
+            width: number;
+            /** Format: float */
+            x: number;
+            /** Format: float */
+            y: number;
+        };
+        FaceDto: {
+            assigned_by: components["schemas"]["FaceAssignedBy"];
+            box: components["schemas"]["FaceBoxDto"];
+            /** Format: uuid */
+            id: string;
+            person?: null | components["schemas"]["PersonRef"];
+            /**
+             * Format: uuid
+             * @description The photo it is on (`GET /api/photos/{id}`).
+             */
+            photo_id: string;
+            /**
+             * Format: float
+             * @description Detector confidence, 0–1.
+             */
+            score: number;
+        };
+        FacesPage: {
+            /** @description Newest photo first. */
+            items: components["schemas"]["FaceDto"][];
+            /** @description Pass back as `cursor` for the next page; `null` on the last page. */
+            next_cursor?: string | null;
+        };
         FailedJobDto: {
             /** Format: int32 */
             attempts: number;
@@ -1150,6 +1322,10 @@ export interface components {
              */
             queued: number;
         };
+        MergePeopleRequest: {
+            /** @description People (1–50) whose faces move to this one; they are deleted. */
+            from: string[];
+        };
         MlSettingsDto: {
             /**
              * Format: int64
@@ -1199,6 +1375,9 @@ export interface components {
             /** @description `YYYY-MM`. */
             month: string;
         };
+        NewPersonDto: {
+            name?: string | null;
+        };
         NodeDetails: {
             node: components["schemas"]["NodeDto"];
             /** @description Ancestors from the top-level folder down, excluding the node itself. */
@@ -1241,6 +1420,28 @@ export interface components {
             /** Format: uuid */
             id: string;
             name: string;
+        };
+        /** @description A group of the caller's faces, named or not. */
+        PersonDto: {
+            /**
+             * Format: uuid
+             * @description The face to show for this person (the chosen one, else the best
+             *     scoring one); `null` for a named person left without faces.
+             */
+            cover_face_id?: string | null;
+            /** Format: int64 */
+            face_count: number;
+            /** @description Left out of lists unless asked for; still clustered. */
+            hidden: boolean;
+            /** Format: uuid */
+            id: string;
+            name?: string | null;
+        };
+        /** @description A person as other objects refer to it. */
+        PersonRef: {
+            /** Format: uuid */
+            id: string;
+            name?: string | null;
         };
         /**
          * @description What a photo is, for filtering.
@@ -1315,6 +1516,11 @@ export interface components {
         SnippetPart: {
             highlight: boolean;
             text: string;
+        };
+        SplitPersonRequest: {
+            /** @description Faces of this person (1–500) that become a new person. */
+            face_ids: string[];
+            name?: string | null;
         };
         StorageUsageDto: {
             /**
@@ -1450,6 +1656,17 @@ export interface components {
              * @description New parent folder.
              */
             parent_id?: string | null;
+        };
+        /** @description Rename, hide or choose the cover. At least one field is required. */
+        UpdatePersonRequest: {
+            /**
+             * Format: uuid
+             * @description One of this person's faces; `null` goes back to the best one.
+             */
+            cover_face_id?: string | null;
+            hidden?: boolean | null;
+            /** @description 1–100 characters once trimmed; `null` clears the name. */
+            name?: string | null;
         };
         /** @description An upload session: send the missing chunks, then complete it. */
         UploadSessionDto: {
@@ -2313,6 +2530,79 @@ export interface operations {
             };
         };
     };
+    assign_face: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Face id */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AssignFaceRequest"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FaceAssigned"];
+                };
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    unassign_face: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Face id */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Not this person: pinned to nobody, never grouped again */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FaceAssigned"];
+                };
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
     file_content: {
         parameters: {
             query?: {
@@ -2934,6 +3224,229 @@ export interface operations {
             };
         };
     };
+    list_people: {
+        parameters: {
+            query?: {
+                /** @description Also list hidden people (default `false`). */
+                include_hidden?: boolean;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Named first, then by face count; at most 5000 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PersonDto"][];
+                };
+            };
+        };
+    };
+    get_person: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Person id */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PersonDto"];
+                };
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    update_person: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Person id */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpdatePersonRequest"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PersonDto"];
+                };
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    person_faces: {
+        parameters: {
+            query?: {
+                cursor?: string;
+                /** @description 1–500, default 100. */
+                limit?: number;
+            };
+            header?: never;
+            path: {
+                /** @description Person id */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FacesPage"];
+                };
+            };
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    merge_people: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The person that keeps the faces */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["MergePeopleRequest"];
+            };
+        };
+        responses: {
+            /** @description The merged person; the others are gone */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PersonDto"];
+                };
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    split_person: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The person the faces leave */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SplitPersonRequest"];
+            };
+        };
+        responses: {
+            /** @description The new person */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PersonDto"];
+                };
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
     list_photos: {
         parameters: {
             query?: {
@@ -2943,6 +3456,8 @@ export interface operations {
                 cursor?: string;
                 /** @description Default 200, at most 500. */
                 limit?: number;
+                /** @description A person (`GET /api/people`): photos with one of their faces. */
+                person?: string;
                 /** @description A tag (`GET /api/tags`), e.g. `beach`. */
                 tag?: string;
                 /** @description A country code (`GET /api/places`), e.g. `FR`. */
@@ -2997,6 +3512,8 @@ export interface operations {
     photo_months: {
         parameters: {
             query?: {
+                /** @description A person (`GET /api/people`): photos with one of their faces. */
+                person?: string;
                 /** @description A tag (`GET /api/tags`), e.g. `beach`. */
                 tag?: string;
                 /** @description A country code (`GET /api/places`), e.g. `FR`. */
@@ -3058,6 +3575,37 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["AssetDetails"];
+                };
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    photo_faces: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Photo (file node) id */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Left to right */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FaceDto"][];
                 };
             };
             404: {
@@ -3158,6 +3706,8 @@ export interface operations {
                 offset?: number;
                 /** @description Page size, 1–100, default 50. */
                 limit?: number;
+                /** @description A person (`GET /api/people`): photos with one of their faces. */
+                person?: string;
                 /** @description A tag (`GET /api/tags`), e.g. `beach`. */
                 tag?: string;
                 /** @description A country code (`GET /api/places`), e.g. `FR`. */

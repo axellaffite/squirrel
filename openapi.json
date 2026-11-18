@@ -1181,6 +1181,120 @@
         ]
       }
     },
+    "/api/faces/{id}/person": {
+      "put": {
+        "tags": [
+          "people"
+        ],
+        "operationId": "assign_face",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "Face id",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AssignFaceRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FaceAssigned"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "csrf_token": [],
+            "session_cookie": []
+          }
+        ]
+      },
+      "delete": {
+        "tags": [
+          "people"
+        ],
+        "operationId": "unassign_face",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "Face id",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Not this person: pinned to nobody, never grouped again",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FaceAssigned"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "csrf_token": [],
+            "session_cookie": []
+          }
+        ]
+      }
+    },
     "/api/files/{id}/content": {
       "get": {
         "tags": [
@@ -2111,6 +2225,379 @@
         ]
       }
     },
+    "/api/people": {
+      "get": {
+        "tags": [
+          "people"
+        ],
+        "operationId": "list_people",
+        "parameters": [
+          {
+            "name": "include_hidden",
+            "in": "query",
+            "description": "Also list hidden people (default `false`).",
+            "required": false,
+            "schema": {
+              "type": "boolean"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Named first, then by face count; at most 5000",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/PersonDto"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "device_bearer": []
+          },
+          {
+            "session_cookie": []
+          }
+        ]
+      }
+    },
+    "/api/people/{id}": {
+      "get": {
+        "tags": [
+          "people"
+        ],
+        "operationId": "get_person",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "Person id",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PersonDto"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "device_bearer": []
+          },
+          {
+            "session_cookie": []
+          }
+        ]
+      },
+      "patch": {
+        "tags": [
+          "people"
+        ],
+        "operationId": "update_person",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "Person id",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdatePersonRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PersonDto"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "csrf_token": [],
+            "session_cookie": []
+          }
+        ]
+      }
+    },
+    "/api/people/{id}/faces": {
+      "get": {
+        "tags": [
+          "people"
+        ],
+        "operationId": "person_faces",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "Person id",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "cursor",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "description": "1–500, default 100.",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "format": "int32",
+              "minimum": 0
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FacesPage"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "device_bearer": []
+          },
+          {
+            "session_cookie": []
+          }
+        ]
+      }
+    },
+    "/api/people/{id}/merge": {
+      "post": {
+        "tags": [
+          "people"
+        ],
+        "operationId": "merge_people",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "The person that keeps the faces",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MergePeopleRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "The merged person; the others are gone",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PersonDto"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "csrf_token": [],
+            "session_cookie": []
+          }
+        ]
+      }
+    },
+    "/api/people/{id}/split": {
+      "post": {
+        "tags": [
+          "people"
+        ],
+        "operationId": "split_person",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "The person the faces leave",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SplitPersonRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "The new person",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PersonDto"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "csrf_token": [],
+            "session_cookie": []
+          }
+        ]
+      }
+    },
     "/api/photos": {
       "get": {
         "tags": [
@@ -2145,6 +2632,16 @@
               "type": "integer",
               "format": "int32",
               "minimum": 0
+            }
+          },
+          {
+            "name": "person",
+            "in": "query",
+            "description": "A person (`GET /api/people`): photos with one of their faces.",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
             }
           },
           {
@@ -2259,6 +2756,16 @@
         ],
         "operationId": "photo_months",
         "parameters": [
+          {
+            "name": "person",
+            "in": "query",
+            "description": "A person (`GET /api/people`): photos with one of their faces.",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
           {
             "name": "tag",
             "in": "query",
@@ -2382,6 +2889,59 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/AssetDetails"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "device_bearer": []
+          },
+          {
+            "session_cookie": []
+          }
+        ]
+      }
+    },
+    "/api/photos/{id}/faces": {
+      "get": {
+        "tags": [
+          "people"
+        ],
+        "operationId": "photo_faces",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "Photo (file node) id",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Left to right",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/FaceDto"
+                  }
                 }
               }
             }
@@ -2582,6 +3142,16 @@
               "format": "int32",
               "maximum": 100,
               "minimum": 1
+            }
+          },
+          {
+            "name": "person",
+            "in": "query",
+            "description": "A person (`GET /api/people`): photos with one of their faces.",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
             }
           },
           {
@@ -3749,7 +4319,8 @@
           "asset",
           "size",
           "albums",
-          "tags"
+          "tags",
+          "people"
         ],
         "properties": {
           "albums": {
@@ -3789,6 +4360,13 @@
             ],
             "format": "uuid",
             "description": "The folder holding the file."
+          },
+          "people": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/PersonRef"
+            },
+            "description": "People on this photo (not hidden ones), named first."
           },
           "place": {
             "oneOf": [
@@ -3886,6 +4464,29 @@
             "format": "int32",
             "description": "Displayed size, once known. The grid treats unknown as square.",
             "minimum": 0
+          }
+        }
+      },
+      "AssignFaceRequest": {
+        "type": "object",
+        "description": "Where a face goes: an existing person (`person_id`) or a new one\n(`new_person`). Exactly one.",
+        "properties": {
+          "new_person": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/NewPersonDto"
+              }
+            ]
+          },
+          "person_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid"
           }
         }
       },
@@ -4314,6 +4915,127 @@
           }
         }
       },
+      "FaceAssigned": {
+        "type": "object",
+        "description": "The face's person after an assignment.",
+        "required": [
+          "face_id"
+        ],
+        "properties": {
+          "face_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "person_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid",
+            "description": "`null`: pinned to nobody."
+          }
+        }
+      },
+      "FaceAssignedBy": {
+        "type": "string",
+        "description": "Who decided a face's person.",
+        "enum": [
+          "auto",
+          "user"
+        ]
+      },
+      "FaceBoxDto": {
+        "type": "object",
+        "description": "A face's box, relative to the displayed image (0–1).",
+        "required": [
+          "x",
+          "y",
+          "width",
+          "height"
+        ],
+        "properties": {
+          "height": {
+            "type": "number",
+            "format": "float"
+          },
+          "width": {
+            "type": "number",
+            "format": "float"
+          },
+          "x": {
+            "type": "number",
+            "format": "float"
+          },
+          "y": {
+            "type": "number",
+            "format": "float"
+          }
+        }
+      },
+      "FaceDto": {
+        "type": "object",
+        "required": [
+          "id",
+          "photo_id",
+          "box",
+          "score",
+          "assigned_by"
+        ],
+        "properties": {
+          "assigned_by": {
+            "$ref": "#/components/schemas/FaceAssignedBy"
+          },
+          "box": {
+            "$ref": "#/components/schemas/FaceBoxDto"
+          },
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "person": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/PersonRef"
+              }
+            ]
+          },
+          "photo_id": {
+            "type": "string",
+            "format": "uuid",
+            "description": "The photo it is on (`GET /api/photos/{id}`)."
+          },
+          "score": {
+            "type": "number",
+            "format": "float",
+            "description": "Detector confidence, 0–1."
+          }
+        }
+      },
+      "FacesPage": {
+        "type": "object",
+        "required": [
+          "items"
+        ],
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/FaceDto"
+            },
+            "description": "Newest photo first."
+          },
+          "next_cursor": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Pass back as `cursor` for the next page; `null` on the last page."
+          }
+        }
+      },
       "FailedJobDto": {
         "type": "object",
         "required": [
@@ -4598,6 +5320,22 @@
           }
         }
       },
+      "MergePeopleRequest": {
+        "type": "object",
+        "required": [
+          "from"
+        ],
+        "properties": {
+          "from": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "description": "People (1–50) whose faces move to this one; they are deleted."
+          }
+        }
+      },
       "MlSettingsDto": {
         "type": "object",
         "required": [
@@ -4696,6 +5434,17 @@
           "month": {
             "type": "string",
             "description": "`YYYY-MM`."
+          }
+        }
+      },
+      "NewPersonDto": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": [
+              "string",
+              "null"
+            ]
           }
         }
       },
@@ -4827,6 +5576,62 @@
           },
           "name": {
             "type": "string"
+          }
+        }
+      },
+      "PersonDto": {
+        "type": "object",
+        "description": "A group of the caller's faces, named or not.",
+        "required": [
+          "id",
+          "hidden",
+          "face_count"
+        ],
+        "properties": {
+          "cover_face_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid",
+            "description": "The face to show for this person (the chosen one, else the best\nscoring one); `null` for a named person left without faces."
+          },
+          "face_count": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "hidden": {
+            "type": "boolean",
+            "description": "Left out of lists unless asked for; still clustered."
+          },
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "name": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        }
+      },
+      "PersonRef": {
+        "type": "object",
+        "description": "A person as other objects refer to it.",
+        "required": [
+          "id"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "name": {
+            "type": [
+              "string",
+              "null"
+            ]
           }
         }
       },
@@ -5029,6 +5834,28 @@
           },
           "text": {
             "type": "string"
+          }
+        }
+      },
+      "SplitPersonRequest": {
+        "type": "object",
+        "required": [
+          "face_ids"
+        ],
+        "properties": {
+          "face_ids": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "description": "Faces of this person (1–500) that become a new person."
+          },
+          "name": {
+            "type": [
+              "string",
+              "null"
+            ]
           }
         }
       },
@@ -5346,6 +6173,33 @@
           }
         }
       },
+      "UpdatePersonRequest": {
+        "type": "object",
+        "description": "Rename, hide or choose the cover. At least one field is required.",
+        "properties": {
+          "cover_face_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid",
+            "description": "One of this person's faces; `null` goes back to the best one."
+          },
+          "hidden": {
+            "type": [
+              "boolean",
+              "null"
+            ]
+          },
+          "name": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "1–100 characters once trimmed; `null` clears the name."
+          }
+        }
+      },
       "UploadSessionDto": {
         "type": "object",
         "description": "An upload session: send the missing chunks, then complete it.",
@@ -5471,6 +6325,9 @@
     },
     {
       "name": "ml"
+    },
+    {
+      "name": "people"
     }
   ]
 }
