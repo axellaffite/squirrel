@@ -127,7 +127,7 @@ by a backfill job queued at every worker start.
 | `SQUIRREL_WORKER_CONCURRENCY` | half the cores, at most 2 | Jobs run at once |
 | `SQUIRREL_WORKER_KINDS` | every kind | Comma-separated job kinds this worker runs, e.g. `clip_embed,faces,cluster_faces` on a separate ML machine. Unknown names stop the worker |
 | `SQUIRREL_WORKER_EXCLUDE_KINDS` | none | Comma-separated job kinds this worker leaves to others. Not with `SQUIRREL_WORKER_KINDS` |
-| `SQUIRREL_ML_CONCURRENCY` | `1` | Model inference jobs (`clip_embed`, `faces`) run at once, so another slot stays free for fresh uploads |
+| `SQUIRREL_ML_CONCURRENCY` | `1` | Model inference jobs (`clip_embed`, `faces`) run at once, so another slot stays free for fresh uploads. Only `1` is accepted for now: one `ml-exec` child serves one request at a time |
 | `SQUIRREL_MODELS_DIR` | `<data_dir>/models` | Pinned ML models (`scripts/fetch-models.sh`). Checked against their SHA-256 at start: a mismatch stops the worker. Without models, photo tags, search and faces are off |
 | `SQUIRREL_ORT_DYLIB` | unset | The pinned ONNX Runtime library (`scripts/fetch-onnxruntime.sh`), required once models are installed |
 | `SQUIRREL_ML_THREADS` | half the cores | Threads for one inference |

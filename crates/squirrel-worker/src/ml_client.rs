@@ -23,6 +23,8 @@ const PASSED_ENV: [&str; 1] = ["PATH"];
 /// [`MAX_RESTART_BACKOFF`] (a broken install must not respawn on every job).
 pub const RESTART_BACKOFF: Duration = Duration::from_secs(30);
 pub const MAX_RESTART_BACKOFF: Duration = Duration::from_secs(10 * 60);
+/// When a request gave up waiting for the child, try again after this.
+pub const BUSY_RETRY: Duration = Duration::from_secs(30);
 /// Longest stderr line logged from the child.
 const MAX_LOG_LINE: usize = 2000;
 
@@ -73,6 +75,10 @@ pub enum MlClientError {
     /// Handlers reschedule (no attempt used) rather than fail.
     #[error("the ML child failed to start; next start in {0:?}")]
     Backoff(Duration),
+    /// Other requests held the child longer than one start and one request
+    /// would take: try again later rather than queue without bound.
+    #[error("the ML child stayed busy for {0:?}")]
+    Busy(Duration),
 }
 
 impl MlClientError {
@@ -80,6 +86,7 @@ impl MlClientError {
     pub fn retry_after(&self) -> Option<Duration> {
         match self {
             Self::Backoff(delay) => Some(*delay),
+            Self::Busy(_) => Some(BUSY_RETRY),
             _ => None,
         }
     }
@@ -189,7 +196,11 @@ impl MlClient {
         config: &MlChildConfig,
         op: MlOp,
     ) -> Result<MlBody, MlClientError> {
-        let mut state = self.state.lock().await;
+        // One start and one request bound what a single holder can take.
+        let wait = config.ready_timeout + config.request_timeout;
+        let Ok(mut state) = tokio::time::timeout(wait, self.state.lock()).await else {
+            return Err(MlClientError::Busy(wait));
+        };
         if state.running.as_ref().is_some_and(|running| running.busy)
             && let Some(stale) = state.running.take()
         {

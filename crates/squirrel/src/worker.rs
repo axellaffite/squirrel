@@ -96,9 +96,11 @@ pub struct WorkerOptions {
     /// Where model inference runs: `subprocess` (isolated, default) or `in-process`.
     #[arg(long, env = "SQUIRREL_ML_EXEC", value_enum, default_value_t = MlExecMode::Subprocess)]
     pub ml_exec: MlExecMode,
-    /// Model inference jobs run at once (each already uses several cores), so
-    /// the other slots stay free for fresh uploads.
-    #[arg(long, env = "SQUIRREL_ML_CONCURRENCY", default_value_t = 1, value_parser = clap::value_parser!(u16).range(1..=64))]
+    /// Model inference jobs run at once, so the other slots stay free for
+    /// fresh uploads. Only 1 for now: the worker has one `ml-exec` child,
+    /// which serves one request at a time (each already uses several cores),
+    /// so a second ML job would only wait for it.
+    #[arg(long, env = "SQUIRREL_ML_CONCURRENCY", default_value_t = 1, value_parser = clap::value_parser!(u16).range(1..=1))]
     pub ml_concurrency: u16,
 }
 
@@ -511,6 +513,7 @@ mod tests {
         let cli = Cli::try_parse_from(["x", "--kinds", "faces,cluster_faces"]).unwrap();
         assert_eq!(cli.options.kinds, names(&["faces", "cluster_faces"]));
         assert_eq!(cli.options.ml_concurrency, 1);
+        assert!(Cli::try_parse_from(["x", "--ml-concurrency", "2"]).is_err());
     }
 
     #[sqlx::test(migrator = "squirrel_db::MIGRATOR")]
