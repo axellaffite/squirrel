@@ -36,6 +36,11 @@ pub enum AdminCommand {
         #[command(subcommand)]
         action: MediaAction,
     },
+    /// Faces and people.
+    Faces {
+        #[command(subcommand)]
+        action: FacesAction,
+    },
     /// The offline reverse-geocoding dataset (no database needed).
     Geodata {
         #[command(subcommand)]
@@ -73,6 +78,13 @@ pub enum MediaAction {
     /// thumbnails made with older settings, and places not named with the
     /// current geodata). A worker runs it.
     Backfill,
+}
+
+#[derive(Subcommand)]
+pub enum FacesAction {
+    /// Clear a user's automatic face groups and cluster again (after a
+    /// threshold change). Their corrections, named and hidden people stay.
+    Recluster { username: String },
 }
 
 #[derive(Subcommand)]
@@ -130,6 +142,9 @@ pub async fn run(pool: &PgPool, command: AdminCommand) -> anyhow::Result<()> {
             Ok(())
         }
         AdminCommand::Jobs { action } => jobs(pool, action).await,
+        AdminCommand::Faces {
+            action: FacesAction::Recluster { username },
+        } => recluster(pool, &username).await,
         AdminCommand::Geodata { action } => crate::geodata::run(action),
         AdminCommand::Media {
             action: MediaAction::Backfill,
@@ -208,6 +223,25 @@ fn format_jobs(kinds: &[KindSummary], failures: &[FailedJob], ml_ready: bool) ->
         }
     }
     out
+}
+
+async fn recluster(pool: &PgPool, username: &str) -> anyhow::Result<()> {
+    let username = Username::parse(username)?;
+    let Some(user) = squirrel_db::users::find_by_username(pool, &username).await? else {
+        anyhow::bail!("no user named {}", username.as_str());
+    };
+    let Some(cleared) = squirrel_db::clustering::reset_automatic(pool, user.id).await? else {
+        anyhow::bail!("faces are off for {}", username.as_str());
+    };
+    let mut job = squirrel_worker::jobs::cluster_faces(user.id);
+    job.delay = None;
+    let mut conn = pool.acquire().await?;
+    squirrel_jobs::enqueue(&mut conn, &job).await?;
+    println!(
+        "{cleared} automatic face assignments of {} cleared; clustering queued",
+        username.as_str()
+    );
+    Ok(())
 }
 
 #[cfg(test)]

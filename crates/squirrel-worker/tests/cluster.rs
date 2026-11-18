@@ -569,3 +569,54 @@ async fn clustering_after_corrections_keeps_them(pool: PgPool) {
         assert_eq!(person_of(fx.pool(), *face).await, None);
     }
 }
+
+/// `squirrel admin faces recluster`: automatic assignments start over, the
+/// user's pins and named people stay.
+#[sqlx::test(migrator = "squirrel_db::MIGRATOR")]
+async fn reclustering_starts_automatic_assignments_over(pool: PgPool) {
+    let fx = Fixture::new(pool);
+    let alice = admin(fx.pool()).await;
+    let sha = photo(&fx, alice.id, "a.jpg").await;
+    let ids = faces(fx.pool(), alice.id, &sha, &groups_and_noise()).await;
+    cluster(&fx, alice.id).await;
+    let kept = person_of(fx.pool(), ids[0]).await.unwrap();
+    sqlx::query("UPDATE people SET name = 'Anna' WHERE id = $1")
+        .bind(kept)
+        .execute(fx.pool())
+        .await
+        .unwrap();
+    sqlx::query("UPDATE faces SET assigned_by = 'user' WHERE id = $1")
+        .bind(ids[0])
+        .execute(fx.pool())
+        .await
+        .unwrap();
+
+    let reset = squirrel_db::clustering::reset_automatic(fx.pool(), alice.id)
+        .await
+        .unwrap();
+    assert_eq!(
+        reset,
+        Some(14),
+        "every automatic assignment but the pinned face"
+    );
+    assert_eq!(person_of(fx.pool(), ids[0]).await, Some(kept));
+    assert_eq!(person_of(fx.pool(), ids[1]).await, None);
+    assert_eq!(people(fx.pool(), alice.id).await, 1, "only Anna is left");
+    cluster(&fx, alice.id).await;
+    // One pinned face among four unassigned ones does not pull them in (the
+    // guard against merging through one face): they found their own person.
+    let regrouped = person_of(fx.pool(), ids[1]).await;
+    assert!(regrouped.is_some() && regrouped != Some(kept));
+    assert_eq!(people(fx.pool(), alice.id).await, 4);
+
+    squirrel_db::ml_settings::set_faces_enabled(fx.pool(), alice.id, false)
+        .await
+        .unwrap();
+    assert_eq!(
+        squirrel_db::clustering::reset_automatic(fx.pool(), alice.id)
+            .await
+            .unwrap(),
+        None,
+        "faces are off"
+    );
+}

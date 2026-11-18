@@ -134,7 +134,8 @@ pub struct AssignFaceRequest {
 #[derive(Debug, Clone, Copy, Serialize, ToSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum FaceAssignedBy {
-    /// Clustering; it may still move the face.
+    /// Clustering. Once grouped, only an operator's
+    /// `squirrel admin faces recluster` (after a threshold change) moves it.
     Auto,
     /// The user; clustering never moves it (a `null` person: "not this
     /// person", never grouped again).
