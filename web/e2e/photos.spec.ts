@@ -86,8 +86,12 @@ test('a filter in the address narrows the timeline, and the rail clears it', asy
 	await page.getByRole('navigation', { name: 'Main' }).getByRole('link', { name: 'Photos', exact: true }).click();
 	await expect(page.getByRole('button', { name: 'Remove filter Paris' })).toHaveCount(0);
 	await expect(tiles(page)).toHaveCount(3);
-	await page.goto('/photos?country=FR&city=Lyon');
+	await page.goto('/photos?country=FR&city=Lyon&kind=photo');
 	await page.getByRole('button', { name: 'Remove filter Lyon' }).click();
+	// The keyboard stays on the chips: the next chip's clear button.
+	await expect(page.getByRole('button', { name: 'Remove filter Photos only' })).toBeFocused();
+	await page.getByRole('button', { name: 'Remove filter Photos only' }).click();
+	await expect(page.getByRole('button', { name: 'Filter', exact: true })).toBeFocused();
 	await expect(tiles(page)).toHaveCount(3);
 	await expect(page).toHaveURL(/\/photos$/);
 });
