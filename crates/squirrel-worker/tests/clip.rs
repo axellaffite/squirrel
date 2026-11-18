@@ -159,7 +159,8 @@ fn clip_job_for(sha: &str) -> JobContext {
 /// A two-label bank: "dog" along the images' axis, "beach" orthogonal.
 async fn store_bank(pool: &PgPool) {
     let bank = vec![("beach".to_owned(), axis(1)), ("dog".to_owned(), axis(0))];
-    squirrel_db::clip::store_label_embeddings(pool, CLIP_MODEL_ID, LABELS_VERSION, &bank)
+    let digest = squirrel_ml::clip::labels::bank_digest();
+    squirrel_db::clip::store_label_embeddings(pool, CLIP_MODEL_ID, LABELS_VERSION, &digest, &bank)
         .await
         .unwrap();
 }
@@ -404,7 +405,8 @@ async fn the_label_bank_is_computed_once(pool: PgPool) {
     );
     let prompts = fake.texts.load(Ordering::SeqCst);
     assert!(prompts > 1000, "{prompts}");
-    let bank = squirrel_db::clip::label_embeddings(&pool, CLIP_MODEL_ID, LABELS_VERSION)
+    let digest = squirrel_ml::clip::labels::bank_digest();
+    let bank = squirrel_db::clip::label_embeddings(&pool, CLIP_MODEL_ID, LABELS_VERSION, &digest)
         .await
         .unwrap();
     assert_eq!(

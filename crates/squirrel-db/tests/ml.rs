@@ -170,20 +170,31 @@ async fn label_embeddings_round_trip_per_model_and_version(pool: PgPool) {
         ("beach".to_owned(), vector(0.3)),
         ("dog".to_owned(), vector(0.4)),
     ];
-    clip::store_label_embeddings(&pool, MODEL, 1, &bank)
+    let digest = "a".repeat(64);
+    clip::store_label_embeddings(&pool, MODEL, 1, &digest, &bank)
         .await
         .unwrap();
-    clip::store_label_embeddings(&pool, MODEL, 1, &bank[..1])
+    clip::store_label_embeddings(&pool, MODEL, 1, &digest, &bank[..1])
         .await
         .unwrap();
-    let read = clip::label_embeddings(&pool, MODEL, 1).await.unwrap();
+    let read = clip::label_embeddings(&pool, MODEL, 1, &digest)
+        .await
+        .unwrap();
     assert_eq!(read.len(), 1, "replaced as a whole");
     assert_eq!(read[0].0, "beach");
     assert!(
-        clip::label_embeddings(&pool, MODEL, 2)
+        clip::label_embeddings(&pool, MODEL, 2, &digest)
             .await
             .unwrap()
             .is_empty()
+    );
+    let other = "b".repeat(64);
+    assert!(
+        clip::label_embeddings(&pool, MODEL, 1, &other)
+            .await
+            .unwrap()
+            .is_empty(),
+        "a bank computed from other content is ignored"
     );
 }
 

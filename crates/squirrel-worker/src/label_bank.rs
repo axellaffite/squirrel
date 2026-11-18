@@ -18,12 +18,13 @@ pub async fn ensure(pool: &PgPool, text: &MlClient, model: &str) -> anyhow::Resu
         !labels.is_empty(),
         "the committed label bank does not parse"
     );
-    let stored = clip::label_embeddings(pool, model, LABELS_VERSION).await?;
+    let digest = labels::bank_digest();
+    let stored = clip::label_embeddings(pool, model, LABELS_VERSION, &digest).await?;
     if complete(&stored, &labels) {
         return Ok(false);
     }
     let bank = compute(text, &labels).await?;
-    clip::store_label_embeddings(pool, model, LABELS_VERSION, &bank).await?;
+    clip::store_label_embeddings(pool, model, LABELS_VERSION, &digest, &bank).await?;
     tracing::info!(
         labels = bank.len(),
         version = LABELS_VERSION,
