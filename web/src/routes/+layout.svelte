@@ -116,7 +116,7 @@
 			<header class="phone-top">
 				<a href="/" class="wordmark">Squirrel</a>
 				<span class="top-tools">
-					<IconButton icon="search" label="Search photos" tooltip="Search" fill="tint" href="/search" />
+					<IconButton icon="search" label="Search photos" tooltip="Search" fill="tint" href="/search" current={page.url.pathname === '/search'} />
 					<UserMenu
 					displayName={session.me.display_name}
 					username={session.me.username}
