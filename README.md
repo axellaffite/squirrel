@@ -127,7 +127,8 @@ by a backfill job queued at every worker start.
 | `SQUIRREL_WORKER_CONCURRENCY` | half the cores, at most 2 | Jobs run at once |
 | `SQUIRREL_WORKER_KINDS` | every kind | Comma-separated job kinds this worker runs, e.g. `clip_embed,faces,cluster_faces` on a separate ML machine. Unknown names, or a list that leaves nothing runnable, stop the worker. Include `noop` for `squirrel admin jobs ping` to reach this worker |
 | `SQUIRREL_WORKER_EXCLUDE_KINDS` | none | Comma-separated job kinds this worker leaves to others. Not with `SQUIRREL_WORKER_KINDS` |
-| `SQUIRREL_ML_CONCURRENCY` | `1` | Model inference jobs (`clip_embed`, `faces`) run at once, so another slot stays free for fresh uploads. Only `1` is accepted for now: one `ml-exec` child serves one request at a time |
+| `SQUIRREL_ML_CONCURRENCY` | `1` | Background ML jobs (`clip_embed`, `faces`, `label_bank`, `cluster_faces`) run at once, so another slot stays free for fresh uploads. Only `1` is accepted for now: one `ml-exec` child serves one request at a time |
+| `SQUIRREL_CLUSTER_DELAY_SECS` | `600` | How long new faces wait before they are grouped into people (at most one clustering run per user and delay while photos keep arriving) |
 | `SQUIRREL_MODELS_DIR` | `<data_dir>/models` | Pinned ML models (`scripts/fetch-models.sh`). Checked against their SHA-256 at start: a mismatch stops the worker. Without models, photo tags, search and faces are off |
 | `SQUIRREL_ORT_DYLIB` | unset | The pinned ONNX Runtime library (`scripts/fetch-onnxruntime.sh`), required once models are installed |
 | `SQUIRREL_ML_THREADS` | half the cores | Threads for one inference |
@@ -179,6 +180,68 @@ an "unsupported preview" tile.
 match as prefixes, two-letter words only as whole words, one-letter words are ignored. Each
 search runs at most 5 s (then answers 503) and is rate limited per client (20 at once, then one
 per second).
+
+### Machine learning
+
+With the models installed, the worker tags photos ("beach", "dog", "snow"), makes them
+searchable by what they show (in English: "dog on the beach"), and finds faces and groups
+them into people each user can name, merge, split and hide. Everything runs on this
+server's CPU, below thumbnails in priority, and nothing leaves the server. Without models
+these features are simply off (Media status says so).
+
+| What | Model | Size | Licence |
+| --- | --- | --- | --- |
+| Tags and search | OpenAI CLIP ViT-B/32 (ONNX export `immich-app/ViT-B-32__openai`, 512-d): image tower | 335 MB | MIT |
+| Search queries | the same CLIP's text tower, run by the server on the first search | 242 MB | MIT |
+| Face detection | OpenCV Zoo YuNet (`face_detection_yunet_2026may`) | 0.2 MB | MIT |
+| Face recognition | OpenCV Zoo SFace (`face_recognition_sface_2021dec`, 128-d) | 37 MB | Apache-2.0 |
+| Runtime | ONNX Runtime 1.31.1, CPU (Microsoft's NuGet package) | ≈ 20 MB | MIT |
+
+Every file is fetched from a revision-pinned URL by `scripts/fetch-models.sh` and
+`scripts/fetch-onnxruntime.sh`, which check its SHA-256 (the hashes live in those scripts and
+in `crates/squirrel-ml/src/models.rs`, a test keeps them equal) and keep each upstream licence
+next to the files. `fetch-models.sh --without-faces` and `--clip-only-image` (tags without
+text search) fetch less for small boxes. **InsightFace models (SCRFD, ArcFace, `buffalo_l`)
+are never used**: their licence allows non-commercial research only, which does not cover a
+home server; YuNet and SFace are permissively licensed, at the cost of somewhat more split
+people (merging is one click).
+
+**Running ML on another machine.** Inference only reads previews and writes Postgres, so a
+bigger machine can share the data directory read-only:
+`squirrel worker --kinds clip_embed,faces,cluster_faces,label_bank` there, and
+`squirrel worker --exclude-kinds clip_embed,faces,cluster_faces,label_bank` on the home
+server (`SQUIRREL_WORKER_KINDS` / `SQUIRREL_WORKER_EXCLUDE_KINDS`). `--ml-concurrency` stays 1.
+
+**Memory.** Inference runs in a long-lived `squirrel ml-exec` child, restarted on a crash and
+stopped when idle, with an address-space limit of 4 GiB on Linux. Measured on Linux (arm64,
+all three model groups loaded, real photos): about 1.0 GiB resident; the reserved address
+space (VmPeak) is 1.1 GiB with one thread, 1.9 GiB with 32 and 2.9 GiB with 64. The worker starts
+the child with `MALLOC_ARENA_MAX=2`: without it glibc reserves 64 MB per thread and 32 threads
+need 8.9 GiB, which the limit refuses. The server's search model takes about 0.4 GB while
+searches happen and is stopped after 5 idle minutes. Plan for 4 GB of RAM on the box.
+
+**Postgres** needs pgvector (see "Administration" above): embeddings are `halfvec` columns,
+searched exactly per user (no shared index), so one user's library never changes another's
+results.
+
+**Faces are on by default** and stay with their owner: a photo shared by two users gets
+separate faces and people for each. Settings › Faces turns them off, which at once deletes
+all of that user's faces, people, names and corrections (turning them on again finds the faces
+anew, without names). Deleting a photo for good deletes its faces too.
+
+**Thresholds are provisional**: the tag thresholds (`src/clip/labels.rs`: cosine 0.25, margin
+0.045 over the background prompt), the search cut-offs (`SEARCH_MAX_DISTANCE` 0.78 and
+`SEARCH_RELATIVE_CUTOFF` 0.06), the face detector score (0.6) and the clustering parameters
+(`squirrel_ml::cluster::SFACE`: distance 0.50, 3 faces) were set on test images and await
+calibration on a real library. To judge tags on your own photos:
+
+    SQUIRREL_ORT_DYLIB=… SQUIRREL_MODELS_DIR=… cargo run --release -p squirrel-ml \
+      --features test-util --example tag_report -- <a folder of photos>
+
+After changing the clustering parameters, regroup a user's automatic faces (their own
+corrections, names and hidden people stay):
+
+    squirrel admin faces recluster <username>
 
 Administration:
 
