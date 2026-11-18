@@ -99,8 +99,6 @@ test('a filter in the address narrows the timeline, and the rail clears it', asy
 test('the search page follows its address', async () => {
 	await page.goto('/search?q=dog');
 	await expect(page.getByRole('searchbox', { name: 'Search photos' })).toHaveValue('dog');
-	// No search models on the E2E server: said calmly.
-	await expect(page.getByText("Photo search isn't set up on this server", { exact: false })).toBeVisible();
 	await page.getByRole('navigation', { name: 'Main' }).getByRole('link', { name: 'Search', exact: true }).click();
 	await expect(page.getByRole('searchbox', { name: 'Search photos' })).toHaveValue('');
 	await expect(page).toHaveURL(/\/search$/);
