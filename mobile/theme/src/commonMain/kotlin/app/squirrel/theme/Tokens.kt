@@ -142,6 +142,13 @@ object Tokens {
     val scrubTick = 2.dp
     val infoW = 360.dp
     val locatorDot = 6.dp
+    val chipH = 36.dp
+    val chipClear = 20.dp
+    val faceSm = 40.dp
+    val faceMd = 64.dp
+    val faceLg = 112.dp
+    val personMin = 112.dp
+    val faceBox = 2.dp
     const val durFast = 160
     const val dur = 240
     const val durSlow = 360
