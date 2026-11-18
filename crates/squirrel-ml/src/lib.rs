@@ -4,6 +4,7 @@
 
 pub mod client;
 pub mod clip;
+pub mod faces;
 pub mod input;
 pub mod models;
 pub mod protocol;

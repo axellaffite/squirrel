@@ -1,0 +1,196 @@
+//! Faces found on a user's photos (`faces`, `face_scans`, `people`). Biometric
+//! data is per owner, never shared between users even for a deduplicated
+//! blob, and only ever stored for a user who has faces on. A user's row in
+//! `users` is the lock that orders storing a scan against turning faces off.
+
+use pgvector::HalfVector;
+use sqlx::{FromRow, PgConnection, PgPool};
+use uuid::Uuid;
+
+use crate::DbError;
+
+/// Dimensions of a face embedding (SFace).
+pub const FACE_DIM: usize = 128;
+
+/// One detected face, as the worker stores it.
+#[derive(Debug, Clone, PartialEq)]
+pub struct NewFace {
+    /// Relative to the displayed image (0..1): left, top, width, height.
+    pub bbox: [f32; 4],
+    /// Five (x, y) points, relative like the box.
+    pub landmarks: [f32; 10],
+    pub score: f32,
+    pub embedding: Vec<f32>,
+}
+
+#[derive(Debug, Clone, PartialEq, FromRow)]
+pub struct FaceRecord {
+    pub id: Uuid,
+    pub owner_id: Uuid,
+    pub sha256: String,
+    pub box_x: f32,
+    pub box_y: f32,
+    pub box_w: f32,
+    pub box_h: f32,
+    pub landmarks: Vec<f32>,
+    pub score: f32,
+    pub person_id: Option<Uuid>,
+    pub assigned_by: String,
+}
+
+/// Owners of a live asset of `sha256` who have faces on and no scan of it
+/// with `model` yet: the users a `faces` run writes rows for.
+pub async fn owners_to_scan(
+    pool: &PgPool,
+    sha256: &str,
+    model: &str,
+) -> Result<Vec<Uuid>, DbError> {
+    Ok(sqlx::query_scalar(
+        "SELECT DISTINCT a.owner_id FROM assets a \
+           JOIN nodes n ON n.id = a.node_id AND n.deleted_at IS NULL \
+          WHERE a.sha256 = $1 \
+            AND COALESCE((SELECT s.faces_enabled FROM user_ml_settings s \
+                           WHERE s.user_id = a.owner_id), true) \
+            AND NOT EXISTS (SELECT 1 FROM face_scans f \
+                             WHERE f.owner_id = a.owner_id AND f.sha256 = a.sha256 \
+                               AND f.model = $2) \
+          ORDER BY 1",
+    )
+    .bind(sha256)
+    .bind(model)
+    .fetch_all(pool)
+    .await?)
+}
+
+/// Whether any owner of a live asset of `sha256` has faces on (the
+/// thumbnails step queues `faces` only then).
+pub async fn wanted<'e>(
+    executor: impl sqlx::PgExecutor<'e>,
+    sha256: &str,
+) -> Result<bool, DbError> {
+    Ok(sqlx::query_scalar(
+        "SELECT EXISTS (SELECT 1 FROM assets a \
+           JOIN nodes n ON n.id = a.node_id AND n.deleted_at IS NULL \
+          WHERE a.sha256 = $1 \
+            AND COALESCE((SELECT s.faces_enabled FROM user_ml_settings s \
+                           WHERE s.user_id = a.owner_id), true))",
+    )
+    .bind(sha256)
+    .fetch_one(executor)
+    .await?)
+}
+
+/// Locks `owner`'s row: storing a scan shares it, turning faces off takes it
+/// exclusively, so neither interleaves with the other.
+pub(crate) async fn lock_owner(
+    conn: &mut PgConnection,
+    owner: Uuid,
+    exclusive: bool,
+) -> Result<(), DbError> {
+    let sql = if exclusive {
+        "SELECT 1 FROM users WHERE id = $1 FOR UPDATE"
+    } else {
+        "SELECT 1 FROM users WHERE id = $1 FOR SHARE"
+    };
+    sqlx::query(sql).bind(owner).execute(&mut *conn).await?;
+    Ok(())
+}
+
+/// Stores `owner`'s scan of `sha256` (and its faces) in one transaction.
+/// `false` when nothing was written: faces are off for the owner by now, or
+/// the scan already exists (a retry).
+pub async fn store_scan(
+    pool: &PgPool,
+    owner: Uuid,
+    sha256: &str,
+    model: &str,
+    faces: &[NewFace],
+) -> Result<bool, DbError> {
+    let mut tx = pool.begin().await?;
+    lock_owner(&mut tx, owner, false).await?;
+    let enabled = crate::ml_settings::faces_enabled(&mut *tx, owner).await?;
+    if !enabled {
+        return Ok(false);
+    }
+    let count = i16::try_from(faces.len()).map_err(|_| DbError::InvalidInput("too many faces"))?;
+    let inserted = sqlx::query(
+        "INSERT INTO face_scans (owner_id, sha256, model, face_count) VALUES ($1, $2, $3, $4) \
+         ON CONFLICT (owner_id, sha256) DO NOTHING",
+    )
+    .bind(owner)
+    .bind(sha256)
+    .bind(model)
+    .bind(count)
+    .execute(&mut *tx)
+    .await?;
+    if inserted.rows_affected() == 0 {
+        return Ok(false);
+    }
+    for face in faces {
+        sqlx::query(
+            "INSERT INTO faces (id, owner_id, sha256, model, box_x, box_y, box_w, box_h, \
+                                landmarks, score, embedding) \
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)",
+        )
+        .bind(Uuid::now_v7())
+        .bind(owner)
+        .bind(sha256)
+        .bind(model)
+        .bind(face.bbox[0])
+        .bind(face.bbox[1])
+        .bind(face.bbox[2])
+        .bind(face.bbox[3])
+        .bind(face.landmarks.to_vec())
+        .bind(face.score)
+        .bind(HalfVector::from_f32_slice(&face.embedding))
+        .execute(&mut *tx)
+        .await?;
+    }
+    tx.commit().await?;
+    Ok(true)
+}
+
+/// `owner`'s faces on `sha256`, left to right.
+pub async fn faces_of(
+    pool: &PgPool,
+    owner: Uuid,
+    sha256: &str,
+) -> Result<Vec<FaceRecord>, DbError> {
+    Ok(sqlx::query_as(
+        "SELECT id, owner_id, sha256, box_x, box_y, box_w, box_h, landmarks, score, \
+                person_id, assigned_by \
+           FROM faces WHERE owner_id = $1 AND sha256 = $2 ORDER BY box_x, id",
+    )
+    .bind(owner)
+    .bind(sha256)
+    .fetch_all(pool)
+    .await?)
+}
+
+/// `owner`'s scan of `sha256`: how many faces it found, if it exists.
+pub async fn scan_count(pool: &PgPool, owner: Uuid, sha256: &str) -> Result<Option<i16>, DbError> {
+    Ok(
+        sqlx::query_scalar("SELECT face_count FROM face_scans WHERE owner_id = $1 AND sha256 = $2")
+            .bind(owner)
+            .bind(sha256)
+            .fetch_optional(pool)
+            .await?,
+    )
+}
+
+/// How much face data `owner` has.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, FromRow)]
+pub struct FaceCounts {
+    pub faces: i64,
+    pub people: i64,
+}
+
+pub async fn counts(pool: &PgPool, owner: Uuid) -> Result<FaceCounts, DbError> {
+    Ok(sqlx::query_as(
+        "SELECT (SELECT count(*) FROM faces WHERE owner_id = $1) AS faces, \
+                (SELECT count(*) FROM people WHERE owner_id = $1) AS people",
+    )
+    .bind(owner)
+    .fetch_one(pool)
+    .await?)
+}
