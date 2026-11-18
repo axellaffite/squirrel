@@ -80,6 +80,13 @@ async fn the_child_runs_under_its_address_space_limit() {
         .find(|l| l.starts_with("Max core file size"))
         .unwrap();
     assert!(core.split_whitespace().nth(4) == Some("0"), "{core}");
+    let status = std::fs::read_to_string(format!("/proc/{pid}/status")).unwrap();
+    assert!(
+        status
+            .lines()
+            .any(|l| l.split_whitespace().eq(["NoNewPrivs:", "1"])),
+        "{status}"
+    );
     client.stop().await;
 }
 

@@ -12,7 +12,7 @@ use squirrel_ml::ModelGroup;
 use squirrel_ml::models::ModelDir;
 use squirrel_ml::serve::{Engine, EngineConfig, serve};
 
-use crate::media_exec::apply;
+use crate::media_exec::{apply, no_new_privs};
 
 /// Address space for the image tower and the face models plus ONNX Runtime's
 /// arenas and thread stacks (which reserve far more than they touch). Linux only.
@@ -46,6 +46,7 @@ pub fn run(args: &MlExecArgs) -> anyhow::Result<()> {
     for (resource, value) in limits(args) {
         apply(resource, value)?;
     }
+    no_new_privs()?;
     rustix::process::setpriority_process(None, NICE).context("lowering the priority")?;
     let groups = parse_groups(&args.groups)?;
     let config = EngineConfig {

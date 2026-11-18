@@ -25,6 +25,7 @@ pub fn run(args: &MediaExecArgs) -> anyhow::Result<()> {
     for (resource, value) in limits(args) {
         apply(resource, value)?;
     }
+    no_new_privs()?;
     squirrel_media::register_decoders();
     let mut raw = Vec::new();
     std::io::stdin()
@@ -51,6 +52,15 @@ fn limits(args: &MediaExecArgs) -> [(Resource, u64); 5] {
 
 /// Sets soft and hard limits to `value`, or to the current hard limit when
 /// that is lower already (lowering never needs privileges).
+/// Linux: no privilege gain through exec (setuid binaries, file capabilities)
+/// for the sandboxed child and anything it starts. Elsewhere a no-op.
+pub(crate) fn no_new_privs() -> anyhow::Result<()> {
+    #[cfg(target_os = "linux")]
+    rustix::thread::set_no_new_privs(true)
+        .map_err(|err| anyhow::anyhow!("could not set no_new_privs: {err}"))?;
+    Ok(())
+}
+
 pub(crate) fn apply(resource: Resource, value: u64) -> anyhow::Result<()> {
     let value = clamp(value, getrlimit(resource).maximum);
     let set = setrlimit(
