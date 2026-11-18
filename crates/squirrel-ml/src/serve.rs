@@ -4,9 +4,11 @@
 use std::io::{BufRead, Write};
 use std::path::PathBuf;
 
-use crate::clip::{ClipError, ClipImage};
+use crate::clip::{ClipError, ClipImage, ClipText};
 use crate::models::{ModelDir, ModelError, ModelGroup};
-use crate::protocol::{MAX_REQUEST_LINE, MlBody, MlOp, MlOutput, MlRequest, MlResponse, Ready};
+use crate::protocol::{
+    MAX_REQUEST_LINE, MAX_TEXTS, MlBody, MlOp, MlOutput, MlRequest, MlResponse, Ready,
+};
 use crate::runtime::{self, RuntimeError};
 
 /// What to load.
@@ -37,6 +39,7 @@ pub struct Engine {
     groups: Vec<ModelGroup>,
     onnxruntime: Option<String>,
     clip_image: Option<ClipImage>,
+    clip_text: Option<ClipText>,
 }
 
 impl Engine {
@@ -56,10 +59,16 @@ impl Engine {
         } else {
             None
         };
+        let clip_text = if config.groups.contains(&ModelGroup::ClipText) {
+            Some(ClipText::load(&config.models, config.threads)?)
+        } else {
+            None
+        };
         Ok(Self {
             groups: config.groups.clone(),
             onnxruntime,
             clip_image,
+            clip_text,
         })
     }
 
@@ -78,13 +87,28 @@ impl Engine {
                 None => not_loaded(ModelGroup::ClipImage),
                 Some(clip) => match clip.embed_file(input) {
                     Ok(embedding) => MlBody::Ok(MlOutput::Embedding { embedding }),
-                    Err(ClipError::Decode(reason)) => MlBody::Unsupported { reason },
-                    Err(ClipError::Inference(reason)) => MlBody::Failed { reason },
+                    Err(err) => failure(err),
                 },
             },
-            MlOp::ClipText { .. } => not_loaded(ModelGroup::ClipText),
+            MlOp::ClipText { texts } => match &mut self.clip_text {
+                None => not_loaded(ModelGroup::ClipText),
+                Some(_) if texts.len() > MAX_TEXTS => MlBody::Unsupported {
+                    reason: format!("at most {MAX_TEXTS} texts per request"),
+                },
+                Some(clip) => match texts.iter().map(|t| clip.embed(t)).collect() {
+                    Ok(embeddings) => MlBody::Ok(MlOutput::Embeddings { embeddings }),
+                    Err(err) => failure(err),
+                },
+            },
             MlOp::Faces { .. } => not_loaded(ModelGroup::Faces),
         }
+    }
+}
+
+fn failure(err: ClipError) -> MlBody {
+    match err {
+        ClipError::Unsupported(reason) => MlBody::Unsupported { reason },
+        ClipError::Io(reason) | ClipError::Inference(reason) => MlBody::Failed { reason },
     }
 }
 

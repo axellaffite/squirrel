@@ -3,6 +3,7 @@
 //! network.
 
 pub mod clip;
+pub mod input;
 pub mod models;
 pub mod protocol;
 pub mod runtime;

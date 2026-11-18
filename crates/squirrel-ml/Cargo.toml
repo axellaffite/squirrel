@@ -9,6 +9,7 @@ rust-version.workspace = true
 test-util = []
 
 [dependencies]
+fast_image_resize.workspace = true
 image.workspace = true
 ndarray.workspace = true
 ort.workspace = true
@@ -16,6 +17,7 @@ serde.workspace = true
 serde_json.workspace = true
 sha2.workspace = true
 thiserror.workspace = true
+tokenizers.workspace = true
 
 [dev-dependencies]
 tempfile.workspace = true
