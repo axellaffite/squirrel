@@ -62,3 +62,22 @@ export function cropSource(face: FaceCrop, displayPx: number): string | null {
 
 /** "Anna" or "Unnamed" (MASTER). */
 export const personLabel = (name: string | null | undefined): string => name?.trim() || 'Unnamed';
+
+/**
+ * Faces in reading order: rows top to bottom (faces whose centres are within half a face
+ * height share a row), then left to right.
+ */
+export function readingOrder<T extends { box: FaceBox }>(faces: readonly T[]): T[] {
+	const centre = (face: T) => face.box.y + face.box.height / 2;
+	const sorted = [...faces].sort((a, b) => centre(a) - centre(b));
+	const rows: T[][] = [];
+	for (const face of sorted) {
+		const row = rows[rows.length - 1];
+		if (row && Math.abs(centre(face) - centre(row[0])) <= row[0].box.height / 2) row.push(face);
+		else rows.push([face]);
+	}
+	return rows.flatMap((row) => row.sort((a, b) => a.box.x - b.box.x));
+}
+
+/** "Face of Anna" or "Unnamed face": a face box's accessible name. */
+export const faceName = (name: string | null | undefined): string => (name?.trim() ? `Face of ${name.trim()}` : 'Unnamed face');

@@ -78,4 +78,11 @@
 			border: 1px solid ButtonText;
 		}
 	}
+
+	/* A toggle that is on (e.g. "People"): the rail's active item. */
+	.stage-btn[aria-pressed='true'] {
+		background: var(--rail-active);
+		color: var(--rail-active-ink);
+		box-shadow: var(--shadow-active);
+	}
 </style>

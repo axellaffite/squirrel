@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { cropSource, cropStyle, cropWindow, personLabel } from '#lib/explore/faces.ts';
+import { cropSource, cropStyle, cropWindow, faceName, personLabel, readingOrder } from '#lib/explore/faces.ts';
 
 describe('face crops', () => {
 	it('scales and moves the photo so the face fills the avatar', () => {
@@ -51,5 +51,16 @@ describe('face crops', () => {
 	it('names unnamed people', () => {
 		expect(personLabel(null)).toBe('Unnamed');
 		expect(personLabel(' Anna ')).toBe('Anna');
+	});
+
+	it('orders faces as they are read: rows, then left to right', () => {
+		const face = (id: string, x: number, y: number) => ({ id, box: { x, y, width: 0.1, height: 0.2 } });
+		const order = readingOrder([face('c', 0.1, 0.6), face('b', 0.7, 0.12), face('a', 0.2, 0.1)]);
+		expect(order.map((f) => f.id)).toEqual(['a', 'b', 'c']);
+	});
+
+	it('names face boxes', () => {
+		expect(faceName('Anna')).toBe('Face of Anna');
+		expect(faceName(null)).toBe('Unnamed face');
 	});
 });
