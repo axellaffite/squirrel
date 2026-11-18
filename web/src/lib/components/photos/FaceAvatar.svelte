@@ -11,12 +11,27 @@
 	let { face, size = 'sm' }: Props = $props();
 
 	let failed = $state(false);
-	const source = $derived(face ? cropSource(face) : null);
-	const style = $derived(face ? cropStyle(face.box) : null);
+	/** The avatar's width on screen (px), to choose the thumb or the preview. */
+	let width = $state(0);
+	/** The photo's width / height once it loaded, to keep the crop inside it. */
+	let aspect = $state(1);
+	const source = $derived(face && width > 0 ? cropSource(face, width) : null);
+	const style = $derived(face ? cropStyle(face.box, aspect) : null);
+
+	// Another face (or size): a past failure says nothing about the new image.
+	$effect(() => {
+		void source;
+		failed = false;
+	});
+
+	function loaded(event: Event) {
+		const img = event.currentTarget as HTMLImageElement;
+		if (img.naturalWidth > 0 && img.naturalHeight > 0) aspect = img.naturalWidth / img.naturalHeight;
+	}
 </script>
 
 <!-- MASTER "Face avatar": a client-side crop of the photo's thumbnail; the server stores no face images. -->
-<span class="avatar {size}">
+<span class="avatar {size}" bind:clientWidth={width}>
 	<Icon name="user" />
 	{#if source && style && !failed}
 		<img
@@ -27,6 +42,7 @@
 			style:height="{style.height}%"
 			style:top="{style.top}%"
 			style:transform="translateX({style.shift}%)"
+			onload={loaded}
 			onerror={() => (failed = true)}
 		/>
 	{/if}

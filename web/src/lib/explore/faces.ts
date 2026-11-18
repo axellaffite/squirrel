@@ -11,8 +11,10 @@ export type FaceBox = components['schemas']['FaceBoxDto'];
 
 /** Room kept around the face, as a share of its height on each side. */
 export const FACE_MARGIN = 0.25;
-/** Faces shorter than this share of the photo are cropped from the preview (the thumb is 360 px tall). */
-export const SMALL_FACE = 0.08;
+/** Thumbnail height, px (the preview is 4 × taller). */
+export const THUMB_PX = 360;
+/** Screens are assumed this dense when choosing between the thumb and the preview. */
+export const ASSUMED_DPR = 2;
 
 export interface CropStyle {
 	/** Image height, in % of the avatar's. */
@@ -23,24 +25,38 @@ export interface CropStyle {
 	shift: number;
 }
 
-const clamp01 = (value: number) => Math.min(1, Math.max(0, value));
+const clamp = (value: number, low: number, high: number) => Math.min(high, Math.max(low, value));
 
-/** Where the photo goes inside a round avatar so `box` fills it. */
-export function cropStyle(box: FaceBox, margin: number = FACE_MARGIN): CropStyle {
-	const height = Math.max(box.height * (1 + 2 * margin), 0.01);
-	const top = box.y - box.height * margin;
-	const centre = clamp01(box.x + box.width / 2);
-	return {
-		height: 100 / height,
-		top: (-top / height) * 100,
-		shift: -centre * 100
-	};
+/** The part of the photo a square avatar shows (relative 0–1, inside the photo). */
+export function cropWindow(
+	box: FaceBox,
+	aspect: number = 1,
+	margin: number = FACE_MARGIN
+): { top: number; height: number; centre: number; width: number } {
+	const height = clamp(box.height * (1 + 2 * margin), 0.01, 1);
+	const top = clamp(box.y - box.height * margin, 0, 1 - height);
+	const width = clamp(height / (aspect > 0 ? aspect : 1), 0, 1);
+	const centre = clamp(box.x + box.width / 2, width / 2, 1 - width / 2);
+	return { top, height, centre, width };
 }
 
-/** The thumbnail to crop: the preview for small faces. Null while the photo has none. */
-export function cropSource(face: FaceCrop): string | null {
+/**
+ * Where the photo goes inside a round avatar so the face (with room around it) fills it. The
+ * window never leaves the photo (`aspect` is its width / height, once known).
+ */
+export function cropStyle(box: FaceBox, aspect: number = 1, margin: number = FACE_MARGIN): CropStyle {
+	const crop = cropWindow(box, aspect, margin);
+	return { height: 100 / crop.height, top: (-crop.top / crop.height) * 100, shift: -crop.centre * 100 };
+}
+
+/**
+ * The thumbnail to crop for an avatar `displayPx` wide: the thumb when its pixels cover the
+ * avatar at {@link ASSUMED_DPR}, else the preview. Null while the photo has no thumbnail.
+ */
+export function cropSource(face: FaceCrop, displayPx: number): string | null {
 	if (face.thumbnail_version === null || face.thumbnail_version === undefined) return null;
-	const size: ThumbnailSize = face.box.height < SMALL_FACE ? 'preview' : 'thumb';
+	const covered = cropWindow(face.box).height * THUMB_PX;
+	const size: ThumbnailSize = covered >= displayPx * ASSUMED_DPR ? 'thumb' : 'preview';
 	return thumbnailUrl(face.photo_id, size, face.thumbnail_version);
 }
 
