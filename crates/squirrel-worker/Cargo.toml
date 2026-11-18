@@ -15,6 +15,7 @@ squirrel-core.workspace = true
 squirrel-db.workspace = true
 squirrel-jobs.workspace = true
 squirrel-media.workspace = true
+squirrel-ml.workspace = true
 squirrel-storage.workspace = true
 thiserror.workspace = true
 time.workspace = true
@@ -23,6 +24,7 @@ tracing.workspace = true
 uuid.workspace = true
 
 [dev-dependencies]
+squirrel-ml = { workspace = true, features = ["test-util"] }
 squirrel-storage = { workspace = true, features = ["test-util"] }
 squirrel-media = { workspace = true, features = ["test-util"] }
 tempfile.workspace = true

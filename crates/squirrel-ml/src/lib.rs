@@ -2,7 +2,11 @@
 //! code run by the `squirrel ml-exec` child. Pure inference: no database, no
 //! network.
 
+pub mod clip;
 pub mod models;
+pub mod protocol;
+pub mod runtime;
+pub mod serve;
 #[cfg(any(test, feature = "test-util"))]
 pub mod testutil;
 
