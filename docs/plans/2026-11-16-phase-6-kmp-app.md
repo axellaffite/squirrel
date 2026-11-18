@@ -2027,6 +2027,13 @@ Server and web parts of Phase 6 (Tasks 1–13) are done; Milestones D–I are no
   - Revoking the device from the web: the next request sends the app back to sign-in.
   - The accessibility tree names every rail item, tile and button. VoiceOver itself, and its
     focus order, were not checked: the simulator has no VoiceOver.
+- **Review fixes (2026-11-18), checked on the iPhone 17 simulator:**
+  - The username and password fields show the QuickType Passwords key.
+  - The app killed 2 s into a 474 MB upload (60 chunks) and relaunched: all 60 chunk PUTs
+    answered 204 and the upload completed. No chunk got a 401. The only 401s were the first three
+    bearer calls of the new process: its access token lives in memory only and was refreshed once.
+  - Over localhost the chunks are fast, so whether any chunk queued with the rotated-out token
+    reached the server after the relaunch is not visible; the server tests cover that window.
 - **Still open:**
   - autofill of a saved password on a device (the simulator has none saved);
   - VoiceOver focus order, on a device;
