@@ -64,7 +64,9 @@ pub async fn run(ctx: &MediaContext, job: JobContext) -> Result<(), JobError> {
         limits: ctx.decode_limits,
     };
     match ctx.executor.run(request).await {
-        Ok(ExecResponse::Image { rendered }) => install(ctx, &hash, scratch, &rendered).await,
+        Ok(ExecResponse::Image { rendered }) => {
+            install_for(ctx, &hash, scratch, &rendered, Some(&job)).await
+        }
         Ok(ExecResponse::Pdf { .. }) => {
             let reason = "unexpected sandbox response";
             mark(ctx, &sha256, MediaState::Failed, reason).await
@@ -116,6 +118,18 @@ pub(crate) async fn install(
     scratch: Scratch,
     rendered: &Rendered,
 ) -> Result<(), JobError> {
+    install_for(ctx, hash, scratch, rendered, None).await
+}
+
+/// [`install`], then (for an image job) queues its ML steps, at the priority
+/// of the thumbnails job's origin (fresh upload or backfill).
+async fn install_for(
+    ctx: &MediaContext,
+    hash: &ContentHash,
+    scratch: Scratch,
+    rendered: &Rendered,
+    job: Option<&JobContext>,
+) -> Result<(), JobError> {
     let (derived, blob) = (ctx.storage.derived().clone(), hash.clone());
     let installed =
         tokio::task::spawn_blocking(move || derived.install(&blob, THUMBS_VERSION, &scratch))
@@ -140,12 +154,34 @@ pub(crate) async fn install(
     )
     .await
     .map_err(JobError::retry)?;
+    if recorded && let Some(job) = job {
+        queue_ml(ctx, hash.as_str(), job).await?;
+    }
     if !recorded {
         // Collected while rendering: what was just installed belongs to nothing.
         let (derived, blob) = (ctx.storage.derived().clone(), hash.clone());
         tokio::task::spawn_blocking(move || derived.remove_all(&blob))
             .await
             .map_err(JobError::retry)?
+            .map_err(JobError::retry)?;
+    }
+    Ok(())
+}
+
+/// Queues the image's pending ML steps. Queued whether or not this worker has
+/// models: a worker that has them (now or later) runs them.
+async fn queue_ml(ctx: &MediaContext, sha256: &str, job: &JobContext) -> Result<(), JobError> {
+    let Some(media) = media::find(&ctx.pool, sha256)
+        .await
+        .map_err(JobError::retry)?
+    else {
+        return Ok(());
+    };
+    let background = job.priority < squirrel_jobs::priority::THUMBNAILS;
+    let mut conn = ctx.pool.acquire().await.map_err(JobError::retry)?;
+    for next in crate::jobs::ml_follow_ups(&media, background) {
+        squirrel_jobs::enqueue(&mut conn, &next)
+            .await
             .map_err(JobError::retry)?;
     }
     Ok(())

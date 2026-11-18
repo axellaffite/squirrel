@@ -66,6 +66,26 @@ pub fn geocode(sha256: &str, background: bool) -> NewJob {
     per_blob(GEOCODE, sha256, priority::GEOCODE, background)
 }
 
+/// CLIP embedding and tags of an image blob (shared by every owner).
+pub fn clip_embed(sha256: &str, background: bool) -> NewJob {
+    per_blob(CLIP_EMBED, sha256, priority::CLIP, background)
+}
+
+/// Face detection of an image blob (rows are written per owner, Milestone D).
+pub fn faces(sha256: &str, background: bool) -> NewJob {
+    per_blob(FACES, sha256, priority::FACES, background)
+}
+
+/// The ML steps of an image whose preview was just made.
+pub fn ml_follow_ups(media: &MediaRecord, background: bool) -> Vec<NewJob> {
+    let sha = media.sha256.as_str();
+    let mut jobs = Vec::new();
+    if media.clip_state() == MediaState::Pending {
+        jobs.push(clip_embed(sha, background));
+    }
+    jobs
+}
+
 pub fn extract_text(sha256: &str, background: bool) -> NewJob {
     per_blob(EXTRACT_TEXT, sha256, priority::TEXT, background)
 }
@@ -114,6 +134,21 @@ mod tests {
             geocode("ab", false).dedupe_key.as_deref(),
             Some("geocode:ab")
         );
+    }
+
+    #[test]
+    fn ml_jobs_come_after_every_media_step() {
+        assert_eq!(clip_embed("ab", false).priority, priority::CLIP);
+        assert_eq!(
+            clip_embed("ab", true).priority,
+            priority::background(priority::CLIP)
+        );
+        assert_eq!(
+            clip_embed("ab", false).dedupe_key.as_deref(),
+            Some("clip_embed:ab")
+        );
+        assert_eq!(faces("ab", false).dedupe_key.as_deref(), Some("faces:ab"));
+        assert!(clip_embed("ab", false).priority < geocode("ab", true).priority);
     }
 
     #[test]

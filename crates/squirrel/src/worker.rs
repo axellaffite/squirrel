@@ -290,9 +290,8 @@ pub async fn run(
         pdfium_dir,
         decode_limits: DecodeLimits::default(),
         geo: GeoCache::new(geo),
+        ml: start_ml(&options, &data_dir, &pool).await?,
     });
-    // Kept for the worker's lifetime: dropping it stops the ML child.
-    let _ml = start_ml(&options, &data_dir).await?;
     if let Err(err) = enqueue_backfill(&pool).await {
         tracing::warn!(error = %format!("{err:#}"), "could not queue the media backfill");
     }
@@ -303,12 +302,13 @@ pub async fn run(
         .context("running the job worker")
 }
 
-/// Verifies the installed models and checks the `ml-exec` child loads them.
-/// Their handlers register in later milestones (`clip_embed`, `faces`).
+/// Verifies the installed models, checks the `ml-exec` child loads them and
+/// makes sure the label bank is stored (see [`crate::ml::start`]).
 async fn start_ml(
     options: &WorkerOptions,
     data_dir: &Path,
-) -> anyhow::Result<Option<squirrel_worker::context::MlContext>> {
+    pool: &PgPool,
+) -> anyhow::Result<Option<Arc<squirrel_worker::context::MlContext>>> {
     let settings = MlSettings {
         models_dir: options
             .models_dir
@@ -320,21 +320,7 @@ async fn start_ml(
             .map_or_else(squirrel_ml::runtime::default_threads, usize::from),
         mode: options.ml_exec,
     };
-    let Some(ml) = tokio::task::spawn_blocking(move || crate::ml::worker_context(&settings))
-        .await
-        .context("verifying the models")??
-    else {
-        return Ok(None);
-    };
-    let ready = ml.client.health().await.context("starting the ML child")?;
-    tracing::info!(
-        groups = ?ready.groups,
-        kinds = ?ml.kinds(),
-        "ML: {} ready (ONNX Runtime {})",
-        ready.groups.join(", "),
-        ready.onnxruntime.as_deref().unwrap_or("not loaded")
-    );
-    Ok(Some(ml))
+    crate::ml::start(settings, pool).await
 }
 
 #[cfg(test)]

@@ -8,6 +8,7 @@ use std::time::Duration;
 
 use anyhow::Context;
 use clap::ValueEnum;
+use sqlx::PgPool;
 use squirrel_ml::models::{ModelDir, ModelGroup};
 use squirrel_ml::serve::{Engine, EngineConfig};
 use squirrel_worker::context::MlContext;
@@ -36,6 +37,84 @@ pub struct MlSettings {
     pub ort_dylib: Option<PathBuf>,
     pub threads: usize,
     pub mode: MlExecMode,
+}
+
+/// The worker's ML at start: `None` without models. Verifies the installed
+/// groups, pings the child, then makes sure the label bank of the current
+/// labels version is stored (computed once by a short-lived `clip-text`
+/// child; without the text tower photos get embeddings but no tags).
+pub async fn start(settings: MlSettings, pool: &PgPool) -> anyhow::Result<Option<Arc<MlContext>>> {
+    let worker_settings = settings.clone();
+    let Some(ml) = tokio::task::spawn_blocking(move || worker_context(&worker_settings))
+        .await
+        .context("verifying the models")??
+    else {
+        return Ok(None);
+    };
+    let ready = ml.client.health().await.context("starting the ML child")?;
+    tracing::info!(
+        groups = ?ready.groups,
+        kinds = ?ml.kinds(),
+        "ML: {} ready (ONNX Runtime {})",
+        ready.groups.join(", "),
+        ready.onnxruntime.as_deref().unwrap_or("not loaded")
+    );
+    if ml.clip
+        && let Err(err) = ensure_label_bank(&settings, pool).await
+    {
+        tracing::warn!(error = %format!("{err:#}"), "no label bank: photos get no tags");
+    }
+    Ok(Some(Arc::new(ml)))
+}
+
+/// Computes the label bank once (through its own `clip-text` child, stopped
+/// afterwards), when the text tower is installed and the bank is missing.
+async fn ensure_label_bank(settings: &MlSettings, pool: &PgPool) -> anyhow::Result<()> {
+    let models = ModelDir::new(&settings.models_dir);
+    if !models.installed(ModelGroup::ClipText) {
+        tracing::info!("the CLIP text model is not installed: photos get no tags");
+        return Ok(());
+    }
+    let labels = squirrel_ml::clip::labels::bank();
+    let stored = squirrel_db::clip::label_embeddings(
+        pool,
+        squirrel_ml::CLIP_MODEL_ID,
+        squirrel_ml::clip::labels::LABELS_VERSION,
+    )
+    .await?;
+    if stored.len() == labels.len() {
+        return Ok(());
+    }
+    let text_models = models.clone();
+    tokio::task::spawn_blocking(move || text_models.verify(ModelGroup::ClipText))
+        .await
+        .context("verifying the text model")??;
+    let dylib = ort_dylib(settings.ort_dylib.as_deref())?;
+    let groups = [ModelGroup::ClipText];
+    let backend = match settings.mode {
+        MlExecMode::Subprocess => MlBackend::Subprocess(MlChildConfig {
+            program: std::env::current_exe().context("locating the squirrel executable")?,
+            args: child_args(&groups, &models, &dylib, settings.threads),
+            ready_timeout: READY_TIMEOUT,
+            request_timeout: REQUEST_TIMEOUT,
+            max_requests: MAX_REQUESTS,
+            idle: WORKER_IDLE,
+        }),
+        MlExecMode::InProcess => {
+            let engine = Engine::load(&EngineConfig {
+                groups: groups.to_vec(),
+                models,
+                ort_dylib: Some(dylib),
+                threads: settings.threads,
+            })?;
+            MlBackend::InProcess(Arc::new(std::sync::Mutex::new(engine)))
+        }
+    };
+    let client = MlClient::new(backend);
+    let result =
+        squirrel_worker::label_bank::ensure(pool, &client, squirrel_ml::CLIP_MODEL_ID).await;
+    client.stop().await;
+    result.map(drop)
 }
 
 /// The groups the worker's child loads (the text tower lives in the server).
@@ -83,11 +162,11 @@ pub fn worker_context(settings: &MlSettings) -> anyhow::Result<Option<MlContext>
             MlBackend::InProcess(Arc::new(std::sync::Mutex::new(engine)))
         }
     };
-    Ok(Some(MlContext {
-        client: MlClient::new(backend),
-        clip: groups.contains(&ModelGroup::ClipImage),
-        faces: groups.contains(&ModelGroup::Faces),
-    }))
+    Ok(Some(MlContext::new(
+        MlClient::new(backend),
+        groups.contains(&ModelGroup::ClipImage),
+        groups.contains(&ModelGroup::Faces),
+    )))
 }
 
 /// The ONNX Runtime library as an absolute path, required once a model group

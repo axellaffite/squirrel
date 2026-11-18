@@ -41,7 +41,13 @@ pub enum MlBackend {
     Subprocess(MlChildConfig),
     /// The engine in this process (tests; `SQUIRREL_ML_EXEC=in-process`).
     InProcess(Arc<std::sync::Mutex<Engine>>),
+    /// Tests: answers every request with this function, without any model.
+    #[doc(hidden)]
+    Fake(FakeFn),
 }
+
+/// What a [`MlBackend::Fake`] answers.
+pub type FakeFn = Arc<dyn Fn(&MlOp) -> Result<MlBody, MlClientError> + Send + Sync>;
 
 /// Every variant is worth retrying (the job's attempt budget bounds it).
 #[derive(Debug, thiserror::Error)]
@@ -104,6 +110,7 @@ impl MlClient {
                 .map_err(|err| MlClientError::Crashed(err.to_string()))
             }
             MlBackend::Subprocess(config) => self.request_child(config, op).await,
+            MlBackend::Fake(answer) => answer(&op),
         }
     }
 
@@ -118,6 +125,11 @@ impl MlClient {
                 .lock()
                 .unwrap_or_else(std::sync::PoisonError::into_inner)
                 .ready(),
+            MlBackend::Fake(_) => Ready {
+                ready: true,
+                groups: Vec::new(),
+                onnxruntime: None,
+            },
             MlBackend::Subprocess(_) => self.state.lock().await.ready.clone().unwrap_or(Ready {
                 ready: true,
                 groups: Vec::new(),

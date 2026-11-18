@@ -97,6 +97,8 @@ pub struct JobContext {
     pub id: i64,
     pub kind: String,
     pub payload: Value,
+    /// As enqueued: tells a handler whether it serves a fresh upload or backfill.
+    pub priority: i16,
     /// 1-based number of this attempt.
     pub attempt: i32,
     pub max_attempts: i32,
@@ -118,6 +120,7 @@ impl JobContext {
             id: 0,
             kind: kind.to_owned(),
             payload,
+            priority: 0,
             attempt: 1,
             max_attempts: 5,
         }
