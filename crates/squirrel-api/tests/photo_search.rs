@@ -15,11 +15,11 @@ use squirrel_ml::protocol::{MlBody, MlOp, MlOutput};
 use time::macros::datetime;
 use uuid::Uuid;
 
-const MODEL: &str = "openai-vit-b32-224";
+const MODEL: &str = squirrel_ml::CLIP_MODEL_ID;
 
 /// A unit vector at `angle` radians in the plane of the first two axes.
 fn at(angle: f32) -> Vec<f32> {
-    let mut v = vec![0.0; 512];
+    let mut v = vec![0.0; squirrel_ml::clip::EMBEDDING_DIM];
     v[0] = angle.cos();
     v[1] = angle.sin();
     v
@@ -80,6 +80,45 @@ async fn ranks_the_callers_photos_within_the_floor(pool: PgPool) {
     assert_eq!(names(&page), ["close.jpg"]);
     let none = search(&browser, "q=dog&kind=screenshot").await;
     assert!(names(&none).is_empty());
+}
+
+/// Stores a label bank with `dog` and `cat` (siblings) at these angles.
+async fn bank(pool: &PgPool, dog: f32, cat: f32) {
+    use squirrel_ml::clip::labels;
+    squirrel_db::clip::store_label_embeddings(
+        pool,
+        MODEL,
+        labels::LABELS_VERSION,
+        &labels::bank_digest(),
+        &[("cat".to_owned(), at(cat)), ("dog".to_owned(), at(dog))],
+    )
+    .await
+    .unwrap();
+}
+
+/// The query (angle 0) reads as the label `dog` when the bank's `dog` is
+/// close to it: then a photo closer to `cat` than to the query is dropped.
+#[sqlx::test(migrator = "squirrel_db::MIGRATOR")]
+async fn a_photo_where_a_sibling_label_wins_is_dropped(pool: PgPool) {
+    let instance = common::Instance::new(pool.clone()).with_text_encoder(encoder());
+    let browser = instance.browser();
+    let me = common::setup_admin(&browser, "alice").await;
+    let photos = root_id(&instance, &me, "Photos").await;
+    let when = datetime!(2024-07-01 10:00);
+    for (name, angle) in [("dog.jpg", 0.0), ("cat.jpg", 0.25)] {
+        let id = photo(&pool, &me, photos, name, when).await;
+        embed(&pool, id, angle).await;
+    }
+    let all = ["dog.jpg", "cat.jpg"];
+    assert_eq!(names(&search(&browser, "q=dog").await), all, "no bank yet");
+    bank(&pool, 1.2, 0.35).await;
+    assert_eq!(
+        names(&search(&browser, "q=dog").await),
+        all,
+        "the query is far from every label: no rival"
+    );
+    bank(&pool, 0.0, 0.35).await;
+    assert_eq!(names(&search(&browser, "q=dog").await), ["dog.jpg"]);
 }
 
 /// Bob holds one of Alice's blobs: he finds his node and nothing else of hers.

@@ -32,6 +32,11 @@ pub struct PhotoQuery<'a> {
     /// Results farther than the best hit's distance plus this are dropped
     /// (a weak tail far behind a clear match is noise).
     pub relative_cutoff: f64,
+    /// Unit embeddings competing with the query (e.g. the label "cat" for
+    /// the query "dog"): a photo is kept only if its cosine with the query
+    /// beats its cosine with every rival by `rival_margin`.
+    pub rivals: &'a [Vec<f32>],
+    pub rival_margin: f64,
     pub filter: &'a PhotoFilter,
 }
 
@@ -40,7 +45,9 @@ pub struct PhotoQuery<'a> {
 /// pushed down into a scan of every user's embeddings: only the caller's
 /// photos are ever scored. Within the floor, only results within
 /// `relative_cutoff` of the best one are kept (a window over the caller's
-/// rows). Ranked by distance, then node id.
+/// rows). Every rival's distance is computed in the same pass; a photo
+/// closer to a rival than `rival_margin` allows is dropped. Ranked by
+/// distance, then node id.
 fn search_query<'a>(
     prefix: &str,
     owner_id: Uuid,
@@ -52,16 +59,33 @@ fn search_query<'a>(
         "{prefix}WITH ranked AS (SELECT * FROM (SELECT {SUMMARY_COLUMNS}, (e.embedding <=> "
     ));
     sql.push_bind(HalfVector::from_f32_slice(query.embedding))
-        .push(format!(
-            ")::float8 AS distance {FROM} \
+        .push(")::float8 AS distance, ");
+    if query.rivals.is_empty() {
+        sql.push("NULL::float8");
+    } else {
+        sql.push("LEAST(");
+        for (index, rival) in query.rivals.iter().enumerate() {
+            if index > 0 {
+                sql.push(", ");
+            }
+            sql.push("e.embedding <=> ")
+                .push_bind(HalfVector::from_f32_slice(rival));
+        }
+        sql.push(")::float8");
+    }
+    sql.push(format!(
+        " AS rival {FROM} \
              JOIN clip_embeddings e ON e.sha256 = a.sha256 AND e.model = "
-        ))
-        .push_bind(query.model.to_owned())
-        .push(" WHERE a.owner_id = ")
-        .push_bind(owner_id);
+    ))
+    .push_bind(query.model.to_owned())
+    .push(" WHERE a.owner_id = ")
+    .push_bind(owner_id);
     query.filter.push(&mut sql);
     sql.push(" OFFSET 0) mine WHERE distance <= ")
         .push_bind(query.max_distance)
+        .push(" AND (rival IS NULL OR rival - distance >= ")
+        .push_bind(query.rival_margin)
+        .push(")")
         .push(
             ") SELECT * FROM (SELECT ranked.*, min(distance) OVER () AS best FROM ranked) cut \
                WHERE distance <= best + ",
