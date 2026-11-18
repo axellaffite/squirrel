@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { SEARCH_UNAVAILABLE } from '#lib/explore/api.ts';
-import { PhotoSearcher, STILL_TOO_FAST, type RunPhotoSearch } from '#lib/explore/searcher.svelte.ts';
+import { SEARCH_BUSY, SEARCH_UNAVAILABLE } from '#lib/explore/api.ts';
+import { BUSY_RETRIES, BUSY_RETRY_MS, PhotoSearcher, STILL_TOO_FAST, type RunPhotoSearch } from '#lib/explore/searcher.svelte.ts';
 
 const photo = (id: string) => ({ id }) as never;
 const ids = (searcher: PhotoSearcher) => searcher.items.map((item) => (item as { id: string }).id);
@@ -97,5 +97,27 @@ describe('PhotoSearcher', () => {
 		searcher.type('   ');
 		expect(searcher.items).toEqual([]);
 		expect(searcher.query).toBe('');
+	});
+
+	it('waits for the text model to start, then shows the results', async () => {
+		let calls = 0;
+		const run = vi.fn<RunPhotoSearch>(async () => (++calls < 3 ? { ok: false, error: SEARCH_BUSY, status: 503 } : results(['a'])));
+		const searcher = new PhotoSearcher(run, 10);
+		searcher.now('dog');
+		await vi.advanceTimersByTimeAsync(0);
+		expect(searcher.loading).toBe(true);
+		expect(searcher.error).toBeNull();
+		await vi.advanceTimersByTimeAsync(2 * BUSY_RETRY_MS);
+		expect(ids(searcher)).toEqual(['a']);
+	});
+
+	it('says the server is busy when it stays busy', async () => {
+		const run = vi.fn<RunPhotoSearch>(async () => ({ ok: false, error: SEARCH_BUSY, status: 503 }));
+		const searcher = new PhotoSearcher(run, 10);
+		searcher.now('dog');
+		await vi.advanceTimersByTimeAsync((BUSY_RETRIES + 1) * BUSY_RETRY_MS);
+		expect(run).toHaveBeenCalledTimes(BUSY_RETRIES + 1);
+		expect(searcher.error).toBe(SEARCH_BUSY);
+		expect(searcher.loading).toBe(false);
 	});
 });
