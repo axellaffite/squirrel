@@ -181,3 +181,20 @@ async fn a_phone_searches_with_its_bearer(pool: PgPool) {
     response.assert_status_ok();
     assert_eq!(names(&response.json()), ["dog.jpg"]);
 }
+
+/// The text child is starting (or busy): the search answers 503 `busy` at
+/// once, for the client to retry.
+#[sqlx::test(migrator = "squirrel_db::MIGRATOR")]
+async fn a_busy_text_model_answers_503_busy(pool: PgPool) {
+    let busy = TextEncoder::new(MlClient::new(MlBackend::Fake(Arc::new(|_: &MlOp| {
+        Err(squirrel_ml::client::MlClientError::Busy(
+            std::time::Duration::ZERO,
+        ))
+    }))));
+    let instance = common::Instance::new(pool).with_text_encoder(busy);
+    let browser = instance.browser();
+    common::setup_admin(&browser, "alice").await;
+    let response = browser.get("/api/search/photos?q=dog").await;
+    response.assert_status(StatusCode::SERVICE_UNAVAILABLE);
+    assert_eq!(response.json::<Value>()["error"]["code"], "busy");
+}
