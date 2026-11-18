@@ -7,28 +7,42 @@ revision-pinned URLs into `dest` (default `.cache/squirrel-assets/models`, gitig
 refuse a mismatch. `src/models.rs` (`PINNED`) holds the same list. A test keeps the script and the
 manifest equal.
 
-## CLIP (`openai-vit-b32-224`)
+## SigLIP2 (`siglip2-vit-b16-224`)
 
-- **Source:** `huggingface.co/immich-app/ViT-B-32__openai` at revision
-  `a857c8de2c07bbcfa6646adfcf31b798845afa1e`, an OpenCLIP→ONNX export of OpenAI's CLIP ViT-B/32.
-  The fp32 ONNX files only: `fp16/`, `rknpu/` and `*.armnn` are skipped. The LFS `oid` of each
-  model file is its SHA-256. The small files were hashed after download.
-- **Licence:** MIT. OpenAI's `LICENSE` ("Copyright (c) 2021 OpenAI") from `github.com/openai/CLIP`
-  at commit `d05afc436d78f1c48dc0dbf8e5980a9d471f35f6` is kept as `clip/LICENSE`. The export repo
-  declares no licence of its own.
-- **Use:** English only. OpenAI's model card says its use "should be limited to English language
-  use cases".
+Image–text model for tags and photo search (the code keeps the generic "clip" names).
+
+- **Source:** `huggingface.co/immich-app/ViT-B-16-SigLIP2__webli` at revision
+  `5f3fc29104ebcf51e9d893af57604badd51a3ea6`, an OpenCLIP→ONNX export of Google's SigLIP2
+  ViT-B/16 (224 px, WebLI, 768-d). The fp32 ONNX files only: `fp16/`, `rknpu/` and `*.armnn` are
+  skipped. The LFS `oid` of each model file is its SHA-256. The small files were hashed after
+  download.
+- **Licence:** Apache-2.0. Google's `LICENSE` from `github.com/google-research/big_vision` at
+  commit `0127fb6b337ee2a27bf4e54dea79cff176527356` is kept as `siglip2/LICENSE`; the model cards
+  of `google/siglip2-base-patch16-224` and `timm/ViT-B-16-SigLIP2` declare Apache-2.0. The export
+  repo declares no licence of its own.
+- **Model card caveats (verbatim):** the export's README says "This repo is specifically intended
+  for use with Immich, a self-hosted photo library." Google's card says "Intended uses: You can
+  use the raw model for tasks like zero-shot image classification and image-text retrieval, or as
+  a vision encoder for VLMs (and other vision tasks)." No card has a limitations or
+  out-of-scope section.
+- **Use:** multilingual (trained on WebLI, Gemma tokenizer). Text is cleaned like open_clip's
+  `canonicalize`, tokenized to 64 ids ending in `<eos>` and padded with `<pad>`. Images are
+  squashed to 224 × 224 (bicubic), mean = std = 0.5.
+- **Not in the export:** the learned `logit_scale` (4.724453449249268) and `logit_bias`
+  (−16.771724700927734), read from the F32 header-addressed tensors of `open_clip_model.safetensors`
+  in `timm/ViT-B-16-SigLIP2` at `eee10eff6dd8cabae2d7f379d4e8cfcd352030aa`. They turn a cosine into
+  SigLIP's match probability, `σ(e^scale · cos + bias)` (`src/clip/mod.rs`).
 
 | File | Group | Size (B) | SHA-256 |
 |---|---|---|---|
-| `clip/config.json` | clip-image, clip-text | 196 | `59a182a6dce0adeb303f3d72d73758d68ba29516d928dd92740465f498290409` |
-| `clip/LICENSE` | clip-image, clip-text | 1 064 | `987e63b32f6c89ff5160e429458a872ff048e6860b590a3912e938f9da8f14db` |
-| `clip/visual/model.onnx` | clip-image | 351 613 724 | `33a3df41ceef21acdf371af00f6dd0456ec1f9eba24d03a7720f9c3734e40859` |
-| `clip/visual/preprocess_cfg.json` | clip-image | 197 | `c4fd008cd177c58a8fe107b099bac98913eaa6be6114dd59a4b45145c3c7673f` |
-| `clip/textual/model.onnx` | clip-text | 254 193 396 | `b80cf0af751533a6712d92247f0ddc0c95208748bc59a1a27f33e67be6864e3b` |
-| `clip/textual/tokenizer.json` | clip-text | 3 642 073 | `6d9109cc838977f3ca94a379eec36aecc7c807e1785cd729660ca2fc0171fb35` |
-| `clip/textual/tokenizer_config.json` | clip-text | 736 | `39bae5313c2da6467866dee758e754d69f0e302a875027b142531cb9c51c7c28` |
-| `clip/textual/special_tokens_map.json` | clip-text | 588 | `2cdb3b8331a60c92fc1e55a13e9fd61fd2293c5a51275fdcccd62b780052530e` |
+| `siglip2/config.json` | clip-image, clip-text | 547 | `a33af509278a65855fd6b4fd8a17ed1b1e3482ff5d438c3fc43b07d4999e01b5` |
+| `siglip2/LICENSE` | clip-image, clip-text | 11 356 | `43070e2d4e532684de521b885f385d0841030efa2b1a20bafb76133a5e1379c1` |
+| `siglip2/visual/model.onnx` | clip-image | 371 674 292 | `fee10c729875dd203d94f396ac3d664e301d39c977ef6d92e7f467a2a716f0b0` |
+| `siglip2/visual/preprocess_cfg.json` | clip-image | 154 | `d78a80d49dca4e62d17f802a685d67d821f7102844cb89f65a0bb1a5d0601f43` |
+| `siglip2/textual/model.onnx` | clip-text | 1 129 435 819 | `fc9991b415d7d0fac7ed540e875fd08a647c8a1abba99f12542531b004c4b68f` |
+| `siglip2/textual/tokenizer.json` | clip-text | 34 362 885 | `220c63d496e0c14e63eb656c91e0215e926202e4c74b1f089e09f1920d779b04` |
+| `siglip2/textual/tokenizer_config.json` | clip-text | 46 386 | `958146aa289a0a39e4fcb20087a78facb157d29c7ef017374ac3ccab0549aae4` |
+| `siglip2/textual/special_tokens_map.json` | clip-text | 555 | `db82f8bd9b25d14f9c788e6bde64de84d42f1c2538f1c245ba6cb3e872d14b18` |
 
 ## Faces (`yunet-sface-2021dec`)
 
