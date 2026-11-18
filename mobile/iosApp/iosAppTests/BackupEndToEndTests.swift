@@ -23,8 +23,26 @@ final class BackupEndToEndTests: XCTestCase {
         let api = graph.doNewApi(serverUrl: server)
         let signedIn = try await api.signIn(username: user, password: password, device: graph.device)
         graph.onSignedIn(serverUrl: server, api: api, result: signedIn)
-        defer { graph.signOut() }
+        do {
+            try await backUpAndCheck(graph: graph, server: server, user: user, password: password,
+                                     deviceName: signedIn.device.name, images: images)
+        } catch {
+            try await signOut(graph)
+            throw error
+        }
+        // Awaited: the device is signed out on the server before the test ends.
+        try await signOut(graph)
+        let web = try await WebSession(server: server, user: user, password: password)
+        XCTAssertFalse(try await web.liveDeviceIds().contains(signedIn.device.id), "still signed in")
+    }
 
+    private func signOut(_ graph: AppGraph) async throws {
+        graph.signOut()
+        _ = try await graph.awaitSignedOut()
+    }
+
+    private func backUpAndCheck(graph: AppGraph, server: String, user: String, password: String,
+                                deviceName: String, images: Int) async throws {
         try await GraphRunner(graph: { graph }).run(deadline: nil, manual: true, progress: { _, _ in })
 
         let counts = graph.queue.counts()
@@ -34,7 +52,7 @@ final class BackupEndToEndTests: XCTestCase {
         // Through the API: every photo sits in Photos/<device>/<year>/.
         let web = try await WebSession(server: server, user: user, password: password)
         let photos = try await web.child(named: "Photos", of: nil)
-        let device = try await web.child(named: signedIn.device.name, of: photos)
+        let device = try await web.child(named: deviceName, of: photos)
         let years = try await web.list(device).filter { $0.kind == "folder" }
         XCTAssertFalse(years.isEmpty)
         var files = 0
@@ -91,6 +109,14 @@ private struct WebSession {
             cursor = page.next_cursor
         } while cursor != nil
         return nodes
+    }
+
+    /// The owner's devices that are still signed in.
+    func liveDeviceIds() async throws -> Set<String> {
+        struct Device: Decodable { let id: String; let revoked_at: String? }
+        struct Devices: Decodable { let items: [Device] }
+        let (data, _) = try await session.data(from: URL(string: "\(server)/api/devices")!)
+        return Set(try JSONDecoder().decode(Devices.self, from: data).items.filter { $0.revoked_at == nil }.map(\.id))
     }
 
     func child(named name: String, of parent: String?) async throws -> String {
