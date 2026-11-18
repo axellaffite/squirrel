@@ -97,4 +97,20 @@ describe('TimelineData', () => {
 		await data.setFilter({ tag: 'dog' });
 		expect(src.listMonths).toHaveBeenCalledTimes(2);
 	});
+
+	it('drops a month answer that a filter change overtook', async () => {
+		const src = source();
+		let release: (() => void) | undefined;
+		src.listMonth.mockImplementationOnce(
+			(month: string) => new Promise((resolve) => (release = () => resolve({ ok: true, data: [photo(`old-${month}`)] })))
+		);
+		const data = new TimelineData(src);
+		await data.reload();
+		const pending = data.loadMonth('2024-07');
+		await data.setFilter({ tag: 'dog' });
+		release?.();
+		expect(await pending).toEqual({ status: 'stale' });
+		expect(data.items).toEqual({});
+		expect(data.loaded.size).toBe(0);
+	});
 });
