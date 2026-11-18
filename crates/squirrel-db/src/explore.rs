@@ -6,8 +6,9 @@
 use sqlx::{FromRow, PgPool};
 use uuid::Uuid;
 
-use crate::DbError;
+use crate::documents::timed_out_is_busy;
 use crate::timeline::FROM;
+use crate::{DbError, bounded};
 
 /// Groups listed at most.
 pub const MAX_GROUPS: i64 = 200;
@@ -28,11 +29,15 @@ pub async fn tags(pool: &PgPool, owner_id: Uuid) -> Result<Vec<TagGroup>, DbErro
          {FROM} JOIN asset_tags t ON t.sha256 = a.sha256 \
           WHERE a.owner_id = $1 GROUP BY t.tag ORDER BY count DESC, t.tag LIMIT $2"
     );
-    Ok(sqlx::query_as(&sql)
+    let mut tx = bounded::begin(pool).await?;
+    let rows = sqlx::query_as(&sql)
         .bind(owner_id)
         .bind(MAX_GROUPS)
-        .fetch_all(pool)
-        .await?)
+        .fetch_all(&mut *tx)
+        .await
+        .map_err(timed_out_is_busy)?;
+    tx.commit().await?;
+    Ok(rows)
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -79,12 +84,16 @@ pub async fn places(
             AND ($3 OR m.place_name IS NOT NULL) \
           GROUP BY {group} ORDER BY count DESC, 1, 4 LIMIT $2"
     );
-    Ok(sqlx::query_as(&sql)
+    let mut tx = bounded::begin(pool).await?;
+    let rows = sqlx::query_as(&sql)
         .bind(owner_id)
         .bind(MAX_GROUPS)
         .bind(level == PlaceLevel::Country)
-        .fetch_all(pool)
-        .await?)
+        .fetch_all(&mut *tx)
+        .await
+        .map_err(timed_out_is_busy)?;
+    tx.commit().await?;
+    Ok(rows)
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, FromRow)]
@@ -101,11 +110,15 @@ pub async fn cameras(pool: &PgPool, owner_id: Uuid) -> Result<Vec<CameraGroup>, 
          {FROM} WHERE a.owner_id = $1 AND m.camera_make IS NOT NULL \
           GROUP BY 1, 2 ORDER BY count DESC, 1, 2 LIMIT $2"
     );
-    Ok(sqlx::query_as(&sql)
+    let mut tx = bounded::begin(pool).await?;
+    let rows = sqlx::query_as(&sql)
         .bind(owner_id)
         .bind(MAX_GROUPS)
-        .fetch_all(pool)
-        .await?)
+        .fetch_all(&mut *tx)
+        .await
+        .map_err(timed_out_is_busy)?;
+    tx.commit().await?;
+    Ok(rows)
 }
 
 /// The tags of one of the caller's live photos, best first (empty for
