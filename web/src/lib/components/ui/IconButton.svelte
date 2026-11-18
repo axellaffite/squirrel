@@ -17,6 +17,8 @@
 		download?: boolean;
 		/** Link-only: opens in a new tab (with `rel="noopener"`). */
 		newTab?: boolean;
+		/** Link-only: the link points at the page shown (`aria-current="page"`). */
+		current?: boolean;
 		element?: HTMLButtonElement | HTMLAnchorElement;
 	}
 
@@ -29,6 +31,7 @@
 		href,
 		download = false,
 		newTab = false,
+		current = false,
 		element = $bindable(),
 		type = 'button',
 		class: className = '',
@@ -43,6 +46,7 @@
 		download={download ? '' : undefined}
 		target={newTab ? '_blank' : undefined}
 		rel={newTab ? 'noopener' : undefined}
+		aria-current={current ? 'page' : undefined}
 		class="icon-btn {tone} {fill} {className}"
 		aria-label={label}
 		title={tooltip ?? label}
