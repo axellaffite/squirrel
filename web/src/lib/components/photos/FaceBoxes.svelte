@@ -10,6 +10,11 @@
 	let { faces, onPick }: Props = $props();
 
 	const ordered = $derived(readingOrder(faces));
+	/** Smaller boxes sit above larger ones, so where their hit areas overlap the small face wins. */
+	const layer = $derived.by(() => {
+		const bySize = [...faces].sort((a, b) => b.box.width * b.box.height - a.box.width * a.box.height);
+		return new Map(bySize.map((face, index) => [face.id, index + 1]));
+	});
 </script>
 
 <!-- MASTER "Face box": a --photo-ring outline over each face, as buttons in reading order. -->
@@ -22,6 +27,7 @@
 			style:top="{face.box.y * 100}%"
 			style:width="{face.box.width * 100}%"
 			style:height="{face.box.height * 100}%"
+			style:z-index={layer.get(face.id)}
 			aria-label={faceName(face.person?.name)}
 			title={faceName(face.person?.name)}
 			onclick={() => onPick(face)}
@@ -41,11 +47,8 @@
 		border: var(--face-box) solid var(--photo-ring);
 		border-radius: var(--radius-tile);
 		background: transparent;
-		box-shadow: 0 0 0 1px var(--photo-shade);
 		cursor: pointer;
-		transition:
-			border-color var(--dur-fast) var(--ease),
-			box-shadow var(--dur-fast) var(--ease);
+		transition: border-color var(--dur-fast) var(--ease);
 	}
 
 	/* A face box is often small: its hit area grows to the 44 px minimum around it. */
