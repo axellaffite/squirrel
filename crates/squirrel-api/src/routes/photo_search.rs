@@ -2,7 +2,7 @@
 //! child, then the caller's own photos are ranked by an exact cosine scan.
 
 use axum::Json;
-use axum::extract::State;
+use axum::extract::{RawQuery, State};
 use axum::http::StatusCode;
 use serde::{Deserialize, Serialize};
 use squirrel_db::photo_search::{self, PhotoQuery};
@@ -10,8 +10,8 @@ use utoipa::{IntoParams, ToSchema};
 
 use crate::error::{ApiError, ErrorBody};
 use crate::extract::Caller;
-use crate::filter_dto::PhotoFilterQuery;
-use crate::input::ApiQuery;
+use crate::filter_dto::{PhotoFilterQuery, with_filters};
+use crate::input::{ApiQuery, known_params};
 use crate::ml::EncodeError;
 use crate::photos_dto::AssetSummary;
 use crate::state::AppState;
@@ -71,9 +71,11 @@ fn page_bounds(query: &PhotoSearchQuery) -> Result<(u32, u32), ApiError> {
 pub async fn search_photos(
     State(state): State<AppState>,
     caller: Caller,
+    RawQuery(raw): RawQuery,
     ApiQuery(query): ApiQuery<PhotoSearchQuery>,
     ApiQuery(filters): ApiQuery<PhotoFilterQuery>,
 ) -> Result<Json<PhotoSearchResults>, ApiError> {
+    known_params(raw.as_deref(), &with_filters(&["q", "offset", "limit"]))?;
     let (offset, limit) = page_bounds(&query)?;
     let filter = filters.filter()?;
     let encoder = state.text_encoder.as_ref().ok_or(ApiError::MlUnavailable)?;

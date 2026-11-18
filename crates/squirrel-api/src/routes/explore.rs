@@ -4,7 +4,7 @@
 use std::collections::HashMap;
 
 use axum::Json;
-use axum::extract::State;
+use axum::extract::{RawQuery, State};
 use squirrel_db::explore;
 use squirrel_db::timeline::{self, AssetSummaryRecord};
 use uuid::Uuid;
@@ -12,7 +12,7 @@ use uuid::Uuid;
 use crate::error::{ApiError, ErrorBody};
 use crate::explore_dto::{CameraGroupDto, PlaceGroupDto, PlaceLevel, PlacesQuery, TagGroupDto};
 use crate::extract::Caller;
-use crate::input::ApiQuery;
+use crate::input::{ApiQuery, known_params};
 use crate::photos_dto::AssetSummary;
 use crate::state::AppState;
 
@@ -34,7 +34,9 @@ async fn covers(
 pub async fn list_tags(
     State(state): State<AppState>,
     caller: Caller,
+    RawQuery(raw): RawQuery,
 ) -> Result<Json<Vec<TagGroupDto>>, ApiError> {
+    known_params(raw.as_deref(), &[])?;
     let tags = explore::tags(&state.pool, caller.user.id).await?;
     let covers = covers(
         &state,
@@ -62,8 +64,10 @@ pub async fn list_tags(
 pub async fn list_places(
     State(state): State<AppState>,
     caller: Caller,
+    RawQuery(raw): RawQuery,
     ApiQuery(query): ApiQuery<PlacesQuery>,
 ) -> Result<Json<Vec<PlaceGroupDto>>, ApiError> {
+    known_params(raw.as_deref(), &["level"])?;
     let level = match query.level.unwrap_or_default() {
         PlaceLevel::City => explore::PlaceLevel::City,
         PlaceLevel::Country => explore::PlaceLevel::Country,
@@ -98,7 +102,9 @@ pub async fn list_places(
 pub async fn list_cameras(
     State(state): State<AppState>,
     caller: Caller,
+    RawQuery(raw): RawQuery,
 ) -> Result<Json<Vec<CameraGroupDto>>, ApiError> {
+    known_params(raw.as_deref(), &[])?;
     let cameras = explore::cameras(&state.pool, caller.user.id).await?;
     Ok(Json(
         cameras

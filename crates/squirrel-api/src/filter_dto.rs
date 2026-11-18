@@ -8,6 +8,22 @@ use utoipa::{IntoParams, ToSchema};
 
 use crate::error::ApiError;
 
+/// The query parameters of [`PhotoFilterQuery`].
+pub const FILTER_PARAMS: [&str; 7] = [
+    "tag",
+    "country",
+    "region",
+    "city",
+    "camera_make",
+    "camera_model",
+    "kind",
+];
+
+/// `extra` and the filter parameters, for [`crate::input::known_params`].
+pub fn with_filters(extra: &[&'static str]) -> Vec<&'static str> {
+    extra.iter().copied().chain(FILTER_PARAMS).collect()
+}
+
 /// Longest filter value accepted (place and camera names are shorter).
 const MAX_VALUE_CHARS: usize = 200;
 

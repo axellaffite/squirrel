@@ -77,3 +77,39 @@ where
             .map_err(|_| ApiError::BadRequest("invalid query parameter".into()))
     }
 }
+
+/// Refuses a query string naming a parameter outside `allowed` (a typo such
+/// as `contry=FR` must not silently widen a filter). Works across several
+/// `ApiQuery` extractors of one route, which each ignore the others' fields.
+pub fn known_params(raw: Option<&str>, allowed: &[&str]) -> Result<(), ApiError> {
+    let unknown = raw
+        .unwrap_or_default()
+        .split('&')
+        .filter(|pair| !pair.is_empty())
+        .map(|pair| pair.split_once('=').map_or(pair, |(key, _)| key))
+        .map(|key| percent_encoding::percent_decode_str(key).decode_utf8_lossy())
+        .any(|key| !allowed.contains(&key.as_ref()));
+    if unknown {
+        // A fixed message: never echo the submitted name.
+        return Err(ApiError::Validation(
+            "unknown query parameter for this route".into(),
+        ));
+    }
+    Ok(())
+}
+
+#[cfg(test)]
+mod known_params_tests {
+    use super::*;
+
+    #[test]
+    fn only_listed_parameters_pass() {
+        let allowed = ["q", "country", "camera_make"];
+        assert!(known_params(None, &allowed).is_ok());
+        assert!(known_params(Some(""), &allowed).is_ok());
+        assert!(known_params(Some("q=dog&country=FR&"), &allowed).is_ok());
+        assert!(known_params(Some("camera%5Fmake=Canon"), &allowed).is_ok());
+        assert!(known_params(Some("q=dog&contry=FR"), &allowed).is_err());
+        assert!(known_params(Some("flag"), &allowed).is_err());
+    }
+}
