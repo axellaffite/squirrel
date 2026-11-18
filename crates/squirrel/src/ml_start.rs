@@ -84,6 +84,9 @@ async fn try_start(
         .await
         .context("starting the ML child")
         .map_err(fail(Unavailable::ChildFailed))?;
+    // Checked, not kept: the first job starts it again (its memory is only
+    // spent while there is work).
+    ml.client.stop().await;
     tracing::info!(
         groups = ?ready.groups,
         kinds = ?ml.kinds(),
