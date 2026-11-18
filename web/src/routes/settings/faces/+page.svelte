@@ -46,7 +46,7 @@
 	{:else}
 		<section class="well" aria-label="Face recognition">
 			<!-- The switch always shows the model's state: a flip is only a request to the model. -->
-			<Toggle label="Recognise faces in my photos" bind:checked={() => sw.checked, () => {}} disabled={sw.busy} onchange={(next) => void sw.toggle(next)} />
+			<Toggle label="Recognise faces in my photos" checked={sw.checked} controlled disabled={sw.busy} onchange={(next) => void sw.toggle(next)} />
 			<p class="muted">
 				Faces are found and grouped on this server only: nothing is sent anywhere, and nobody else sees your
 				people.
@@ -57,6 +57,7 @@
 </Page>
 
 {#if sw.confirming}
+	{#key sw.asks}
 	<ConfirmDialog
 		title="Turn off face recognition?"
 		confirmLabel="Turn off and delete"
@@ -70,6 +71,7 @@
 			Counting your faces…
 		{/if}
 	</ConfirmDialog>
+	{/key}
 {/if}
 
 <style>

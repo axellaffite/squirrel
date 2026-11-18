@@ -47,6 +47,11 @@ describe('FacesSwitch', () => {
 		sw.closed();
 		expect(sw.checked).toBe(true);
 		expect(set).not.toHaveBeenCalled();
+		// Asking again is a new question.
+		const asks = sw.asks;
+		await sw.toggle(false);
+		expect(sw.confirming).toBe(true);
+		expect(sw.asks).toBe(asks + 1);
 	});
 
 	it('reports a failure and keeps the switch where it was', async () => {

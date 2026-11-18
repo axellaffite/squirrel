@@ -41,6 +41,8 @@ export class FacesSwitch {
 	 * it closes so its text never flickers.
 	 */
 	confirmCounts: FaceCounts | null = $state.raw(null);
+	/** Counts the questions asked: each is a new dialog, never the previous one still closing. */
+	asks = $state(0);
 
 	readonly #api: FacesApi;
 	#loads = 0;
@@ -87,6 +89,7 @@ export class FacesSwitch {
 
 	async #askToTurnOff(): Promise<void> {
 		this.confirmCounts = null;
+		this.asks += 1;
 		this.confirming = true;
 		const load = ++this.#loads;
 		const result = await this.#api.get();
