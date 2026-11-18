@@ -32,10 +32,12 @@ pub struct PhotoSearchQuery {
     pub limit: Option<u32>,
 }
 
-/// The caller's photos that look like the query, best match first.
+/// The caller's photos that look like the query, best match first. Pages are
+/// offset-based and stop at 200 results.
 #[derive(Debug, Serialize, ToSchema)]
 pub struct PhotoSearchResults {
     pub items: Vec<AssetSummary>,
+    /// More results within the first 200: ask again with `offset + limit`.
     pub has_more: bool,
 }
 
@@ -54,6 +56,9 @@ fn page_bounds(query: &PhotoSearchQuery) -> Result<(u32, u32), ApiError> {
     Ok((offset, limit))
 }
 
+/// Pagination is by offset, not by cursor: results are ranked, at most 200
+/// can be reached (`offset + limit ≤ 200`), and `has_more` is false past
+/// them. Only the caller's own live photos are searched.
 #[utoipa::path(get, path = "/api/search/photos", security(("device_bearer" = []), ("session_cookie" = [])), tag = "search", params(PhotoSearchQuery, PhotoFilterQuery),
     responses((status = 200, body = PhotoSearchResults),
               (status = 422, body = ErrorBody, description = "Invalid q, offset, limit or filter"),

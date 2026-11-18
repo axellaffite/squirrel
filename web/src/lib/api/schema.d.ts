@@ -556,6 +556,11 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
+        /**
+         * Pagination is by offset, not by cursor: results are ranked, at most 200
+         *     can be reached (`offset + limit ≤ 200`), and `has_more` is false past
+         *     them. Only the caller's own live photos are searched.
+         */
         get: operations["search_photos"];
         put?: never;
         post?: never;
@@ -1241,8 +1246,12 @@ export interface components {
          * @enum {string}
          */
         PhotoKindFilter: "photo" | "screenshot";
-        /** @description The caller's photos that look like the query, best match first. */
+        /**
+         * @description The caller's photos that look like the query, best match first. Pages are
+         *     offset-based and stop at 200 results.
+         */
         PhotoSearchResults: {
+            /** @description More results within the first 200: ask again with `offset + limit`. */
             has_more: boolean;
             items: components["schemas"]["AssetSummary"][];
         };
