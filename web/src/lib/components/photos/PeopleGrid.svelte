@@ -74,7 +74,11 @@
 			transform var(--dur-fast) var(--ease);
 	}
 
+	/* --face-lg, or the whole column when 3 phone columns are narrower. */
 	.person :global(.avatar) {
+		width: min(var(--face-lg), 100%);
+		height: auto;
+		aspect-ratio: 1;
 		margin-bottom: var(--space-1);
 	}
 
