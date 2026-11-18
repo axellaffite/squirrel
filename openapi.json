@@ -2525,6 +2525,7 @@
         "tags": [
           "search"
         ],
+        "summary": "Pagination is by offset, not by cursor: results are ranked, at most 200\ncan be reached (`offset + limit ≤ 200`), and `has_more` is false past\nthem. Only the caller's own live photos are searched.",
         "operationId": "search_photos",
         "parameters": [
           {
@@ -4794,14 +4795,15 @@
       },
       "PhotoSearchResults": {
         "type": "object",
-        "description": "The caller's photos that look like the query, best match first.",
+        "description": "The caller's photos that look like the query, best match first. Pages are\noffset-based and stop at 200 results.",
         "required": [
           "items",
           "has_more"
         ],
         "properties": {
           "has_more": {
-            "type": "boolean"
+            "type": "boolean",
+            "description": "More results within the first 200: ask again with `offset + limit`."
           },
           "items": {
             "type": "array",
