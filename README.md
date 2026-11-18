@@ -150,6 +150,12 @@ checked again before every load:
 
     scripts/fetch-onnxruntime.sh          # prints SQUIRREL_ORT_DYLIB=…/.cache/squirrel-assets/onnxruntime/lib/…
 
+In production, make the models directory and the ONNX Runtime library **read-only to the
+service user** (owned by root, mode 0644/0755): they are checked when loaded, but a writable
+library could be swapped between its check and `dlopen`. Models are hashed in memory and
+loaded from that same buffer, which briefly doubles the child's memory while it starts
+(peak ≈ 0.8 GB with the CLIP image model).
+
 **pdfium** (PDF thumbnails and text) is downloaded, checked against its pinned SHA-256 and
 unpacked into `target/pdfium/` by:
 

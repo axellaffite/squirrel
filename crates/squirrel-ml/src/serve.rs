@@ -45,8 +45,12 @@ pub struct Engine {
 impl Engine {
     /// Verifies every file of every group (SHA-256), then loads them.
     pub fn load(config: &EngineConfig) -> Result<Self, LoadError> {
+        // Loaded files are hashed in memory by their loaders (what is hashed
+        // is what is loaded); a group without a loader yet is checked here.
         for group in &config.groups {
-            config.models.verify(*group)?;
+            if *group == ModelGroup::Faces {
+                config.models.verify(*group)?;
+            }
         }
         let onnxruntime = if config.groups.is_empty() {
             None

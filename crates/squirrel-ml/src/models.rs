@@ -194,6 +194,44 @@ impl ModelDir {
         })
     }
 
+    /// Reads the pinned file at `relative` into memory and checks its size
+    /// and SHA-256 there: what is loaded is exactly what was hashed (no
+    /// window for the file to change in between).
+    pub fn read_verified(&self, relative: &str) -> Result<Vec<u8>, ModelError> {
+        self.read_verified_as(pinned(relative))
+    }
+
+    fn read_verified_as(&self, pinned: &PinnedFile) -> Result<Vec<u8>, ModelError> {
+        let path = self.file(pinned.path);
+        let bytes = match std::fs::read(&path) {
+            Ok(bytes) => bytes,
+            Err(err) if err.kind() == std::io::ErrorKind::NotFound => {
+                return Err(ModelError::Missing { path });
+            }
+            Err(source) => return Err(ModelError::Io { path, source }),
+        };
+        let actual_size = bytes.len() as u64;
+        if actual_size != pinned.size {
+            return Err(ModelError::Size {
+                path,
+                expected: pinned.size,
+                actual: actual_size,
+            });
+        }
+        let actual = sha256_hex(&mut bytes.as_slice()).map_err(|source| ModelError::Io {
+            path: path.clone(),
+            source,
+        })?;
+        if actual != pinned.sha256 {
+            return Err(ModelError::Hash {
+                path,
+                expected: pinned.sha256,
+                actual,
+            });
+        }
+        Ok(bytes)
+    }
+
     fn verify_files<'a>(
         &self,
         files: impl IntoIterator<Item = &'a PinnedFile>,
@@ -316,6 +354,20 @@ mod tests {
         assert!(err.contains(HELLO_SHA), "{err}");
         let actual = sha256_hex(&mut &b"jello"[..]).unwrap();
         assert!(err.contains(&actual), "{err}");
+    }
+
+    #[test]
+    fn read_verified_returns_the_hashed_bytes_or_refuses_them() {
+        let (_tmp, dir) = dir_with(b"hello");
+        assert_eq!(dir.read_verified_as(&TEST_FILES[0]).unwrap(), b"hello");
+        let (_tmp, dir) = dir_with(b"jello");
+        let err = dir.read_verified_as(&TEST_FILES[0]).unwrap_err();
+        assert!(matches!(err, ModelError::Hash { .. }), "{err}");
+        let tmp = tempfile::tempdir().unwrap();
+        let err = ModelDir::new(tmp.path())
+            .read_verified_as(&TEST_FILES[0])
+            .unwrap_err();
+        assert!(matches!(err, ModelError::Missing { .. }), "{err}");
     }
 
     #[test]
