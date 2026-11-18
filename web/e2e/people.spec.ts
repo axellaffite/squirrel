@@ -36,6 +36,7 @@ test('a person is renamed on their page', async () => {
 	await requireModels(page, 'faces');
 	await page.goto('/explore/people');
 	await grid(page).getByRole('link').first().click();
+	await expect(page).toHaveURL(/\/explore\/people\/[0-9a-f-]{36}$/);
 	ada = page.url().split('/').pop() ?? '';
 	await page.getByRole('button', { name: 'Add a name' }).click();
 	await page.getByLabel(/^Name of /).fill('Ada');
