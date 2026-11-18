@@ -74,8 +74,10 @@ pub async fn run(ctx: &MediaContext, job: JobContext) -> Result<(), JobError> {
     }
 }
 
-/// Clusters every unassigned automatic face of `owner` once, oldest first,
-/// for at most `budget`.
+/// Clusters `owner`'s unassigned automatic faces, oldest first, for at most
+/// `budget` (and at least one batch). A face left waiting is tried again only
+/// once a face newer than this run's watermark exists, so the next run goes
+/// on where this one stopped and waiting faces never starve new ones.
 pub async fn cluster_owner(
     ctx: &MediaContext,
     owner: Uuid,
@@ -89,16 +91,29 @@ pub async fn cluster_owner(
     let mut seen = HashSet::new();
     let mut total = ClusterRun::default();
     let mut after = None;
+    let mut newest = None;
     loop {
         let mut tx = ctx.pool.begin().await?;
         if !clustering::lock_enabled(&mut tx, owner).await? {
             return Ok(total); // turned off: its data is gone
         }
-        if started.elapsed() >= budget {
+        // At least one batch per run, so a run always makes progress.
+        if after.is_some() && started.elapsed() >= budget {
             total.left = Left::Budget;
             return Ok(total);
         }
-        let page = clustering::unclustered_page(&mut tx, owner, after, BATCH).await?;
+        let watermark = match newest {
+            Some(at) => at,
+            None => {
+                let Some(at) = clustering::newest_face(&mut tx, owner).await? else {
+                    total.people_deleted = clustering::delete_empty_people(&mut tx, owner).await?;
+                    tx.commit().await?;
+                    return Ok(total);
+                };
+                *newest.insert(at)
+            }
+        };
+        let page = clustering::unclustered_page(&mut tx, owner, watermark, after, BATCH).await?;
         let Some(last) = page.last() else {
             total.people_deleted = clustering::delete_empty_people(&mut tx, owner).await?;
             let recent = clustering::unclustered_since(&mut tx, owner, since).await?;
@@ -110,7 +125,7 @@ pub async fn cluster_owner(
         };
         after = Some((last.created_at, last.id));
         seen.extend(page.iter().map(|f| f.id));
-        let batch = cluster_batch(&mut tx, owner, &page, params).await?;
+        let batch = cluster_batch(&mut tx, owner, &page, params, watermark).await?;
         tx.commit().await?;
         total.faces_assigned += batch.faces_assigned;
         total.people_created += batch.people_created;
@@ -124,11 +139,13 @@ async fn cluster_batch(
     owner: Uuid,
     page: &[Unclustered],
     params: &ClusterParams,
+    watermark: OffsetDateTime,
 ) -> Result<ClusterRun, squirrel_db::DbError> {
     let ids: Vec<Uuid> = page.iter().map(|f| f.id).collect();
     let rows = clustering::neighbours(tx, owner, &ids, cluster::NEIGHBOURS as i64).await?;
     let lists = by_face(rows);
     let mut decided: HashMap<Uuid, Uuid> = HashMap::new();
+    let mut waiting = Vec::new();
     let mut run = ClusterRun::default();
     for face in page {
         if decided.contains_key(&face.id) {
@@ -146,7 +163,10 @@ async fn cluster_batch(
             })
             .collect();
         let (person, members) = match cluster::decide(face.id, face.score, &neighbours, params) {
-            Decision::Wait => continue,
+            Decision::Wait => {
+                waiting.push(face.id);
+                continue;
+            }
             Decision::Join(person) => (person, vec![face.id]),
             Decision::Found(members) => {
                 run.people_created += 1;
@@ -156,6 +176,7 @@ async fn cluster_batch(
         run.faces_assigned += clustering::assign(tx, owner, &members, person).await?;
         decided.extend(members.into_iter().map(|m| (m, person)));
     }
+    clustering::mark_waiting(tx, owner, &waiting, watermark).await?;
     Ok(run)
 }
 

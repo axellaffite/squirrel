@@ -34,11 +34,26 @@ pub async fn lock_enabled(conn: &mut PgConnection, owner: Uuid) -> Result<bool, 
     crate::ml_settings::faces_enabled(&mut *conn, owner).await
 }
 
-/// Up to `limit` of `owner`'s unassigned automatic faces, oldest first, after
-/// `after` (`created_at`, `id`).
+/// The `created_at` of `owner`'s newest face: a clustering run's watermark.
+pub async fn newest_face(
+    conn: &mut PgConnection,
+    owner: Uuid,
+) -> Result<Option<OffsetDateTime>, DbError> {
+    Ok(
+        sqlx::query_scalar("SELECT max(created_at) FROM faces WHERE owner_id = $1")
+            .bind(owner)
+            .fetch_one(conn)
+            .await?,
+    )
+}
+
+/// Up to `limit` of `owner`'s unassigned automatic faces to decide, oldest
+/// first, after `after` (`created_at`, `id`): those never tried, and those
+/// left waiting before `newest` (a newer face may now make them core).
 pub async fn unclustered_page(
     conn: &mut PgConnection,
     owner: Uuid,
+    newest: OffsetDateTime,
     after: Option<(OffsetDateTime, Uuid)>,
     limit: i64,
 ) -> Result<Vec<Unclustered>, DbError> {
@@ -46,15 +61,37 @@ pub async fn unclustered_page(
     Ok(sqlx::query_as(
         "SELECT id, score, created_at FROM faces \
           WHERE owner_id = $1 AND person_id IS NULL AND assigned_by = 'auto' \
-            AND ($2::timestamptz IS NULL OR (created_at, id) > ($2, $3)) \
-          ORDER BY created_at, id LIMIT $4",
+            AND (cluster_tried_at IS NULL OR cluster_tried_at < $2) \
+            AND ($3::timestamptz IS NULL OR (created_at, id) > ($3, $4)) \
+          ORDER BY created_at, id LIMIT $5",
     )
     .bind(owner)
+    .bind(newest)
     .bind(at)
     .bind(id)
     .bind(limit)
     .fetch_all(conn)
     .await?)
+}
+
+/// Records that `faces` were left waiting by a run whose watermark is
+/// `newest`.
+pub async fn mark_waiting(
+    conn: &mut PgConnection,
+    owner: Uuid,
+    faces: &[Uuid],
+    newest: OffsetDateTime,
+) -> Result<(), DbError> {
+    sqlx::query(
+        "UPDATE faces SET cluster_tried_at = $3 \
+          WHERE owner_id = $1 AND id = ANY($2) AND person_id IS NULL AND assigned_by = 'auto'",
+    )
+    .bind(owner)
+    .bind(faces)
+    .bind(newest)
+    .execute(conn)
+    .await?;
+    Ok(())
 }
 
 /// `owner`'s unassigned automatic faces created at or after `since` (a
