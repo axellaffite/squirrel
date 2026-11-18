@@ -1,23 +1,26 @@
-//! Per-stage CPU timings of the CLIP image path, on generated 1440 × 960
-//! previews (or the files of `--dir`):
+//! Per-stage CPU timings of the image path (SigLIP2), on generated 1440 × 960
+//! previews (or the files of `--dir`), or with `--texts N` the text tower's
+//! latency on N search queries:
 //!
 //!     SQUIRREL_ORT_DYLIB=… SQUIRREL_MODELS_DIR=… cargo run --release -p squirrel-ml \
 //!       --features test-util --example bench -- --images 200 --threads 2 [--dir previews/]
+//!     … --example bench -- --texts 50 --threads 2
 //!
 //! Peak RSS: run it under `/usr/bin/time -l` (macOS) or `/usr/bin/time -v` (Linux).
-//! Faces are added with Milestone D.
 
 use std::path::PathBuf;
 use std::time::{Duration, Instant};
 
-use squirrel_ml::clip::ClipImage;
+use squirrel_ml::clip::image::PREPROCESS_CFG;
 use squirrel_ml::clip::preprocess::{PreprocessCfg, preprocess};
+use squirrel_ml::clip::{ClipImage, ClipText};
 use squirrel_ml::input::{MAX_PREVIEW_PIXELS, load_preview};
 use squirrel_ml::models::ModelGroup;
 use squirrel_ml::testutil::{Shape, shape_image, test_ml_for};
 
 struct Args {
     images: usize,
+    texts: usize,
     threads: usize,
     dir: Option<PathBuf>,
 }
@@ -25,6 +28,7 @@ struct Args {
 fn args() -> anyhow::Result<Args> {
     let mut args = Args {
         images: 200,
+        texts: 0,
         threads: 2,
         dir: None,
     };
@@ -35,6 +39,7 @@ fn args() -> anyhow::Result<Args> {
             .ok_or_else(|| anyhow::anyhow!("{flag} needs a value"))?;
         match flag.as_str() {
             "--images" => args.images = value.parse()?,
+            "--texts" => args.texts = value.parse()?,
             "--threads" => args.threads = value.parse()?,
             "--dir" => args.dir = Some(value.into()),
             other => anyhow::bail!("unknown option {other}"),
@@ -79,8 +84,45 @@ fn median(mut samples: Vec<Duration>) -> Duration {
     samples[samples.len() / 2]
 }
 
+/// Loads the text tower alone, then times `count` short queries.
+fn texts(args: &Args) -> anyhow::Result<()> {
+    let (dylib, models) = test_ml_for(&[ModelGroup::ClipText])
+        .ok_or_else(|| anyhow::anyhow!("set SQUIRREL_ORT_DYLIB and SQUIRREL_MODELS_DIR"))?;
+    let started = Instant::now();
+    models.verify(ModelGroup::ClipText)?;
+    let verified = started.elapsed();
+    let version = squirrel_ml::runtime::init(&dylib)?;
+    let mut text = ClipText::load(&models, args.threads)?;
+    let loaded = started.elapsed();
+    let queries = [
+        "dog on the beach",
+        "chien",
+        "gâteau d'anniversaire",
+        "snowy mountains",
+    ];
+    let mut times = Vec::new();
+    for n in 0..args.texts {
+        let t0 = Instant::now();
+        text.embed(&format!("{} {n}", queries[n % queries.len()]))?;
+        times.push(t0.elapsed());
+    }
+    println!(
+        "ONNX Runtime {version}, {} queries, {} threads; verify {:.2?}, load {:.2?}; \
+         median per query {:.1?}",
+        args.texts,
+        args.threads,
+        verified,
+        loaded - verified,
+        median(times)
+    );
+    Ok(())
+}
+
 fn main() -> anyhow::Result<()> {
     let args = args()?;
+    if args.texts > 0 {
+        return texts(&args);
+    }
     let (dylib, models) = test_ml_for(&[ModelGroup::ClipImage])
         .ok_or_else(|| anyhow::anyhow!("set SQUIRREL_ORT_DYLIB and SQUIRREL_MODELS_DIR"))?;
     let scratch = tempfile::tempdir()?;
@@ -92,9 +134,7 @@ fn main() -> anyhow::Result<()> {
     let version = squirrel_ml::runtime::init(&dylib)?;
     let mut clip = ClipImage::load(&models, args.threads)?;
     let loaded = started.elapsed();
-    let cfg = PreprocessCfg::parse(&std::fs::read(
-        models.file("clip/visual/preprocess_cfg.json"),
-    )?)?;
+    let cfg = PreprocessCfg::parse(&std::fs::read(models.file(PREPROCESS_CFG))?)?;
     let (mut decode, mut prep, mut encode) = (Vec::new(), Vec::new(), Vec::new());
     for file in &files {
         let t0 = Instant::now();
