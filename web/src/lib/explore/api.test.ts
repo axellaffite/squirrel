@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import { createApiClient } from '#lib/api/client.ts';
-import { placesByCountry, SEARCH_BUSY, SEARCH_UNAVAILABLE, searchPhotos, warmUpSearch } from '#lib/explore/api.ts';
+import { peopleOnPhoto, placesByCountry, SEARCH_BUSY, SEARCH_UNAVAILABLE, searchPhotos, warmUpSearch } from '#lib/explore/api.ts';
 
 function reply(status: number, body: unknown, headers: Record<string, string> = {}) {
 	return new Response(JSON.stringify(body), { status, headers: { 'content-type': 'application/json', ...headers } });
@@ -58,6 +58,20 @@ describe('placesByCountry', () => {
 		expect(groups.map((g) => [g.code, g.places.length])).toEqual([
 			['FR', 2],
 			['IT', 1]
+		]);
+	});
+});
+
+describe('peopleOnPhoto', () => {
+	it('gives each person their face on the photo, if any', () => {
+		const box = { x: 0.1, y: 0.1, width: 0.2, height: 0.2 };
+		const faces = [
+			{ id: 'f1', photo_id: 'p', thumbnail_version: 1, box, score: 0.9, assigned_by: 'auto', person: { id: 'a', name: 'Anna' } },
+			{ id: 'f2', photo_id: 'p', thumbnail_version: 1, box, score: 0.9, assigned_by: 'auto', person: null }
+		] as never[];
+		expect(peopleOnPhoto([{ id: 'a', name: 'Anna' }, { id: 'b', name: null }], faces)).toEqual([
+			{ id: 'a', name: 'Anna', face: { face_id: 'f1', photo_id: 'p', thumbnail_version: 1, box } },
+			{ id: 'b', name: null, face: null }
 		]);
 	});
 });

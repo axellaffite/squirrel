@@ -3,6 +3,7 @@ import { api, errorMessage } from '#lib/api/client.ts';
 
 type Client = typeof api;
 import type { components } from '#lib/api/schema.d.ts';
+import type { FaceCrop } from '#lib/explore/faces.ts';
 import { filterQuery, type PhotoFilter } from '#lib/explore/filters.ts';
 import { retryDelay } from '#lib/files/search.ts';
 import type { AssetSummary, Outcome } from '#lib/photos/api.ts';
@@ -11,6 +12,7 @@ export type TagGroup = components['schemas']['TagGroupDto'];
 export type PlaceGroup = components['schemas']['PlaceGroupDto'];
 export type CameraGroup = components['schemas']['CameraGroupDto'];
 export type Person = components['schemas']['PersonDto'];
+export type Face = components['schemas']['FaceDto'];
 
 /** The server's limits on a photo search. */
 export const MAX_PHOTO_QUERY = 200;
@@ -92,6 +94,25 @@ export const listCameras = (): Promise<Outcome<CameraGroup[]>> => call(api.GET('
 
 export const listPeople = (includeHidden = false): Promise<Outcome<Person[]>> =>
 	call(api.GET('/api/people', { params: { query: { include_hidden: includeHidden } } }));
+
+/** Faces on one photo, left to right. */
+export const photoFaces = (id: string): Promise<Outcome<Face[]>> =>
+	call(api.GET('/api/photos/{id}/faces', { params: { path: { id } } }));
+
+/** One avatar per person on a photo (their first face there), in the order `people` names them. */
+export function peopleOnPhoto(
+	people: readonly { id: string; name?: string | null }[],
+	faces: readonly Face[]
+): { id: string; name: string | null; face: FaceCrop | null }[] {
+	return people.map((person) => {
+		const face = faces.find((f) => f.person?.id === person.id);
+		return {
+			id: person.id,
+			name: person.name ?? null,
+			face: face ? { face_id: face.id, photo_id: face.photo_id, thumbnail_version: face.thumbnail_version, box: face.box } : null
+		};
+	});
+}
 
 /** Places grouped under their country, in the order the server ranked them. */
 export function placesByCountry(places: readonly PlaceGroup[]): { code: string; name: string | null; places: PlaceGroup[] }[] {

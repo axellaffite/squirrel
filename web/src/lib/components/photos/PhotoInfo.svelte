@@ -2,6 +2,10 @@
 	import Icon from '#lib/components/icons/Icon.svelte';
 	import Locator from '#lib/components/photos/Locator.svelte';
 	import Badge from '#lib/components/ui/Badge.svelte';
+	import FaceAvatar from '#lib/components/photos/FaceAvatar.svelte';
+	import { peopleOnPhoto, photoFaces, type Face } from '#lib/explore/api.ts';
+	import { personLabel } from '#lib/explore/faces.ts';
+	import { photosHref, tagLabel } from '#lib/explore/filters.ts';
 	import { formatBytes } from '#lib/files/format.ts';
 	import type { AssetDetails, AssetSummary } from '#lib/photos/api.ts';
 	import { fullDateTime, offsetLabel } from '#lib/photos/dates.ts';
@@ -23,6 +27,24 @@
 	const cameraLine = $derived(camera ? cameraName(camera) : null);
 	const exposure = $derived(camera ? exposureLine(camera) : null);
 	const size = $derived(dimensions(asset.width, asset.height));
+
+	/** This photo's faces, for the people's avatars (cropped from this very photo). */
+	let faces: Face[] = $state([]);
+	const people = $derived(details ? peopleOnPhoto(details.people, faces) : []);
+
+	$effect(() => {
+		const id = details?.asset.id;
+		const wanted = (details?.people.length ?? 0) > 0;
+		faces = [];
+		if (!id || !wanted) return;
+		let current = true;
+		void photoFaces(id).then((result) => {
+			if (current && result.ok) faces = result.data;
+		});
+		return () => {
+			current = false;
+		};
+	});
 </script>
 
 <!-- Every value is rendered as text: nothing from EXIF is ever read as HTML or a URL. -->
@@ -48,6 +70,33 @@
 				</a>
 				{#if place}<p class="attribution">Place names: GeoNames (CC BY 4.0)</p>{/if}
 			</div>
+		</section>
+	{/if}
+
+	{#if people.length > 0}
+		<section class="item" aria-label="People">
+			<span class="well"><Icon name="users" /></span>
+			<ul class="text people">
+				{#each people as person (person.id)}
+					<li>
+						<a class="person" href={photosHref({ person: person.id })}>
+							<FaceAvatar face={person.face} />
+							<span class:unnamed={!person.name}>{personLabel(person.name)}</span>
+						</a>
+					</li>
+				{/each}
+			</ul>
+		</section>
+	{/if}
+
+	{#if details && details.tags.length > 0}
+		<section class="item" aria-label="Tags">
+			<span class="well"><Icon name="tag" /></span>
+			<ul class="text badges">
+				{#each details.tags as tag (tag)}
+					<li><a href={photosHref({ tag })} aria-label={`Photos tagged ${tagLabel(tag)}`}><Badge>{tagLabel(tag)}</Badge></a></li>
+				{/each}
+			</ul>
 		</section>
 	{/if}
 
@@ -142,6 +191,48 @@
 		color: var(--ink-muted);
 		font-size: var(--text-xs);
 		line-height: var(--text-xs-lh);
+	}
+
+	.people {
+		margin: 0;
+		padding-left: 0;
+		list-style: none;
+	}
+
+	.person {
+		display: flex;
+		align-items: center;
+		gap: var(--space-3);
+		min-height: var(--tap);
+		border-radius: var(--radius-full);
+		color: var(--ink);
+		font-weight: var(--weight-label);
+		text-decoration: none;
+	}
+
+	.person:focus-visible,
+	.badges a:focus-visible {
+		outline: var(--ring-width) solid var(--accent);
+		outline-offset: var(--ring-offset);
+	}
+
+	.unnamed {
+		color: var(--ink-muted);
+	}
+
+	.badges {
+		display: flex;
+		flex-wrap: wrap;
+		gap: var(--space-2);
+		margin: 0;
+		padding-left: 0;
+		list-style: none;
+	}
+
+	.badges a {
+		display: inline-flex;
+		border-radius: var(--radius-full);
+		text-decoration: none;
 	}
 
 	.albums {
