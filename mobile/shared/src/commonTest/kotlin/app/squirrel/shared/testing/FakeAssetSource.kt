@@ -17,6 +17,8 @@ class FakeAssetSource : AssetSource {
     var access: MediaAccess = MediaAccess.Full
     var opened = 0
         private set
+    var scans = 0
+        private set
     /** Ids the scan lists but [open] cannot read (deleted between the two). */
     val unreadable = mutableSetOf<String>()
 
@@ -48,6 +50,7 @@ class FakeAssetSource : AssetSource {
     fun reader(id: String): FakeReader = readers.getValue(id)
 
     override suspend fun changes(token: String?, filter: SourceFilter): ScanResult {
+        scans++
         val since = token?.toInt()
         return if (since == null) {
             ScanResult(assets.values.toList(), removed = emptyList(), token = clock.toString(), full = true)

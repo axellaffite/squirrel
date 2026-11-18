@@ -49,6 +49,8 @@ class PhotoKitSource(
     private val library get() = PHPhotoLibrary.sharedPhotoLibrary()
 
     override suspend fun changes(token: String?, filter: SourceFilter): ScanResult = withContext(Dispatchers.IO) {
+        // Access not decided (or refused): any PhotoKit call could raise the system prompt.
+        if (!PhotoAccess.granted()) return@withContext ScanResult(emptyList(), emptyList(), token = token, full = false)
         exporter.sweep(keep = uploading())
         val next = currentToken()
         // Selected albums: membership is per collection, so those scans are always full (small).
@@ -63,6 +65,7 @@ class PhotoKitSource(
     }
 
     override suspend fun open(deviceAssetId: String): AssetReader? = withContext(Dispatchers.IO) {
+        if (!PhotoAccess.granted()) return@withContext null
         val asset = PHAsset.fetchAssetsWithLocalIdentifiers(listOf(deviceAssetId), null).firstObject as? PHAsset
             ?: return@withContext null
         val resource = primary(asset) ?: return@withContext null
@@ -73,6 +76,7 @@ class PhotoKitSource(
 
     override suspend fun existing(ids: List<String>): Set<String> = withContext(Dispatchers.IO) {
         if (ids.isEmpty()) return@withContext emptySet()
+        if (!PhotoAccess.granted()) return@withContext ids.toSet() // unknown: never reported as deleted
         val found = PHAsset.fetchAssetsWithLocalIdentifiers(ids, null)
         (0 until found.count.toInt()).mapNotNullTo(HashSet()) { (found.objectAtIndex(it.toULong()) as? PHAsset)?.localIdentifier }
     }
@@ -94,6 +98,7 @@ class PhotoKitSource(
 
     /** The user's albums. */
     fun albums(): List<PhotoAlbum> {
+        if (!PhotoAccess.granted()) return emptyList()
         val collections = PHAssetCollection.fetchAssetCollectionsWithType(PHAssetCollectionTypeAlbum, PHAssetCollectionSubtypeAny, null)
         return (0 until collections.count.toInt()).mapNotNull { index ->
             val collection = collections.objectAtIndex(index.toULong()) as? PHAssetCollection ?: return@mapNotNull null
