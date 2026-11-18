@@ -60,5 +60,5 @@ export function cropSource(face: FaceCrop, displayPx: number): string | null {
 	return thumbnailUrl(face.photo_id, size, face.thumbnail_version);
 }
 
-/** "Anna" or "Unnamed person". */
-export const personLabel = (name: string | null | undefined): string => name?.trim() || 'Unnamed person';
+/** "Anna" or "Unnamed" (MASTER). */
+export const personLabel = (name: string | null | undefined): string => name?.trim() || 'Unnamed';

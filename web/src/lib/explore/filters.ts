@@ -142,7 +142,7 @@ export function chips(filter: PhotoFilter, personName: (id: string) => string | 
 		for (const key of keys) delete next[key];
 		return next;
 	};
-	if (f.person) out.push({ kind: 'person', label: personName(f.person) ?? 'Unnamed person', without: drop('person') });
+	if (f.person) out.push({ kind: 'person', label: personName(f.person) ?? 'Unnamed', without: drop('person') });
 	if (f.tag) out.push({ kind: 'tag', label: tagLabel(f.tag), without: drop('tag') });
 	if (f.country) {
 		const label = f.city ?? (f.region ? f.region : countryName(f.country));

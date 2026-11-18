@@ -45,7 +45,7 @@ describe('filters', () => {
 
 	it('names people, tags and countries for chips', () => {
 		expect(chips({ person: 'p1' }, () => 'Anna')[0].label).toBe('Anna');
-		expect(chips({ person: 'p1' })[0].label).toBe('Unnamed person');
+		expect(chips({ person: 'p1' })[0].label).toBe('Unnamed');
 		expect(tagLabel('birthday-cake')).toBe('Birthday cake');
 		expect(chips({ country: 'FR' }, undefined)[0].label).toMatch(/France|FR/);
 	});

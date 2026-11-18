@@ -49,7 +49,7 @@ describe('face crops', () => {
 	});
 
 	it('names unnamed people', () => {
-		expect(personLabel(null)).toBe('Unnamed person');
+		expect(personLabel(null)).toBe('Unnamed');
 		expect(personLabel(' Anna ')).toBe('Anna');
 	});
 });
