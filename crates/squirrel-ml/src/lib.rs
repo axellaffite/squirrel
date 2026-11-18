@@ -2,6 +2,7 @@
 //! code run by the `squirrel ml-exec` child. Pure inference: no database, no
 //! network.
 
+pub mod client;
 pub mod clip;
 pub mod input;
 pub mod models;

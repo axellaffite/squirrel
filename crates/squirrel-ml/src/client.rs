@@ -10,8 +10,8 @@ use std::process::Stdio;
 use std::sync::{Arc, Weak};
 use std::time::Duration;
 
-use squirrel_ml::protocol::{MAX_RESPONSE_LINE, MlBody, MlOp, MlRequest, MlResponse, Ready};
-use squirrel_ml::serve::Engine;
+use crate::protocol::{MAX_RESPONSE_LINE, MlBody, MlOp, MlRequest, MlResponse, Ready};
+use crate::serve::Engine;
 use tokio::io::{AsyncBufRead, AsyncBufReadExt, AsyncReadExt, AsyncWriteExt, BufReader};
 use tokio::process::{Child, ChildStdin, ChildStdout, Command};
 use tokio::sync::Mutex;

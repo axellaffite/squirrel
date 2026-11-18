@@ -10,7 +10,8 @@ pub mod geocode;
 pub mod jobs;
 pub mod label_bank;
 pub mod metadata;
-pub mod ml_client;
+/// The `ml-exec` supervisor (in `squirrel-ml`, shared with the server).
+pub use squirrel_ml::client as ml_client;
 mod outcome;
 pub mod pdf_job;
 pub mod process;

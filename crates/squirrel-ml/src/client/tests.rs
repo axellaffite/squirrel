@@ -2,7 +2,7 @@
 
 use std::os::unix::fs::PermissionsExt;
 
-use squirrel_ml::protocol::MlOutput;
+use crate::protocol::MlOutput;
 
 use super::*;
 
@@ -203,9 +203,9 @@ async fn the_child_sees_none_of_the_workers_environment() {
 
 #[tokio::test]
 async fn in_process_answers_ping() {
-    let engine = Engine::load(&squirrel_ml::serve::EngineConfig {
+    let engine = Engine::load(&crate::serve::EngineConfig {
         groups: Vec::new(),
-        models: squirrel_ml::ModelDir::new("/nonexistent"),
+        models: crate::ModelDir::new("/nonexistent"),
         ort_dylib: None,
         threads: 1,
     })
