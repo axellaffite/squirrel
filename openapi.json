@@ -5009,6 +5009,7 @@
         "required": [
           "id",
           "photo_id",
+          "taken_at",
           "box",
           "score",
           "assigned_by"
@@ -5043,6 +5044,10 @@
             "type": "number",
             "format": "float",
             "description": "Detector confidence, 0–1."
+          },
+          "taken_at": {
+            "type": "string",
+            "description": "When the photo was taken (wall clock, no offset), e.g. `2024-07-14T18:30:05`."
           },
           "thumbnail_version": {
             "type": [

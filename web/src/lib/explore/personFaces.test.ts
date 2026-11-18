@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { bulk, facesCount, Generations, moveRequest, pruneSelection } from '#lib/explore/personFaces.ts';
+import { bulk, faceTileLabels, facesCount, Generations, moveRequest, pruneSelection } from '#lib/explore/personFaces.ts';
 
 describe('person page corrections', () => {
 	it('drops selected faces that left the list', () => {
@@ -27,5 +27,15 @@ describe('person page corrections', () => {
 		const second = generations.next();
 		expect(generations.current(first)).toBe(false);
 		expect(generations.current(second)).toBe(true);
+	});
+
+	it('names every face tile differently', () => {
+		const labels = faceTileLabels(
+			[{ taken_at: '2024-07-14T18:30:05' }, { taken_at: '2024-07-14T18:30:40' }, { taken_at: null }],
+			'en-GB'
+		);
+		expect(labels[0]).toMatch(/^Face from 14 July 2024 18:30$/);
+		expect(labels[1]).toBe(`${labels[0]} (2)`);
+		expect(labels[2]).toBe('Face 3');
 	});
 });

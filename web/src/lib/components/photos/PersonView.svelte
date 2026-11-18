@@ -15,7 +15,7 @@
 	import TextField from '#lib/components/ui/TextField.svelte';
 	import { getPerson, type Face, type Person } from '#lib/explore/api.ts';
 	import { personLabel } from '#lib/explore/faces.ts';
-	import { bulk, facesCount, Generations, moveRequest, pruneSelection } from '#lib/explore/personFaces.ts';
+	import { bulk, faceTileLabels, facesCount, Generations, moveRequest, pruneSelection } from '#lib/explore/personFaces.ts';
 	import {
 		assignFace,
 		cleanName,
@@ -56,6 +56,7 @@
 	let mergeInto: Person | null = $state(null);
 
 	const label = $derived(person ? personLabel(person.name) : 'Person');
+	const tileLabels = $derived(faceTileLabels(faces ?? []));
 
 	/** Reloads are numbered: an older answer never overwrites a newer one. */
 	const personLoads = new Generations();
@@ -293,13 +294,13 @@
 	{:else}
 		<p class="muted">Select faces that are not {label}, or the one to show as the cover.</p>
 		<ul class="faces" aria-label={`Faces of ${label}`}>
-			{#each faces as face (face.id)}
+			{#each faces as face, index (face.id)}
 				<li>
 					<button
 						type="button"
 						class="face"
 						aria-pressed={selected.has(face.id)}
-						aria-label={`Face ${face.assigned_by === 'user' ? 'placed by you' : 'found automatically'}`}
+						aria-label={tileLabels[index]}
 						onclick={() => toggleFace(face.id)}
 					>
 						<FaceAvatar face={{ face_id: face.id, photo_id: face.photo_id, thumbnail_version: face.thumbnail_version, box: face.box }} size="md" />

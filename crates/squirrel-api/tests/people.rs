@@ -302,6 +302,7 @@ async fn a_persons_faces_page_newest_photo_first(pool: PgPool) {
     assert_eq!(items[0]["photo_id"], w.photos[2].to_string());
     assert_eq!(items[0]["assigned_by"], "auto");
     assert_eq!(items[0]["thumbnail_version"], 1);
+    assert_eq!(items[0]["taken_at"], "2024-03-01T10:00:00");
     assert!((items[0]["box"]["x"].as_f64().unwrap() - 0.3).abs() < 1e-6);
     assert_eq!(items[1]["id"], faces[1].to_string());
     let cursor = first["next_cursor"].as_str().unwrap();

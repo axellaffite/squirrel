@@ -1,5 +1,6 @@
 /** The person page's face corrections: what to send, and what stays selected afterwards. */
 import type { Outcome } from '#lib/files/pages.ts';
+import { tileDateTime } from '#lib/photos/dates.ts';
 
 /** The selection, without faces that left the list (moved, split off, deleted). */
 export function pruneSelection(selected: ReadonlySet<string>, faces: readonly { id: string }[]): Set<string> {
@@ -62,4 +63,18 @@ export class Generations {
 	current(ticket: number): boolean {
 		return ticket === this.#latest;
 	}
+}
+
+/**
+ * Each face tile's accessible name, unique on the page: "Face from 14 July 2024 18:30", with
+ * "(2)" added when two photos share the minute, or an ordinal without a date.
+ */
+export function faceTileLabels(faces: readonly { taken_at?: string | null }[], locale?: string): string[] {
+	const seen = new Map<string, number>();
+	return faces.map((face, index) => {
+		const base = face.taken_at ? `Face from ${tileDateTime(face.taken_at, locale)}` : `Face ${index + 1}`;
+		const count = (seen.get(base) ?? 0) + 1;
+		seen.set(base, count);
+		return count === 1 ? base : `${base} (${count})`;
+	});
 }
