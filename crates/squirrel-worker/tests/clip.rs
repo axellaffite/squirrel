@@ -458,3 +458,48 @@ async fn a_real_photo_gets_a_real_embedding(pool: PgPool) {
     assert!((norm - 1.0).abs() < 1e-2, "{norm}");
     assert_eq!(clip_state(fx.pool(), &sha).await, MediaState::Ready);
 }
+
+/// The bank is a job, not a start-up step: it computes the bank, then queues
+/// the re-tagging of photos embedded while it was missing.
+#[sqlx::test(migrator = "squirrel_db::MIGRATOR")]
+async fn the_label_bank_job_computes_the_bank_then_queues_retags(pool: PgPool) {
+    let (_images, image_ml) = fake_ml(false);
+    let (_texts, text_ml) = fake_ml(false);
+    // Only the fakes' answers matter: one client for images, one for texts.
+    let image_client = Arc::try_unwrap(image_ml).ok().expect("unshared").client;
+    let text_client = Arc::try_unwrap(text_ml).ok().expect("unshared").client;
+    let ml = Arc::new(MlContext::new(image_client, true, false).with_text(text_client));
+    let fx = Fixture::with_ml(pool, ml.clone());
+    assert!(ml.kinds().contains(&"label_bank"));
+    let sha = photo(&fx, true).await;
+    clip_job::run(&fx.ctx, &ml, clip_job_for(&sha))
+        .await
+        .unwrap();
+    assert!(label_bank::missing(fx.pool(), CLIP_MODEL_ID).await.unwrap());
+    sqlx::query("DELETE FROM jobs")
+        .execute(fx.pool())
+        .await
+        .unwrap();
+    label_bank::run(&fx.ctx, &ml, job("label_bank", json!({})))
+        .await
+        .unwrap();
+    assert!(!label_bank::missing(fx.pool(), CLIP_MODEL_ID).await.unwrap());
+    assert_eq!(
+        queued(fx.pool(), "clip_embed").await,
+        [(
+            format!("clip_embed:{sha}"),
+            priority::background(priority::CLIP)
+        )],
+        "the photo embedded without a bank gets its tags"
+    );
+}
+
+#[test]
+fn the_label_bank_job_is_deduped_per_model_and_version() {
+    let job = squirrel_worker::jobs::label_bank(CLIP_MODEL_ID);
+    assert_eq!(
+        job.dedupe_key,
+        Some(format!("label_bank:{CLIP_MODEL_ID}:{LABELS_VERSION}"))
+    );
+    assert_eq!(job.priority, priority::LABEL_BANK);
+}

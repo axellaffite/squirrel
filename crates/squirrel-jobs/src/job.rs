@@ -16,6 +16,9 @@ pub mod priority {
     pub const BACKFILL: i16 = 0;
     /// Machine learning runs after every other step, fresh or backfilled.
     pub const CLIP: i16 = -25;
+    /// Computing the label bank (once per labels version): after fresh CLIP
+    /// embeddings, before faces; its re-tags follow at `background(CLIP)`.
+    pub const LABEL_BANK: i16 = -26;
     pub const FACES: i16 = -30;
     pub const CLUSTER: i16 = -35;
     /// Subtracted from work that comes from backfill rather than a fresh upload.
@@ -163,7 +166,7 @@ mod tests {
         // fresh media > backfilled media > fresh CLIP > fresh faces > cluster > backfilled ML
         assert!(lowest_media > CLIP);
         const {
-            assert!(CLIP > FACES && FACES > CLUSTER);
+            assert!(CLIP > LABEL_BANK && LABEL_BANK > FACES && FACES > CLUSTER);
             assert!(CLUSTER > background(CLIP));
             assert!(background(CLIP) > background(FACES));
         }

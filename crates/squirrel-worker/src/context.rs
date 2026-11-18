@@ -48,6 +48,8 @@ pub struct MlContext {
     pub client: crate::ml_client::MlClient,
     pub clip: bool,
     pub faces: bool,
+    /// The CLIP text tower's child (`label_bank` jobs), when installed.
+    pub text: Option<crate::ml_client::MlClient>,
     /// The label bank of the pinned CLIP model, read once from the database
     /// (computed at worker start, `label_bank::ensure`). Empty: no tags.
     label_bank: std::sync::OnceLock<std::sync::Arc<LabelBank>>,
@@ -62,6 +64,7 @@ impl MlContext {
             client,
             clip,
             faces,
+            text: None,
             label_bank: std::sync::OnceLock::new(),
         }
     }
@@ -69,6 +72,17 @@ impl MlContext {
     /// The job kinds this worker can run with its models.
     pub fn kinds(&self) -> Vec<&'static str> {
         ml_kinds(self.clip, self.faces)
+            .into_iter()
+            .filter(|kind| *kind != crate::jobs::LABEL_BANK || self.text.is_some())
+            .collect()
+    }
+
+    /// Adds the CLIP text tower's own child (it computes the label bank).
+    pub fn with_text(self, text: crate::ml_client::MlClient) -> Self {
+        Self {
+            text: Some(text),
+            ..self
+        }
     }
 
     /// The current label bank, cached once found: an empty one (not computed
@@ -97,9 +111,14 @@ impl MlContext {
 }
 
 /// `clip_embed` needs the CLIP image tower; the face kinds need the face models.
+/// (`label_bank` comes with CLIP: it needs the text tower too, see
+/// [`MlContext::kinds`].)
 pub fn ml_kinds(clip: bool, faces: bool) -> Vec<&'static str> {
-    use crate::jobs::{CLIP_EMBED, CLUSTER_FACES, FACE_BACKFILL, FACES};
-    let clip_kinds = clip.then_some(CLIP_EMBED);
+    use crate::jobs::{CLIP_EMBED, CLUSTER_FACES, FACE_BACKFILL, FACES, LABEL_BANK};
+    let clip_kinds = clip
+        .then_some([CLIP_EMBED, LABEL_BANK])
+        .into_iter()
+        .flatten();
     let face_kinds = faces
         .then_some([FACES, CLUSTER_FACES, FACE_BACKFILL])
         .into_iter()
@@ -114,11 +133,11 @@ mod tests {
     #[test]
     fn ml_kinds_follow_the_installed_models() {
         assert!(ml_kinds(false, false).is_empty());
-        assert_eq!(ml_kinds(true, false), ["clip_embed"]);
+        assert_eq!(ml_kinds(true, false), ["clip_embed", "label_bank"]);
         assert_eq!(
             ml_kinds(false, true),
             ["faces", "cluster_faces", "face_backfill"]
         );
-        assert_eq!(ml_kinds(true, true).len(), 4);
+        assert_eq!(ml_kinds(true, true).len(), 5);
     }
 }
