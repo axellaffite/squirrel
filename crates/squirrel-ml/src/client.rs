@@ -44,6 +44,13 @@ pub struct MlChildConfig {
     /// First pause after a failed start, doubled after each further failure.
     pub restart_backoff: Duration,
     pub max_restart_backoff: Duration,
+    /// How long a request waits for the requests ahead of it (and a start)
+    /// before giving up with a retryable [`MlClientError::Busy`].
+    pub queue_timeout: Duration,
+    /// While a child is starting, other requests fail at once with `Busy`
+    /// instead of waiting for it (the server: a search answers 503 and the
+    /// client retries; the worker's jobs just wait).
+    pub busy_while_starting: bool,
 }
 
 pub enum MlBackend {
@@ -122,6 +129,17 @@ struct State {
 pub struct MlClient {
     backend: MlBackend,
     state: Arc<Mutex<State>>,
+    /// A child is being started (read without the state lock).
+    starting: Arc<std::sync::atomic::AtomicBool>,
+}
+
+/// Clears `starting` however the start ends (cancelled included).
+struct Starting(Arc<std::sync::atomic::AtomicBool>);
+
+impl Drop for Starting {
+    fn drop(&mut self) {
+        self.0.store(false, std::sync::atomic::Ordering::SeqCst);
+    }
 }
 
 impl MlClient {
@@ -129,6 +147,7 @@ impl MlClient {
         Self {
             backend,
             state: Arc::default(),
+            starting: Arc::default(),
         }
     }
 
@@ -196,8 +215,11 @@ impl MlClient {
         config: &MlChildConfig,
         op: MlOp,
     ) -> Result<MlBody, MlClientError> {
-        // One start and one request bound what a single holder can take.
-        let wait = config.ready_timeout + config.request_timeout;
+        use std::sync::atomic::Ordering;
+        if config.busy_while_starting && self.starting.load(Ordering::SeqCst) {
+            return Err(MlClientError::Busy(Duration::ZERO));
+        }
+        let wait = config.queue_timeout;
         let Ok(mut state) = tokio::time::timeout(wait, self.state.lock()).await else {
             return Err(MlClientError::Busy(wait));
         };
@@ -215,7 +237,12 @@ impl MlClient {
                 }
             }
             state.generation += 1;
-            match start(config, state.generation).await {
+            self.starting.store(true, Ordering::SeqCst);
+            let started = {
+                let _starting = Starting(self.starting.clone());
+                start(config, state.generation).await
+            };
+            match started {
                 Ok((running, ready)) => {
                     state.running = Some(running);
                     state.ready = Some(ready);

@@ -152,6 +152,8 @@ fn backend(
             idle,
             restart_backoff: squirrel_worker::ml_client::RESTART_BACKOFF,
             max_restart_backoff: squirrel_worker::ml_client::MAX_RESTART_BACKOFF,
+            queue_timeout: READY_TIMEOUT + REQUEST_TIMEOUT,
+            busy_while_starting: false,
         }),
         MlExecMode::InProcess => {
             let engine = Engine::load(&EngineConfig {
@@ -193,8 +195,13 @@ pub fn server_ml(
                 &dylib,
                 squirrel_api::ml::TEXT_IDLE,
             )?;
+            // Searches answer 503 `busy` rather than queue behind a model
+            // load: the client retries (and warms up first).
             if let MlBackend::Subprocess(config) = &mut backend {
                 config.request_timeout = squirrel_api::ml::TEXT_REQUEST_TIMEOUT;
+                config.ready_timeout = squirrel_api::ml::TEXT_READY_TIMEOUT;
+                config.queue_timeout = squirrel_api::ml::TEXT_QUEUE_TIMEOUT;
+                config.busy_while_starting = true;
             }
             Ok(backend)
         });

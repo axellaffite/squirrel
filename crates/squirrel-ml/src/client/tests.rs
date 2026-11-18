@@ -34,6 +34,8 @@ done
         idle: Duration::from_secs(600),
         restart_backoff: RESTART_BACKOFF,
         max_restart_backoff: MAX_RESTART_BACKOFF,
+        queue_timeout: Duration::from_secs(20),
+        busy_while_starting: false,
     }
 }
 
@@ -331,6 +333,7 @@ fn child_logs_are_rate_limited_per_window() {
 /// up with a retryable Busy instead of waiting forever.
 #[tokio::test]
 async fn waiting_for_a_busy_child_is_bounded() {
+    // (queue_timeout is set below to one start plus one request.)
     let dir = tempfile::tempdir().unwrap();
     let mut config = fake_child(
         dir.path(),
@@ -338,6 +341,7 @@ async fn waiting_for_a_busy_child_is_bounded() {
     );
     config.ready_timeout = Duration::from_millis(500);
     config.request_timeout = Duration::from_millis(1200);
+    config.queue_timeout = config.ready_timeout + config.request_timeout;
     let client = Arc::new(client(config));
     client.request(MlOp::Ping).await.unwrap();
     let requests: Vec<_> = (0..3)
@@ -358,4 +362,64 @@ async fn waiting_for_a_busy_child_is_bounded() {
         }
     }
     assert!(busy >= 1, "the third request should give up");
+}
+
+/// The server's text child: while it starts, other searches answer at once
+/// (`Busy`, retryable) rather than queue behind the model load.
+#[tokio::test]
+async fn requests_during_a_start_are_busy_at_once_when_asked() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("slow-start");
+    let mut config = fake_child(dir.path(), "exit 1");
+    let script = std::fs::read_to_string(&config.program).unwrap().replacen(
+        "echo '{\"ready\"",
+        "sleep 0.5\necho '{\"ready\"",
+        1,
+    );
+    std::fs::write(&path, script).unwrap();
+    std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o755)).unwrap();
+    config.program = path;
+    config.busy_while_starting = true;
+    let client = Arc::new(client(config));
+    let first = {
+        let client = client.clone();
+        tokio::spawn(async move { client.request(MlOp::Ping).await })
+    };
+    tokio::time::sleep(Duration::from_millis(150)).await;
+    let asked = Instant::now();
+    let err = client.request(MlOp::Ping).await.unwrap_err();
+    assert!(matches!(err, MlClientError::Busy(_)), "{err}");
+    assert!(
+        asked.elapsed() < Duration::from_millis(100),
+        "answered at once"
+    );
+    first.await.unwrap().unwrap();
+    client.request(MlOp::Ping).await.unwrap();
+}
+
+/// The wait for requests ahead is bounded by `queue_timeout` alone.
+#[tokio::test]
+async fn the_queue_wait_is_bounded_by_its_own_timeout() {
+    let dir = tempfile::tempdir().unwrap();
+    let mut config = fake_child(
+        dir.path(),
+        r#"sleep 1; echo "{\"id\":$id,\"status\":\"ok\"}""#,
+    );
+    config.queue_timeout = Duration::from_millis(300);
+    let client = Arc::new(client(config));
+    client.request(MlOp::Ping).await.unwrap();
+    let slow = {
+        let client = client.clone();
+        tokio::spawn(async move { client.request(image()).await })
+    };
+    tokio::time::sleep(Duration::from_millis(100)).await;
+    let asked = Instant::now();
+    let err = client.request(MlOp::Ping).await.unwrap_err();
+    assert!(matches!(err, MlClientError::Busy(_)), "{err}");
+    assert!(
+        asked.elapsed() < Duration::from_millis(700),
+        "{:?}",
+        asked.elapsed()
+    );
+    slow.await.unwrap().unwrap();
 }

@@ -16,6 +16,8 @@ fn config(args: &[&std::ffi::OsStr]) -> MlChildConfig {
         idle: Duration::from_secs(600),
         restart_backoff: squirrel_worker::ml_client::RESTART_BACKOFF,
         max_restart_backoff: squirrel_worker::ml_client::MAX_RESTART_BACKOFF,
+        queue_timeout: Duration::from_secs(20),
+        busy_while_starting: false,
     }
 }
 

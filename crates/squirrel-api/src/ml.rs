@@ -15,6 +15,11 @@ use squirrel_ml::protocol::{MlBody, MlOp, MlOutput};
 pub const TEXT_IDLE: Duration = Duration::from_secs(5 * 60);
 /// One query's encoding (tens of milliseconds when warm).
 pub const TEXT_REQUEST_TIMEOUT: Duration = Duration::from_secs(10);
+/// Loading the text model (hashing ≈ 250 MB, then ONNX Runtime): beyond
+/// this, the start failed.
+pub const TEXT_READY_TIMEOUT: Duration = Duration::from_secs(25);
+/// A search waits at most this long for the searches ahead of it.
+pub const TEXT_QUEUE_TIMEOUT: Duration = Duration::from_secs(12);
 /// Longest search text, in characters.
 pub const MAX_QUERY_CHARS: usize = 200;
 
@@ -177,6 +182,8 @@ done
             idle: Duration::from_secs(600),
             restart_backoff: squirrel_ml::client::RESTART_BACKOFF,
             max_restart_backoff: squirrel_ml::client::MAX_RESTART_BACKOFF,
+            queue_timeout: Duration::from_secs(20),
+            busy_while_starting: false,
         }
     }
 
