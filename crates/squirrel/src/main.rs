@@ -2,6 +2,7 @@ mod admin;
 mod data_dir;
 mod geodata;
 mod media_exec;
+mod ml_exec;
 mod tasks;
 mod worker;
 
@@ -62,6 +63,10 @@ enum Command {
     /// (spawned by the worker; JSON on stdin and stdout).
     #[command(hide = true)]
     MediaExec(media_exec::MediaExecArgs),
+    /// Internal: a long-lived model inference child (spawned by the worker and
+    /// the server; JSON lines on stdin and stdout).
+    #[command(hide = true)]
+    MlExec(ml_exec::MlExecArgs),
 }
 
 #[derive(Args)]
@@ -136,6 +141,7 @@ fn main() -> anyhow::Result<()> {
         // Before any runtime thread exists, and without logging to stdout,
         // which carries the response.
         Command::MediaExec(args) => media_exec::run(&args),
+        Command::MlExec(args) => ml_exec::run(&args),
         command => tokio::runtime::Builder::new_multi_thread()
             .enable_all()
             .build()
@@ -147,6 +153,7 @@ fn main() -> anyhow::Result<()> {
 async fn run(command: Command) -> anyhow::Result<()> {
     match command {
         Command::MediaExec(args) => media_exec::run(&args),
+        Command::MlExec(args) => ml_exec::run(&args),
         Command::Openapi => print_openapi(),
         Command::Migrate(args) => {
             init_tracing(false);

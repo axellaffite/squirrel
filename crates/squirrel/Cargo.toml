@@ -20,6 +20,7 @@ squirrel-db.workspace = true
 squirrel-storage.workspace = true
 squirrel-jobs.workspace = true
 squirrel-media.workspace = true
+squirrel-ml.workspace = true
 squirrel-worker.workspace = true
 rustix.workspace = true
 serde_json.workspace = true
@@ -31,6 +32,7 @@ tracing-subscriber.workspace = true
 uuid.workspace = true
 
 [dev-dependencies]
+squirrel-ml = { workspace = true, features = ["test-util"] }
 squirrel-media = { workspace = true, features = ["test-util"] }
 tempfile.workspace = true
 squirrel-storage = { workspace = true, features = ["test-util"] }

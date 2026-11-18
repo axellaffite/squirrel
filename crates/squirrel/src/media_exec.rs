@@ -51,7 +51,7 @@ fn limits(args: &MediaExecArgs) -> [(Resource, u64); 5] {
 
 /// Sets soft and hard limits to `value`, or to the current hard limit when
 /// that is lower already (lowering never needs privileges).
-fn apply(resource: Resource, value: u64) -> anyhow::Result<()> {
+pub(crate) fn apply(resource: Resource, value: u64) -> anyhow::Result<()> {
     let value = clamp(value, getrlimit(resource).maximum);
     let set = setrlimit(
         resource,
@@ -65,7 +65,7 @@ fn apply(resource: Resource, value: u64) -> anyhow::Result<()> {
         // macOS does not support RLIMIT_AS (EINVAL): the CPU limit and the
         // parent's wall clock still apply. Every other failure is fatal.
         Err(err) if cfg!(target_os = "macos") && resource == Resource::As => {
-            eprintln!("media-exec: address-space limit unsupported here: {err}");
+            eprintln!("address-space limit unsupported here: {err}");
             Ok(())
         }
         Err(err) => anyhow::bail!("could not set the {resource:?} limit: {err}"),

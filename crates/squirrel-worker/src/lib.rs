@@ -8,6 +8,7 @@ mod facts;
 pub mod geocode;
 pub mod jobs;
 pub mod metadata;
+pub mod ml_client;
 mod outcome;
 pub mod pdf_job;
 pub mod process;
