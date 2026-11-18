@@ -85,6 +85,7 @@ fun SignInScreen(
                 capitalization = KeyboardCapitalization.None,
                 autoCorrectEnabled = false,
                 imeAction = ImeAction.Next,
+                platformImeOptions = credentialImeOptions(CredentialField.Username),
             ),
         )
         TextField(
@@ -95,7 +96,11 @@ fun SignInScreen(
             password = true,
             autofill = ContentType.Password,
             enabled = !state.busy,
-            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password, imeAction = ImeAction.Done),
+            keyboardOptions = KeyboardOptions(
+                keyboardType = KeyboardType.Password,
+                imeAction = ImeAction.Done,
+                platformImeOptions = credentialImeOptions(CredentialField.Password),
+            ),
             keyboardActions = KeyboardActions(onDone = { onSignIn() }),
         )
         state.alert?.let { Alert(it, tone = AlertTone.Error) }
