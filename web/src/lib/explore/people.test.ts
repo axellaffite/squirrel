@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { cleanName, emptyReason, mergeTarget } from '#lib/explore/people.ts';
+import { cleanName, emptyReason, mergeReason, mergeTarget } from '#lib/explore/people.ts';
 
 const person = (id: string, name: string | null, face_count: number) => ({ id, name, face_count });
 
@@ -9,6 +9,13 @@ describe('people', () => {
 		expect(mergeTarget([person('a', null, 3), person('b', null, 7)])?.id).toBe('b');
 		expect(mergeTarget([person('a', null, 3), person('b', ' ', 3)])?.id).toBe('a');
 		expect(mergeTarget([])).toBeNull();
+	});
+
+	it('says why a person is kept by default', () => {
+		const anna = person('b', 'Anna', 2);
+		expect(mergeReason(anna, [person('a', null, 9), anna])).toBe('Chosen because they are the only one with a name.');
+		expect(mergeReason(anna, [person('c', 'Ben', 1), anna])).toBe('Chosen because they are named and have the most photos.');
+		expect(mergeReason(person('a', null, 9), [person('a', null, 9), person('d', null, 1)])).toBe('Chosen because they have the most photos.');
 	});
 
 	it('cleans names', () => {

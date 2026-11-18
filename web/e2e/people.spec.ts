@@ -95,8 +95,13 @@ test('two people merge into one, and split back', async () => {
 	await page.getByRole('button', { name: 'Merge people' }).click();
 	for (const person of await grid(page).getByRole('button').all()) await person.click();
 	await page.getByRole('toolbar', { name: 'Selected people' }).getByRole('button', { name: 'Merge' }).click();
-	await expect(openDialog(page)).toContainText('Merge 2 people into Ada?');
-	await openDialog(page).getByRole('button', { name: 'Merge' }).click();
+	// Ada is kept by default (she is named), and the choice is the user's.
+	await expect(openDialog(page).getByRole('radio', { name: /Ada/ })).toBeChecked();
+	await expect(openDialog(page)).toContainText('Ada is selected by default. Chosen because they are the only one with a name.');
+	await openDialog(page).getByRole('radio', { name: /Unnamed/ }).check();
+	await expect(openDialog(page).getByRole('button', { name: 'Merge into Unnamed' })).toBeVisible();
+	await openDialog(page).getByRole('radio', { name: /Ada/ }).check();
+	await openDialog(page).getByRole('button', { name: 'Merge into Ada' }).click();
 	await expect.poll(async () => (await people(page)).length).toBe(1);
 
 	await page.goto(`/explore/people/${ada}`);
