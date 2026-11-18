@@ -1,5 +1,7 @@
 package app.squirrel.shared.api
 
+import app.squirrel.api.models.SyncCheckItem
+import app.squirrel.api.models.SyncCheckRequest
 import app.squirrel.api.apis.AlbumsApi
 import app.squirrel.api.apis.DevicesApi
 import app.squirrel.api.apis.FilesApi
@@ -42,6 +44,7 @@ data class DeviceDetails(val name: String, val platform: DevicePlatform, val mod
 data class SignedIn(val account: AccountDto, val device: DeviceDto)
 
 internal const val REQUEST_TIMEOUT_MS = 30_000L
+private const val SYNC_CHECK_BATCH = 500
 private val REFUSED = setOf(400, 401, 403)
 
 /** JSON settings shared by every call: tolerant of new server fields, omits nulls. */
@@ -132,6 +135,16 @@ class SquirrelApi(
         resetCachedTokens()
         return SignedIn(response.account, response.device)
     }
+
+    /**
+     * Which of these assets (device asset id to SHA-256) the server does not have yet, through
+     * `POST /api/sync/check` in batches of 500. Also for Swift callers (the end-to-end test).
+     */
+    @Throws(Exception::class)
+    suspend fun missingOnServer(hashes: Map<String, String>): List<String> =
+        hashes.entries.chunked(SYNC_CHECK_BATCH).flatMap { batch ->
+            sync.syncCheck(SyncCheckRequest(batch.map { SyncCheckItem(it.key, it.value) })).bodyOrThrow().missing
+        }
 
     /** Revokes this device on the server (best effort) and forgets the tokens. */
     suspend fun signOut() {

@@ -16,7 +16,7 @@ final class PhotoKitSourceTests: XCTestCase {
     }
 
     func testAFullScanThenOnlyWhatChanged() async throws {
-        let source = PhotoKitSource(exporter: AssetExporter(dir: NSTemporaryDirectory() + "export-tests"), allowNetwork: { true })
+        let source = PhotoKitSource(exporter: AssetExporter(dir: NSTemporaryDirectory() + "export-tests"), allowNetwork: { true }, uploading: { [] })
         let full = try await source.changes(token: nil, filter: filter)
         XCTAssertTrue(full.full)
         let images = PHAsset.fetchAssets(with: .image, options: nil).count
@@ -38,7 +38,7 @@ final class PhotoKitSourceTests: XCTestCase {
     }
 
     func testTheExportIsTheOriginalBytes() async throws {
-        let source = PhotoKitSource(exporter: AssetExporter(dir: NSTemporaryDirectory() + "export-tests"), allowNetwork: { true })
+        let source = PhotoKitSource(exporter: AssetExporter(dir: NSTemporaryDirectory() + "export-tests"), allowNetwork: { true }, uploading: { [] })
         let full = try await source.changes(token: nil, filter: filter)
         let first = try XCTUnwrap(full.assets.first)
 

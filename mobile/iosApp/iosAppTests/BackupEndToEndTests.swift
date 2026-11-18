@@ -24,8 +24,7 @@ final class BackupEndToEndTests: XCTestCase {
         let signedIn = try await api.signIn(username: user, password: password, device: graph.device)
         graph.onSignedIn(serverUrl: server, api: api, result: signedIn)
         do {
-            try await backUpAndCheck(graph: graph, server: server, user: user, password: password,
-                                     deviceName: signedIn.device.name, images: images)
+            try await backUpAndCheck(graph: graph, api: api, images: images)
         } catch {
             try await signOut(graph)
             throw error
@@ -33,7 +32,8 @@ final class BackupEndToEndTests: XCTestCase {
         // Awaited: the device is signed out on the server before the test ends.
         try await signOut(graph)
         let web = try await WebSession(server: server, user: user, password: password)
-        XCTAssertFalse(try await web.liveDeviceIds().contains(signedIn.device.id), "still signed in")
+        let live = try await web.liveDeviceIds()
+        XCTAssertFalse(live.contains(signedIn.device.id), "still signed in")
     }
 
     private func signOut(_ graph: AppGraph) async throws {
@@ -41,47 +41,26 @@ final class BackupEndToEndTests: XCTestCase {
         _ = try await graph.awaitSignedOut()
     }
 
-    private func backUpAndCheck(graph: AppGraph, server: String, user: String, password: String,
-                                deviceName: String, images: Int) async throws {
+    private func backUpAndCheck(graph: AppGraph, api: SquirrelApi, images: Int) async throws {
         try await GraphRunner(graph: { graph }).run(deadline: nil, manual: true, progress: { _, _ in })
 
         let counts = graph.queue.counts()
         let done = counts.first { $0.key.name == "Done" }?.value.int64Value ?? 0
         XCTAssertEqual(done, Int64(images), "queue: \(counts)")
 
-        // Through the API: every photo sits in Photos/<device>/<year>/.
-        let web = try await WebSession(server: server, user: user, password: password)
-        let photos = try await web.child(named: "Photos", of: nil)
-        let device = try await web.child(named: deviceName, of: photos)
-        let years = try await web.list(device).filter { $0.kind == "folder" }
-        XCTAssertFalse(years.isEmpty)
-        var files = 0
-        for year in years {
-            XCTAssertNotNil(Int(year.name), "year folder \(year.name)")
-            files += try await web.list(year.id).filter { $0.kind == "file" }.count
+        // Through the API: the server has every photo's content (uploaded now or already there).
+        var hashes: [String: String] = [:]
+        PHAsset.fetchAssets(with: .image, options: nil).enumerateObjects { asset, _, _ in
+            hashes[asset.localIdentifier] = graph.queue.get(id: asset.localIdentifier)?.sha256
         }
-        // A photo whose bytes the server already has is usually linked rather than stored again
-        // (two such photos backed up in the same run can both land), so the count lies between
-        // the distinct contents and the photos.
-        XCTAssertGreaterThanOrEqual(files, distinctContents(graph.queue))
-        XCTAssertLessThanOrEqual(files, images)
+        XCTAssertEqual(hashes.count, images, "every photo hashed")
+        let missing = try await api.missingOnServer(hashes: hashes)
+        XCTAssertEqual(missing, [])
     }
 }
 
-/// How many distinct contents the library's photos have, from the hashes the queue recorded.
-private func distinctContents(_ queue: Queue) -> Int {
-    var hashes = Set<String>()
-    PHAsset.fetchAssets(with: .image, options: nil).enumerateObjects { asset, _, _ in
-        hashes.insert(queue.get(id: asset.localIdentifier)?.sha256 ?? asset.localIdentifier)
-    }
-    return hashes.count
-}
-
-/// A browser-style session on the server (cookie login), for reading folders from the test.
+/// A browser-style session on the server (cookie login), to see the devices as the web does.
 private struct WebSession {
-    struct Node: Decodable { let id: String; let name: String; let kind: String }
-    private struct Listing: Decodable { let items: [Node]; let next_cursor: String? }
-
     let server: String
     let session = URLSession(configuration: .ephemeral)
 
@@ -95,32 +74,10 @@ private struct WebSession {
         XCTAssertEqual((response as? HTTPURLResponse)?.statusCode, 200, "web login")
     }
 
-    func list(_ parent: String?) async throws -> [Node] {
-        var nodes: [Node] = []
-        var cursor: String?
-        repeat {
-            var url = URLComponents(string: "\(server)/api/nodes")!
-            url.queryItems = [URLQueryItem(name: "limit", value: "500")]
-            if let parent { url.queryItems?.append(URLQueryItem(name: "parent_id", value: parent)) }
-            if let cursor { url.queryItems?.append(URLQueryItem(name: "cursor", value: cursor)) }
-            let (data, _) = try await session.data(from: url.url!)
-            let page = try JSONDecoder().decode(Listing.self, from: data)
-            nodes += page.items
-            cursor = page.next_cursor
-        } while cursor != nil
-        return nodes
-    }
-
     /// The owner's devices that are still signed in.
     func liveDeviceIds() async throws -> Set<String> {
         struct Device: Decodable { let id: String; let revoked_at: String? }
-        struct Devices: Decodable { let items: [Device] }
         let (data, _) = try await session.data(from: URL(string: "\(server)/api/devices")!)
-        return Set(try JSONDecoder().decode(Devices.self, from: data).items.filter { $0.revoked_at == nil }.map(\.id))
-    }
-
-    func child(named name: String, of parent: String?) async throws -> String {
-        let nodes = try await list(parent)
-        return try XCTUnwrap(nodes.first { $0.name == name }?.id, "\(name) in \(nodes.map(\.name))")
+        return Set(try JSONDecoder().decode([Device].self, from: data).filter { $0.revoked_at == nil }.map(\.id))
     }
 }
