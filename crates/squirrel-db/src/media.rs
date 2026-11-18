@@ -274,8 +274,10 @@ pub async fn set_metadata<'e>(
 }
 
 /// Thumbnails of `version` are installed: the step is ready and the decoded
-/// size replaces any size read from headers. `false`: the row is gone (the
-/// blob was collected meanwhile).
+/// size replaces any size read from headers. The preview changed, so the
+/// image's CLIP embedding (computed from it) is dropped and its step goes
+/// back to `pending` (also retrying one left `unsupported` by a bad preview).
+/// `false`: the row is gone (the blob was collected meanwhile).
 pub async fn set_thumbnails(
     pool: &PgPool,
     sha256: &str,
@@ -287,8 +289,11 @@ pub async fn set_thumbnails(
     let width = i32::try_from(width).map_err(|_| DbError::InvalidInput("width is too large"))?;
     let height = i32::try_from(height).map_err(|_| DbError::InvalidInput("height is too large"))?;
     let updated = sqlx::query(
-        "UPDATE media SET thumbs_state = 'ready', thumbs_version = $2, width = $3, height = $4, \
-                blurhash = $5, updated_at = now() \
+        "WITH stale AS (DELETE FROM clip_embeddings WHERE sha256 = $1) \
+         UPDATE media SET thumbs_state = 'ready', thumbs_version = $2, width = $3, height = $4, \
+                blurhash = $5, \
+                clip_state = CASE WHEN kind = 'image' THEN 'pending' ELSE clip_state END, \
+                updated_at = now() \
           WHERE sha256 = $1",
     )
     .bind(sha256)

@@ -235,3 +235,28 @@ async fn ml_is_ready_when_any_worker_host_says_so(pool: PgPool) {
         MlState::Unavailable
     );
 }
+
+#[sqlx::test(migrator = "squirrel_db::MIGRATOR")]
+async fn a_new_preview_drops_the_embedding_and_resets_clip(pool: PgPool) {
+    let sha = image(&pool, 'a').await;
+    clip::store_embedding(&pool, &sha, MODEL, &vector(0.1))
+        .await
+        .unwrap();
+    media::set_state(
+        &pool,
+        &sha,
+        media::Step::Clip,
+        MediaState::Unsupported,
+        Some("bad"),
+    )
+    .await
+    .unwrap();
+    assert!(
+        media::set_thumbnails(&pool, &sha, 2, 40, 30, "LKO2?U%2Tw=w")
+            .await
+            .unwrap()
+    );
+    assert!(clip::embedding(&pool, &sha, MODEL).await.unwrap().is_none());
+    let row = media::find(&pool, &sha).await.unwrap().unwrap();
+    assert_eq!(row.clip_state(), MediaState::Pending);
+}

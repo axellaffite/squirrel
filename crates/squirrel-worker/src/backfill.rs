@@ -132,15 +132,15 @@ async fn requeue_stale_steps(
 }
 
 /// CLIP work left to do:
-/// 1. images with a ready preview, still `pending`, and no embedding for the
-///    current model are queued;
+/// 1. images with a ready preview and no embedding for the current model are
+///    queued (whatever their state: a new preview or model gets a new try);
 /// 2. images whose preview will never come are marked `unsupported`;
 /// 3. with a label bank, embedded blobs tagged with another labels version
 ///    are queued again (the handler only re-tags: no image inference).
 async fn requeue_clip(conn: &mut PgConnection, has_bank: bool) -> Result<(), JobError> {
     let missing = per_blob_insert(
         "SELECT m.sha256 FROM media m \
-          WHERE m.kind = 'image' AND m.thumbs_state = 'ready' AND m.clip_state = 'pending' \
+          WHERE m.kind = 'image' AND m.thumbs_state = 'ready' \
             AND NOT EXISTS (SELECT 1 FROM clip_embeddings e \
                              WHERE e.sha256 = m.sha256 AND e.model = $3)",
     );
