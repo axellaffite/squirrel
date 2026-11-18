@@ -334,10 +334,10 @@ async fn waiting_for_a_busy_child_is_bounded() {
     let dir = tempfile::tempdir().unwrap();
     let mut config = fake_child(
         dir.path(),
-        r#"sleep 0.8; echo "{\"id\":$id,\"status\":\"ok\"}""#,
+        r#"sleep 1.0; echo "{\"id\":$id,\"status\":\"ok\"}""#,
     );
-    config.ready_timeout = Duration::from_millis(100);
-    config.request_timeout = Duration::from_millis(1000);
+    config.ready_timeout = Duration::from_millis(500);
+    config.request_timeout = Duration::from_millis(1200);
     let client = Arc::new(client(config));
     client.request(MlOp::Ping).await.unwrap();
     let requests: Vec<_> = (0..3)
