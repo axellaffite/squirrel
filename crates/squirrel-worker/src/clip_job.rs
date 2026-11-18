@@ -9,7 +9,7 @@ use squirrel_db::media::{self, MediaRecord, MediaState, Step};
 use squirrel_db::tags::{self, TagSource};
 use squirrel_jobs::{JobContext, JobError};
 use squirrel_ml::CLIP_MODEL_ID;
-use squirrel_ml::clip::EMBEDDING_DIM;
+use squirrel_ml::clip::check_embedding;
 use squirrel_ml::clip::labels::{self, LABELS_VERSION, TOP_K};
 use squirrel_ml::protocol::{MlBody, MlOp, MlOutput};
 use squirrel_storage::Variant;
@@ -81,18 +81,15 @@ async fn embed(
         .derived()
         .variant_path(hash, Variant::Preview, media.thumbs_version);
     let reason = match ml.client.request(MlOp::ClipImage { input }).await {
-        Ok(MlBody::Ok(MlOutput::Embedding { embedding })) if !is_valid_embedding(&embedding) => {
-            format!(
-                "the ML child answered an invalid embedding ({} values)",
-                embedding.len()
-            )
-        }
-        Ok(MlBody::Ok(MlOutput::Embedding { embedding })) => {
-            squirrel_db::clip::store_embedding(&ctx.pool, sha256, CLIP_MODEL_ID, &embedding)
-                .await
-                .map_err(JobError::retry)?;
-            return Ok(Some(embedding));
-        }
+        Ok(MlBody::Ok(MlOutput::Embedding { embedding })) => match check_embedding(&embedding) {
+            Err(why) => format!("the ML child answered an invalid embedding: {why}"),
+            Ok(()) => {
+                squirrel_db::clip::store_embedding(&ctx.pool, sha256, CLIP_MODEL_ID, &embedding)
+                    .await
+                    .map_err(JobError::retry)?;
+                return Ok(Some(embedding));
+            }
+        },
         Ok(MlBody::Unsupported { reason }) => {
             mark(ctx, sha256, MediaState::Unsupported, &reason).await?;
             return Ok(None);
@@ -107,12 +104,6 @@ async fn embed(
     };
     outcome::give_up_or_retry(ctx, job, sha256, Step::Clip, reason).await?;
     Ok(None)
-}
-
-/// Exactly [`EMBEDDING_DIM`] finite values: anything else is a broken child,
-/// never stored.
-fn is_valid_embedding(values: &[f32]) -> bool {
-    values.len() == EMBEDDING_DIM && values.iter().all(|v| v.is_finite())
 }
 
 /// Replaces the blob's `clip` tags (no tag at all without a label bank) and

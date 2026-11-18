@@ -59,13 +59,10 @@ async fn compute(text: &MlClient, labels: &[Label]) -> anyhow::Result<Vec<(Strin
             other => anyhow::bail!("encoding the label prompts: {other:?}"),
         };
         anyhow::ensure!(embeddings.len() == batch.len(), "the child skipped prompts");
-        anyhow::ensure!(
-            embeddings
-                .iter()
-                .all(|e| e.len() == squirrel_ml::clip::EMBEDDING_DIM
-                    && e.iter().all(|v| v.is_finite())),
-            "the child answered an invalid text embedding"
-        );
+        for embedding in &embeddings {
+            squirrel_ml::clip::check_embedding(embedding)
+                .map_err(|why| anyhow::anyhow!("invalid text embedding: {why}"))?;
+        }
         for ((index, _), embedding) in batch.iter().zip(embeddings) {
             per_label[*index].push(embedding);
         }
@@ -73,6 +70,6 @@ async fn compute(text: &MlClient, labels: &[Label]) -> anyhow::Result<Vec<(Strin
     Ok(labels
         .iter()
         .zip(per_label)
-        .map(|(label, embeddings)| (label.slug.clone(), labels::mean_embedding(&embeddings)))
-        .collect())
+        .map(|(label, embeddings)| Ok((label.slug.clone(), labels::mean_embedding(&embeddings)?)))
+        .collect::<Result<_, squirrel_ml::clip::ClipError>>()?)
 }

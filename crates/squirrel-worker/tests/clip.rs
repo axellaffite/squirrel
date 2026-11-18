@@ -35,7 +35,7 @@ struct Fake {
 async fn invalid_embeddings_are_never_stored(pool: PgPool) {
     let mut nan = axis(0);
     nan[3] = f32::NAN;
-    for bad in [vec![0.5; 3], nan, vec![f32::INFINITY; 512]] {
+    for bad in [vec![0.5; 3], nan, vec![f32::INFINITY; 512], vec![0.5; 512]] {
         let answer = bad.clone();
         let client = MlClient::new(MlBackend::Fake(Arc::new(move |_: &MlOp| {
             Ok(MlBody::Ok(MlOutput::Embedding {
@@ -57,7 +57,28 @@ async fn invalid_embeddings_are_never_stored(pool: PgPool) {
             .await
             .unwrap();
         assert!(stored.is_none(), "{} values stored", bad.len());
+        // On the last attempt the step ends `failed`, not pending forever.
+        let mut last = clip_job_for(&sha);
+        last.attempt = last.max_attempts;
+        clip_job::run(&fx.ctx, &ml, last).await.unwrap_err();
+        assert_eq!(clip_state(fx.pool(), &sha).await, MediaState::Failed);
     }
+}
+
+#[sqlx::test(migrator = "squirrel_db::MIGRATOR")]
+async fn an_unsupported_preview_ends_the_step(pool: PgPool) {
+    let client = MlClient::new(MlBackend::Fake(Arc::new(|_: &MlOp| {
+        Ok(MlBody::Unsupported {
+            reason: "cannot decode".into(),
+        })
+    })));
+    let ml = Arc::new(MlContext::new(client, true, false));
+    let fx = Fixture::with_ml(pool, ml.clone());
+    let sha = photo(&fx, true).await;
+    clip_job::run(&fx.ctx, &ml, clip_job_for(&sha))
+        .await
+        .unwrap();
+    assert_eq!(clip_state(fx.pool(), &sha).await, MediaState::Unsupported);
 }
 
 #[sqlx::test(migrator = "squirrel_db::MIGRATOR")]
