@@ -157,18 +157,79 @@ async fn the_token_opens_only_its_own_upload(pool: PgPool) {
 }
 
 #[sqlx::test(migrator = "squirrel_db::MIGRATOR")]
-async fn resuming_issues_a_new_token(pool: PgPool) {
+async fn resuming_issues_a_new_token_and_keeps_the_previous_one(pool: PgPool) {
     let s = setup(&pool).await;
     let first = s.start("a.bin", CONTENT).await;
     let resumed = s.start("a.bin", CONTENT).await;
     assert_eq!(id(&first), id(&resumed));
     assert_ne!(token(&first), token(&resumed));
+    // Chunks queued with the first token before the resume still go through.
+    s.chunk(upload_auth(&token(&first)), &id(&first), 0)
+        .await
+        .assert_status(StatusCode::NO_CONTENT);
     s.status(upload_auth(&token(&first)), &id(&first))
         .await
-        .assert_status(StatusCode::UNAUTHORIZED);
+        .assert_status_ok();
     s.status(upload_auth(&token(&resumed)), &id(&first))
         .await
         .assert_status_ok();
+
+    // One more rotation: the oldest token dies, the two latest work.
+    let third = s.start("a.bin", CONTENT).await;
+    s.status(upload_auth(&token(&first)), &id(&first))
+        .await
+        .assert_status(StatusCode::UNAUTHORIZED);
+    s.chunk(upload_auth(&token(&first)), &id(&first), 1)
+        .await
+        .assert_status(StatusCode::UNAUTHORIZED);
+    for live in [&resumed, &third] {
+        s.status(upload_auth(&token(live)), &id(&first))
+            .await
+            .assert_status_ok();
+    }
+}
+
+#[sqlx::test(migrator = "squirrel_db::MIGRATOR")]
+async fn both_live_tokens_die_on_completion_and_on_revocation(pool: PgPool) {
+    let s = setup(&pool).await;
+    let done = s.start("done.bin", CONTENT).await;
+    let done_again = s.start("done.bin", CONTENT).await;
+    for index in 0..2 {
+        s.chunk(upload_auth(&token(&done_again)), &id(&done), index)
+            .await
+            .assert_status(StatusCode::NO_CONTENT);
+    }
+    s.instance
+        .browser()
+        .post(&format!("/api/uploads/{}/complete", id(&done)))
+        .add_header(AUTHORIZATION, s.bearer())
+        .await
+        .assert_status(StatusCode::CREATED);
+    for dead in [&done, &done_again] {
+        s.status(upload_auth(&token(dead)), &id(&done))
+            .await
+            .assert_status(StatusCode::UNAUTHORIZED);
+    }
+
+    let open = s.start("open.bin", b"still open").await;
+    let open_again = s.start("open.bin", b"still open").await;
+    for live in [&open, &open_again] {
+        s.status(upload_auth(&token(live)), &id(&open))
+            .await
+            .assert_status_ok();
+    }
+    let browser = s.instance.browser();
+    let me = common::login(&browser, "alice").await;
+    browser
+        .delete(&format!("/api/devices/{}", device_id(&s.phone)))
+        .add_header(common::CSRF, common::csrf(&me))
+        .await
+        .assert_status(StatusCode::NO_CONTENT);
+    for dead in [&open, &open_again] {
+        s.status(upload_auth(&token(dead)), &id(&open))
+            .await
+            .assert_status(StatusCode::UNAUTHORIZED);
+    }
 }
 
 #[sqlx::test(migrator = "squirrel_db::MIGRATOR")]
