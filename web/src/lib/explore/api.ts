@@ -1,12 +1,12 @@
 /** Photo search and Explore: requests and their wording. */
 import { api, errorMessage } from '#lib/api/client.ts';
-
-type Client = typeof api;
 import type { components } from '#lib/api/schema.d.ts';
 import type { FaceCrop } from '#lib/explore/faces.ts';
 import { filterQuery, type PhotoFilter } from '#lib/explore/filters.ts';
 import { retryDelay } from '#lib/files/search.ts';
 import type { AssetSummary, Outcome } from '#lib/photos/api.ts';
+
+type Client = typeof api;
 
 export type TagGroup = components['schemas']['TagGroupDto'];
 export type PlaceGroup = components['schemas']['PlaceGroupDto'];
@@ -91,6 +91,16 @@ export const listPlaces = (level: 'city' | 'country' = 'city'): Promise<Outcome<
 	call(api.GET('/api/places', { params: { query: { level } } }));
 
 export const listCameras = (): Promise<Outcome<CameraGroup[]>> => call(api.GET('/api/cameras'));
+
+export const getPerson = (id: string): Promise<Outcome<Person>> =>
+	call(api.GET('/api/people/{id}', { params: { path: { id } } }));
+
+/** A person filter's chip label: the name, "Hidden person" for a hidden unnamed one, else "Unnamed". */
+export function personChipLabel(person: Pick<Person, 'name' | 'hidden'> | null | undefined): string | null {
+	if (!person) return null;
+	if (person.name?.trim()) return person.name.trim();
+	return person.hidden ? 'Hidden person' : null;
+}
 
 export const listPeople = (includeHidden = false): Promise<Outcome<Person[]>> =>
 	call(api.GET('/api/people', { params: { query: { include_hidden: includeHidden } } }));
