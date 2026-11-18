@@ -1687,15 +1687,20 @@ export interface components {
              */
             parent_id?: string | null;
         };
-        /** @description Rename, hide or choose the cover. At least one field is required. */
+        /**
+         * @description Rename (or clear the name), hide or choose the cover. At least one change
+         *     is required.
+         */
         UpdatePersonRequest: {
+            /** @description `true` removes the name (not with `name`). */
+            clear_name?: boolean;
             /**
              * Format: uuid
              * @description One of this person's faces; `null` goes back to the best one.
              */
             cover_face_id?: string | null;
             hidden?: boolean | null;
-            /** @description 1–100 characters once trimmed; `null` clears the name. */
+            /** @description A new name, 1–100 characters once trimmed. */
             name?: string | null;
         };
         /** @description An upload session: send the missing chunks, then complete it. */
