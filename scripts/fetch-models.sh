@@ -71,7 +71,8 @@ while IFS='|' read -r group path url sha; do
 	fi
 	echo "fetch-models: ${path}" >&2
 	download="${TMP}/download"
-	curl --proto '=https' --tlsv1.2 -fsSL -o "${download}" "${url}"
+	curl --proto '=https' --tlsv1.2 -fsSL \
+		--connect-timeout 30 --retry 3 --retry-all-errors --max-time 1800 -o "${download}" "${url}"
 	if ! matches "${download}" "${sha}"; then
 		echo "fetch-models: ${path} does not match its pinned SHA-256 ${sha}" >&2
 		exit 1
