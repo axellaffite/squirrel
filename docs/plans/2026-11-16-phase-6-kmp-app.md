@@ -1972,9 +1972,13 @@ Server and web parts of Phase 6 (Tasks 1–13) are done; Milestones D–I are no
     `beginBackgroundTask`.
   - The pause rules (`pauseReason`, `DeviceState`) moved to `shared`, used by both platforms.
 - **Shared screens (Task 43):**
-  - Compose Multiplatform 1.12 has no native iOS text input. The fields keep Compose's input and
-    carry `ContentType.Username` / `ContentType.Password`. On the simulator the QuickType bar
-    offers no password key: the content types do not reach iOS without native input.
+  - Native iOS text input exists in Compose Multiplatform 1.12.2, per field and experimental:
+    `KeyboardOptions(platformImeOptions = PlatformImeOptions { usingNativeTextInput(true);
+    textContentType(…) })`. The username and password fields use it on iOS
+    (`credentialImeOptions`), with `UITextContentTypeUsername` / `…Password` and secure entry.
+    Android keeps its `ContentType` autofill hints. On the simulator the QuickType bar now shows
+    the Passwords key, and sign-in works with the native fields. An earlier note here said the
+    option did not exist: it was missed, not absent.
   - "Allow access" raises the system prompt; "Change selection" presents the limited picker;
     "Allow all photos" opens Settings (on the simulator, the Settings root, not the app's page).
   - Fix `b53dcae`: the photo library observer is registered only once access is granted.
@@ -2003,7 +2007,8 @@ Server and web parts of Phase 6 (Tasks 1–13) are done; Milestones D–I are no
 - **Verified on the iPhone 17 simulator (iOS 27), 2026-11-17**, against a throwaway server on
   127.0.0.1:8188 with database `squirrel_mobile_e2e_ios`:
   - XCTests: all 9 pass in one run, the end-to-end test included. K/N: 109 `shared` tests and 55 `ui` tests.
-  - Sign-in, and the session survives a relaunch. No password autofill (see above).
+  - Sign-in, and the session survives a relaunch. Password autofill: the Passwords key shows
+    once the fields use native input (see above).
   - No access, then limited access with 3 photos (backed up), then full access: 44, then 46
     photos backed up into `Photos/iPhone 17/<year>/`, including photos added with
     `simctl addmedia` while the app was open. Signing in again with the same name got the folder
@@ -2018,7 +2023,7 @@ Server and web parts of Phase 6 (Tasks 1–13) are done; Milestones D–I are no
   - The accessibility tree names every rail item, tile and button. VoiceOver itself, and its
     focus order, were not checked: the simulator has no VoiceOver.
 - **Still open:**
-  - password autofill (needs native text input in Compose, or an associated domain);
+  - autofill of a saved password on a device (the simulator has none saved);
   - VoiceOver focus order, on a device;
   - Task 45, on a physical iPhone signed with the user's Apple team: background transfers that
     outlive suspension, BG tasks, iCloud originals, HEIC and Live Photos.
