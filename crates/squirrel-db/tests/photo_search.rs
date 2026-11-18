@@ -8,11 +8,11 @@ use squirrel_db::photo_search::{self, PhotoQuery};
 use time::macros::datetime;
 use uuid::Uuid;
 
-const MODEL: &str = "openai-vit-b32-224";
+const MODEL: &str = "siglip2-vit-b16-224";
 
 /// A unit vector at `angle` radians in the plane of the first two axes.
 fn at(angle: f32) -> Vec<f32> {
-    let mut v = vec![0.0; 512];
+    let mut v = vec![0.0; 768];
     v[0] = angle.cos();
     v[1] = angle.sin();
     v

@@ -12,9 +12,9 @@ use squirrel_db::photo_filter::PhotoFilter;
 use squirrel_db::photo_search::{self, PhotoQuery};
 use uuid::Uuid;
 
-const MODEL: &str = "openai-vit-b32-224";
+const MODEL: &str = "siglip2-vit-b16-224";
 
-/// `count` photos of `owner` with random 512-d embeddings (one statement).
+/// `count` photos of `owner` with random 768-d embeddings (one statement).
 async fn library(pool: &PgPool, owner: Uuid, parent: Uuid, count: i64, salt: &str) {
     sqlx::query(
         "WITH blobs AS ( \
@@ -34,7 +34,7 @@ async fn library(pool: &PgPool, owner: Uuid, parent: Uuid, count: i64, salt: &st
                FROM nodes RETURNING sha256) \
          INSERT INTO clip_embeddings (sha256, model, embedding) \
          SELECT a.sha256, $5, (SELECT array_agg(random() - 0.5) \
-                                 FROM generate_series(1, 512) WHERE a.sha256 IS NOT NULL)::vector(512)::halfvec(512) \
+                                 FROM generate_series(1, 768) WHERE a.sha256 IS NOT NULL)::vector(768)::halfvec(768) \
            FROM assets a",
     )
     .bind(owner)
@@ -49,7 +49,7 @@ async fn library(pool: &PgPool, owner: Uuid, parent: Uuid, count: i64, salt: &st
 }
 
 fn query_vector(seed: u32) -> Vec<f32> {
-    let raw: Vec<f32> = (0..512u32)
+    let raw: Vec<f32> = (0..768u32)
         .map(|i| {
             ((i.wrapping_mul(2_654_435_761) ^ seed.wrapping_mul(40_503)) % 1000) as f32 / 1000.0
                 - 0.5
