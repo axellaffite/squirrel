@@ -11,8 +11,9 @@
 # (onnxruntime-{linux-x64,linux-aarch64,osx-arm64}-1.31.1.tgz); it must yield a
 # library with the SHA-256 below.
 #
-# Usage: scripts/fetch-onnxruntime.sh [dest]   (default target/onnxruntime)
-# The package is cached in target/onnxruntime-cache/ (or $SQUIRREL_ORT_CACHE).
+# Usage: scripts/fetch-onnxruntime.sh [dest]   (default .cache/squirrel-assets/onnxruntime)
+# The package is cached in .cache/squirrel-assets/onnxruntime-cache/ (or
+# $SQUIRREL_ORT_CACHE). Both stay out of target/ (gitignored .cache/).
 # Prints SQUIRREL_ORT_DYLIB=<dest>/lib/<library> on success.
 set -euo pipefail
 
@@ -30,8 +31,8 @@ case "$(uname -s)-$(uname -m)" in
 esac
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
-DEST="${1:-${ROOT}/target/onnxruntime}"
-CACHE="${SQUIRREL_ORT_CACHE:-${ROOT}/target/onnxruntime-cache}"
+DEST="${1:-${ROOT}/.cache/squirrel-assets/onnxruntime}"
+CACHE="${SQUIRREL_ORT_CACHE:-${ROOT}/.cache/squirrel-assets/onnxruntime-cache}"
 if [[ -e "${DEST}" && ! -f "${DEST}/${MARKER}" ]] && [[ -n "$(ls -A "${DEST}")" ]]; then
 	echo "fetch-onnxruntime: ${DEST} is not empty and was not made by this script" >&2
 	exit 1

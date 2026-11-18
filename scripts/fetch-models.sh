@@ -6,7 +6,7 @@
 # (crates/squirrel-ml/src/models.rs holds the same list; a test keeps them equal).
 #
 # Usage: scripts/fetch-models.sh [--without-faces] [--clip-only-image] [dest]
-# dest defaults to target/models; prints SQUIRREL_MODELS_DIR=<dest> on success.
+# dest defaults to .cache/squirrel-assets/models (gitignored, outside target/); prints SQUIRREL_MODELS_DIR=<dest> on success.
 # Files already present with the right hash are kept, so a re-run is cheap.
 set -euo pipefail
 
@@ -46,7 +46,7 @@ for arg in "$@"; do
 done
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
-DEST="${DEST:-${ROOT}/target/models}"
+DEST="${DEST:-${ROOT}/.cache/squirrel-assets/models}"
 if [[ -e "${DEST}" && ! -f "${DEST}/${MARKER}" ]] && [[ -n "$(ls -A "${DEST}")" ]]; then
 	echo "fetch-models: ${DEST} is not empty and was not made by this script" >&2
 	exit 1

@@ -1,7 +1,7 @@
 # Pinned models
 
 `scripts/fetch-models.sh [--without-faces] [--clip-only-image] [dest]` downloads these files from
-revision-pinned URLs into `dest` (default `target/models`; in production `<data_dir>/models` or
+revision-pinned URLs into `dest` (default `.cache/squirrel-assets/models`, gitignored; in production `<data_dir>/models` or
 `SQUIRREL_MODELS_DIR`) and checks each SHA-256 before moving it into place. The worker and the
 `ml-exec` child never download anything. They re-hash every file of a group before loading it and
 refuse a mismatch. `src/models.rs` (`PINNED`) holds the same list. A test keeps the script and the
