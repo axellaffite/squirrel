@@ -60,7 +60,7 @@ pub async fn run(ctx: &MediaContext, ml: &MlContext, job: JobContext) -> Result<
             .await
             .map_err(JobError::retry)?;
         if stored && !rows.is_empty() {
-            squirrel_jobs::enqueue(&mut tx, &jobs::cluster_faces(owner))
+            jobs::request_clustering(&mut tx, owner)
                 .await
                 .map_err(JobError::retry)?;
         }

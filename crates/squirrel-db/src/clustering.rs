@@ -94,23 +94,6 @@ pub async fn mark_waiting(
     Ok(())
 }
 
-/// `owner`'s unassigned automatic faces created at or after `since` (a
-/// clustering run compares them with the faces it went through).
-pub async fn unclustered_since(
-    conn: &mut PgConnection,
-    owner: Uuid,
-    since: OffsetDateTime,
-) -> Result<Vec<Uuid>, DbError> {
-    Ok(sqlx::query_scalar(
-        "SELECT id FROM faces WHERE owner_id = $1 AND person_id IS NULL \
-           AND assigned_by = 'auto' AND created_at >= $2",
-    )
-    .bind(owner)
-    .bind(since)
-    .fetch_all(conn)
-    .await?)
-}
-
 /// The `k` nearest faces of each of `faces` among `owner`'s faces, leaving
 /// out faces pinned to nobody. Exact scans: only this owner's rows are read.
 pub async fn neighbours(

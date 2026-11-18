@@ -95,6 +95,44 @@ pub fn cluster_faces(owner: Uuid) -> NewJob {
         .delay(cluster_delay())
 }
 
+/// Asks for a clustering run of `owner` in the caller's transaction (the one
+/// storing their faces), so that some run starts after it commits:
+/// - a queued run is held (row lock) until then, so it cannot start early and
+///   miss these faces;
+/// - while a run is going (it holds the key), a follow-up run is queued under
+///   `cluster_faces:<owner>:next`.
+pub async fn request_clustering(
+    conn: &mut sqlx::PgConnection,
+    owner: Uuid,
+) -> Result<(), sqlx::Error> {
+    let job = cluster_faces(owner);
+    for _ in 0..3 {
+        if squirrel_jobs::enqueue(conn, &job).await? {
+            return Ok(());
+        }
+        let status: Option<String> = sqlx::query_scalar(
+            "SELECT status FROM jobs WHERE dedupe_key = $1 AND status IN ('queued', 'running') \
+              FOR SHARE",
+        )
+        .bind(job.dedupe_key.as_deref())
+        .fetch_optional(&mut *conn)
+        .await?;
+        match status.as_deref() {
+            Some("queued") => return Ok(()),
+            Some(_) => {
+                let next = NewJob {
+                    dedupe_key: job.dedupe_key.as_ref().map(|key| format!("{key}:next")),
+                    ..job.clone()
+                };
+                squirrel_jobs::enqueue(conn, &next).await?;
+                return Ok(());
+            }
+            None => {} // finished meanwhile: the key is free again
+        }
+    }
+    Ok(())
+}
+
 /// How long new faces wait before they are clustered:
 /// `SQUIRREL_CLUSTER_DELAY_SECS`, default 10 minutes (the E2E server sets 1).
 pub fn cluster_delay() -> Duration {
