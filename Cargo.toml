@@ -17,6 +17,7 @@ base64 = "0.22"
 blurhash = { version = "0.2.3", default-features = false }
 fast_image_resize = { version = "6.1.0", features = ["image"] }
 clap = { version = "4", features = ["derive", "env"] }
+half = "2"
 http-range-header = "1.1"
 image = { version = "0.25.10", default-features = false, features = ["jpeg", "png", "gif", "webp", "tiff", "bmp"] }
 infer = "0.22"

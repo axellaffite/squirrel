@@ -5,6 +5,8 @@ edition.workspace = true
 rust-version.workspace = true
 
 [dependencies]
+half.workspace = true
+pgvector.workspace = true
 squirrel-core.workspace = true
 sqlx.workspace = true
 thiserror.workspace = true
