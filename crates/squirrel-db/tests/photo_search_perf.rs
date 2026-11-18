@@ -69,6 +69,7 @@ async fn measure(pool: &PgPool, owner: Uuid, label: &str) {
             embedding: &vector,
             // Random vectors sit near distance 1: keep everything, the worst case.
             max_distance: 2.0,
+            relative_cutoff: 2.0,
             filter: &filter,
         };
         let start = Instant::now();
@@ -113,6 +114,7 @@ async fn exact_search_latency(pool: PgPool) {
             model: MODEL,
             embedding: &vector,
             max_distance: 2.0,
+            relative_cutoff: 2.0,
             filter: &filter,
         },
     )

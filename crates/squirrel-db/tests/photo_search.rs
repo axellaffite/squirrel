@@ -48,6 +48,7 @@ async fn search(
             model: MODEL,
             embedding: &query,
             max_distance: max,
+            relative_cutoff: 2.0,
             filter,
         },
         offset,
@@ -161,4 +162,35 @@ async fn a_user_only_ever_finds_their_own_photos(pool: PgPool) {
     assert_eq!(search(&pool, bob.id, &all, 2.0, 0, 10).await, before);
     let (alice_names, more) = search(&pool, alice.id, &all, 2.0, 0, 10).await;
     assert!(more && !alice_names.iter().any(|n| n.starts_with("bob")));
+}
+
+#[sqlx::test(migrator = "squirrel_db::MIGRATOR")]
+async fn a_weak_tail_far_behind_the_best_hit_is_dropped(pool: PgPool) {
+    let alice = admin(&pool).await;
+    let photos = root(&pool, alice.id, "Photos").await.id;
+    let when = datetime!(2024-07-01 10:00);
+    // Distances 1 − cos(angle): 0, ≈ 0.02, ≈ 0.12.
+    for (name, angle) in [("best.jpg", 0.0), ("close.jpg", 0.2), ("tail.jpg", 0.5)] {
+        let id = photo(&pool, alice.id, photos, name, when).await;
+        embed(&pool, id, angle).await;
+    }
+    let vector = at(0.0);
+    let filter = PhotoFilter::default();
+    let page = photo_search::search(
+        &pool,
+        alice.id,
+        &PhotoQuery {
+            model: MODEL,
+            embedding: &vector,
+            max_distance: 0.5,
+            relative_cutoff: 0.06,
+            filter: &filter,
+        },
+        0,
+        10,
+    )
+    .await
+    .unwrap();
+    let names: Vec<&str> = page.items.iter().map(|h| h.summary.name.as_str()).collect();
+    assert_eq!(names, ["best.jpg", "close.jpg"]);
 }

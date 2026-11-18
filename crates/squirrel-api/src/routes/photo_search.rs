@@ -84,6 +84,7 @@ pub async fn search_photos(
             model: squirrel_ml::CLIP_MODEL_ID,
             embedding: &embedding,
             max_distance: squirrel_ml::clip::SEARCH_MAX_DISTANCE,
+            relative_cutoff: squirrel_ml::clip::SEARCH_RELATIVE_CUTOFF,
             filter: &filter,
         },
         offset,
