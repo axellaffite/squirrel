@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { tick } from 'svelte';
 	import Icon from '#lib/components/icons/Icon.svelte';
 	import type { IconName } from '#lib/components/icons/paths.ts';
 	import FaceAvatar from '#lib/components/photos/FaceAvatar.svelte';
@@ -17,6 +18,19 @@
 	let { filter, people, onChange }: Props = $props();
 
 	let picking = $state(false);
+	let bar: HTMLDivElement | undefined = $state();
+
+	/**
+	 * Removes a chip, then keeps the keyboard in place: on the next chip's clear button, else
+	 * the previous one's, else the Filter button.
+	 */
+	async function remove(index: number, without: PhotoFilter) {
+		onChange(without);
+		await tick();
+		const clears = bar?.querySelectorAll<HTMLButtonElement>('button.clear') ?? [];
+		const next = clears[index] ?? clears[index - 1] ?? bar?.querySelector<HTMLButtonElement>('button.open');
+		next?.focus();
+	}
 
 	const ICONS: Record<Exclude<ChipKind, 'person'>, IconName> = {
 		tag: 'tag',
@@ -30,13 +44,13 @@
 </script>
 
 <!-- MASTER "Filter chip": active chips are chosen segments with a clear button. -->
-<div class="bar" role="group" aria-label="Filters">
-	<Button variant="secondary" size="sm" onclick={() => (picking = true)} aria-haspopup="dialog">
+<div class="bar" role="group" aria-label="Filters" bind:this={bar}>
+	<Button variant="secondary" size="sm" class="open" onclick={() => (picking = true)} aria-haspopup="dialog">
 		<Icon name="sliders-horizontal" />Filter
 	</Button>
 	{#if list.length > 0}
 		<ul class="chips">
-			{#each list as chip (chip.kind)}
+			{#each list as chip, index (chip.kind)}
 				<li class="chip">
 					{#if chip.kind === 'person'}
 						<FaceAvatar face={filter.person ? person(filter.person)?.cover : null} />
@@ -44,7 +58,7 @@
 						<Icon name={ICONS[chip.kind]} />
 					{/if}
 					<span class="label">{chip.label}</span>
-					<button type="button" class="clear" aria-label={`Remove filter ${chip.label}`} title="Remove" onclick={() => onChange(chip.without)}>
+					<button type="button" class="clear" aria-label={`Remove filter ${chip.label}`} title="Remove" onclick={() => remove(index, chip.without)}>
 						<Icon name="x" />
 					</button>
 				</li>
@@ -68,7 +82,10 @@
 	}
 
 	.chips {
-		display: contents;
+		display: flex;
+		flex-wrap: wrap;
+		gap: var(--space-2);
+		min-width: 0;
 		margin: 0;
 		padding: 0;
 		list-style: none;
