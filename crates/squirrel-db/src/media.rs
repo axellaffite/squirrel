@@ -14,6 +14,7 @@ use time::{OffsetDateTime, PrimitiveDateTime};
 use crate::DbError;
 
 const MEDIA_COLUMNS: &str = "sha256, kind, metadata_state, thumbs_state, text_state, \
+     clip_state, faces_state, \
      thumbs_version, width, height, blurhash, exif_taken_at, exif_offset_min, latitude, \
      longitude, altitude, camera_make, camera_model, lens_model, exposure_time, f_number, iso, \
      focal_length_mm, is_screenshot, page_count, place_name, place_admin1, place_country, \
@@ -50,13 +51,13 @@ impl MediaState {
         }
     }
 
-    /// Initial states (metadata, thumbnails, text) of a new row of `kind`.
-    fn initial(kind: MediaKind) -> [Self; 3] {
+    /// Initial states (metadata, thumbnails, text, clip, faces) of a new row of `kind`.
+    fn initial(kind: MediaKind) -> [Self; 5] {
         use MediaState::{Pending, Unsupported};
         match kind {
-            MediaKind::Image => [Pending, Pending, Unsupported],
-            MediaKind::Pdf => [Unsupported, Pending, Pending],
-            MediaKind::Text => [Unsupported, Unsupported, Pending],
+            MediaKind::Image => [Pending, Pending, Unsupported, Pending, Pending],
+            MediaKind::Pdf => [Unsupported, Pending, Pending, Unsupported, Unsupported],
+            MediaKind::Text => [Unsupported, Unsupported, Pending, Unsupported, Unsupported],
         }
     }
 }
@@ -67,6 +68,10 @@ pub enum Step {
     Metadata,
     Thumbs,
     Text,
+    /// CLIP embedding and tags (Phase 5).
+    Clip,
+    /// Face detection (Phase 5).
+    Faces,
 }
 
 impl Step {
@@ -76,6 +81,8 @@ impl Step {
             Self::Metadata => "metadata_state",
             Self::Thumbs => "thumbs_state",
             Self::Text => "text_state",
+            Self::Clip => "clip_state",
+            Self::Faces => "faces_state",
         }
     }
 }
@@ -87,6 +94,8 @@ pub struct MediaRecord {
     metadata_state: String,
     thumbs_state: String,
     text_state: String,
+    clip_state: String,
+    faces_state: String,
     pub thumbs_version: i16,
     pub width: Option<i32>,
     pub height: Option<i32>,
@@ -134,11 +143,21 @@ impl MediaRecord {
         MediaState::parse(&self.text_state)
     }
 
+    pub fn clip_state(&self) -> MediaState {
+        MediaState::parse(&self.clip_state)
+    }
+
+    pub fn faces_state(&self) -> MediaState {
+        MediaState::parse(&self.faces_state)
+    }
+
     pub fn state(&self, step: Step) -> MediaState {
         match step {
             Step::Metadata => self.metadata_state(),
             Step::Thumbs => self.thumbs_state(),
             Step::Text => self.text_state(),
+            Step::Clip => self.clip_state(),
+            Step::Faces => self.faces_state(),
         }
     }
 }
@@ -151,16 +170,19 @@ pub async fn ensure(
     sha256: &str,
     kind: MediaKind,
 ) -> Result<MediaRecord, DbError> {
-    let [metadata, thumbs, text] = MediaState::initial(kind);
+    let [metadata, thumbs, text, clip, faces] = MediaState::initial(kind);
     sqlx::query(
-        "INSERT INTO media (sha256, kind, metadata_state, thumbs_state, text_state) \
-         VALUES ($1, $2, $3, $4, $5) ON CONFLICT (sha256) DO NOTHING",
+        "INSERT INTO media (sha256, kind, metadata_state, thumbs_state, text_state, \
+                            clip_state, faces_state) \
+         VALUES ($1, $2, $3, $4, $5, $6, $7) ON CONFLICT (sha256) DO NOTHING",
     )
     .bind(sha256)
     .bind(kind.as_str())
     .bind(metadata.as_str())
     .bind(thumbs.as_str())
     .bind(text.as_str())
+    .bind(clip.as_str())
+    .bind(faces.as_str())
     .execute(&mut *conn)
     .await?;
     lock(conn, sha256).await?.ok_or(DbError::NotFound)
