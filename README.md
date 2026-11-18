@@ -8,7 +8,8 @@ Design: `docs/plans/2026-11-13-squirrel-home-drive-design.md`.
 Requirements: Rust 1.94 (pinned by `rust-toolchain.toml`), Node 22 (`web/.nvmrc`), pnpm 10, Docker.
 
     docker compose -f deploy/docker-compose.dev.yml up -d --wait   # Postgres on localhost:55432
-    SQUIRREL_DATABASE_URL=postgres://squirrel:squirrel@localhost:55432/squirrel \
+    docker compose -f deploy/docker-compose.dev.yml exec postgres createdb -U squirrel squirrel_dev  # once
+    SQUIRREL_DATABASE_URL=postgres://squirrel:squirrel@localhost:55432/squirrel_dev \
     SQUIRREL_DATA_DIR="$PWD/target/dev-data" \
     SQUIRREL_COOKIE_SECURE=false cargo run -p squirrel -- serve     # http://localhost:8080
     cd web && nvm use && pnpm install && pnpm dev                    # http://localhost:5173
@@ -182,6 +183,10 @@ Administration:
 ## Tests
 
     cargo test --workspace                 # needs the dev Postgres (localhost:55432)
+
+`.cargo/config.toml` points `DATABASE_URL` at `squirrel_dev`: the database tests use it as the
+master for the temporary databases they create (set `DATABASE_URL` to use another one). Keep
+`squirrel_dev` for development only, never for data you care about.
     cd web && pnpm test:unit
     cd web && pnpm exec playwright install chromium && pnpm test:e2e
 
