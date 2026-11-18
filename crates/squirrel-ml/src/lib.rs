@@ -4,6 +4,7 @@
 
 pub mod client;
 pub mod clip;
+pub mod cluster;
 pub mod faces;
 pub mod input;
 pub mod models;

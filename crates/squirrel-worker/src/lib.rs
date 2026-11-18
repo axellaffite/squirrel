@@ -3,6 +3,7 @@
 
 pub mod backfill;
 pub mod clip_job;
+pub mod cluster_job;
 pub mod context;
 pub mod exec;
 pub mod face_backfill;
@@ -44,6 +45,8 @@ const FACES_TIMEOUT: Duration = Duration::from_secs(120);
 /// About 1 400 prompts in batches of 32 (≈ 30 s on a fast CPU, minutes on a
 /// mini PC).
 const LABEL_BANK_TIMEOUT: Duration = Duration::from_secs(20 * 60);
+/// SQL only: exact neighbour scans over one owner's faces.
+const CLUSTER_TIMEOUT: Duration = Duration::from_secs(5 * 60);
 /// PDF text runs in the sandbox too.
 const TEXT_TIMEOUT: Duration = Duration::from_secs(180);
 
@@ -134,6 +137,13 @@ fn register_ml(registry: &mut Registry, ctx: &Arc<MediaContext>) {
             jobs::FACE_BACKFILL,
             BACKFILL_TIMEOUT,
             |ctx, job| async move { face_backfill::run(&ctx, job).await },
+        );
+        register(
+            registry,
+            ctx,
+            jobs::CLUSTER_FACES,
+            CLUSTER_TIMEOUT,
+            |ctx, job| async move { cluster_job::run(&ctx, job).await },
         );
         let faces = ml.clone();
         register(
