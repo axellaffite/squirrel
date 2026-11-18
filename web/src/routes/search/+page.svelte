@@ -93,7 +93,7 @@
 <svelte:head><title>Search photos · Squirrel</title></svelte:head>
 
 <Page title="Search">
-	{#snippet description()}Describe what is in a photo, in English: “dog on the beach”, “birthday cake”, “snowy mountains”.{/snippet}
+	{#snippet description()}Describe what is in a photo, in any language: “dog on the beach”, “gâteau d’anniversaire”, “snowy mountains”.{/snippet}
 	{#snippet actions()}
 		<Button variant="secondary" href="/files/search"><Icon name="file-text" />Search files</Button>
 	{/snippet}
@@ -130,7 +130,7 @@
 		</section>
 	{:else if settled && !searcher.error}
 		<EmptyState icon="search" title={`No photos match “${searcher.query}”`}>
-			Try other words, or fewer filters. Photos are searched by what they show, in English.
+			Try other words, or fewer filters. Photos are searched by what they show.
 		</EmptyState>
 	{:else if searcher.loading}
 		<p class="muted">Searching…</p>

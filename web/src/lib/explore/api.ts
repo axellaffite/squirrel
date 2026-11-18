@@ -35,7 +35,7 @@ function code(error: unknown): string | null {
 	return typeof value === 'string' ? value : null;
 }
 
-/** One page of photos matching `query` (English) and `filter`, best first. */
+/** One page of photos matching `query` (any language) and `filter`, best first. */
 export async function searchPhotos(
 	query: string,
 	offset: number,

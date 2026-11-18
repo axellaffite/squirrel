@@ -1,6 +1,6 @@
 import { expect, test, type Page } from '@playwright/test';
 import { fixture, newUser, photoId, tiles, uploadPhotos, waitForTimeline } from './helpers/photos.ts';
-import { requireModels, waitForMl } from './helpers/ml.ts';
+import { pet, requireModels, waitForMl } from './helpers/ml.ts';
 
 // One fresh user's library, analysed once, then searched and explored.
 test.describe.configure({ mode: 'serial' });
@@ -16,9 +16,11 @@ test.beforeAll(async ({ browser }) => {
 		fixture('red-circle.jpg'),
 		fixture('blue-square.jpg'),
 		fixture('green-triangle.jpg'),
-		fixture('Screenshot_2024-07-15-10-00-00.png')
+		fixture('Screenshot_2024-07-15-10-00-00.png'),
+		pet('dog-a'),
+		pet('cat-a')
 	);
-	await waitForTimeline(page, 4);
+	await waitForTimeline(page, 6);
 	await waitForMl(page);
 });
 
@@ -33,6 +35,19 @@ test('a text search finds the photo that shows it, best match first', async () =
 	await expect(tiles(page).first()).toBeVisible({ timeout: 60_000 });
 	await expect(tiles(page).first()).toHaveAttribute('data-id', circle);
 	await expect(page.getByText(/^\d+( or more)? photos?$/)).toBeAttached();
+});
+
+test('search is multilingual and a dog query leaves the cat out', async () => {
+	await requireModels(page, 'clip');
+	const circle = await photoId(page, 'red-circle.jpg');
+	await page.goto('/search?q=cercle%20rouge');
+	await expect(tiles(page).first()).toHaveAttribute('data-id', circle, { timeout: 60_000 });
+	const dog = await photoId(page, 'dog-a.jpg');
+	const cat = await photoId(page, 'cat-a.jpg');
+	await page.goto('/search?q=chien');
+	await expect(tiles(page).first()).toHaveAttribute('data-id', dog, { timeout: 60_000 });
+	await expect(page.getByText(/^\d+( or more)? photos?$/)).toBeAttached();
+	await expect(page.locator(`[data-tile][data-id="${cat}"]`)).toHaveCount(0);
 });
 
 test('a filter chip narrows the search', async () => {
