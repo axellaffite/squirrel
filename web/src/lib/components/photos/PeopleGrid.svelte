@@ -8,20 +8,32 @@
 		people: readonly Person[];
 		/** Accessible name of the list. */
 		label?: string;
+		/** Selection mode: people are toggle buttons instead of links. */
+		selecting?: boolean;
+		selected?: ReadonlySet<string>;
+		onToggle?: (id: string) => void;
 	}
 
-	let { people, label = 'People' }: Props = $props();
+	let { people, label = 'People', selecting = false, selected = new Set(), onToggle }: Props = $props();
 </script>
+
+{#snippet body(person: Person)}
+	<FaceAvatar face={person.cover} size="lg" />
+	<span class="name" class:unnamed={!person.name}>{personLabel(person.name)}</span>
+	<span class="count tabular">{photoCount(person.face_count)}{person.hidden ? ' · hidden' : ''}</span>
+{/snippet}
 
 <!-- MASTER "People grid": auto-fill of --person-min, 3 columns on phones; avatar, name, count. -->
 <ul class="grid" aria-label={label}>
 	{#each people as person (person.id)}
 		<li>
-			<a class="person" href={`/explore/people/${person.id}`}>
-				<FaceAvatar face={person.cover} size="lg" />
-				<span class="name" class:unnamed={!person.name}>{personLabel(person.name)}</span>
-				<span class="count tabular">{photoCount(person.face_count)}</span>
-			</a>
+			{#if selecting}
+				<button type="button" class="person" aria-pressed={selected.has(person.id)} onclick={() => onToggle?.(person.id)}>
+					{@render body(person)}
+				</button>
+			{:else}
+				<a class="person" href={`/explore/people/${person.id}`}>{@render body(person)}</a>
+			{/if}
 		</li>
 	{/each}
 </ul>
@@ -44,6 +56,11 @@
 	}
 
 	.person {
+		width: 100%;
+		border: 0;
+		background: transparent;
+		font: inherit;
+		cursor: pointer;
 		display: grid;
 		justify-items: center;
 		gap: var(--space-1);
@@ -59,6 +76,15 @@
 
 	.person :global(.avatar) {
 		margin-bottom: var(--space-1);
+	}
+
+	/* Selected: the avatar takes the selection ring. */
+	.person[aria-pressed='true'] :global(.avatar) {
+		box-shadow: var(--select-ring);
+	}
+
+	.person[aria-pressed='true'] {
+		background: var(--accent-soft);
 	}
 
 	.name {

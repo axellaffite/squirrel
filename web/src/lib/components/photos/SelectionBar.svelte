@@ -7,14 +7,16 @@
 		/** The page's actions on the selection (small buttons). */
 		children: Snippet;
 		onClear: () => void;
+		/** What is selected, for assistive tech. */
+		label?: string;
 	}
 
-	let { count, children, onClear }: Props = $props();
+	let { count, children, onClear, label = 'Selected photos' }: Props = $props();
 </script>
 
 <!-- Floats above the phone rail; from 1024 px at the top of the panel. -->
 <div class="dock">
-	<div class="bar" role="toolbar" aria-label="Selected photos">
+	<div class="bar" role="toolbar" aria-label={label}>
 		<p class="count tabular" aria-live="polite">{count} selected</p>
 		{@render children()}
 		<IconButton icon="x" label="Clear the selection" tooltip="Clear" onclick={onClear} />
