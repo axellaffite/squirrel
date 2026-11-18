@@ -325,7 +325,14 @@ async fn start_ml(
     data_dir: &Path,
     pool: &PgPool,
 ) -> anyhow::Result<Option<Arc<squirrel_worker::context::MlContext>>> {
-    let settings = MlSettings {
+    let settings = ml_settings(options, data_dir);
+    crate::ml_start::start(settings, pool, &worker_host(), ml_wanted(options)).await
+}
+
+/// Where the models and ONNX Runtime are, and how inference runs (shared by
+/// the worker and the server's text encoder).
+pub fn ml_settings(options: &WorkerOptions, data_dir: &Path) -> MlSettings {
+    MlSettings {
         models_dir: options
             .models_dir
             .clone()
@@ -335,8 +342,7 @@ async fn start_ml(
             .ml_threads
             .map_or_else(squirrel_ml::runtime::default_threads, usize::from),
         mode: options.ml_exec,
-    };
-    crate::ml_start::start(settings, pool, &worker_host(), ml_wanted(options)).await
+    }
 }
 
 /// Every kind that needs models, whatever is installed.

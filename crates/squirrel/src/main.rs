@@ -263,7 +263,10 @@ async fn serve(args: ServeArgs) -> anyhow::Result<()> {
         trusted_proxies: args.trusted_proxies.clone(),
         ..ApiConfig::default()
     };
-    let state = AppState::new(pool.clone(), storage.clone(), config);
+    let (text_encoder, models_installed) =
+        ml::server_ml(&worker::ml_settings(&args.worker_options, &args.data_dir));
+    let state = AppState::new(pool.clone(), storage.clone(), config)
+        .with_ml(text_encoder, models_installed);
     let app = squirrel_api::router(state.clone()).layer(TraceLayer::new_for_http());
 
     // Precompute the timing-equalizer hash so the first unknown-user login isn't slower.

@@ -8,6 +8,7 @@ use std::time::Duration;
 
 use anyhow::Context;
 use clap::ValueEnum;
+use squirrel_api::ModelsInstalled;
 use squirrel_ml::models::{ModelDir, ModelGroup};
 use squirrel_ml::serve::{Engine, EngineConfig};
 use squirrel_worker::context::MlContext;
@@ -164,6 +165,49 @@ fn backend(
             MlBackend::InProcess(Arc::new(std::sync::Mutex::new(engine)))
         }
     })
+}
+
+/// The server's view of ML: photo search's text encoder (when the text tower
+/// and ONNX Runtime are installed; its child starts on the first search) and
+/// which groups are installed (media status). Never fails the server: a
+/// problem only turns text search off, logged.
+pub fn server_ml(
+    settings: &MlSettings,
+) -> (Option<squirrel_api::ml::TextEncoder>, ModelsInstalled) {
+    let models = ModelDir::new(&settings.models_dir);
+    let installed = ModelsInstalled {
+        clip: models.installed(ModelGroup::ClipImage),
+        faces: models.installed(ModelGroup::Faces),
+    };
+    if !models.installed(ModelGroup::ClipText) {
+        tracing::info!("photo search is off: the CLIP text model is not installed");
+        return (None, installed);
+    }
+    let encoder = ort_dylib(settings.ort_dylib.as_deref())
+        .map_err(fail(Unavailable::NoRuntime))
+        .and_then(|dylib| {
+            let mut backend = backend(
+                settings,
+                &[ModelGroup::ClipText],
+                &models,
+                &dylib,
+                squirrel_api::ml::TEXT_IDLE,
+            )?;
+            if let MlBackend::Subprocess(config) = &mut backend {
+                config.request_timeout = squirrel_api::ml::TEXT_REQUEST_TIMEOUT;
+            }
+            Ok(backend)
+        });
+    match encoder {
+        Ok(backend) => (
+            Some(squirrel_api::ml::TextEncoder::new(MlClient::new(backend))),
+            installed,
+        ),
+        Err(err) => {
+            tracing::error!(error = %format!("{err:#}"), "photo search is off");
+            (None, installed)
+        }
+    }
 }
 
 /// The ONNX Runtime library as an absolute path, required once a model group

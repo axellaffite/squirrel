@@ -13,6 +13,7 @@ mod extract;
 mod files_dto;
 mod input;
 pub mod maintenance;
+pub mod ml;
 mod photos_dto;
 mod rate_limit;
 mod routes;
@@ -29,7 +30,7 @@ pub use client_ip::{TrustedProxies, TrustedProxiesError};
 pub use downloads::DownloadLimits;
 pub use error::{ApiError, ErrorBody};
 pub use setup_token::SetupToken;
-pub use state::{ApiConfig, AppState, FreeSpace, RateLimit};
+pub use state::{ApiConfig, AppState, FreeSpace, ModelsInstalled, RateLimit};
 pub use upload_runtime::{
     ChunkGuard, CompletionGuard, Slot, Slots, UploadLimits, UploadLocks, UploadRuntime, UserRate,
 };
