@@ -1509,6 +1509,7 @@ export interface components {
             country_code: string;
             /** @description The newest photo taken there. */
             cover: components["schemas"]["AssetSummary"];
+            location?: null | components["schemas"]["LocationDto"];
             /** @description `null` at country level, or for a place without a region. */
             region?: string | null;
         };

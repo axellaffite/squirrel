@@ -5770,6 +5770,17 @@
             "$ref": "#/components/schemas/AssetSummary",
             "description": "The newest photo taken there."
           },
+          "location": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/LocationDto",
+                "description": "Where the cover photo was taken, for a locator dot."
+              }
+            ]
+          },
           "region": {
             "type": [
               "string",

@@ -3,7 +3,7 @@
 use serde::{Deserialize, Serialize};
 use utoipa::{IntoParams, ToSchema};
 
-use crate::photos_dto::AssetSummary;
+use crate::photos_dto::{AssetSummary, LocationDto};
 
 /// A tag of the caller's photos.
 #[derive(Debug, Serialize, ToSchema)]
@@ -44,6 +44,8 @@ pub struct PlaceGroupDto {
     pub count: i64,
     /// The newest photo taken there.
     pub cover: AssetSummary,
+    /// Where the cover photo was taken, for a locator dot.
+    pub location: Option<LocationDto>,
 }
 
 /// A camera the caller's photos were taken with.
