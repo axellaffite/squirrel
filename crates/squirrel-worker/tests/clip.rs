@@ -407,7 +407,11 @@ async fn the_label_bank_is_computed_once(pool: PgPool) {
     let bank = squirrel_db::clip::label_embeddings(&pool, CLIP_MODEL_ID, LABELS_VERSION)
         .await
         .unwrap();
-    assert_eq!(bank.len(), squirrel_ml::clip::labels::bank().len());
+    assert_eq!(
+        bank.len(),
+        squirrel_ml::clip::labels::bank().len() + 1,
+        "and the background"
+    );
     assert!(
         !label_bank::ensure(&pool, &ml.client, CLIP_MODEL_ID)
             .await

@@ -1,15 +1,18 @@
-# Squirrel label bank, version 1 (LABELS_VERSION in src/clip/labels.rs).
-# slug<TAB>English class names separated by |. Each name is put in every prompt
-# template (src/clip/templates.rs); the label's embedding is their average.
+# Squirrel label bank, version 2 (LABELS_VERSION in src/clip/labels.rs).
+# slug<TAB>English class names separated by |[<TAB>minimum cosine]. Every name
+# goes through every prompt template (src/clip/templates.rs); the label's
+# embedding is their average. One label per concept: near-synonyms are names
+# of one label, not labels competing with each other. The optional third
+# column overrides the model's default cosine threshold for that label only.
+# "background" is reserved (the generic prompts every label must beat).
 # Changing anything here means a new file and a new LABELS_VERSION.
-beach	beach|sandy beach
-sea	sea|ocean
+beach	beach|sea|ocean|seaside
 lake	lake
 river	river
 waterfall	waterfall
 mountain	mountain|mountains
 snow	snow|snowy landscape
-forest	forest|woods
+forest	forest|woods|trees
 field	field|meadow
 desert	desert
 island	island
@@ -21,9 +24,7 @@ countryside	countryside|farmland
 garden	garden
 park	park
 flowers	flowers|flower
-tree	tree
 sunset	sunset|sunrise
-night_sky	night sky|starry sky
 moon	moon
 rainbow	rainbow
 clouds	cloudy sky|clouds
@@ -31,7 +32,7 @@ fog	fog|mist
 rain	rain
 storm	storm|lightning
 city	city|cityscape
-street	street
+street	street|road|highway
 skyscraper	skyscraper
 bridge	bridge
 castle	castle
@@ -46,7 +47,7 @@ village	village
 house	house
 apartment	apartment interior|living room
 kitchen	kitchen
-bedroom	bedroom
+bedroom	bedroom|bed
 bathroom	bathroom
 office	office
 classroom	classroom
@@ -64,17 +65,14 @@ airport	airport
 train_station	train station
 amusement_park	amusement park|roller coaster
 playground	playground
-swimming_pool	swimming pool
+swimming_pool	swimming pool|swimmer|swimming
 campsite	campsite|tent
 ski	skiing|ski slope
 hiking	hiking|hiker on a trail
 cycling	cycling|cyclist
 running	running|runner
-swimming	swimming|swimmer
 surfing	surfing|surfer
-sailing	sailing|sailboat
-boat	boat
-ship	ship|cruise ship
+boat	boat|ship|sailboat|sailing
 car	car
 motorcycle	motorcycle
 bicycle	bicycle|bike
@@ -108,20 +106,16 @@ zoo	zoo
 aquarium	aquarium
 baby	baby|newborn
 child	child|kid
-group	group of people|crowd
+group	group of people|crowd|family photo
 couple	couple
-selfie	selfie
-portrait	portrait
-family	family photo
+portrait	portrait|selfie
 wedding	wedding|bride and groom
 birthday	birthday party
-birthday_cake	birthday cake
 christmas	christmas|christmas tree
 halloween	halloween|carved pumpkin
 fireworks	fireworks
 party	party|celebration
 graduation	graduation ceremony
-sport	sports game|sport
 football	football match|soccer
 basketball	basketball
 tennis	tennis
@@ -134,8 +128,7 @@ salad	salad
 sushi	sushi
 cheese	cheese
 bread	bread|baguette
-cake	cake|pastry
-dessert	dessert|ice cream
+cake	cake|birthday cake|dessert|pastry|ice cream
 fruit	fruit
 vegetables	vegetables
 breakfast	breakfast
@@ -145,10 +138,9 @@ wine	wine|glass of wine
 beer	beer
 cocktail	cocktail
 picnic	picnic
-document	document|paper document
+document	document|paper document|handwritten note|text
 receipt	receipt
 screenshot	screenshot|phone screenshot
-text	text|handwritten note
 book	book
 map	map
 ticket	ticket
@@ -160,15 +152,12 @@ camera	camera
 toy	toy|toys
 lego	lego bricks
 game	board game|video game
-painting	painting|artwork
-drawing	drawing|sketch
+art	painting|drawing|artwork|sketch|street art|graffiti
 sculpture	sculpture
-graffiti	graffiti|street art
 musical_instrument	musical instrument
 guitar	guitar
 piano	piano
 furniture	furniture|sofa
-bed	bed
 table	table|dining table
 window	window
 door	door
@@ -185,7 +174,6 @@ umbrella	umbrella
 flag	flag
 sign	sign|road sign
 car_interior	car interior|dashboard
-road	road|highway
 parking	parking lot
 construction	construction site
 tools	tools|workshop
@@ -200,7 +188,6 @@ underwater	underwater|scuba diving
 aerial	aerial view|drone photo
 macro	macro photo|close-up
 black_and_white	black and white photo
-night	night|night scene
-lights	city lights|neon lights
+night	night|night sky|starry sky|city lights at night|neon lights
 candle	candle
 fire	fire|campfire

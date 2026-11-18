@@ -117,7 +117,7 @@ async fn ensure_label_bank(settings: &MlSettings, pool: &PgPool) -> anyhow::Resu
         squirrel_ml::clip::labels::LABELS_VERSION,
     )
     .await?;
-    if stored.len() == labels.len() {
+    if stored.len() == labels.len() + 1 {
         return Ok(());
     }
     let text_models = models.clone();
