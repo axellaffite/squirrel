@@ -46,6 +46,9 @@ describe('face crops', () => {
 		expect(cropSource(face, 112)).toBe('/api/files/p/thumbnail?size=preview&v=2');
 		expect(cropSource({ ...face, box: { ...face.box, height: 0.05 } }, 40)).toBe('/api/files/p/thumbnail?size=preview&v=2');
 		expect(cropSource({ ...face, thumbnail_version: null }, 40)).toBeNull();
+		// A 4:1 panorama's thumb is 1080 × 270: 0.6 × 270 = 162 px covers 64 at 2× but not 112.
+		expect(cropSource(face, 64, 4)).toBe('/api/files/p/thumbnail?size=thumb&v=2');
+		expect(cropSource(face, 100, 4)).toBe('/api/files/p/thumbnail?size=preview&v=2');
 	});
 
 	it('names unnamed people', () => {

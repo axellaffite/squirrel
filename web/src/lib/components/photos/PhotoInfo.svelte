@@ -80,7 +80,7 @@
 				{#each people as person (person.id)}
 					<li>
 						<a class="person" href={photosHref({ person: person.id })}>
-							<FaceAvatar face={person.face} />
+							<FaceAvatar face={person.face} photoAspect={asset.width && asset.height ? asset.width / asset.height : null} />
 							<span class:unnamed={!person.name}>{personLabel(person.name)}</span>
 						</a>
 					</li>
