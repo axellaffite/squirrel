@@ -196,6 +196,20 @@ impl ModelDir {
         })
     }
 
+    /// Opens the pinned model file at `relative`, checks its size and streams
+    /// its SHA-256 from the open descriptor, then keeps the descriptor open
+    /// for [`VerifiedFile::load_path`]: the model is never held in memory
+    /// twice (hashed buffer + ONNX Runtime's copy).
+    pub fn open_verified(&self, relative: &str) -> Result<VerifiedFile, ModelError> {
+        self.open_verified_as(pinned(relative))
+    }
+
+    fn open_verified_as(&self, pinned: &PinnedFile) -> Result<VerifiedFile, ModelError> {
+        let path = self.file(pinned.path);
+        let file = self.check_file(pinned)?;
+        Ok(VerifiedFile { file, path })
+    }
+
     /// Reads the pinned file at `relative` into memory and checks its size
     /// and SHA-256 there: what is loaded is exactly what was hashed (no
     /// window for the file to change in between).
@@ -244,6 +258,11 @@ impl ModelDir {
     }
 
     fn verify_file(&self, pinned: &PinnedFile) -> Result<(), ModelError> {
+        self.check_file(pinned).map(drop)
+    }
+
+    /// The pinned file, opened, its size and streamed SHA-256 checked.
+    fn check_file(&self, pinned: &PinnedFile) -> Result<File, ModelError> {
         let path = self.file(pinned.path);
         let io = |source| ModelError::Io {
             path: path.clone(),
@@ -272,7 +291,40 @@ impl ModelDir {
                 actual,
             });
         }
-        Ok(())
+        Ok(file)
+    }
+}
+
+/// A model file whose SHA-256 was checked through the descriptor it holds.
+#[derive(Debug)]
+pub struct VerifiedFile {
+    file: File,
+    path: PathBuf,
+}
+
+impl VerifiedFile {
+    /// The path to load from while `self` is alive. On Linux it is
+    /// `/proc/self/fd/<fd>`: opening it reaches the very inode that was
+    /// hashed, even if the path was renamed or replaced since. A file
+    /// rewritten in place in between would still be loaded: the models
+    /// directory must be read-only to the service user (README). Elsewhere
+    /// (macOS, development only) it is the file's path.
+    pub fn load_path(&self) -> PathBuf {
+        #[cfg(target_os = "linux")]
+        {
+            use std::os::fd::AsRawFd;
+            PathBuf::from(format!("/proc/self/fd/{}", self.file.as_raw_fd()))
+        }
+        #[cfg(not(target_os = "linux"))]
+        {
+            let _ = &self.file;
+            self.path.clone()
+        }
+    }
+
+    /// The file's own path (for messages).
+    pub fn path(&self) -> &Path {
+        &self.path
     }
 }
 
@@ -370,6 +422,24 @@ mod tests {
             .read_verified_as(&TEST_FILES[0])
             .unwrap_err();
         assert!(matches!(err, ModelError::Missing { .. }), "{err}");
+    }
+
+    #[test]
+    fn open_verified_keeps_the_hashed_file_open_for_loading() {
+        let (_tmp, dir) = dir_with(b"hello");
+        let verified = dir.open_verified_as(&TEST_FILES[0]).unwrap();
+        assert_eq!(std::fs::read(verified.load_path()).unwrap(), b"hello");
+        assert_eq!(verified.path(), dir.file("faces/a.onnx"));
+        #[cfg(target_os = "linux")]
+        {
+            // The hashed inode stays reachable after the path is replaced.
+            std::fs::remove_file(verified.path()).unwrap();
+            std::fs::write(verified.path(), b"jello").unwrap();
+            assert_eq!(std::fs::read(verified.load_path()).unwrap(), b"hello");
+        }
+        let (_tmp, dir) = dir_with(b"jello");
+        let err = dir.open_verified_as(&TEST_FILES[0]).unwrap_err();
+        assert!(matches!(err, ModelError::Hash { .. }), "{err}");
     }
 
     #[test]

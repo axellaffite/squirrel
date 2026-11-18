@@ -45,9 +45,8 @@ impl ClipImage {
         };
         let raw = models.read_verified(PREPROCESS_CFG)?;
         let cfg = PreprocessCfg::parse(&raw).map_err(|err| invalid(err.to_string()))?;
-        let model = models.read_verified(IMAGE_MODEL)?;
         Ok(Self {
-            session: runtime::session_from_memory(&models.file(IMAGE_MODEL), &model, threads)?,
+            session: runtime::session(&models.open_verified(IMAGE_MODEL)?, threads)?,
             cfg,
         })
     }
