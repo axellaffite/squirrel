@@ -3,7 +3,9 @@
 use axum::Json;
 use axum::extract::State;
 use axum::http::StatusCode;
+use squirrel_db::DbError;
 use squirrel_db::trash::{self, TrashCursor};
+use squirrel_ml::FACE_MODEL_ID;
 use uuid::Uuid;
 
 use crate::cursor;
@@ -69,8 +71,16 @@ pub async fn restore(
     caller: Caller,
     ApiPath(id): ApiPath<Uuid>,
 ) -> Result<Json<NodeDto>, ApiError> {
-    let node = trash::restore(&state.pool, caller.user.id, id).await?;
-    Ok(Json((&node).into()))
+    let mut tx = state.pool.begin().await.map_err(DbError::from)?;
+    let restored = trash::restore_in(&mut tx, caller.user.id, id, FACE_MODEL_ID).await?;
+    // Photos trashed while their blob was analysed have no scan for this owner.
+    for sha in &restored.faces_due {
+        squirrel_jobs::enqueue(&mut tx, &squirrel_jobs::kinds::faces(sha, false))
+            .await
+            .map_err(DbError::from)?;
+    }
+    tx.commit().await.map_err(DbError::from)?;
+    Ok(Json((&restored.node).into()))
 }
 
 #[utoipa::path(delete, path = "/api/trash/{id}", security(("session_cookie" = [], "csrf_token" = [])), tag = "trash",

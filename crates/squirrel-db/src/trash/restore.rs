@@ -4,6 +4,7 @@ use uuid::Uuid;
 
 use super::find_entry;
 use crate::DbError;
+use crate::faces;
 use crate::nodes::{self, NodeRecord, RESTORE_FALLBACK_ROOT};
 use crate::quota::{self, Pending};
 
@@ -13,10 +14,34 @@ const FALLBACK_NAME: &str = "Restored item";
 /// Restores an entry with its whole batch: back into its folder if that is
 /// live, else into `Files/`; a clashing name becomes "name (n)". The batch
 /// must fit the quota.
+/// Its own transaction, ignoring `faces_due` (the API uses [`restore_in`]).
 pub async fn restore(pool: &PgPool, owner_id: Uuid, id: Uuid) -> Result<NodeRecord, DbError> {
     let mut tx = pool.begin().await?;
-    let quota_bytes = quota::lock_owner(&mut tx, owner_id).await?;
-    let entry = find_entry(&mut tx, owner_id, id)
+    let restored = restore_in(&mut tx, owner_id, id, "").await?;
+    tx.commit().await?;
+    Ok(restored.node)
+}
+
+/// A restored trash entry.
+#[derive(Debug)]
+pub struct Restored {
+    pub node: NodeRecord,
+    /// Rendered photos of the batch that the owner (faces on) has no scan of
+    /// by the face model: the caller queues `faces` for them in the same
+    /// transaction, since the thumbnails step will not run again.
+    pub faces_due: Vec<String>,
+}
+
+/// [`restore`] in the caller's transaction. `face_model`: the face model
+/// whose scans count (`faces_due` lists the photos without one).
+pub async fn restore_in(
+    tx: &mut PgConnection,
+    owner_id: Uuid,
+    id: Uuid,
+    face_model: &str,
+) -> Result<Restored, DbError> {
+    let quota_bytes = quota::lock_owner(&mut *tx, owner_id).await?;
+    let entry = find_entry(&mut *tx, owner_id, id)
         .await?
         .ok_or(DbError::NotFound)?;
     let batch_bytes: i64 = sqlx::query_scalar(
@@ -27,11 +52,19 @@ pub async fn restore(pool: &PgPool, owner_id: Uuid, id: Uuid) -> Result<NodeReco
     .bind(id)
     .fetch_one(&mut *tx)
     .await?;
-    quota::ensure_room(&mut tx, owner_id, quota_bytes, batch_bytes, Pending::Ignore).await?;
+    quota::ensure_room(
+        &mut *tx,
+        owner_id,
+        quota_bytes,
+        batch_bytes,
+        Pending::Ignore,
+    )
+    .await?;
+    let faces_due = faces::unscanned_in_batch(&mut *tx, owner_id, id, face_model).await?;
 
-    let parent_id = restore_target(&mut tx, owner_id, entry.parent_id).await?;
+    let parent_id = restore_target(&mut *tx, owner_id, entry.parent_id).await?;
     let stored = stored_name(entry.id, &entry.name);
-    let name = nodes::free_name(&mut tx, owner_id, parent_id, &stored).await?;
+    let name = nodes::free_name(&mut *tx, owner_id, parent_id, &stored).await?;
     sqlx::query(
         "UPDATE nodes SET deleted_at = NULL, trash_root = NULL, \
            parent_id = CASE WHEN id = $2 THEN $3 ELSE parent_id END, \
@@ -47,8 +80,7 @@ pub async fn restore(pool: &PgPool, owner_id: Uuid, id: Uuid) -> Result<NodeReco
     let node = nodes::find_live(&mut *tx, owner_id, id)
         .await?
         .ok_or(DbError::NotFound)?;
-    tx.commit().await?;
-    Ok(node)
+    Ok(Restored { node, faces_due })
 }
 
 /// The original folder if it is still live, else the owner's `Files/` root.

@@ -249,3 +249,42 @@ async fn a_scan_of_a_photo_deleted_meanwhile_is_not_stored(pool: PgPool) {
         "Bob still has his copy"
     );
 }
+
+async fn restore_due(pool: &PgPool, owner: Uuid, node: Uuid) -> Vec<String> {
+    let mut tx = pool.begin().await.unwrap();
+    let restored = squirrel_db::trash::restore_in(&mut tx, owner, node, MODEL)
+        .await
+        .unwrap();
+    tx.commit().await.unwrap();
+    assert_eq!(restored.node.id, node);
+    restored.faces_due
+}
+
+#[sqlx::test(migrator = "squirrel_db::MIGRATOR")]
+async fn a_photo_restored_without_a_scan_is_due_for_faces(pool: PgPool) {
+    let t = shared_blob(&pool).await;
+    // Trashed while the blob was analysed: Alice's copy got no scan.
+    raw_trash(&pool, t.alice_node).await;
+    assert_eq!(
+        restore_due(&pool, t.alice, t.alice_node).await,
+        vec![t.sha.clone()]
+    );
+
+    faces::store_scan(&pool, t.alice, &t.sha, MODEL, &[])
+        .await
+        .unwrap();
+    raw_trash(&pool, t.alice_node).await;
+    assert!(
+        restore_due(&pool, t.alice, t.alice_node).await.is_empty(),
+        "scanned already"
+    );
+
+    ml_settings::set_faces_enabled(&pool, t.alice, false)
+        .await
+        .unwrap();
+    raw_trash(&pool, t.alice_node).await;
+    assert!(
+        restore_due(&pool, t.alice, t.alice_node).await.is_empty(),
+        "faces off"
+    );
+}
