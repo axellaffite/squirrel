@@ -19,9 +19,11 @@ pub use squirrel_jobs::kinds::{CLUSTER_FACES, FACE_BACKFILL, FACES, faces};
 /// Encodes the label bank's prompts with the CLIP text tower.
 pub const LABEL_BANK: &str = "label_bank";
 
-/// Kinds that run model inference: they share the worker's ML slots
-/// (`--ml-concurrency`). Clustering and face backfill are SQL work.
-pub const ML_KINDS: [&str; 3] = [CLIP_EMBED, FACES, LABEL_BANK];
+/// Background ML kinds: they share the worker's ML slot (`--ml-concurrency`),
+/// so the other slots always stay free for fresh uploads. Model inference,
+/// and clustering (heavy SQL: exact neighbour scans). Face backfill only
+/// queues jobs.
+pub const ML_KINDS: [&str; 4] = [CLIP_EMBED, FACES, LABEL_BANK, CLUSTER_FACES];
 
 /// Every kind this crate can register, whether or not it is registered now.
 pub const KNOWN_KINDS: [&str; 11] = [
@@ -159,6 +161,12 @@ pub fn follow_ups(media: &MediaRecord, background: bool) -> Vec<NewJob> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn clustering_shares_the_ml_slot() {
+        assert!(ML_KINDS.contains(&CLUSTER_FACES));
+        assert!(!ML_KINDS.contains(&FACE_BACKFILL));
+    }
 
     #[test]
     fn background_work_is_lowered() {
