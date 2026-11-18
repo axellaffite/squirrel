@@ -185,6 +185,25 @@ jobs:
       # The documents scenario checks PDF thumbnails and text (it skips them without pdfium).
       - name: Fetch pdfium
         run: scripts/fetch-pdfium.sh && echo "SQUIRREL_PDFIUM_DIR=$PWD/target/pdfium/lib" >> "$GITHUB_ENV"
+      # The search, people and Explore scenarios run the real models (with CI set they fail
+      # rather than skip). Same caches as the rust job: one download per pin change.
+      - name: Cache ONNX Runtime
+        uses: actions/cache@v4
+        with:
+          path: .cache/squirrel-assets/onnxruntime
+          key: onnxruntime-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('scripts/fetch-onnxruntime.sh') }}
+          restore-keys: onnxruntime-${{ runner.os }}-${{ runner.arch }}-
+      - name: Cache the models
+        uses: actions/cache@v4
+        with:
+          path: .cache/squirrel-assets/models
+          key: models-${{ hashFiles('scripts/fetch-models.sh') }}
+          restore-keys: models-
+      - name: Fetch ONNX Runtime and models
+        run: |
+          set -o pipefail
+          scripts/fetch-onnxruntime.sh | tail -n 1 >> "$GITHUB_ENV"
+          scripts/fetch-models.sh | tail -n 1 >> "$GITHUB_ENV"
       - run: pnpm exec playwright install --with-deps chromium
         working-directory: web
       - run: pnpm test:e2e
