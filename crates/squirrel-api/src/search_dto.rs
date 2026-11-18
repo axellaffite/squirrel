@@ -16,8 +16,10 @@ pub struct SearchQuery {
     /// file's name or text, accents and case ignored.
     pub q: Option<String>,
     /// Results to skip; `offset + limit` is at most 200.
+    #[param(minimum = 0, maximum = 199)]
     pub offset: Option<u32>,
     /// Page size, 1–50, default 20.
+    #[param(minimum = 1, maximum = 50)]
     pub limit: Option<u32>,
 }
 

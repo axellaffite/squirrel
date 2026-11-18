@@ -27,8 +27,10 @@ pub struct PhotoSearchQuery {
     /// What to look for, in English (1–200 characters), e.g. `dog on the beach`.
     pub q: Option<String>,
     /// Results to skip; `offset + limit` is at most 200.
+    #[param(minimum = 0, maximum = 199)]
     pub offset: Option<u32>,
     /// Page size, 1–100, default 50.
+    #[param(minimum = 1, maximum = 100)]
     pub limit: Option<u32>,
 }
 
@@ -56,12 +58,15 @@ fn page_bounds(query: &PhotoSearchQuery) -> Result<(u32, u32), ApiError> {
     Ok((offset, limit))
 }
 
+/// Search the caller's photos by text (English, CLIP).
+///
 /// Pagination is by offset, not by cursor: results are ranked, at most 200
 /// can be reached (`offset + limit ≤ 200`), and `has_more` is false past
 /// them. Only the caller's own live photos are searched.
 #[utoipa::path(get, path = "/api/search/photos", security(("device_bearer" = []), ("session_cookie" = [])), tag = "search", params(PhotoSearchQuery, PhotoFilterQuery),
     responses((status = 200, body = PhotoSearchResults),
               (status = 422, body = ErrorBody, description = "Invalid q, offset, limit or filter"),
+              (status = 429, body = ErrorBody, description = "Too many searches from this client"),
               (status = 503, body = ErrorBody, description = "`ml_unavailable`: no text model on this server; `busy`: try again")))]
 pub async fn search_photos(
     State(state): State<AppState>,
@@ -108,6 +113,7 @@ pub async fn search_photos(
 
 #[utoipa::path(post, path = "/api/search/warmup", security(("device_bearer" = []), ("session_cookie" = [], "csrf_token" = [])), tag = "search",
     responses((status = 204, description = "The text model is loading (or loaded): the next search is fast"),
+              (status = 429, body = ErrorBody, description = "Too many warm-ups from this client"),
               (status = 503, body = ErrorBody, description = "`ml_unavailable`: no text model on this server")))]
 pub async fn warm_up_search(
     State(state): State<AppState>,
