@@ -46,3 +46,60 @@ pub fn test_models() -> Option<ModelDir> {
 pub fn test_ml() -> Option<(PathBuf, ModelDir)> {
     Some((test_ort()?, test_models()?))
 }
+
+/// Generated test pictures: no third-party images in the repository.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Shape {
+    RedCircle,
+    BlueSquare,
+    GreenTriangle,
+}
+
+impl Shape {
+    pub const ALL: [Self; 3] = [Self::RedCircle, Self::BlueSquare, Self::GreenTriangle];
+
+    pub fn name(self) -> &'static str {
+        match self {
+            Self::RedCircle => "red_circle",
+            Self::BlueSquare => "blue_square",
+            Self::GreenTriangle => "green_triangle",
+        }
+    }
+
+    /// What CLIP should read in it.
+    pub fn prompt(self) -> &'static str {
+        match self {
+            Self::RedCircle => "a red circle",
+            Self::BlueSquare => "a blue square",
+            Self::GreenTriangle => "a green triangle",
+        }
+    }
+}
+
+/// A `size` × `size` white picture with one large coloured shape in the middle.
+pub fn shape_image(shape: Shape, size: u32) -> image::RgbImage {
+    let s = size as f32;
+    let (cx, cy) = (s / 2.0, s / 2.0);
+    let inside = |x: f32, y: f32| match shape {
+        Shape::RedCircle => (x - cx).powi(2) + (y - cy).powi(2) <= (s * 0.35).powi(2),
+        Shape::BlueSquare => (x - cx).abs() <= s * 0.3 && (y - cy).abs() <= s * 0.3,
+        Shape::GreenTriangle => {
+            // Apex at the top, base at the bottom.
+            let (top, bottom) = (s * 0.15, s * 0.85);
+            let half = (y - top) / (bottom - top) * s * 0.35;
+            (top..=bottom).contains(&y) && (x - cx).abs() <= half
+        }
+    };
+    let colour = match shape {
+        Shape::RedCircle => image::Rgb([220, 30, 30]),
+        Shape::BlueSquare => image::Rgb([30, 60, 220]),
+        Shape::GreenTriangle => image::Rgb([30, 170, 60]),
+    };
+    image::RgbImage::from_fn(size, size, |x, y| {
+        if inside(x as f32 + 0.5, y as f32 + 0.5) {
+            colour
+        } else {
+            image::Rgb([255, 255, 255])
+        }
+    })
+}
