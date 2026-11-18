@@ -1,4 +1,4 @@
-//! The server's CLIP text encoder for photo search: a lazily started
+//! The server's text encoder (SigLIP2) for photo search: a lazily started
 //! `ml-exec` child with the text tower, stopped after 5 idle minutes. Its
 //! supervisor bounds every wait (start, request, queue), backs off after a
 //! failed start and replaces a child left mid-exchange, so a search never
@@ -88,7 +88,7 @@ impl TextEncoder {
         self.client.child_id().await
     }
 
-    /// The unit 512-d embedding of `text` (trimmed, 1–200 characters).
+    /// The unit 768-d embedding of `text` (trimmed, 1–200 characters).
     pub async fn encode(&self, text: &str) -> Result<Vec<f32>, EncodeError> {
         let text = text.trim();
         let chars = text.chars().count();
@@ -145,7 +145,7 @@ mod tests {
     }
 
     fn unit() -> Vec<f32> {
-        let mut v = vec![0.0; 512];
+        let mut v = vec![0.0; squirrel_ml::clip::EMBEDDING_DIM];
         v[0] = 1.0;
         v
     }

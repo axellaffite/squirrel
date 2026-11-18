@@ -64,12 +64,16 @@ async fn measure(pool: &PgPool, owner: Uuid, label: &str) {
     let mut times = Vec::new();
     for seed in 0..20 {
         let vector = query_vector(seed);
+        // The largest label group's siblings (9), all scored.
+        let rivals: Vec<Vec<f32>> = (1..10).map(|r| query_vector(seed * 100 + r)).collect();
         let query = PhotoQuery {
             model: MODEL,
             embedding: &vector,
             // Random vectors sit near distance 1: keep everything, the worst case.
             max_distance: 2.0,
             relative_cutoff: 2.0,
+            rivals: &rivals,
+            rival_margin: -2.0,
             filter: &filter,
         };
         let start = Instant::now();
@@ -115,6 +119,8 @@ async fn exact_search_latency(pool: PgPool) {
             embedding: &vector,
             max_distance: 2.0,
             relative_cutoff: 2.0,
+            rivals: &[query_vector(2)],
+            rival_margin: -2.0,
             filter: &filter,
         },
     )

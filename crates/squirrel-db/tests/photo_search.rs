@@ -49,6 +49,8 @@ async fn search(
             embedding: &query,
             max_distance: max,
             relative_cutoff: 2.0,
+            rivals: &[],
+            rival_margin: 0.0,
             filter,
         },
         offset,
@@ -184,6 +186,8 @@ async fn a_weak_tail_far_behind_the_best_hit_is_dropped(pool: PgPool) {
             embedding: &vector,
             max_distance: 0.5,
             relative_cutoff: 0.06,
+            rivals: &[],
+            rival_margin: 0.0,
             filter: &filter,
         },
         0,
@@ -193,4 +197,59 @@ async fn a_weak_tail_far_behind_the_best_hit_is_dropped(pool: PgPool) {
     .unwrap();
     let names: Vec<&str> = page.items.iter().map(|h| h.summary.name.as_str()).collect();
     assert_eq!(names, ["best.jpg", "close.jpg"]);
+}
+
+/// A rival label closer to a photo than the query (by less than the margin)
+/// drops it, whatever its own distance: "dog" leaves out the cat photo.
+#[sqlx::test(migrator = "squirrel_db::MIGRATOR")]
+async fn a_photo_closer_to_a_rival_than_to_the_query_is_dropped(pool: PgPool) {
+    let alice = admin(&pool).await;
+    let photos = root(&pool, alice.id, "Photos").await.id;
+    let when = datetime!(2024-07-01 10:00);
+    // The query is at 0, the rivals at 0.6 and −0.6.
+    for (name, angle) in [
+        ("dog.jpg", 0.0),
+        ("doggish.jpg", 0.2),
+        ("between.jpg", 0.28),
+        ("cat.jpg", 0.5),
+        ("other-cat.jpg", -0.45),
+    ] {
+        let id = photo(&pool, alice.id, photos, name, when).await;
+        embed(&pool, id, angle).await;
+    }
+    let (query, rivals) = (at(0.0), [at(0.6), at(-0.6)]);
+    let filter = PhotoFilter::default();
+    let names = |margin: f64| {
+        let pool = pool.clone();
+        let (query, rivals, filter) = (query.clone(), rivals.clone(), filter.clone());
+        async move {
+            let page = photo_search::search(
+                &pool,
+                alice.id,
+                &PhotoQuery {
+                    model: MODEL,
+                    embedding: &query,
+                    max_distance: 1.0,
+                    relative_cutoff: 2.0,
+                    rivals: &rivals,
+                    rival_margin: margin,
+                    filter: &filter,
+                },
+                0,
+                10,
+            )
+            .await
+            .unwrap();
+            page.items
+                .iter()
+                .map(|h| h.summary.name.clone())
+                .collect::<Vec<_>>()
+        }
+    };
+    // `between` leads its rival by cos(0.28) − cos(0.32) ≈ 0.011; the cats
+    // are closer to a rival than to the query.
+    assert_eq!(names(0.0).await, ["dog.jpg", "doggish.jpg", "between.jpg"]);
+    // cos(0.2) − cos(0.4) ≈ 0.059: `doggish` leads by that much.
+    assert_eq!(names(0.05).await, ["dog.jpg", "doggish.jpg"]);
+    assert_eq!(names(0.07).await, ["dog.jpg"]);
 }

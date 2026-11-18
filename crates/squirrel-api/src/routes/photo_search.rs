@@ -1,11 +1,14 @@
-//! Photo search by text (CLIP): the query is encoded by the server's text
-//! child, then the caller's own photos are ranked by an exact cosine scan.
+//! Photo search by text (SigLIP2, any language): the query is encoded by the
+//! server's text child, then the caller's own photos are ranked by an exact
+//! cosine scan. A query close to a grouped label of the bank ("dog") must
+//! also beat that label's siblings ("cat") on each photo.
 
 use axum::Json;
 use axum::extract::{RawQuery, State};
 use axum::http::StatusCode;
 use serde::{Deserialize, Serialize};
 use squirrel_db::photo_search::{self, PhotoQuery};
+use squirrel_ml::clip::{self, labels};
 use utoipa::{IntoParams, ToSchema};
 
 use crate::error::{ApiError, ErrorBody};
@@ -24,7 +27,8 @@ pub const MAX_LIMIT: u32 = 100;
 #[derive(Debug, Deserialize, IntoParams)]
 #[into_params(parameter_in = Query)]
 pub struct PhotoSearchQuery {
-    /// What to look for, in English (1–200 characters), e.g. `dog on the beach`.
+    /// What to look for, in any language (1–200 characters), e.g. `dog on the beach`
+    /// or `chien sur la plage`.
     pub q: Option<String>,
     /// Results to skip; `offset + limit` is at most 200.
     #[param(minimum = 0, maximum = 199)]
@@ -58,9 +62,12 @@ fn page_bounds(query: &PhotoSearchQuery) -> Result<(u32, u32), ApiError> {
     Ok((offset, limit))
 }
 
-/// Search the caller's photos by text (English, CLIP).
+/// Search the caller's photos by text (any language).
 ///
-/// Pagination is by offset, not by cursor: results are ranked, at most 200
+/// A photo is a result when the model's match probability with the query is
+/// high enough and, for a query naming a label of the tag bank (`dog`,
+/// `chien`), when it beats that label's easily confused siblings (`cat`) on
+/// that photo. Pagination is by offset, not by cursor: results are ranked, at most 200
 /// can be reached (`offset + limit ≤ 200`), and `has_more` is false past
 /// them. Only the caller's own live photos are searched.
 #[utoipa::path(get, path = "/api/search/photos", security(("device_bearer" = []), ("session_cookie" = [])), tag = "search", params(PhotoSearchQuery, PhotoFilterQuery),
@@ -89,14 +96,17 @@ pub async fn search_photos(
                 ApiError::Busy
             }
         })?;
+    let rivals = rivals(&state.pool, &embedding).await?;
     let page = photo_search::search(
         &state.pool,
         caller.user.id,
         &PhotoQuery {
             model: squirrel_ml::CLIP_MODEL_ID,
             embedding: &embedding,
-            max_distance: squirrel_ml::clip::SEARCH_MAX_DISTANCE,
-            relative_cutoff: squirrel_ml::clip::SEARCH_RELATIVE_CUTOFF,
+            max_distance: f64::from(1.0 - clip::search_min_cosine()),
+            relative_cutoff: f64::from(clip::logits_as_cosine(clip::SEARCH_RELATIVE_CUTOFF)),
+            rivals: &rivals,
+            rival_margin: f64::from(clip::logits_as_cosine(clip::SEARCH_CONTRAST)),
             filter: &filter,
         },
         offset,
@@ -111,6 +121,24 @@ pub async fn search_photos(
             .collect(),
         has_more: page.has_more && offset + limit < MAX_RESULTS,
     }))
+}
+
+/// The label embeddings the query must beat on each photo (none while the
+/// label bank is not computed yet).
+async fn rivals(pool: &sqlx::PgPool, query: &[f32]) -> Result<Vec<Vec<f32>>, ApiError> {
+    let bank = squirrel_db::clip::label_embeddings(
+        pool,
+        squirrel_ml::CLIP_MODEL_ID,
+        labels::LABELS_VERSION,
+        &labels::bank_digest(),
+    )
+    .await?;
+    Ok(
+        labels::search_rivals(query, &bank, &labels::bank(), clip::QUERY_LABEL_MATCH)
+            .into_iter()
+            .map(|(_, embedding)| embedding.to_vec())
+            .collect(),
+    )
 }
 
 #[utoipa::path(post, path = "/api/search/warmup", security(("device_bearer" = []), ("session_cookie" = [], "csrf_token" = [])), tag = "search",

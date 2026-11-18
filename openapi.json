@@ -3107,14 +3107,14 @@
         "tags": [
           "search"
         ],
-        "summary": "Search the caller's photos by text (English, CLIP).",
-        "description": "Pagination is by offset, not by cursor: results are ranked, at most 200\ncan be reached (`offset + limit ≤ 200`), and `has_more` is false past\nthem. Only the caller's own live photos are searched.",
+        "summary": "Search the caller's photos by text (any language).",
+        "description": "A photo is a result when the model's match probability with the query is\nhigh enough and, for a query naming a label of the tag bank (`dog`,\n`chien`), when it beats that label's easily confused siblings (`cat`) on\nthat photo. Pagination is by offset, not by cursor: results are ranked, at most 200\ncan be reached (`offset + limit ≤ 200`), and `has_more` is false past\nthem. Only the caller's own live photos are searched.",
         "operationId": "search_photos",
         "parameters": [
           {
             "name": "q",
             "in": "query",
-            "description": "What to look for, in English (1–200 characters), e.g. `dog on the beach`.",
+            "description": "What to look for, in any language (1–200 characters), e.g. `dog on the beach`\nor `chien sur la plage`.",
             "required": false,
             "schema": {
               "type": "string"

@@ -669,8 +669,11 @@ export interface paths {
             cookie?: never;
         };
         /**
-         * Search the caller's photos by text (English, CLIP).
-         * @description Pagination is by offset, not by cursor: results are ranked, at most 200
+         * Search the caller's photos by text (any language).
+         * @description A photo is a result when the model's match probability with the query is
+         *     high enough and, for a query naming a label of the tag bank (`dog`,
+         *     `chien`), when it beats that label's easily confused siblings (`cat`) on
+         *     that photo. Pagination is by offset, not by cursor: results are ranked, at most 200
          *     can be reached (`offset + limit ≤ 200`), and `has_more` is false past
          *     them. Only the caller's own live photos are searched.
          */
@@ -3741,7 +3744,10 @@ export interface operations {
     search_photos: {
         parameters: {
             query?: {
-                /** @description What to look for, in English (1–200 characters), e.g. `dog on the beach`. */
+                /**
+                 * @description What to look for, in any language (1–200 characters), e.g. `dog on the beach`
+                 *     or `chien sur la plage`.
+                 */
                 q?: string;
                 /** @description Results to skip; `offset + limit` is at most 200. */
                 offset?: number;
