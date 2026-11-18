@@ -180,7 +180,14 @@ pub async fn months(
     query.push_bind(owner_id);
     photos.push(&mut query);
     query.push(" GROUP BY 1 ORDER BY 1 DESC");
-    Ok(query.build_query_as::<MonthCount>().fetch_all(pool).await?)
+    let mut tx = crate::bounded::begin(pool).await?;
+    let months = query
+        .build_query_as::<MonthCount>()
+        .fetch_all(&mut *tx)
+        .await
+        .map_err(crate::documents::timed_out_is_busy)?;
+    tx.commit().await?;
+    Ok(months)
 }
 
 /// Those of `node_ids` that are `owner_id`'s live photos (album covers).
