@@ -13,7 +13,7 @@ test.beforeAll(async ({ browser }) => {
 	test.setTimeout(300_000);
 	({ page } = await newUser(browser, 'family'));
 	await requireModels(page, 'faces');
-	await uploadPhotos(page, ...portraits(), pet('dog-a'));
+	await uploadPhotos(page, ...portraits(), pet('dog-b'));
 	await waitForTimeline(page, 9);
 	await waitForMl(page);
 });
@@ -62,8 +62,8 @@ test('another user never sees her people, tags or places, even holding the same 
 	await requireModels(page, 'faces');
 	await requireModels(page, 'clip');
 	const { page: bob } = await newUser(browser, 'neighbour');
-	// The same bytes as two of hers: a portrait and the dog.
-	await uploadPhotos(bob, portrait('koch-a'), pet('dog-a'));
+	// The same bytes as two of hers: a portrait and the dog (YuNet sees no face in it).
+	await uploadPhotos(bob, portrait('koch-a'), pet('dog-b'));
 	await waitForTimeline(bob, 2);
 	await waitForMl(bob);
 	const bobsPhoto = await photoId(bob, 'koch-a.jpg');
@@ -77,7 +77,7 @@ test('another user never sees her people, tags or places, even holding the same 
 	expect(faces.every((face) => face.person === null)).toBe(true);
 	expect(await (await bob.request.get('/api/places')).json()).toEqual([]);
 	// His tags (the dog has some) only ever lead to his own two photos.
-	const own = new Set([bobsPhoto, await photoId(bob, 'dog-a.jpg')]);
+	const own = new Set([bobsPhoto, await photoId(bob, 'dog-b.jpg')]);
 	const tags = (await (await bob.request.get('/api/tags')).json()) as { tag: string; count: number }[];
 	expect(tags.length).toBeGreaterThan(0);
 	for (const { tag, count } of tags) {
