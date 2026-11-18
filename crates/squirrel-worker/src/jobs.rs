@@ -91,12 +91,28 @@ pub fn label_bank(model: &str) -> NewJob {
     .dedupe(format!("{LABEL_BANK}:{model}:{version}"))
 }
 
-/// The ML steps of an image whose preview was just made.
-pub fn ml_follow_ups(media: &MediaRecord, background: bool) -> Vec<NewJob> {
+/// Clusters `owner`'s new faces, at most once per [`CLUSTER_DELAY`] while
+/// photos keep arriving (the dedupe key collapses the requests).
+pub fn cluster_faces(owner: Uuid) -> NewJob {
+    NewJob::new(CLUSTER_FACES, json!({ "owner_id": owner }))
+        .priority(priority::CLUSTER)
+        .dedupe(format!("{CLUSTER_FACES}:{owner}"))
+        .delay(CLUSTER_DELAY)
+}
+
+/// How long new faces wait before they are clustered.
+pub const CLUSTER_DELAY: Duration = Duration::from_secs(10 * 60);
+
+/// The ML steps of an image whose preview was just made. `faces_wanted`:
+/// some owner of a live copy has faces on.
+pub fn ml_follow_ups(media: &MediaRecord, faces_wanted: bool, background: bool) -> Vec<NewJob> {
     let sha = media.sha256.as_str();
     let mut jobs = Vec::new();
     if media.clip_state() == MediaState::Pending {
         jobs.push(clip_embed(sha, background));
+    }
+    if faces_wanted && media.faces_state() == MediaState::Pending {
+        jobs.push(faces(sha, background));
     }
     jobs
 }

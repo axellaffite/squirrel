@@ -185,7 +185,10 @@ async fn queue_ml(
         return Ok(());
     };
     let background = job.priority < squirrel_jobs::priority::THUMBNAILS;
-    for next in crate::jobs::ml_follow_ups(&media, background) {
+    let faces_wanted = squirrel_db::faces::wanted(&mut *conn, sha256)
+        .await
+        .map_err(JobError::retry)?;
+    for next in crate::jobs::ml_follow_ups(&media, faces_wanted, background) {
         squirrel_jobs::enqueue(&mut *conn, &next)
             .await
             .map_err(JobError::retry)?;

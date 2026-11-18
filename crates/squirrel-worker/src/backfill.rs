@@ -71,6 +71,9 @@ pub async fn run_page(ctx: &MediaContext, job: JobContext, page: i64) -> Result<
         if let Some(has_bank) = clip {
             requeue_clip(&mut tx, has_bank).await?;
         }
+        if ctx.ml.as_ref().is_some_and(|ml| ml.faces) {
+            requeue_faces(&mut tx).await?;
+        }
         if ctx.pdfium_dir.is_some() {
             requeue_pdfs_awaiting_pdfium(&mut tx).await?;
         }
@@ -163,6 +166,30 @@ async fn requeue_clip(conn: &mut PgConnection, has_bank: bool) -> Result<(), Job
         return Ok(());
     }
     queue_retag(conn).await
+}
+
+/// `faces` for every ready image with a live copy owned by a user who has
+/// faces on and no scan of it with the current face model (rule 2).
+async fn requeue_faces(conn: &mut PgConnection) -> Result<(), JobError> {
+    let missing = per_blob_insert(
+        "SELECT DISTINCT a.sha256 FROM assets a \
+           JOIN nodes n ON n.id = a.node_id AND n.deleted_at IS NULL \
+           JOIN media m ON m.sha256 = a.sha256 \
+                       AND m.kind = 'image' AND m.thumbs_state = 'ready' \
+          WHERE COALESCE((SELECT s.faces_enabled FROM user_ml_settings s \
+                           WHERE s.user_id = a.owner_id), true) \
+            AND NOT EXISTS (SELECT 1 FROM face_scans f \
+                             WHERE f.owner_id = a.owner_id AND f.sha256 = a.sha256 \
+                               AND f.model = $3)",
+    );
+    sqlx::query(&missing)
+        .bind(jobs::FACES)
+        .bind(priority::background(priority::FACES))
+        .bind(squirrel_ml::FACE_MODEL_ID)
+        .execute(&mut *conn)
+        .await
+        .map_err(JobError::retry)?;
+    Ok(())
 }
 
 /// Queues `clip_embed` (re-tag only) for every embedded blob tagged with
