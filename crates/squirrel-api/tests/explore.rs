@@ -86,6 +86,14 @@ async fn tags_places_and_cameras_are_the_callers_own(pool: PgPool) {
             &json!(2)
         )
     );
+    // Located where the cover photo was taken (the offline locator's dot).
+    set(&pool, old, "latitude = 45.76, longitude = 4.83").await;
+    set(&pool, new, "latitude = 48.86, longitude = 2.35").await;
+    let located = get(&alice, "/api/places").await;
+    assert_eq!(
+        located[0]["location"],
+        json!({"latitude": 48.86, "longitude": 2.35, "altitude": null})
+    );
     let countries = get(&alice, "/api/places?level=country").await;
     assert_eq!(countries[0]["city"], Value::Null);
     assert_eq!(countries[0]["country"], "France");

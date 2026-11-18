@@ -46,7 +46,7 @@ pub enum PlaceLevel {
     City,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, FromRow)]
+#[derive(Debug, Clone, PartialEq, FromRow)]
 pub struct PlaceGroup {
     pub country_code: String,
     pub country: Option<String>,
@@ -56,6 +56,9 @@ pub struct PlaceGroup {
     pub city: Option<String>,
     pub count: i64,
     pub cover: Uuid,
+    /// Where the cover photo was taken.
+    pub latitude: Option<f64>,
+    pub longitude: Option<f64>,
 }
 
 /// The caller's geocoded places, most photographed first: one row per
@@ -79,7 +82,9 @@ pub async fn places(
     };
     let sql = format!(
         "SELECT {columns}, count(*) AS count, \
-                (array_agg(a.node_id ORDER BY a.taken_at DESC, a.node_id DESC))[1] AS cover \
+                (array_agg(a.node_id ORDER BY a.taken_at DESC, a.node_id DESC))[1] AS cover, \
+                (array_agg(m.latitude ORDER BY a.taken_at DESC, a.node_id DESC))[1] AS latitude, \
+                (array_agg(m.longitude ORDER BY a.taken_at DESC, a.node_id DESC))[1] AS longitude \
          {FROM} WHERE a.owner_id = $1 AND m.place_country_code IS NOT NULL \
             AND ($3 OR m.place_name IS NOT NULL) \
           GROUP BY {group} ORDER BY count DESC, 1, 3, 4 LIMIT $2"

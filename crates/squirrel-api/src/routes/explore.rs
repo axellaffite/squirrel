@@ -13,7 +13,7 @@ use crate::error::{ApiError, ErrorBody};
 use crate::explore_dto::{CameraGroupDto, PlaceGroupDto, PlaceLevel, PlacesQuery, TagGroupDto};
 use crate::extract::Caller;
 use crate::input::{ApiQuery, known_params};
-use crate::photos_dto::AssetSummary;
+use crate::photos_dto::{AssetSummary, LocationDto};
 use crate::state::AppState;
 
 /// The caller's summaries of `covers`, by node id.
@@ -91,6 +91,14 @@ pub async fn list_places(
                     city: place.city,
                     count: place.count,
                     cover: AssetSummary::from(cover),
+                    location: place
+                        .latitude
+                        .zip(place.longitude)
+                        .map(|(latitude, longitude)| LocationDto {
+                            latitude,
+                            longitude,
+                            altitude: None,
+                        }),
                 })
             })
             .collect(),
