@@ -2937,7 +2937,10 @@ export interface operations {
                 tag?: string;
                 /** @description A country code (`GET /api/places`), e.g. `FR`. */
                 country?: string;
-                /** @description A region of `country`; needs `country`. */
+                /**
+                 * @description A region of `country`; needs `country`. Empty (`region=`): places
+                 *     without a region (a `null` region in `GET /api/places`).
+                 */
                 region?: string;
                 /** @description A place of `country` (and `region` when given); needs `country`. */
                 city?: string;
@@ -2988,7 +2991,10 @@ export interface operations {
                 tag?: string;
                 /** @description A country code (`GET /api/places`), e.g. `FR`. */
                 country?: string;
-                /** @description A region of `country`; needs `country`. */
+                /**
+                 * @description A region of `country`; needs `country`. Empty (`region=`): places
+                 *     without a region (a `null` region in `GET /api/places`).
+                 */
                 region?: string;
                 /** @description A place of `country` (and `region` when given); needs `country`. */
                 city?: string;
@@ -3128,7 +3134,10 @@ export interface operations {
                 tag?: string;
                 /** @description A country code (`GET /api/places`), e.g. `FR`. */
                 country?: string;
-                /** @description A region of `country`; needs `country`. */
+                /**
+                 * @description A region of `country`; needs `country`. Empty (`region=`): places
+                 *     without a region (a `null` region in `GET /api/places`).
+                 */
                 region?: string;
                 /** @description A place of `country` (and `region` when given); needs `country`. */
                 city?: string;

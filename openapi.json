@@ -2168,7 +2168,7 @@
           {
             "name": "region",
             "in": "query",
-            "description": "A region of `country`; needs `country`.",
+            "description": "A region of `country`; needs `country`. Empty (`region=`): places\nwithout a region (a `null` region in `GET /api/places`).",
             "required": false,
             "schema": {
               "type": "string"
@@ -2280,7 +2280,7 @@
           {
             "name": "region",
             "in": "query",
-            "description": "A region of `country`; needs `country`.",
+            "description": "A region of `country`; needs `country`. Empty (`region=`): places\nwithout a region (a `null` region in `GET /api/places`).",
             "required": false,
             "schema": {
               "type": "string"
@@ -2579,7 +2579,7 @@
           {
             "name": "region",
             "in": "query",
-            "description": "A region of `country`; needs `country`.",
+            "description": "A region of `country`; needs `country`. Empty (`region=`): places\nwithout a region (a `null` region in `GET /api/places`).",
             "required": false,
             "schema": {
               "type": "string"

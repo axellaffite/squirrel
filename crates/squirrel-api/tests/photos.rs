@@ -388,6 +388,9 @@ async fn the_timeline_and_its_months_take_filters(pool: PgPool) {
         page("camera_make=Canon&camera_model=EOS%20R6").await,
         "paris.jpg"
     );
+    // Lyon was geocoded without a region: `region=` finds exactly it.
+    assert_eq!(page("country=FR&region=&city=Lyon").await, "lyon.jpg");
+    assert_eq!(page("country=FR&region=").await, "lyon.jpg");
     assert_eq!(page("tag=dog").await, "lyon.jpg");
     assert_eq!(page("tag=dog&camera_make=Canon").await, "");
     assert_eq!(page("kind=screenshot").await, "");
