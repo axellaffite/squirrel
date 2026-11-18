@@ -1,4 +1,10 @@
 <script lang="ts">
+	import FaceBoxes from '#lib/components/photos/FaceBoxes.svelte';
+	import FaceMenu from '#lib/components/photos/FaceMenu.svelte';
+	import PersonPicker, { type PersonChoice } from '#lib/components/photos/PersonPicker.svelte';
+	import { photoFaces, type Face } from '#lib/explore/api.ts';
+	import { personLabel } from '#lib/explore/faces.ts';
+	import { assignFace } from '#lib/explore/people.ts';
 	import { onMount } from 'svelte';
 	import LightboxPhoto from '#lib/components/photos/LightboxPhoto.svelte';
 	import PhotoInfo from '#lib/components/photos/PhotoInfo.svelte';
@@ -31,6 +37,42 @@
 	let details: AssetDetails | null = $state(null);
 	let detailsError: string | null = $state(null);
 	let confirming = $state(false);
+	/** Face boxes shown over the photo ("People"). */
+	let showFaces = $state(false);
+	let faces: Face[] = $state([]);
+	let facesError: string | null = $state(null);
+	/** The face whose menu is open, and the one the person picker is open for. */
+	let menuFace: Face | null = $state(null);
+	let pickingFor: Face | null = $state(null);
+	let faceNotice: string | null = $state(null);
+
+	async function loadFaces(id: string) {
+		const result = await photoFaces(id);
+		if (asset.id !== id) return;
+		if (result.ok) {
+			faces = result.data;
+			facesError = null;
+		} else facesError = result.error;
+	}
+
+	$effect(() => {
+		const id = asset.id;
+		faces = [];
+		facesError = null;
+		if (showFaces) void loadFaces(id);
+	});
+
+	async function assignPicked(choice: PersonChoice) {
+		const face = pickingFor;
+		if (!face) return;
+		const result = await assignFace(face.id, 'person' in choice ? { person: choice.person.id } : { newPerson: null });
+		if (!result.ok) {
+			facesError = result.error;
+			return;
+		}
+		faceNotice = 'person' in choice ? `This face is ${personLabel(choice.person.name)}.` : 'This face is a new person.';
+		void loadFaces(asset.id);
+	}
 	let swipe: { x: number; y: number } | null = null;
 	const track = latestOnly();
 
@@ -99,10 +141,26 @@
 
 <dialog bind:this={dialog} class="lightbox" class:with-info={infoOpen} aria-label={`Photo taken ${when}`} onclose={onClose}>
 	<div class="stage" data-testid="lightbox-stage" onpointerdown={pointerdown} onpointerup={pointerup} role="presentation">
-		<LightboxPhoto {asset} />
+		<LightboxPhoto {asset}>
+			{#snippet overlay()}
+				{#if showFaces && faces.length > 0}
+					<FaceBoxes {faces} onPick={(face) => (menuFace = face)} />
+				{/if}
+			{/snippet}
+		</LightboxPhoto>
+		<p class="visually-hidden" aria-live="polite">
+			{#if showFaces}{faceNotice ?? (facesError ? facesError : `${faces.length} ${faces.length === 1 ? 'face' : 'faces'} in this photo`)}{/if}
+		</p>
 		<div class="bar">
 			<StageButton icon="x" label="Close the photo viewer" tooltip="Close" onclick={() => dialog?.close()} />
 			<div class="tools">
+				<StageButton
+					icon="scan-face"
+					label={showFaces ? `Hide the faces in the photo taken ${when}` : `Show the faces in the photo taken ${when}`}
+					tooltip="People"
+					aria-pressed={showFaces}
+					onclick={() => (showFaces = !showFaces)}
+				/>
 				<StageButton
 					icon="info"
 					label={`Details of the photo taken ${when}`}
@@ -140,6 +198,28 @@
 		<aside class="sheet" id="photo-info" aria-label="Photo details">
 			<PhotoInfo {asset} {details} error={detailsError} />
 		</aside>
+	{/if}
+
+	{#if menuFace}
+		<FaceMenu
+			face={menuFace}
+			onChoosePerson={() => (pickingFor = menuFace)}
+			onChanged={(message) => {
+				faceNotice = message;
+				void loadFaces(asset.id);
+			}}
+			onClose={() => (menuFace = null)}
+		/>
+	{/if}
+
+	{#if pickingFor}
+		<PersonPicker
+			title="This is…"
+			exclude={pickingFor.person ? [pickingFor.person.id] : []}
+			allowNew
+			onPick={assignPicked}
+			onClose={() => (pickingFor = null)}
+		/>
 	{/if}
 
 	{#if confirming}

@@ -1,4 +1,5 @@
 <script lang="ts">
+	import type { Snippet } from 'svelte';
 	import Icon from '#lib/components/icons/Icon.svelte';
 	import Button from '#lib/components/ui/Button.svelte';
 	import { contentUrl } from '#lib/files/format.ts';
@@ -9,9 +10,11 @@
 
 	interface Props {
 		asset: AssetSummary;
+		/** Drawn over the photo, in its own frame (face boxes are relative to it). */
+		overlay?: Snippet;
 	}
 
-	let { asset }: Props = $props();
+	let { asset, overlay }: Props = $props();
 
 	let failedId: string | null = $state(null);
 
@@ -39,6 +42,7 @@
 			{#key source}
 				<img src={source} alt={asset.name} decoding="async" draggable="false" onerror={() => (failedId = asset.id)} />
 			{/key}
+			{@render overlay?.()}
 		</div>
 	{:else}
 		<div class="unavailable">
@@ -62,6 +66,7 @@
 	}
 
 	.frame {
+		position: relative;
 		display: grid;
 		place-items: center;
 		max-width: 100cqw;
