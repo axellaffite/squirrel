@@ -80,19 +80,24 @@ pub async fn mark_tagged(
     Ok(())
 }
 
-/// The label bank for (`model`, `labels_version`), sorted by tag; empty when
-/// it was never computed.
+/// The label bank for (`model`, `labels_version`) computed from content of
+/// `digest`, sorted by tag; empty when it was never computed (or computed
+/// from other content).
 pub async fn label_embeddings(
     pool: &PgPool,
     model: &str,
     labels_version: i16,
+    digest: &str,
 ) -> Result<Vec<(String, Vec<f32>)>, DbError> {
     let rows: Vec<(String, HalfVector)> = sqlx::query_as(
-        "SELECT tag, embedding FROM clip_label_embeddings \
-          WHERE model = $1 AND labels_version = $2 ORDER BY tag",
+        "SELECT e.tag, e.embedding FROM clip_label_embeddings e \
+           JOIN clip_label_banks b \
+             ON b.model = e.model AND b.labels_version = e.labels_version AND b.digest = $3 \
+          WHERE e.model = $1 AND e.labels_version = $2 ORDER BY e.tag",
     )
     .bind(model)
     .bind(labels_version)
+    .bind(digest)
     .fetch_all(pool)
     .await?;
     Ok(rows
@@ -101,14 +106,26 @@ pub async fn label_embeddings(
         .collect())
 }
 
-/// Replaces the whole bank for (`model`, `labels_version`) in one transaction.
+/// Replaces the whole bank for (`model`, `labels_version`), with the digest of
+/// the content it was computed from, in one transaction.
 pub async fn store_label_embeddings(
     pool: &PgPool,
     model: &str,
     labels_version: i16,
+    digest: &str,
     labels: &[(String, Vec<f32>)],
 ) -> Result<(), DbError> {
     let mut tx = pool.begin().await?;
+    sqlx::query(
+        "INSERT INTO clip_label_banks (model, labels_version, digest) VALUES ($1, $2, $3) \
+         ON CONFLICT (model, labels_version) DO UPDATE \
+            SET digest = EXCLUDED.digest, created_at = now()",
+    )
+    .bind(model)
+    .bind(labels_version)
+    .bind(digest)
+    .execute(&mut *tx)
+    .await?;
     sqlx::query("DELETE FROM clip_label_embeddings WHERE model = $1 AND labels_version = $2")
         .bind(model)
         .bind(labels_version)

@@ -119,6 +119,27 @@ pub fn parse(tsv: &str) -> Result<Vec<Label>, LabelError> {
     Ok(labels)
 }
 
+/// SHA-256 (hex) of everything the bank is computed from: the label file, the
+/// prompt templates and the background prompts. Stored with a bank; a stored
+/// bank with another digest is computed again.
+pub fn bank_digest() -> String {
+    use sha2::{Digest, Sha256};
+    let mut hasher = Sha256::new();
+    hasher.update(LABELS_TSV.as_bytes());
+    for part in templates::TEMPLATES
+        .iter()
+        .chain(&templates::BACKGROUND_PROMPTS)
+    {
+        hasher.update([0u8]);
+        hasher.update(part.as_bytes());
+    }
+    hasher
+        .finalize()
+        .iter()
+        .map(|byte| format!("{byte:02x}"))
+        .collect()
+}
+
 /// The committed bank (checked by a test).
 pub fn bank() -> Vec<Label> {
     parse(LABELS_TSV).unwrap_or_default()
@@ -244,6 +265,20 @@ mod tests {
         assert!(labels.len() >= 150, "{}", labels.len());
         assert!(labels.iter().any(|l| l.slug == "cake"));
         assert_eq!(bank().len(), labels.len());
+    }
+
+    /// Changing the labels, templates or background prompts must come with a
+    /// new LABELS_VERSION: update both here together.
+    #[test]
+    fn the_bank_digest_is_pinned_to_its_labels_version() {
+        assert_eq!(
+            (LABELS_VERSION, bank_digest().as_str()),
+            (
+                2,
+                "3416ccdcea95271c07241d35741887f66589019c02f4ea03d2ccacaf739aff47"
+            ),
+            "the bank changed: bump LABELS_VERSION and pin the new digest"
+        );
     }
 
     #[test]

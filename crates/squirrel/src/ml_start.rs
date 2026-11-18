@@ -115,6 +115,7 @@ async fn ensure_label_bank(settings: &MlSettings, pool: &PgPool) -> anyhow::Resu
         pool,
         squirrel_ml::CLIP_MODEL_ID,
         squirrel_ml::clip::labels::LABELS_VERSION,
+        &squirrel_ml::clip::labels::bank_digest(),
     )
     .await?;
     if stored.len() == labels.len() + 1 {

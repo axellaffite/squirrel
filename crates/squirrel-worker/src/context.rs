@@ -85,6 +85,7 @@ impl MlContext {
                 pool,
                 squirrel_ml::CLIP_MODEL_ID,
                 squirrel_ml::clip::labels::LABELS_VERSION,
+                &squirrel_ml::clip::labels::bank_digest(),
             )
             .await?,
         );
