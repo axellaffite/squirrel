@@ -140,15 +140,15 @@ by a backfill job queued at every worker start.
 and checked against their SHA-256 (about 640 MB; sources and licences in
 `crates/squirrel-ml/MODELS.md`):
 
-    scripts/fetch-models.sh               # prints SQUIRREL_MODELS_DIR=…/target/models
+    scripts/fetch-models.sh               # prints SQUIRREL_MODELS_DIR=…/.cache/squirrel-assets/models
 
 They run on **ONNX Runtime** 1.31.1 (CPU, MIT), loaded at run time. Microsoft's official
-NuGet package is downloaded (cached in `target/onnxruntime-cache/`) and checked against its
+NuGet package is downloaded (cached in `.cache/squirrel-assets/onnxruntime-cache/`) and checked against its
 pinned SHA-256 and SHA-512; only this platform's library, `LICENSE` and
-`ThirdPartyNotices.txt` are unpacked into `target/onnxruntime/`. The library's own SHA-256 is
+`ThirdPartyNotices.txt` are unpacked into `.cache/squirrel-assets/onnxruntime/`. The library's own SHA-256 is
 checked again before every load:
 
-    scripts/fetch-onnxruntime.sh          # prints SQUIRREL_ORT_DYLIB=…/target/onnxruntime/lib/…
+    scripts/fetch-onnxruntime.sh          # prints SQUIRREL_ORT_DYLIB=…/.cache/squirrel-assets/onnxruntime/lib/…
 
 **pdfium** (PDF thumbnails and text) is downloaded, checked against its pinned SHA-256 and
 unpacked into `target/pdfium/` by:

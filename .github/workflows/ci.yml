@@ -45,14 +45,21 @@ jobs:
       # PDF tests need pdfium; with CI set they fail rather than skip when it is missing.
       - name: Fetch pdfium
         run: scripts/fetch-pdfium.sh && echo "SQUIRREL_PDFIUM_DIR=$PWD/target/pdfium/lib" >> "$GITHUB_ENV"
-      # ML tests need ONNX Runtime and the models (~800 MB); with CI set they fail rather than skip.
-      - name: Cache ONNX Runtime and models
+      # ML tests need ONNX Runtime and the models (~650 MB); with CI set they fail rather than skip.
+      # Separate caches, keyed by each pin list; outside target/ so rust-cache does not store them too.
+      # The scripts verify every hash on a cache hit and only download what is missing or wrong.
+      - name: Cache ONNX Runtime
         uses: actions/cache@v4
         with:
-          path: |
-            target/onnxruntime-cache
-            target/models
-          key: ml-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('scripts/fetch-onnxruntime.sh', 'scripts/fetch-models.sh') }}
+          path: .cache/squirrel-assets/onnxruntime
+          key: onnxruntime-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('scripts/fetch-onnxruntime.sh') }}
+          restore-keys: onnxruntime-${{ runner.os }}-${{ runner.arch }}-
+      - name: Cache the models
+        uses: actions/cache@v4
+        with:
+          path: .cache/squirrel-assets/models
+          key: models-${{ hashFiles('scripts/fetch-models.sh') }}
+          restore-keys: models-
       - name: Fetch ONNX Runtime and models
         run: |
           set -o pipefail
@@ -98,14 +105,21 @@ jobs:
           key: heic
       - name: Fetch pdfium
         run: scripts/fetch-pdfium.sh && echo "SQUIRREL_PDFIUM_DIR=$PWD/target/pdfium/lib" >> "$GITHUB_ENV"
-      # ML tests need ONNX Runtime and the models (~800 MB); with CI set they fail rather than skip.
-      - name: Cache ONNX Runtime and models
+      # ML tests need ONNX Runtime and the models (~650 MB); with CI set they fail rather than skip.
+      # Separate caches, keyed by each pin list; outside target/ so rust-cache does not store them too.
+      # The scripts verify every hash on a cache hit and only download what is missing or wrong.
+      - name: Cache ONNX Runtime
         uses: actions/cache@v4
         with:
-          path: |
-            target/onnxruntime-cache
-            target/models
-          key: ml-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('scripts/fetch-onnxruntime.sh', 'scripts/fetch-models.sh') }}
+          path: .cache/squirrel-assets/onnxruntime
+          key: onnxruntime-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('scripts/fetch-onnxruntime.sh') }}
+          restore-keys: onnxruntime-${{ runner.os }}-${{ runner.arch }}-
+      - name: Cache the models
+        uses: actions/cache@v4
+        with:
+          path: .cache/squirrel-assets/models
+          key: models-${{ hashFiles('scripts/fetch-models.sh') }}
+          restore-keys: models-
       - name: Fetch ONNX Runtime and models
         run: |
           set -o pipefail
