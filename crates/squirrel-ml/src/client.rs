@@ -260,6 +260,8 @@ impl MlClient {
             watch_idle(Arc::downgrade(&self.state), config.idle, state.generation);
         }
         state.next_id += 1;
+        // Health checks and warm-ups do not wear the child out.
+        let counts = !matches!(op, MlOp::Ping);
         let request = MlRequest {
             id: state.next_id,
             op,
@@ -277,7 +279,7 @@ impl MlClient {
         };
         match result {
             Ok(body) => {
-                running.served += 1;
+                running.served += u32::from(counts);
                 running.last_used = Instant::now();
                 if running.served >= config.max_requests
                     && let Some(done) = state.running.take()

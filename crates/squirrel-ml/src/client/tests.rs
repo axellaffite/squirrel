@@ -157,15 +157,15 @@ async fn the_idle_timer_stops_the_child() {
 #[tokio::test]
 async fn the_child_is_recycled_after_max_requests() {
     let dir = tempfile::tempdir().unwrap();
-    let mut config = fake_child(dir.path(), "exit 1");
+    let mut config = fake_child(dir.path(), r#"echo "{\"id\":$id,\"status\":\"ok\"}""#);
     config.max_requests = 2;
     let client = client(config);
-    client.request(MlOp::Ping).await.unwrap();
+    client.request(image()).await.unwrap();
     let first = client.child_id().await.unwrap();
-    client.request(MlOp::Ping).await.unwrap();
+    client.request(image()).await.unwrap();
     assert_eq!(client.child_id().await, None, "recycled after 2");
     wait_dead(first).await;
-    client.request(MlOp::Ping).await.unwrap();
+    client.request(image()).await.unwrap();
     assert_ne!(client.child_id().await, Some(first));
 }
 
@@ -422,4 +422,24 @@ async fn the_queue_wait_is_bounded_by_its_own_timeout() {
         asked.elapsed()
     );
     slow.await.unwrap().unwrap();
+}
+
+#[tokio::test]
+async fn pings_do_not_count_toward_recycling() {
+    let dir = tempfile::tempdir().unwrap();
+    let mut config = fake_child(dir.path(), r#"echo "{\"id\":$id,\"status\":\"ok\"}""#);
+    config.max_requests = 2;
+    let client = client(config);
+    for _ in 0..3 {
+        client.request(MlOp::Ping).await.unwrap();
+    }
+    let pid = client.child_id().await.unwrap();
+    client.request(image()).await.unwrap();
+    assert_eq!(
+        client.child_id().await,
+        Some(pid),
+        "three pings and one request"
+    );
+    client.request(image()).await.unwrap();
+    assert_eq!(client.child_id().await, None, "recycled after two requests");
 }
