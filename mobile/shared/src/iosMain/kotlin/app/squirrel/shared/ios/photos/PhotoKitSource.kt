@@ -43,11 +43,13 @@ class PhotoKitSource(
     private val exporter: AssetExporter = AssetExporter(),
     /** iCloud originals may be downloaded (false: "Only on Wi-Fi" and on a metered network now). */
     private val allowNetwork: () -> Boolean = { true },
+    /** Assets whose upload is in progress: their exports survive the sweep. */
+    private val uploading: () -> Set<String> = { emptySet() },
 ) : AssetSource {
     private val library get() = PHPhotoLibrary.sharedPhotoLibrary()
 
     override suspend fun changes(token: String?, filter: SourceFilter): ScanResult = withContext(Dispatchers.IO) {
-        exporter.sweep()
+        exporter.sweep(keep = uploading())
         val next = currentToken()
         // Selected albums: membership is per collection, so those scans are always full (small).
         val changed = if (token != null && filter.albums == AlbumFilter.All) changedIds(token) else null

@@ -70,6 +70,9 @@ private fun Local_asset.toQueued() = QueuedAsset(
 class Queue(private val db: SquirrelDatabase) {
     private val q = db.localAssetQueries
 
+    /** Assets with an upload session open on the server. */
+    fun uploadingIds(): Set<String> = q.uploadingIds().executeAsList().toSet()
+
     fun get(id: String): QueuedAsset? = q.byId(id).executeAsOneOrNull()?.toQueued()
 
     fun nextToHash(limit: Long): List<QueuedAsset> = q.nextToHash(limit).executeAsList().map { it.toQueued() }

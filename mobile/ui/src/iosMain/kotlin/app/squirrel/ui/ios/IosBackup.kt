@@ -16,6 +16,7 @@ import app.squirrel.shared.settings.SettingsStore
 import app.squirrel.shared.sync.AssetSource
 import app.squirrel.shared.sync.ChunkTransport
 import app.squirrel.shared.sync.Conditions
+import app.squirrel.shared.sync.Queue
 import app.squirrel.ui.backup.AlbumChoice
 import app.squirrel.ui.backup.BackupPlatform
 import kotlinx.coroutines.CoroutineScope
@@ -29,7 +30,11 @@ class IosBackup(
     private val now: () -> Long,
 ) : BackupPlatform {
     val iosConditions = IosConditions()
-    private val photoKit = PhotoKitSource(AssetExporter()) { !settings().backup().wifiOnly || iosConditions.unmetered() }
+    private val photoKit = PhotoKitSource(
+        AssetExporter(),
+        allowNetwork = { !settings().backup().wifiOnly || iosConditions.unmetered() },
+        uploading = { Queue(database()).uploadingIds() },
+    )
     val tasks = BackgroundTasks(runner, scope, now)
 
     /** One background session per process (the system keys it by identifier). */

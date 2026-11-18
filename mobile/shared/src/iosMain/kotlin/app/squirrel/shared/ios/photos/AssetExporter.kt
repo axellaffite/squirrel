@@ -95,9 +95,18 @@ class AssetExporter(private val dir: String = defaultDir()) {
         }
     }
 
-    /** Keeps the exports under [cap] bytes, deleting the least recently written first. */
-    fun sweep(cap: Long = EXPORT_CAP_BYTES) {
-        val entries = files.contentsOfDirectoryAtPath(dir, null).orEmpty().map { "$dir/$it" }.mapNotNull { path ->
+    /**
+     * Keeps the exports under [cap] bytes, deleting the least recently written first. Exports of
+     * the [keep] assets (uploads in progress) are never deleted: an iCloud original would be
+     * downloaded again on the next run.
+     */
+    fun sweep(cap: Long = EXPORT_CAP_BYTES, keep: Set<String> = emptySet()) {
+        val kept = keep.mapTo(HashSet()) { keyPrefix(it) }
+        val entries = files.contentsOfDirectoryAtPath(dir, null).orEmpty()
+            .map { it as String }
+            .filterNot { name -> name.substringBefore('-') in kept }
+            .map { "$dir/$it" }
+            .mapNotNull { path ->
             val attributes = files.attributesOfItemAtPath(path, null) ?: return@mapNotNull null
             val size = (attributes[NSFileSize] as? NSNumber)?.longLongValue ?: 0L
             val modified = (attributes[NSFileModificationDate] as? NSDate)?.timeIntervalSince1970 ?: 0.0
@@ -136,6 +145,9 @@ class AssetExporter(private val dir: String = defaultDir()) {
     }
 
     private fun keyPrefix(id: String): String = Sha256().apply { id.encodeToByteArray().let { update(it, 0, it.size) } }.digestHex().take(32)
+
+    /** Where the export of [id] at [version] lives. */
+    internal fun pathOf(id: String, version: Long): String = "$dir/${key(id, version)}"
 
     private fun key(id: String, version: Long) = "${keyPrefix(id)}-$version"
 
