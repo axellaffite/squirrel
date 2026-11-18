@@ -5,7 +5,6 @@
 use sqlx::PgPool;
 use squirrel_db::clip;
 use squirrel_ml::clip::labels::{self, LABELS_VERSION, Label};
-use squirrel_ml::clip::templates;
 use squirrel_ml::protocol::{MAX_TEXTS, MlBody, MlOp, MlOutput};
 
 use crate::ml_client::MlClient;
@@ -33,25 +32,20 @@ pub async fn ensure(pool: &PgPool, text: &MlClient, model: &str) -> anyhow::Resu
     Ok(true)
 }
 
+/// Every label and the background are stored.
 fn complete(stored: &[(String, Vec<f32>)], labels: &[Label]) -> bool {
-    stored.len() == labels.len()
+    stored.len() == labels.len() + 1
+        && stored.iter().any(|(slug, _)| slug == labels::BACKGROUND)
         && labels
             .iter()
             .all(|label| stored.iter().any(|(slug, _)| *slug == label.slug))
 }
 
-/// Every prompt of every label, encoded in batches of [`MAX_TEXTS`].
+/// Every prompt of every label (and the background prompts), encoded in
+/// batches of [`MAX_TEXTS`], averaged per bank entry.
 async fn compute(text: &MlClient, labels: &[Label]) -> anyhow::Result<Vec<(String, Vec<f32>)>> {
-    let prompts: Vec<(usize, String)> = labels
-        .iter()
-        .enumerate()
-        .flat_map(|(index, label)| {
-            templates::prompts(&label.names)
-                .into_iter()
-                .map(move |prompt| (index, prompt))
-        })
-        .collect();
-    let mut per_label: Vec<Vec<Vec<f32>>> = vec![Vec::new(); labels.len()];
+    let prompts = labels::bank_prompts(labels);
+    let mut grouped: Vec<(String, Vec<Vec<f32>>)> = Vec::new();
     for batch in prompts.chunks(MAX_TEXTS) {
         let texts = batch.iter().map(|(_, prompt)| prompt.clone()).collect();
         let embeddings = match text.request(MlOp::ClipText { texts }).await? {
@@ -59,17 +53,18 @@ async fn compute(text: &MlClient, labels: &[Label]) -> anyhow::Result<Vec<(Strin
             other => anyhow::bail!("encoding the label prompts: {other:?}"),
         };
         anyhow::ensure!(embeddings.len() == batch.len(), "the child skipped prompts");
-        for embedding in &embeddings {
-            squirrel_ml::clip::check_embedding(embedding)
+        for ((entry, _), embedding) in batch.iter().zip(embeddings) {
+            squirrel_ml::clip::check_embedding(&embedding)
                 .map_err(|why| anyhow::anyhow!("invalid text embedding: {why}"))?;
-        }
-        for ((index, _), embedding) in batch.iter().zip(embeddings) {
-            per_label[*index].push(embedding);
+            match grouped.last_mut() {
+                Some((last, list)) if last == entry => list.push(embedding),
+                _ => grouped.push((entry.clone(), vec![embedding])),
+            }
         }
     }
-    Ok(labels
-        .iter()
-        .zip(per_label)
-        .map(|(label, embeddings)| Ok((label.slug.clone(), labels::mean_embedding(&embeddings)?)))
-        .collect::<Result<_, squirrel_ml::clip::ClipError>>()?)
+    grouped
+        .into_iter()
+        .map(|(entry, embeddings)| Ok((entry, labels::mean_embedding(&embeddings)?)))
+        .collect::<Result<_, squirrel_ml::clip::ClipError>>()
+        .map_err(Into::into)
 }

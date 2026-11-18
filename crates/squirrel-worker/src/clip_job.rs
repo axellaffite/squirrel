@@ -134,7 +134,12 @@ async fn tag(
         return Ok(());
     };
     let mut tx = ctx.pool.begin().await.map_err(JobError::retry)?;
-    let selected = labels::select(&labels::score(embedding, &bank), thresholds, TOP_K);
+    let selected = labels::select(
+        &labels::score(embedding, &bank),
+        &labels::bank(),
+        thresholds,
+        TOP_K,
+    );
     tags::replace_tags(&mut tx, sha256, TagSource::Clip, &selected, LABELS_VERSION)
         .await
         .map_err(JobError::retry)?;
