@@ -359,11 +359,13 @@ async fn a_long_run_hands_over_and_new_faces_bring_it_back(pool: PgPool) {
     let alice = admin(fx.pool()).await;
     let sha = photo(&fx, alice.id, "a.jpg").await;
     faces(fx.pool(), alice.id, &sha, &groups_and_noise()).await;
+    // Out of time after its first batch: the job comes back at once.
+    let many: Vec<Vec<f32>> = (0..250).map(|i| unit(&[(64 + i % 64, 1.0)])).collect();
+    faces(fx.pool(), alice.id, &sha, &many).await;
     let out_of_time = cluster_job::cluster_owner(&fx.ctx, alice.id, &SFACE, Duration::ZERO)
         .await
         .unwrap();
     assert_eq!(out_of_time.left, cluster_job::Left::Budget);
-    assert_eq!(people(fx.pool(), alice.id).await, 0);
     let rerun = cluster_job::run(
         &fx.ctx,
         job("cluster_faces", json!({ "owner_id": alice.id })),
@@ -373,7 +375,8 @@ async fn a_long_run_hands_over_and_new_faces_bring_it_back(pool: PgPool) {
         rerun.is_ok(),
         "lone faces seen by the run do not bring it back"
     );
-    assert_eq!(people(fx.pool(), alice.id).await, 3);
+    // The three groups, plus the 64 groups of the 250 extra faces.
+    assert_eq!(people(fx.pool(), alice.id).await, 3 + 64);
 
     // A face committed by a transaction that began before the run and is
     // older than every page the run read.
@@ -395,4 +398,47 @@ async fn a_long_run_hands_over_and_new_faces_bring_it_back(pool: PgPool) {
         .await
         .unwrap();
     assert_eq!(recent, [late]);
+}
+
+/// Many faces that never cluster (lone faces) must not keep new faces from
+/// being clustered: each run goes on from where the last one stopped, and a
+/// lone face is tried again only once newer faces exist.
+#[sqlx::test(migrator = "squirrel_db::MIGRATOR")]
+async fn waiting_faces_never_starve_new_ones(pool: PgPool) {
+    let fx = Fixture::new(pool);
+    let alice = admin(fx.pool()).await;
+    let sha = photo(&fx, alice.id, "a.jpg").await;
+    let lone: Vec<Vec<f32>> = (0..450)
+        .map(|i| {
+            unit(&[
+                (i % 128, 1.0),
+                ((i * 37 + 11) % 128, 0.9),
+                ((i * 53 + 5) % 128, 0.8),
+            ])
+        })
+        .collect();
+    faces(fx.pool(), alice.id, &sha, &lone).await;
+    sqlx::query("UPDATE faces SET created_at = created_at - interval '1 hour'")
+        .execute(fx.pool())
+        .await
+        .unwrap();
+    let group: Vec<Vec<f32>> = (0..4)
+        .map(|i| unit(&[(0, 1.0), (1, 1.0), (2 + i, 0.2)]))
+        .collect();
+    let new = faces(fx.pool(), alice.id, &sha, &group).await;
+
+    // Each run gets time for one batch of 200 faces only.
+    let mut runs = 0;
+    while person_of(fx.pool(), new[0]).await.is_none() {
+        runs += 1;
+        assert!(runs <= 4, "new faces still unclustered after {runs} runs");
+        cluster_job::cluster_owner(&fx.ctx, alice.id, &SFACE, Duration::ZERO)
+            .await
+            .unwrap();
+    }
+    // Nothing new: the lone faces are not tried again.
+    let idle = cluster_job::cluster_owner(&fx.ctx, alice.id, &SFACE, Duration::ZERO)
+        .await
+        .unwrap();
+    assert_eq!(idle.left, cluster_job::Left::Nothing, "{idle:?}");
 }
