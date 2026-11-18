@@ -15,7 +15,8 @@ pub struct PhotoFilter {
     pub tag: Option<String>,
     /// ISO 3166 country code, as geocoded.
     pub country: Option<String>,
-    /// First-level region (`place_admin1`), within `country`.
+    /// First-level region (`place_admin1`), within `country`. Empty: places
+    /// without a region (`place_admin1 IS NULL`), as Explore lists them.
     pub region: Option<String>,
     /// Place name, within `country` (and `region` when given).
     pub city: Option<String>,
@@ -40,9 +41,13 @@ impl PhotoFilter {
                 .push_bind(tag.clone())
                 .push(")");
         }
+        if self.region.as_deref() == Some("") {
+            query.push(" AND m.place_admin1 IS NULL");
+        }
+        let region = self.region.as_ref().filter(|r| !r.is_empty());
         let columns = [
             ("m.place_country_code", &self.country),
-            ("m.place_admin1", &self.region),
+            ("m.place_admin1", &region.cloned()),
             ("m.place_name", &self.city),
             ("m.camera_make", &self.camera_make),
             ("m.camera_model", &self.camera_model),

@@ -82,7 +82,7 @@ pub async fn places(
                 (array_agg(a.node_id ORDER BY a.taken_at DESC, a.node_id DESC))[1] AS cover \
          {FROM} WHERE a.owner_id = $1 AND m.place_country_code IS NOT NULL \
             AND ($3 OR m.place_name IS NOT NULL) \
-          GROUP BY {group} ORDER BY count DESC, 1, 4 LIMIT $2"
+          GROUP BY {group} ORDER BY count DESC, 1, 3, 4 LIMIT $2"
     );
     let mut tx = bounded::begin(pool).await?;
     let rows = sqlx::query_as(&sql)

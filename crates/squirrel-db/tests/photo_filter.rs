@@ -159,6 +159,20 @@ async fn each_filter_alone_and_combined(pool: PgPool) {
         ..filter()
     };
     assert_eq!(names(&pool, a, &paris).await, ["shot.png", "dog.jpg"]);
+    let no_region = PhotoFilter {
+        country: Some("FR".into()),
+        region: Some(String::new()),
+        ..filter()
+    };
+    assert!(
+        names(&pool, a, &no_region).await.is_empty(),
+        "every place has a region"
+    );
+    sqlx::query("UPDATE media SET place_admin1 = NULL WHERE place_name = 'Lyon'")
+        .execute(&pool)
+        .await
+        .unwrap();
+    assert_eq!(names(&pool, a, &no_region).await, ["beach.jpg"]);
     let france = PhotoFilter {
         country: Some("FR".into()),
         ..filter()

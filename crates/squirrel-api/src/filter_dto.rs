@@ -28,7 +28,8 @@ pub struct PhotoFilterQuery {
     pub tag: Option<String>,
     /// A country code (`GET /api/places`), e.g. `FR`.
     pub country: Option<String>,
-    /// A region of `country`; needs `country`.
+    /// A region of `country`; needs `country`. Empty (`region=`): places
+    /// without a region (a `null` region in `GET /api/places`).
     pub region: Option<String>,
     /// A place of `country` (and `region` when given); needs `country`.
     pub city: Option<String>,
@@ -58,10 +59,14 @@ impl PhotoFilterQuery {
         {
             return Err(ApiError::Validation("tag must be a tag slug".into()));
         }
+        let region = match self.region.as_deref().map(str::trim) {
+            Some("") => Some(String::new()),
+            _ => value("region", &self.region)?,
+        };
         let filter = PhotoFilter {
             tag,
             country: value("country", &self.country)?,
-            region: value("region", &self.region)?,
+            region,
             city: value("city", &self.city)?,
             camera_make: value("camera_make", &self.camera_make)?,
             camera_model: value("camera_model", &self.camera_model)?,
