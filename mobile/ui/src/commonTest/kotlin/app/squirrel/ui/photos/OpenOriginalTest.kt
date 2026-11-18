@@ -48,7 +48,7 @@ class OpenOriginalTest {
         val session = Session(InMemoryTokenStore()).apply { signedIn(Tokens("sqa", "sqr")) }
         val json = headersOf(HttpHeaders.ContentType, ContentType.Application.Json.toString())
         val engine = MockEngine {
-            respond("""{"asset":$summary,"size":$size,"albums":[]}""", headers = json)
+            respond("""{"asset":$summary,"size":$size,"albums":[],"tags":[],"people":[]}""", headers = json) // AssetDetails as openapi.json requires it
         }
         return SquirrelApi("https://home.example", engine, session)
     }
