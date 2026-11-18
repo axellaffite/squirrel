@@ -225,7 +225,7 @@ mod tests {
 
     #[test]
     fn groups_without_a_runtime_are_refused() {
-        let Some(models) = crate::testutil::test_models() else {
+        let Some(models) = crate::testutil::test_models_for(&[ModelGroup::Faces]) else {
             return;
         };
         let err = Engine::load(&EngineConfig {
@@ -258,7 +258,7 @@ mod tests {
 
     #[test]
     fn clip_image_returns_a_512_d_unit_vector() {
-        let Some((dylib, models)) = crate::testutil::test_ml() else {
+        let Some((dylib, models)) = crate::testutil::test_ml_for(&[ModelGroup::ClipImage]) else {
             return;
         };
         let mut engine = Engine::load(&EngineConfig {

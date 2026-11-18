@@ -19,9 +19,10 @@ pub fn test_ort() -> Option<PathBuf> {
     None
 }
 
-/// The pinned models (`scripts/fetch-models.sh`): `SQUIRREL_MODELS_DIR`, with
-/// every group installed.
-pub fn test_models() -> Option<ModelDir> {
+/// The pinned models (`scripts/fetch-models.sh`): `SQUIRREL_MODELS_DIR`, when
+/// every group of `groups` is installed there. A missing group skips the test
+/// (an install made with `--clip-only-image` or `--without-faces`), except on CI.
+pub fn test_models_for(groups: &[ModelGroup]) -> Option<ModelDir> {
     let Some(path) = std::env::var_os("SQUIRREL_MODELS_DIR") else {
         assert!(
             std::env::var_os("CI").is_none(),
@@ -31,20 +32,22 @@ pub fn test_models() -> Option<ModelDir> {
         return None;
     };
     let dir = ModelDir::new(path);
-    for group in ModelGroup::ALL {
+    if let Some(missing) = groups.iter().find(|group| !dir.installed(**group)) {
         assert!(
-            dir.installed(group),
-            "SQUIRREL_MODELS_DIR {} lacks the {} models: run scripts/fetch-models.sh",
+            std::env::var_os("CI").is_none(),
+            "CI is set but {} lacks the {} models: run scripts/fetch-models.sh",
             dir.path().display(),
-            group.name()
+            missing.name()
         );
+        eprintln!("skipped: the {} models are not installed", missing.name());
+        return None;
     }
     Some(dir)
 }
 
-/// Both the runtime and the models, or `None` (see the module docs).
-pub fn test_ml() -> Option<(PathBuf, ModelDir)> {
-    Some((test_ort()?, test_models()?))
+/// Both the runtime and the models of `groups`, or `None` (see above).
+pub fn test_ml_for(groups: &[ModelGroup]) -> Option<(PathBuf, ModelDir)> {
+    Some((test_ort()?, test_models_for(groups)?))
 }
 
 /// Generated test pictures: no third-party images in the repository.

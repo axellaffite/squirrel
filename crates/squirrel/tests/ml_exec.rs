@@ -94,7 +94,10 @@ async fn the_child_runs_under_its_address_space_limit() {
 /// 512-d unit vector.
 #[tokio::test]
 async fn clip_image_returns_512_floats() {
-    let Some((dylib, models)) = squirrel_ml::testutil::test_ml() else {
+    let Some((dylib, models)) = squirrel_ml::testutil::test_ml_for(&[
+        squirrel_ml::ModelGroup::ClipImage,
+        squirrel_ml::ModelGroup::Faces,
+    ]) else {
         return;
     };
     let client = MlClient::new(MlBackend::Subprocess(config(&[

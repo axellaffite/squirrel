@@ -70,7 +70,10 @@ async fn store_photos(pool: &PgPool, storage: &BlobStore) {
 #[ignore = "manual measurement"]
 #[sqlx::test(migrator = "squirrel_db::MIGRATOR")]
 async fn backfill_throughput(pool: PgPool) {
-    let Some((dylib, models)) = squirrel_ml::testutil::test_ml() else {
+    let Some((dylib, models)) = squirrel_ml::testutil::test_ml_for(&[
+        squirrel_ml::ModelGroup::ClipImage,
+        squirrel_ml::ModelGroup::ClipText,
+    ]) else {
         return;
     };
     let program = std::path::PathBuf::from(env!("CARGO_BIN_EXE_squirrel"));

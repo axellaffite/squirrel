@@ -184,7 +184,10 @@ mod tests {
     /// With the real models: the generated shapes get no unrelated tag.
     #[test]
     fn generated_shapes_get_no_unrelated_tag() {
-        let Some((dylib, models)) = crate::testutil::test_ml() else {
+        let Some((dylib, models)) = crate::testutil::test_ml_for(&[
+            crate::models::ModelGroup::ClipImage,
+            crate::models::ModelGroup::ClipText,
+        ]) else {
             return;
         };
         crate::runtime::init(&dylib).unwrap();

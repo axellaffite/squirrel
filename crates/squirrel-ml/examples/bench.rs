@@ -14,7 +14,7 @@ use squirrel_ml::clip::ClipImage;
 use squirrel_ml::clip::preprocess::{PreprocessCfg, preprocess};
 use squirrel_ml::input::{MAX_PREVIEW_PIXELS, load_preview};
 use squirrel_ml::models::ModelGroup;
-use squirrel_ml::testutil::{Shape, shape_image, test_ml};
+use squirrel_ml::testutil::{Shape, shape_image, test_ml_for};
 
 struct Args {
     images: usize,
@@ -81,7 +81,7 @@ fn median(mut samples: Vec<Duration>) -> Duration {
 
 fn main() -> anyhow::Result<()> {
     let args = args()?;
-    let (dylib, models) = test_ml()
+    let (dylib, models) = test_ml_for(&[ModelGroup::ClipImage])
         .ok_or_else(|| anyhow::anyhow!("set SQUIRREL_ORT_DYLIB and SQUIRREL_MODELS_DIR"))?;
     let scratch = tempfile::tempdir()?;
     let files = inputs(&args, scratch.path())?;

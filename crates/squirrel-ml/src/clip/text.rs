@@ -122,7 +122,8 @@ mod tests {
 
     #[test]
     fn the_real_tokenizer_matches_clip() {
-        let Some(models) = crate::testutil::test_models() else {
+        let Some(models) = crate::testutil::test_models_for(&[crate::models::ModelGroup::ClipText])
+        else {
             return;
         };
         let tokenizer = Tokenizer::from_file(models.file(TOKENIZER)).unwrap();
