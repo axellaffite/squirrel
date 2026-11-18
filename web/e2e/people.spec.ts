@@ -117,6 +117,13 @@ test('turning faces off deletes them all; turning them on finds the people again
 	const toggle = page.getByRole('switch', { name: 'Recognise faces in my photos' });
 	await expect(toggle).toBeChecked();
 	await toggle.click();
+	// The question states what is deleted, counted when it opens; until confirmed, nothing is.
+	await expect(openDialog(page)).toContainText('This deletes 2 people and 8 faces');
+	await expect(toggle).toBeChecked();
+	await openDialog(page).getByRole('button', { name: 'Cancel' }).click();
+	await expect(toggle).toBeChecked();
+	expect(await people(page)).toHaveLength(2);
+	await toggle.click();
 	await openDialog(page).getByRole('button', { name: 'Turn off and delete' }).click();
 	await expect(toggle).not.toBeChecked();
 	expect(await people(page)).toEqual([]);
