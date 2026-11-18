@@ -15,12 +15,14 @@ import platform.CoreFoundation.CFRelease
 import platform.CoreFoundation.CFRetain
 import platform.CoreFoundation.CFTypeRef
 import platform.CoreFoundation.CFTypeRefVar
+import platform.CoreFoundation.kCFBooleanFalse
 import platform.CoreFoundation.kCFBooleanTrue
 import platform.CoreFoundation.kCFTypeDictionaryKeyCallBacks
 import platform.CoreFoundation.kCFTypeDictionaryValueCallBacks
 import platform.Foundation.CFBridgingRelease
 import platform.Foundation.CFBridgingRetain
 import platform.Foundation.NSData
+import platform.Foundation.NSNumber
 import platform.Foundation.NSString
 import platform.Foundation.NSUTF8StringEncoding
 import platform.Foundation.create
@@ -35,6 +37,7 @@ import platform.Security.kSecAttrAccessible
 import platform.Security.kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly
 import platform.Security.kSecAttrAccount
 import platform.Security.kSecAttrService
+import platform.Security.kSecAttrSynchronizable
 import platform.Security.kSecClass
 import platform.Security.kSecClassGenericPassword
 import platform.Security.kSecMatchLimit
@@ -93,13 +96,16 @@ class KeychainTokenStore(
         if (status != errSecSuccess && status != errSecItemNotFound) throw TokenStoreUnavailable(KeychainError(status))
     }
 
-    /** Whether the item is readable only on this device, after its first unlock (tests). */
+    /** Whether the item is readable only on this device, after its first unlock, and never synced (tests). */
     fun isThisDeviceAfterFirstUnlock(): Boolean {
         val attributes = copyMatching(kSecReturnAttributes) ?: return false
         try {
             @Suppress("UNCHECKED_CAST")
-            val value = CFDictionaryGetValue(attributes as CFDictionaryRef, kSecAttrAccessible)
-            return value != null && text(value) == text(kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly)
+            val dictionary = attributes as CFDictionaryRef
+            val value = CFDictionaryGetValue(dictionary, kSecAttrAccessible)
+            val synced = CFDictionaryGetValue(dictionary, kSecAttrSynchronizable)
+            val notSynced = synced == null || (CFBridgingRelease(CFRetain(synced)) as? NSNumber)?.boolValue == false
+            return value != null && text(value) == text(kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly) && notSynced
         } finally {
             CFRelease(attributes)
         }
@@ -132,6 +138,8 @@ class KeychainTokenStore(
             CFDictionaryAddValue(query, kSecClass, kSecClassGenericPassword)
             CFDictionaryAddValue(query, kSecAttrService, serviceRef)
             CFDictionaryAddValue(query, kSecAttrAccount, accountRef)
+            // Never in iCloud Keychain: the refresh token belongs to this device alone.
+            CFDictionaryAddValue(query, kSecAttrSynchronizable, kCFBooleanFalse)
             return block(query)
         } finally {
             CFRelease(serviceRef)
