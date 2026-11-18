@@ -8,7 +8,7 @@
 	import { layoutMonth, type Metrics } from '#lib/photos/model.ts';
 
 	interface Props {
-		/** Newest first; grouped by day, without month sections. */
+		/** Newest first; grouped by day (unless `days` is false), without month sections. */
 		items: readonly AssetSummary[];
 		selected: ReadonlySet<string>;
 		selecting: boolean;
@@ -16,9 +16,11 @@
 		onToggle: (asset: AssetSummary, range: boolean) => void;
 		/** Called when the view nears the end of what is loaded (load the next page). */
 		onNearEnd?: () => void;
+		/** `false`: keep the given order, without day headings (search results, best first). */
+		days?: boolean;
 	}
 
-	let { items, selected, selecting, onOpen, onToggle, onNearEnd }: Props = $props();
+	let { items, selected, selecting, onOpen, onToggle, onNearEnd, days = true }: Props = $props();
 
 	let root: HTMLDivElement | undefined = $state();
 	let width = $state(0);
@@ -28,7 +30,7 @@
 
 	const layout = $derived.by(() => {
 		const m = metrics;
-		return m && width > 0 ? layoutMonth(items, width, { ...m, monthHead: 0 }) : { blocks: [], height: 0 };
+		return m && width > 0 ? layoutMonth(items, width, { ...m, monthHead: 0 }, undefined, days) : { blocks: [], height: 0 };
 	});
 	const shown = $derived(visible(layout.blocks, viewTop, viewHeight, viewHeight));
 

@@ -115,8 +115,22 @@ export function layoutMonth<A extends Placeable>(
 	items: readonly A[],
 	width: number,
 	m: Metrics,
-	locale?: string
+	locale?: string,
+	/** `false`: one run of rows in the given order, without day headings (search results). */
+	days = true
 ): MonthLayout<A> {
+	if (!days) {
+		const cells = items.map((asset) => ({ asset, aspect: aspectOf(asset) }));
+		const { blocks, height } = stack([{ key: 'all', label: '', items: cells }], {
+			width,
+			targetHeight: m.rowHeight,
+			gap: m.gap,
+			headerHeight: 0,
+			sectionGap: 0
+		});
+		const rows = blocks.filter((block) => block.kind !== 'header');
+		return { blocks: rows.map((block) => ({ ...block, top: block.top + m.monthHead })), height: m.monthHead + height };
+	}
 	const sections: Section<Cell<A>>[] = [];
 	for (const asset of items) {
 		const key = dayKey(asset.taken_at);

@@ -11,9 +11,22 @@
 		/** Defaults to opening `/files/search?q=…`. */
 		onsubmit?: (value: string) => void;
 		autofocus?: boolean;
+		/** The field's (visually hidden) label. */
+		label?: string;
+		placeholder?: string;
+		/** Fills the width it is given (a page's main field) instead of a fixed pill. */
+		wide?: boolean;
 	}
 
-	let { value = $bindable(''), oninput, onsubmit, autofocus = false }: Props = $props();
+	let {
+		value = $bindable(''),
+		oninput,
+		onsubmit,
+		autofocus = false,
+		label = 'Search files',
+		placeholder = 'Search names and documents',
+		wide = false
+	}: Props = $props();
 
 	const uid = $props.id();
 	const inputId = `search-${uid}`;
@@ -34,8 +47,8 @@
 	}
 </script>
 
-<form class="search" role="search" onsubmit={submit}>
-	<label class="visually-hidden" for={inputId}>Search files</label>
+<form class="search" class:wide role="search" onsubmit={submit}>
+	<label class="visually-hidden" for={inputId}>{label}</label>
 	<Icon name="search" />
 	<!-- svelte-ignore a11y_autofocus -->
 	<input
@@ -43,7 +56,7 @@
 		id={inputId}
 		type="search"
 		bind:value
-		placeholder="Search names and documents"
+		{placeholder}
 		maxlength={MAX_QUERY}
 		autocomplete="off"
 		spellcheck="false"
@@ -67,7 +80,7 @@
 	}
 
 	@media (min-width: 48rem) {
-		.search {
+		.search:not(.wide) {
 			width: var(--menu-w);
 		}
 	}

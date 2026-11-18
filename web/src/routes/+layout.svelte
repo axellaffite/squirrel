@@ -11,6 +11,7 @@
 	import Alert from '#lib/components/ui/Alert.svelte';
 	import Button from '#lib/components/ui/Button.svelte';
 	import Card from '#lib/components/ui/Card.svelte';
+	import IconButton from '#lib/components/ui/IconButton.svelte';
 	import { redirectFor } from '#lib/guard.ts';
 	import { LOGOUT_ERROR } from '#lib/session-logic.ts';
 	import { loadSession, logout, session } from '#lib/session.svelte.ts';
@@ -114,13 +115,16 @@
 		<div class="panel">
 			<header class="phone-top">
 				<a href="/" class="wordmark">Squirrel</a>
-				<UserMenu
+				<span class="top-tools">
+					<IconButton icon="search" label="Search photos" tooltip="Search" fill="tint" href="/search" />
+					<UserMenu
 					displayName={session.me.display_name}
 					username={session.me.username}
 					{theme}
 					onthemechange={changeTheme}
 					onlogout={handleLogout}
-				/>
+					/>
+				</span>
 			</header>
 			{#if logoutError}<Alert>{logoutError}</Alert>{/if}
 			<div class="view">
@@ -185,6 +189,12 @@
 		align-items: center;
 		justify-content: space-between;
 		gap: var(--space-3);
+	}
+
+	.top-tools {
+		display: flex;
+		align-items: center;
+		gap: var(--space-2);
 	}
 
 	/* A 44 px tall target: the row already holds the 44 px account button. */
