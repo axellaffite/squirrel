@@ -15,7 +15,7 @@ interface MlStatus {
 	processing: number;
 }
 
-async function status(page: Page): Promise<MlStatus> {
+export async function status(page: Page): Promise<MlStatus> {
 	return (await (await page.request.get('/api/media/status')).json()) as MlStatus;
 }
 
@@ -24,18 +24,22 @@ async function status(page: Page): Promise<MlStatus> {
  * scripts/fetch-models.sh); on CI, where they are installed, a missing model fails instead.
  */
 export async function requireModels(page: Page, group: 'clip' | 'faces'): Promise<void> {
-	const installed = (await status(page)).ml.models_installed[group];
+	const ml = (await status(page)).ml;
+	const installed = ml.models_installed[group] && ml.state === 'ready';
 	if (process.env.CI) expect(installed, `${group} models on the CI server`).toBe(true);
 	test.skip(!installed, `the E2E server has no ${group} models (scripts/fetch-models.sh)`);
 }
 
-/** Waits until every photo is prepared and analysed. */
+/**
+ * Waits until every photo is prepared and analysed. On a server without models (ML
+ * `unavailable`) nothing will ever analyse them: only the media steps are waited for.
+ */
 export async function waitForMl(page: Page): Promise<void> {
 	await expect
 		.poll(
 			async () => {
 				const s = await status(page);
-				return s.queued + s.processing + s.ml.queued;
+				return s.queued + s.processing + (s.ml.state === 'unavailable' ? 0 : s.ml.queued);
 			},
 			{ timeout: ML_TIMEOUT, intervals: [1000, 2000, 3000] }
 		)

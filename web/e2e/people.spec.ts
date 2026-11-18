@@ -1,6 +1,6 @@
 import { expect, test, type Page } from '@playwright/test';
 import { openDialog } from './helpers/files.ts';
-import { newUser, tiles, uploadPhotos, waitForTimeline } from './helpers/photos.ts';
+import { fixture, newUser, photoId, tiles, uploadPhotos, waitForTimeline } from './helpers/photos.ts';
 import { people, portrait, portraits, requireModels, waitForMl, waitForPeople } from './helpers/ml.ts';
 
 // One fresh user's portraits (two people, four photos each), corrected step by step.
@@ -12,8 +12,9 @@ let ada = '';
 test.beforeAll(async ({ browser }) => {
 	test.setTimeout(300_000);
 	({ page } = await newUser(browser, 'family'));
-	await uploadPhotos(page, ...portraits());
-	await waitForTimeline(page, 8);
+	await requireModels(page, 'faces');
+	await uploadPhotos(page, ...portraits(), fixture('red-circle.jpg'));
+	await waitForTimeline(page, 9);
 	await waitForMl(page);
 });
 
@@ -59,17 +60,38 @@ test('the lightbox shows her face box, and "Not Ada" takes the face off her page
 
 test('another user never sees her people, tags or places, even holding the same photo', async ({ browser }) => {
 	await requireModels(page, 'faces');
+	await requireModels(page, 'clip');
 	const { page: bob } = await newUser(browser, 'neighbour');
-	await uploadPhotos(bob, portrait('koch-a'));
-	await waitForTimeline(bob, 1);
+	// The same bytes as two of hers: a portrait and the red circle.
+	await uploadPhotos(bob, portrait('koch-a'), fixture('red-circle.jpg'));
+	await waitForTimeline(bob, 2);
 	await waitForMl(bob);
+	const bobsPhoto = await photoId(bob, 'koch-a.jpg');
 	expect((await bob.request.get(`/api/people/${ada}`)).status()).toBe(404);
-	expect((await people(bob, true)).map((p) => p.name)).not.toContain('Ada');
+	// One face of his own is not a person yet (three are needed): his people are empty.
+	expect(await people(bob, true)).toEqual([]);
+	// The shared photo's details show no person of hers.
+	const details = (await (await bob.request.get(`/api/photos/${bobsPhoto}`)).json()) as { people: { id: string }[] };
+	expect(details.people).toEqual([]);
+	const faces = (await (await bob.request.get(`/api/photos/${bobsPhoto}/faces`)).json()) as { person: unknown }[];
+	expect(faces.every((face) => face.person === null)).toBe(true);
 	expect(await (await bob.request.get('/api/places')).json()).toEqual([]);
-	const tags = (await (await bob.request.get('/api/tags')).json()) as { count: number }[];
-	expect(tags.every((tag) => tag.count === 1)).toBe(true);
-	const filtered = await (await bob.request.get(`/api/photos?person=${ada}`)).json();
+	// His tags (the red circle has some) only ever lead to his own two photos.
+	const own = new Set([bobsPhoto, await photoId(bob, 'red-circle.jpg')]);
+	const tags = (await (await bob.request.get('/api/tags')).json()) as { tag: string; count: number }[];
+	expect(tags.length).toBeGreaterThan(0);
+	for (const { tag, count } of tags) {
+		expect(count).toBeLessThanOrEqual(2);
+		const tagged = (await (await bob.request.get(`/api/photos?tag=${tag}`)).json()) as { items: { id: string }[] };
+		expect(tagged.items.every((item) => own.has(item.id))).toBe(true);
+	}
+	const filtered = (await (await bob.request.get(`/api/photos?person=${ada}`)).json()) as { items: unknown[] };
 	expect(filtered.items).toEqual([]);
+	// His search sees only his own photos, never her others.
+	const found = (await (await bob.request.get('/api/search/photos?q=astronaut%20portrait')).json()) as {
+		items: { id: string }[];
+	};
+	expect(found.items.every((item) => own.has(item.id))).toBe(true);
 	await bob.goto('/explore/people');
 	await expect(bob.getByText('Ada', { exact: true })).toHaveCount(0);
 	await bob.context().close();
@@ -93,6 +115,7 @@ test('two people merge into one, and split back', async () => {
 	await requireModels(page, 'faces');
 	await page.goto('/explore/people');
 	await page.getByRole('button', { name: 'Merge people' }).click();
+	await expect(grid(page).getByRole('button')).toHaveCount(2);
 	for (const person of await grid(page).getByRole('button').all()) await person.click();
 	await page.getByRole('toolbar', { name: 'Selected people' }).getByRole('button', { name: 'Merge' }).click();
 	// Ada is kept by default (she is named), and the choice is the user's.
@@ -132,7 +155,7 @@ test('turning faces off deletes them all; turning them on finds the people again
 	await toggle.click();
 	await openDialog(page).getByRole('button', { name: 'Turn off and delete' }).click();
 	await expect(toggle).not.toBeChecked();
-	expect(await people(page)).toEqual([]);
+	await expect.poll(async () => people(page)).toEqual([]);
 	await page.goto('/explore/people');
 	await expect(page.getByText('Face recognition is off')).toBeVisible();
 

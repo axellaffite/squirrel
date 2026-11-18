@@ -96,6 +96,15 @@ test('a filter in the address narrows the timeline, and the rail clears it', asy
 	await expect(page).toHaveURL(/\/photos$/);
 });
 
+test('Explore › Places groups places by country and filters by place', async () => {
+	await page.goto('/explore/places');
+	await expect(page.getByRole('heading', { level: 2, name: 'France' })).toBeVisible();
+	await page.getByRole('link', { name: /^Paris/ }).click();
+	await expect(page).toHaveURL(/country=FR/);
+	await expect(page.getByRole('button', { name: 'Remove filter Paris' })).toBeVisible();
+	await expect(tiles(page)).toHaveCount(1);
+});
+
 test('the search page follows its address', async () => {
 	await page.goto('/search?q=dog');
 	await expect(page.getByRole('searchbox', { name: 'Search photos' })).toHaveValue('dog');
