@@ -220,6 +220,11 @@ the child with `MALLOC_ARENA_MAX=2`: without it glibc reserves 64 MB per thread 
 need 8.9 GiB, which the limit refuses. The server's search model takes about 0.4 GB while
 searches happen and is stopped after 5 idle minutes. Plan for 4 GB of RAM on the box.
 
+**Time per photo** (measured on an Apple M4 Pro, release build, 2 threads): the CLIP image
+embedding takes about 27–36 ms and face detection with embedding about 21 ms, on top of the
+thumbnails. A mini PC is several times slower; the work runs in the background, below
+thumbnails, one photo at a time.
+
 **Postgres** needs pgvector (see "Administration" above): embeddings are `halfvec` columns,
 searched exactly per user (no shared index), so one user's library never changes another's
 results.
@@ -232,7 +237,7 @@ anew, without names). Deleting a photo for good deletes its faces too.
 **Thresholds are provisional**: the tag thresholds (`src/clip/labels.rs`: cosine 0.25, margin
 0.045 over the background prompt), the search cut-offs (`SEARCH_MAX_DISTANCE` 0.78 and
 `SEARCH_RELATIVE_CUTOFF` 0.06), the face detector score (0.6) and the clustering parameters
-(`squirrel_ml::cluster::SFACE`: distance 0.50, 3 faces) were set on test images and await
+(`squirrel_ml::cluster::SFACE`: distance 0.50, 3 faces, detector score 0.7 to found a person) were set on test images and await
 calibration on a real library. To judge tags on your own photos:
 
     SQUIRREL_ORT_DYLIB=… SQUIRREL_MODELS_DIR=… cargo run --release -p squirrel-ml \
