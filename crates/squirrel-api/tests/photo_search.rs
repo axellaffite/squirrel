@@ -198,3 +198,43 @@ async fn a_busy_text_model_answers_503_busy(pool: PgPool) {
     response.assert_status(StatusCode::SERVICE_UNAVAILABLE);
     assert_eq!(response.json::<Value>()["error"]["code"], "busy");
 }
+
+/// A filtered search never returns a photo whose folder is in the trash.
+#[sqlx::test(migrator = "squirrel_db::MIGRATOR")]
+async fn a_filtered_search_skips_photos_of_a_trashed_folder(pool: PgPool) {
+    let instance = common::Instance::new(pool.clone()).with_text_encoder(encoder());
+    let browser = instance.browser();
+    let me = common::setup_admin(&browser, "alice").await;
+    let photos = root_id(&instance, &me, "Photos").await;
+    let folder: Value = browser
+        .post("/api/folders")
+        .add_header(common::CSRF, common::csrf(&me))
+        .json(&serde_json::json!({ "parent_id": photos, "name": "Trip" }))
+        .await
+        .json();
+    let folder_id: Uuid = folder["id"].as_str().unwrap().parse().unwrap();
+    let when = datetime!(2024-07-01 10:00);
+    let inside = photo(&pool, &me, folder_id, "inside.jpg", when).await;
+    let outside = photo(&pool, &me, photos, "outside.jpg", when).await;
+    for id in [inside, outside] {
+        embed(&pool, id, 0.0).await;
+        sqlx::query(
+            "UPDATE media m SET place_country_code = 'FR' FROM nodes n \
+              WHERE n.id = $1 AND m.sha256 = n.blob_sha256",
+        )
+        .bind(id)
+        .execute(&pool)
+        .await
+        .unwrap();
+    }
+    assert_eq!(names(&search(&browser, "q=dog&country=FR").await).len(), 2);
+    browser
+        .delete(&format!("/api/nodes/{folder_id}"))
+        .add_header(common::CSRF, common::csrf(&me))
+        .await
+        .assert_status(StatusCode::NO_CONTENT);
+    assert_eq!(
+        names(&search(&browser, "q=dog&country=FR").await),
+        ["outside.jpg"]
+    );
+}
