@@ -13,6 +13,8 @@ import io.ktor.http.headersOf
 import kotlinx.cinterop.ExperimentalForeignApi
 import kotlinx.coroutines.test.runTest
 import platform.Foundation.NSFileManager
+import platform.Foundation.NSFileProtectionCompleteUntilFirstUserAuthentication
+import platform.Foundation.NSFileProtectionKey
 import platform.Foundation.NSTemporaryDirectory
 import platform.Foundation.NSUUID
 import kotlin.test.AfterTest
@@ -65,11 +67,30 @@ class IosFileOpenerTest {
     }
 
     @Test
-    fun openingAnotherFileClearsThePreviousOne() = runTest {
+    fun openingAnotherFileKeepsTheOneASheetMayStillRead() = runTest {
         val opener = IosFileOpener(dir) { null }
         opener.open(api(HttpStatusCode.OK, ByteArray(10)), "a", "a.txt", null, share = false) {}
         opener.open(api(HttpStatusCode.OK, ByteArray(10)), "b", "b.txt", null, share = false) {}
-        assertFalse(files.fileExistsAtPath("$dir/a/a.txt"))
+        assertTrue(files.fileExistsAtPath("$dir/a/a.txt"))
         assertTrue(files.fileExistsAtPath("$dir/b/b.txt"))
+        opener.clear() // at launch and at sign-out
+        assertFalse(files.fileExistsAtPath("$dir/a/a.txt"))
+        assertFalse(files.fileExistsAtPath("$dir/b/b.txt"))
+    }
+
+    @Test
+    fun theSameFileOpenedTwiceIsReplaced() = runTest {
+        val opener = IosFileOpener(dir) { null }
+        opener.open(api(HttpStatusCode.OK, ByteArray(10)), "a", "a.txt", null, share = false) {}
+        assertEquals(HandoffResult.NoApp, opener.open(api(HttpStatusCode.OK, ByteArray(20)), "a", "a.txt", null, share = false) {})
+        assertEquals(20L, (checkNotNull(files.attributesOfItemAtPath("$dir/a/a.txt", null))["NSFileSize"] as Number).toLong())
+    }
+
+    @Test
+    fun downloadsAreProtectedUntilTheFirstUnlock() = runTest {
+        IosFileOpener(dir) { null }.open(api(HttpStatusCode.OK, ByteArray(10)), "p", "p.txt", null, share = false) {}
+        val protection = files.attributesOfItemAtPath("$dir/p/p.txt", null)?.get(NSFileProtectionKey)
+        // The simulator may not report data protection; where it does, it is the one asked for.
+        if (protection != null) assertEquals<Any?>(NSFileProtectionCompleteUntilFirstUserAuthentication, protection)
     }
 }

@@ -25,6 +25,8 @@ import platform.CoreGraphics.CGRectMake
 import platform.Foundation.NSData
 import platform.Foundation.NSFileHandle
 import platform.Foundation.NSFileManager
+import platform.Foundation.NSFileProtectionCompleteUntilFirstUserAuthentication
+import platform.Foundation.NSFileProtectionKey
 import platform.Foundation.NSURL
 import platform.Foundation.closeFile
 import platform.Foundation.create
@@ -35,8 +37,9 @@ import platform.UIKit.UIDocumentInteractionController
 import platform.UIKit.UIViewController
 
 /**
- * Downloads a file's original into `Caches/open/<id>/` (cleared on the next open and at sign-out)
- * and hands it over: "Open in" through `UIDocumentInteractionController`, share through
+ * Downloads a file's original into `Caches/open/<id>/` (cleared at launch and at sign-out, never
+ * while a sheet may still be reading an earlier file), protected until the first unlock after a
+ * restart, and hands it over: "Open in" through `UIDocumentInteractionController`, share through
  * `UIActivityViewController`, presented from the Compose host's view controller.
  */
 @OptIn(ExperimentalForeignApi::class, BetaInteropApi::class)
@@ -60,10 +63,10 @@ class IosFileOpener(
         val partial = "$target.part"
         try {
             withContext(Dispatchers.IO) {
-                clear()
-                files.createDirectoryAtPath(folder, withIntermediateDirectories = true, attributes = null, error = null)
+                files.createDirectoryAtPath(folder, withIntermediateDirectories = true, attributes = PROTECTED, error = null)
                 download(api, id, partial, onProgress)
-                files.moveItemAtPath(partial, toPath = target, error = null)
+                files.removeItemAtPath(target, null) // the same file opened earlier
+                if (!files.moveItemAtPath(partial, toPath = target, error = null)) error("could not keep $target")
             }
         } catch (e: CancellationException) {
             files.removeItemAtPath(partial, null)
@@ -89,7 +92,7 @@ class IosFileOpener(
     }
 
     private suspend fun download(api: SquirrelApi, id: String, path: String, onProgress: (Float) -> Unit) {
-        files.createFileAtPath(path, contents = null, attributes = null)
+        if (!files.createFileAtPath(path, contents = null, attributes = PROTECTED)) error("cannot create $path")
         val out = NSFileHandle.fileHandleForWritingAtPath(path) ?: error("cannot write $path")
         try {
             api.httpClient.prepareGet(api.contentUrl(id)) {
@@ -123,6 +126,12 @@ class IosFileOpener(
 
     private companion object {
         const val BUFFER = 64 * 1024
+
+        /**
+         * Readable once the phone was unlocked after a restart. `Complete` would be stricter, but a
+         * share sheet or another app still reading the file breaks when the phone locks.
+         */
+        val PROTECTED: Map<Any?, Any?> = mapOf(NSFileProtectionKey to NSFileProtectionCompleteUntilFirstUserAuthentication)
         var current: UIDocumentInteractionController? = null
     }
 }
