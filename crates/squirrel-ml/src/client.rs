@@ -19,6 +19,8 @@ use tokio::time::Instant;
 
 /// The only variables the child inherits (no database URL, no secrets).
 const PASSED_ENV: [&str; 1] = ["PATH"];
+/// The child's glibc malloc arenas (see `start`).
+const MALLOC_ARENA_MAX: &str = "2";
 /// After a child fails to start, no new start for this long, doubling up to
 /// [`MAX_RESTART_BACKOFF`] (a broken install must not respawn on every job).
 pub const RESTART_BACKOFF: Duration = Duration::from_secs(30);
@@ -306,6 +308,11 @@ async fn start(config: &MlChildConfig, generation: u64) -> Result<(Running, Read
             command.env(name, value);
         }
     }
+    // glibc gives each thread up to 8 × cores malloc arenas of 64 MB reserved
+    // address space: with 32 threads the child reserved 9.3 GB (measured on
+    // Linux arm64) and failed under its RLIMIT_AS. Two arenas: 2.0 GB, and
+    // 3.0 GB at 64 threads; the resident set is the same (1.07 GB).
+    command.env("MALLOC_ARENA_MAX", MALLOC_ARENA_MAX);
     // Its own process group: whatever it starts is killed with it.
     command.process_group(0);
     let mut child = command
