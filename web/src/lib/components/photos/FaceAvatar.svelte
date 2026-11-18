@@ -6,16 +6,19 @@
 		/** The face to show; null shows the `user` icon. */
 		face: FaceCrop | null | undefined;
 		size?: 'sm' | 'md' | 'lg';
+		/** The photo's width / height when known (no jump on the first frame). */
+		photoAspect?: number | null;
 	}
 
-	let { face, size = 'sm' }: Props = $props();
+	let { face, size = 'sm', photoAspect = null }: Props = $props();
 
 	let failed = $state(false);
 	/** The avatar's width on screen (px), to choose the thumb or the preview. */
 	let width = $state(0);
 	/** The photo's width / height once it loaded, to keep the crop inside it. */
-	let aspect = $state(1);
-	const source = $derived(face && width > 0 ? cropSource(face, width) : null);
+	let loadedAspect: number | null = $state(null);
+	const aspect = $derived(loadedAspect ?? (photoAspect && photoAspect > 0 ? photoAspect : 1));
+	const source = $derived(face && width > 0 ? cropSource(face, width, aspect) : null);
 	const style = $derived(face ? cropStyle(face.box, aspect) : null);
 
 	// Another face (or size): a past failure says nothing about the new image.
@@ -24,9 +27,15 @@
 		failed = false;
 	});
 
+	// Another face: its photo's shape is not known yet.
+	$effect(() => {
+		void face?.face_id;
+		loadedAspect = null;
+	});
+
 	function loaded(event: Event) {
 		const img = event.currentTarget as HTMLImageElement;
-		if (img.naturalWidth > 0 && img.naturalHeight > 0) aspect = img.naturalWidth / img.naturalHeight;
+		if (img.naturalWidth > 0 && img.naturalHeight > 0) loadedAspect = img.naturalWidth / img.naturalHeight;
 	}
 </script>
 

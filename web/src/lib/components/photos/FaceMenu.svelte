@@ -10,6 +10,8 @@
 
 	interface Props {
 		face: Face;
+		/** The photo's width / height, when known. */
+		photoAspect?: number | null;
 		/** "This is…": the person picker opens once this menu closed. */
 		onChoosePerson: () => void;
 		/** The face's person changed (reload the faces). */
@@ -17,7 +19,7 @@
 		onClose: () => void;
 	}
 
-	let { face, onChoosePerson, onChanged, onClose }: Props = $props();
+	let { face, photoAspect = null, onChoosePerson, onChanged, onClose }: Props = $props();
 
 	let dialog: Dialog | undefined = $state();
 	let open = $state(true);
@@ -54,7 +56,7 @@
 <Dialog bind:this={dialog} bind:open title={faceName(face.person?.name)} onclose={closed}>
 	<div class="body">
 		<div class="face">
-			<FaceAvatar face={crop} size="lg" />
+			<FaceAvatar face={crop} size="lg" {photoAspect} />
 			{#if who && face.person}
 				<a class="person" href={`/explore/people/${face.person.id}`}>{who}<Icon name="chevron-right" /></a>
 			{:else}

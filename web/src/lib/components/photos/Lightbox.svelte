@@ -203,6 +203,7 @@
 	{#if menuFace}
 		<FaceMenu
 			face={menuFace}
+			photoAspect={asset.width && asset.height ? asset.width / asset.height : null}
 			onChoosePerson={() => (pickingFor = menuFace)}
 			onChanged={(message) => {
 				faceNotice = message;

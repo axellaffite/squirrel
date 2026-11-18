@@ -11,8 +11,9 @@ export type FaceBox = components['schemas']['FaceBoxDto'];
 
 /** Room kept around the face, as a share of its height on each side. */
 export const FACE_MARGIN = 0.25;
-/** Thumbnail height, px (the preview is 4 × taller). */
+/** The thumb fits 1 080 × 360 px (squirrel-media `thumbs`): 360 px tall unless wider than 3:1. */
 export const THUMB_PX = 360;
+export const THUMB_MAX_WIDTH = 1080;
 /** Screens are assumed this dense when choosing between the thumb and the preview. */
 export const ASSUMED_DPR = 2;
 
@@ -51,11 +52,13 @@ export function cropStyle(box: FaceBox, aspect: number = 1, margin: number = FAC
 
 /**
  * The thumbnail to crop for an avatar `displayPx` wide: the thumb when its pixels cover the
- * avatar at {@link ASSUMED_DPR}, else the preview. Null while the photo has no thumbnail.
+ * avatar at {@link ASSUMED_DPR}, else the preview (`aspect`: the photo's width / height, for
+ * panoramas whose thumb is less than 360 px tall). Null while the photo has no thumbnail.
  */
-export function cropSource(face: FaceCrop, displayPx: number): string | null {
+export function cropSource(face: FaceCrop, displayPx: number, aspect: number = 1): string | null {
 	if (face.thumbnail_version === null || face.thumbnail_version === undefined) return null;
-	const covered = cropWindow(face.box).height * THUMB_PX;
+	const thumbHeight = Math.min(THUMB_PX, THUMB_MAX_WIDTH / (aspect > 0 ? aspect : 1));
+	const covered = cropWindow(face.box).height * thumbHeight;
 	const size: ThumbnailSize = covered >= displayPx * ASSUMED_DPR ? 'thumb' : 'preview';
 	return thumbnailUrl(face.photo_id, size, face.thumbnail_version);
 }
