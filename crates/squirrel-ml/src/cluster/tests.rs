@@ -28,6 +28,14 @@ fn a_tie_goes_to_the_nearest_person() {
 }
 
 #[test]
+fn an_exact_tie_goes_to_the_smallest_person_id() {
+    for order in [[(1, 30), (2, 20)], [(2, 20), (1, 30)]] {
+        let neighbours: Vec<_> = order.iter().map(|&(f, p)| n(f, Some(p), 0.2)).collect();
+        assert_eq!(decide(0, 0.9, &neighbours, &P), Decision::Join(20));
+    }
+}
+
+#[test]
 fn neighbours_past_the_distance_do_not_count() {
     let neighbours = [n(1, Some(10), 0.51), n(2, None, 0.2), n(3, None, 0.3)];
     assert_eq!(
