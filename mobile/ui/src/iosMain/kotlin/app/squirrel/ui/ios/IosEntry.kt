@@ -2,6 +2,8 @@ package app.squirrel.ui.ios
 
 import app.squirrel.shared.ios.photos.LibraryObserver
 import app.squirrel.shared.ios.transfer.SessionCompletion
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.IO
 import kotlinx.coroutines.MainScope
 import kotlinx.coroutines.launch
 import platform.Foundation.NSNotificationCenter
@@ -27,7 +29,9 @@ private val observer by lazy {
 fun onLaunch() {
     val backup = IosGraph.backup
     backup.tasks.register()
-    IosGraph.instance
+    val graph = IosGraph.instance
+    // Files handed to other apps in an earlier process: no sheet can still be reading them.
+    entryScope.launch(Dispatchers.IO) { graph.files?.clear() }
     val center = NSNotificationCenter.defaultCenter
     center.addObserverForName(UIApplicationDidBecomeActiveNotification, null, NSOperationQueue.mainQueue) { _ ->
         IosGraph.instance.onAppVisible()
