@@ -5,6 +5,9 @@ pub mod image;
 pub mod preprocess;
 pub mod text;
 
+#[cfg(test)]
+mod golden_tests;
+
 pub use image::ClipImage;
 pub use text::ClipText;
 

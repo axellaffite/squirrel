@@ -3128,6 +3128,7 @@ dependencies = [
 name = "squirrel-ml"
 version = "0.1.0"
 dependencies = [
+ "anyhow",
  "fast_image_resize",
  "image",
  "ndarray",
