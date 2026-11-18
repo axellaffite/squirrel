@@ -207,7 +207,7 @@ pub fn server_ml(
         });
     match encoder {
         Ok(backend) => (
-            Some(squirrel_api::ml::TextEncoder::new(MlClient::new(backend))),
+            Some(squirrel_api::ml::TextEncoder::new(MlClient::new(backend)).verifying(models)),
             installed,
         ),
         Err(err) => {
