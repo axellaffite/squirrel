@@ -5,6 +5,7 @@ pub mod assets;
 pub mod blobs;
 mod bounded;
 pub mod clip;
+pub mod clustering;
 pub mod device_assets;
 pub mod devices;
 pub mod documents;

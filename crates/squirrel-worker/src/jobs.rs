@@ -84,17 +84,28 @@ pub fn label_bank(model: &str) -> NewJob {
     .dedupe(format!("{LABEL_BANK}:{model}:{version}"))
 }
 
-/// Clusters `owner`'s new faces, at most once per [`CLUSTER_DELAY`] while
+/// Clusters `owner`'s new faces, at most once per [`cluster_delay`] while
 /// photos keep arriving (the dedupe key collapses the requests).
 pub fn cluster_faces(owner: Uuid) -> NewJob {
     NewJob::new(CLUSTER_FACES, json!({ "owner_id": owner }))
         .priority(priority::CLUSTER)
         .dedupe(format!("{CLUSTER_FACES}:{owner}"))
-        .delay(CLUSTER_DELAY)
+        .delay(cluster_delay())
 }
 
-/// How long new faces wait before they are clustered.
-pub const CLUSTER_DELAY: Duration = Duration::from_secs(10 * 60);
+/// How long new faces wait before they are clustered:
+/// `SQUIRREL_CLUSTER_DELAY_SECS`, default 10 minutes (the E2E server sets 1).
+pub fn cluster_delay() -> Duration {
+    static DELAY: std::sync::OnceLock<Duration> = std::sync::OnceLock::new();
+    *DELAY.get_or_init(|| {
+        std::env::var("SQUIRREL_CLUSTER_DELAY_SECS")
+            .ok()
+            .and_then(|v| v.trim().parse().ok())
+            .map_or(DEFAULT_CLUSTER_DELAY, Duration::from_secs)
+    })
+}
+
+pub const DEFAULT_CLUSTER_DELAY: Duration = Duration::from_secs(10 * 60);
 
 /// The ML steps of an image whose preview was just made. `faces_wanted`:
 /// some owner of a live copy has faces on.
