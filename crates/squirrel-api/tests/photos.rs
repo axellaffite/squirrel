@@ -326,3 +326,74 @@ async fn cursors_from_before_postgres_time_are_a_bad_request(pool: PgPool) {
         assert_eq!(code(&response), "bad_request", "{url}");
     }
 }
+
+async fn describe(pool: &PgPool, node: uuid::Uuid, sql: &str) {
+    sqlx::query(&format!(
+        "UPDATE media m SET {sql} FROM nodes n WHERE n.id = $1 AND m.sha256 = n.blob_sha256"
+    ))
+    .bind(node)
+    .execute(pool)
+    .await
+    .unwrap();
+}
+
+#[sqlx::test(migrator = "squirrel_db::MIGRATOR")]
+async fn the_timeline_and_its_months_take_filters(pool: PgPool) {
+    let instance = common::Instance::new(pool.clone());
+    let browser = instance.browser();
+    let me = common::setup_admin(&browser, "alice").await;
+    let photos = root_id(&instance, &me, "Photos").await;
+    let paris = photo(&pool, &me, photos, "paris.jpg", datetime!(2024-07-14 10:00)).await;
+    let lyon = photo(&pool, &me, photos, "lyon.jpg", datetime!(2024-08-01 10:00)).await;
+    describe(
+        &pool,
+        paris,
+        "place_country_code = 'FR', place_admin1 = 'Île-de-France', place_name = 'Paris', \
+         camera_make = 'Canon', camera_model = 'EOS R6'",
+    )
+    .await;
+    describe(
+        &pool,
+        lyon,
+        "place_country_code = 'FR', place_name = 'Lyon'",
+    )
+    .await;
+    sqlx::query(
+        "INSERT INTO asset_tags (sha256, tag, source, score, labels_version) \
+         SELECT blob_sha256, 'dog', 'clip', 0.3, 2 FROM nodes WHERE id = $1",
+    )
+    .bind(lyon)
+    .execute(&pool)
+    .await
+    .unwrap();
+
+    let page = |q: &'static str| {
+        let browser = &browser;
+        async move { names(&get(browser, &format!("/api/photos?{q}")).await).join(",") }
+    };
+    assert_eq!(page("country=FR").await, "lyon.jpg,paris.jpg");
+    assert_eq!(
+        page("country=FR&region=%C3%8Ele-de-France&city=Paris").await,
+        "paris.jpg"
+    );
+    assert_eq!(
+        page("camera_make=Canon&camera_model=EOS%20R6").await,
+        "paris.jpg"
+    );
+    assert_eq!(page("tag=dog").await, "lyon.jpg");
+    assert_eq!(page("tag=dog&camera_make=Canon").await, "");
+    assert_eq!(page("kind=screenshot").await, "");
+    assert_eq!(page("tag=dog&month=2024-08").await, "lyon.jpg");
+    let months = get(&browser, "/api/photos/months?tag=dog").await;
+    assert_eq!(months, json!([{ "month": "2024-08", "count": 1 }]));
+    for bad in [
+        "/api/photos?city=Paris",
+        "/api/photos?camera_model=X",
+        "/api/photos?tag=Not%20a%20slug",
+        "/api/photos?kind=video",
+        "/api/photos/months?region=Bretagne",
+    ] {
+        let status = browser.get(bad).await.status_code();
+        assert!(status.is_client_error(), "{bad}: {status}");
+    }
+}
