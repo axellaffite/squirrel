@@ -288,3 +288,49 @@ async fn a_photo_restored_without_a_scan_is_due_for_faces(pool: PgPool) {
         "faces off"
     );
 }
+
+#[sqlx::test(migrator = "squirrel_db::MIGRATOR")]
+async fn faces_out_of_range_are_refused(pool: PgPool) {
+    let t = shared_blob(&pool).await;
+    let insert = |boxed: [f32; 4], landmarks: Vec<Option<f32>>, score: f32| {
+        let (pool, owner, sha) = (pool.clone(), t.alice, t.sha.clone());
+        async move {
+            let mut embedding = vec![0.0f32; 128];
+            embedding[0] = 1.0;
+            sqlx::query(
+                "INSERT INTO faces (id, owner_id, sha256, model, box_x, box_y, box_w, box_h, \
+                                    landmarks, score, embedding) \
+                 VALUES (gen_random_uuid(), $1, $2, 'm', $3, $4, $5, $6, $7, $8, $9::real[]::halfvec)",
+            )
+            .bind(owner)
+            .bind(sha)
+            .bind(boxed[0])
+            .bind(boxed[1])
+            .bind(boxed[2])
+            .bind(boxed[3])
+            .bind(landmarks)
+            .bind(score)
+            .bind(embedding)
+            .execute(&pool)
+            .await
+        }
+    };
+    let points = || vec![Some(0.5f32); 10];
+    insert([0.1, 0.1, 0.2, 0.2], points(), 0.9).await.unwrap();
+    for (boxed, score) in [
+        ([-0.1, 0.1, 0.2, 0.2], 0.9),
+        ([0.1, 1.1, 0.2, 0.2], 0.9),
+        ([0.1, 0.1, 0.0, 0.2], 0.9),
+        ([0.1, 0.1, 0.2, 1.5], 0.9),
+        ([0.1, 0.1, 0.2, 0.2], 1.5),
+        ([0.1, 0.1, 0.2, 0.2], -0.1),
+    ] {
+        assert!(
+            insert(boxed, points(), score).await.is_err(),
+            "{boxed:?} {score}"
+        );
+    }
+    let mut holed = points();
+    holed[3] = None;
+    assert!(insert([0.1, 0.1, 0.2, 0.2], holed, 0.9).await.is_err());
+}

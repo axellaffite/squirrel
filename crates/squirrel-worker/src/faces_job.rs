@@ -105,15 +105,20 @@ async fn detect(
     Ok(None)
 }
 
-/// Why `face` cannot be stored: a 128-d unit embedding, a box and landmarks
-/// inside the image (0..1), a score in 0..1.
+/// Why `face` cannot be stored: a 128-d unit embedding, a non-empty box inside
+/// the image (0..1), finite landmarks, a score in 0..1 (the `faces` CHECKs).
 fn invalid(face: &FaceFound) -> Option<String> {
     if let Err(why) = check_unit_vector(&face.embedding, FACE_DIM) {
         return Some(why);
     }
     let unit = |v: &f32| v.is_finite() && (0.0..=1.0).contains(v);
     let [x, y, w, h] = face.bbox;
-    if !face.bbox.iter().all(unit) || x + w > 1.0 + 1e-4 || y + h > 1.0 + 1e-4 {
+    if !face.bbox.iter().all(unit)
+        || w <= 0.0
+        || h <= 0.0
+        || x + w > 1.0 + 1e-4
+        || y + h > 1.0 + 1e-4
+    {
         return Some(format!("box {:?}", face.bbox));
     }
     if !face.landmarks.iter().all(|v| v.is_finite()) || !unit(&face.score) {

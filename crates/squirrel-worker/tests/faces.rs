@@ -202,9 +202,11 @@ async fn a_photo_nobody_wants_faces_for_is_not_analysed(pool: PgPool) {
 async fn invalid_faces_are_never_stored(pool: PgPool) {
     let mut outside = found(0.1);
     outside.bbox = [0.9, 0.1, 0.5, 0.3];
+    let mut empty = found(0.1);
+    empty.bbox = [0.1, 0.1, 0.0, 0.3];
     let mut short = found(0.1);
     short.embedding.truncate(64);
-    for bad in [outside, short] {
+    for bad in [outside, empty, short] {
         let (_calls, ml) = fake(vec![bad]);
         let p = pair(ml.clone(), pool.clone()).await;
         assert!(
