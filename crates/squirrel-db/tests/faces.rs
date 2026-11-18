@@ -334,3 +334,41 @@ async fn faces_out_of_range_are_refused(pool: PgPool) {
     holed[3] = None;
     assert!(insert([0.1, 0.1, 0.2, 0.2], holed, 0.9).await.is_err());
 }
+
+#[sqlx::test(migrator = "squirrel_db::MIGRATOR")]
+async fn a_scan_waiting_on_turning_faces_off_stores_nothing(pool: PgPool) {
+    let t = shared_blob(&pool).await;
+    // `turn_off` mid-way: it holds the owner row and has switched faces off.
+    let mut turning_off = pool.begin().await.unwrap();
+    sqlx::query("SELECT 1 FROM users WHERE id = $1 FOR UPDATE")
+        .bind(t.alice)
+        .execute(&mut *turning_off)
+        .await
+        .unwrap();
+    ml_settings::set_faces_enabled(&mut *turning_off, t.alice, false)
+        .await
+        .unwrap();
+
+    let (scan_pool, sha) = (pool.clone(), t.sha.clone());
+    let scan = tokio::spawn(async move {
+        faces::store_scan(&scan_pool, t.alice, &sha, MODEL, &[face(0.1)]).await
+    });
+    tokio::time::sleep(std::time::Duration::from_millis(300)).await;
+    assert!(!scan.is_finished(), "the scan must wait for the owner lock");
+    turning_off.commit().await.unwrap();
+
+    assert!(
+        !scan.await.unwrap().unwrap(),
+        "faces are off: nothing stored"
+    );
+    assert_eq!(
+        faces::scan_count(&pool, t.alice, &t.sha).await.unwrap(),
+        None
+    );
+    assert!(
+        faces::faces_of(&pool, t.alice, &t.sha)
+            .await
+            .unwrap()
+            .is_empty()
+    );
+}
