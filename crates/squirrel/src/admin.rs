@@ -149,7 +149,9 @@ async fn jobs(pool: &PgPool, action: Option<JobsAction>) -> anyhow::Result<()> {
         None => {
             let kinds = admin::summary(pool).await?;
             let failures = admin::failed(pool, SHOWN_FAILURES).await?;
-            print!("{}", format_jobs(&kinds, &failures));
+            let ml_ready = squirrel_db::ml_status::current(pool).await?.state
+                == squirrel_db::ml_status::MlState::Ready;
+            print!("{}", format_jobs(&kinds, &failures, ml_ready));
         }
         Some(JobsAction::Retry { id }) => match admin::retry_failed(pool, id).await? {
             RetryOutcome::Requeued => println!("job {id} queued again"),
@@ -169,7 +171,10 @@ async fn jobs(pool: &PgPool, action: Option<JobsAction>) -> anyhow::Result<()> {
     Ok(())
 }
 
-fn format_jobs(kinds: &[KindSummary], failures: &[FailedJob]) -> String {
+/// `ml_ready`: some worker host reported working models. Without one, queued
+/// ML jobs are flagged as waiting for one (they are never failed for it).
+fn format_jobs(kinds: &[KindSummary], failures: &[FailedJob], ml_ready: bool) -> String {
+    let ml_kinds = squirrel_worker::context::ml_kinds(true, true);
     let mut out = String::new();
     if kinds.is_empty() {
         out.push_str("no jobs\n");
@@ -179,8 +184,14 @@ fn format_jobs(kinds: &[KindSummary], failures: &[FailedJob]) -> String {
             "KIND", "QUEUED", "RUNNING", "FAILED"
         ));
         for k in kinds {
+            let waiting = !ml_ready && k.queued > 0 && ml_kinds.contains(&k.kind.as_str());
+            let note = if waiting {
+                "  waiting for an ML worker"
+            } else {
+                ""
+            };
             out.push_str(&format!(
-                "{:<24} {:>8} {:>8} {:>8}\n",
+                "{:<24} {:>8} {:>8} {:>8}{note}\n",
                 k.kind, k.queued, k.running, k.failed
             ));
         }
@@ -219,7 +230,7 @@ mod tests {
             last_error: Some("decode\nfailed".into()),
             updated_at: datetime!(2026-11-14 10:00 UTC),
         }];
-        let out = format_jobs(&kinds, &failures);
+        let out = format_jobs(&kinds, &failures, true);
         assert!(
             out.contains("thumbnails                      3        1        2"),
             "{out}"
@@ -228,6 +239,37 @@ mod tests {
             out.contains("      42  2026-11-14T10:00:00Z  thumbnails  attempts 5  decode failed"),
             "{out}"
         );
-        assert_eq!(format_jobs(&[], &[]), "no jobs\n");
+        assert_eq!(format_jobs(&[], &[], true), "no jobs\n");
+    }
+
+    #[test]
+    fn queued_ml_jobs_without_an_ml_worker_say_so() {
+        let kinds = [
+            KindSummary {
+                kind: "clip_embed".into(),
+                queued: 12,
+                running: 0,
+                failed: 0,
+            },
+            KindSummary {
+                kind: "thumbnails".into(),
+                queued: 1,
+                running: 0,
+                failed: 0,
+            },
+        ];
+        let waiting = format_jobs(&kinds, &[], false);
+        assert!(
+            waiting.contains(
+                "clip_embed                     12        0        0  waiting for an ML worker"
+            ),
+            "{waiting}"
+        );
+        assert!(
+            !waiting
+                .lines()
+                .any(|l| l.starts_with("thumbnails") && l.contains("waiting"))
+        );
+        assert!(!format_jobs(&kinds, &[], true).contains("waiting"));
     }
 }
