@@ -53,7 +53,8 @@ mkdir -p "${CACHE}"
 PACKAGE="${CACHE}/${NUPKG}"
 if [[ ! -f "${PACKAGE}" ]] || ! package_ok "${PACKAGE}"; then
 	rm -f "${PACKAGE}"
-	curl --proto '=https' --tlsv1.2 -fsSL -o "${PACKAGE}.part" "${URL}"
+	curl --proto '=https' --tlsv1.2 -fsSL \
+		--connect-timeout 30 --retry 3 --retry-all-errors --max-time 1800 -o "${PACKAGE}.part" "${URL}"
 	if ! package_ok "${PACKAGE}.part"; then
 		rm -f "${PACKAGE}.part"
 		echo "fetch-onnxruntime: ${NUPKG} does not match its pinned SHA-256/SHA-512" >&2
