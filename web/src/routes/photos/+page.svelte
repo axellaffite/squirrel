@@ -192,6 +192,10 @@
 
 	<PhotosTabs path={page.url.pathname} />
 	<FilterBar filter={data.filter} {people} onChange={filterBy} />
+	<!-- Always rendered and never display: contents, so a filter's result is heard. -->
+	<p class="visually-hidden" aria-live="polite">
+		{#if filtering && total !== null}{total} {total === 1 ? 'photo matches' : 'photos match'}{/if}
+	</p>
 
 	<!-- Always rendered and never display: contents, so screen readers reliably hear the change. -->
 	<p class="visually-hidden" aria-live="polite">{notice ?? ''}</p>
