@@ -10,6 +10,7 @@ use time::{Date, Month, PrimitiveDateTime, Time};
 use uuid::Uuid;
 
 use crate::media::MediaState;
+use crate::photo_filter::PhotoFilter;
 use crate::{DbError, Page};
 
 /// Columns of [`AssetSummaryRecord`], shared by the timeline, albums and detail.
@@ -90,6 +91,7 @@ fn page_query<'a>(
     prefix: &str,
     owner_id: Uuid,
     filter: Filter,
+    photos: &PhotoFilter,
     after: Option<&TimelineCursor>,
     limit: u32,
 ) -> Result<QueryBuilder<'a, Postgres>, DbError> {
@@ -114,21 +116,23 @@ fn page_query<'a>(
             .push(" AND a.taken_at < ")
             .push_bind(to);
     }
+    photos.push(&mut query);
     query
         .push(" ORDER BY a.taken_at DESC, a.node_id DESC LIMIT ")
         .push_bind(i64::from(limit) + 1);
     Ok(query)
 }
 
-/// One page of `owner_id`'s live photos, newest capture first.
+/// One page of `owner_id`'s live photos matching `photos`, newest capture first.
 pub async fn page(
     pool: &PgPool,
     owner_id: Uuid,
     filter: Filter,
+    photos: &PhotoFilter,
     after: Option<&TimelineCursor>,
     limit: u32,
 ) -> Result<Page<AssetSummaryRecord>, DbError> {
-    let mut query = page_query("", owner_id, filter, after, limit)?;
+    let mut query = page_query("", owner_id, filter, photos, after, limit)?;
     let rows = query
         .build_query_as::<AssetSummaryRecord>()
         .fetch_all(pool)
@@ -142,10 +146,11 @@ pub async fn explain_page(
     conn: &mut sqlx::PgConnection,
     owner_id: Uuid,
     filter: Filter,
+    photos: &PhotoFilter,
     after: Option<&TimelineCursor>,
     limit: u32,
 ) -> Result<String, DbError> {
-    let mut query = page_query("EXPLAIN ", owner_id, filter, after, limit)?;
+    let mut query = page_query("EXPLAIN ", owner_id, filter, photos, after, limit)?;
     let lines: Vec<(String,)> = query.build_query_as().fetch_all(conn).await?;
     Ok(lines
         .into_iter()
@@ -161,16 +166,21 @@ pub struct MonthCount {
     pub count: i64,
 }
 
-/// How many live photos `owner_id` has per month, newest month first.
-pub async fn months(pool: &PgPool, owner_id: Uuid) -> Result<Vec<MonthCount>, DbError> {
-    let sql = format!(
+/// How many live photos matching `photos` `owner_id` has per month, newest
+/// month first.
+pub async fn months(
+    pool: &PgPool,
+    owner_id: Uuid,
+    photos: &PhotoFilter,
+) -> Result<Vec<MonthCount>, DbError> {
+    let mut query = QueryBuilder::<Postgres>::new(format!(
         "SELECT to_char(a.taken_at, 'YYYY-MM') AS month, count(*) AS count {FROM} \
-          WHERE a.owner_id = $1 GROUP BY 1 ORDER BY 1 DESC"
-    );
-    Ok(sqlx::query_as::<_, MonthCount>(&sql)
-        .bind(owner_id)
-        .fetch_all(pool)
-        .await?)
+          WHERE a.owner_id = "
+    ));
+    query.push_bind(owner_id);
+    photos.push(&mut query);
+    query.push(" GROUP BY 1 ORDER BY 1 DESC");
+    Ok(query.build_query_as::<MonthCount>().fetch_all(pool).await?)
 }
 
 /// Those of `node_ids` that are `owner_id`'s live photos (album covers).

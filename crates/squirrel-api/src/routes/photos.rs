@@ -9,6 +9,7 @@ use uuid::Uuid;
 use crate::cursor;
 use crate::error::{ApiError, ErrorBody};
 use crate::extract::Caller;
+use crate::filter_dto::PhotoFilterQuery;
 use crate::input::{ApiPath, ApiQuery};
 use crate::photos_dto::{
     AlbumRef, AssetDetails, AssetSummary, MediaStatus, MonthCountDto, TimelinePage, TimelineQuery,
@@ -54,16 +55,18 @@ pub fn timeline_page(page: squirrel_db::Page<timeline::AssetSummaryRecord>) -> T
     }
 }
 
-#[utoipa::path(get, path = "/api/photos", security(("device_bearer" = []), ("session_cookie" = [])), tag = "photos", params(TimelineQuery),
+#[utoipa::path(get, path = "/api/photos", security(("device_bearer" = []), ("session_cookie" = [])), tag = "photos", params(TimelineQuery, PhotoFilterQuery),
     responses(
         (status = 200, body = TimelinePage),
         (status = 400, body = ErrorBody, description = "Invalid cursor"),
-        (status = 422, body = ErrorBody, description = "Invalid month")))]
+        (status = 422, body = ErrorBody, description = "Invalid month or filter")))]
 pub async fn list_photos(
     State(state): State<AppState>,
     caller: Caller,
     ApiQuery(query): ApiQuery<TimelineQuery>,
+    ApiQuery(filters): ApiQuery<PhotoFilterQuery>,
 ) -> Result<Json<TimelinePage>, ApiError> {
+    let photos = filters.filter()?;
     let filter = match query.month.as_deref() {
         None => Filter::All,
         Some(raw) => {
@@ -81,6 +84,7 @@ pub async fn list_photos(
         &state.pool,
         caller.user.id,
         filter,
+        &photos,
         after.as_ref(),
         photo_page_size(query.limit),
     )
@@ -88,13 +92,15 @@ pub async fn list_photos(
     Ok(Json(timeline_page(page)))
 }
 
-#[utoipa::path(get, path = "/api/photos/months", security(("device_bearer" = []), ("session_cookie" = [])), tag = "photos",
-    responses((status = 200, body = Vec<MonthCountDto>, description = "Newest month first")))]
+#[utoipa::path(get, path = "/api/photos/months", security(("device_bearer" = []), ("session_cookie" = [])), tag = "photos", params(PhotoFilterQuery),
+    responses((status = 200, body = Vec<MonthCountDto>, description = "Newest month first"),
+              (status = 422, body = ErrorBody, description = "Invalid filter")))]
 pub async fn photo_months(
     State(state): State<AppState>,
     caller: Caller,
+    ApiQuery(filters): ApiQuery<PhotoFilterQuery>,
 ) -> Result<Json<Vec<MonthCountDto>>, ApiError> {
-    let months = timeline::months(&state.pool, caller.user.id).await?;
+    let months = timeline::months(&state.pool, caller.user.id, &filters.filter()?).await?;
     Ok(Json(months.into_iter().map(MonthCountDto::from).collect()))
 }
 

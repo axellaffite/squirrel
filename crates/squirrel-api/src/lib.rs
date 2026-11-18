@@ -11,6 +11,7 @@ mod dto;
 mod error;
 mod extract;
 mod files_dto;
+mod filter_dto;
 mod input;
 pub mod maintenance;
 pub mod ml;
@@ -67,6 +68,9 @@ const CHUNK_TIMEOUT: Duration = Duration::from_secs(5 * 60);
         (name = "storage"), (name = "jobs"), (name = "photos"), (name = "albums"),
         (name = "search"), (name = "devices"), (name = "sync")
     ),
+    // Schemas only referenced from query parameters are not collected from
+    // the routes: list them here.
+    components(schemas(filter_dto::PhotoKindFilter)),
     modifiers(&SecuritySchemes)
 )]
 struct ApiDoc;

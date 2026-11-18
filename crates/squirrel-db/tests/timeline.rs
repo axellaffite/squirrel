@@ -3,13 +3,14 @@ mod common;
 use common::{admin, invited, photo, photo_of_blob, raw_trash, root};
 use sqlx::PgPool;
 use squirrel_db::media::MediaState;
+use squirrel_db::photo_filter::PhotoFilter;
 use squirrel_db::timeline::{self, Filter, MonthCount, TimelineCursor};
 use time::PrimitiveDateTime;
 use time::macros::datetime;
 use uuid::Uuid;
 
 async fn names(pool: &PgPool, owner: Uuid, filter: Filter) -> Vec<String> {
-    timeline::page(pool, owner, filter, None, 100)
+    timeline::page(pool, owner, filter, &PhotoFilter::default(), None, 100)
         .await
         .unwrap()
         .items
@@ -37,9 +38,16 @@ async fn pages_newest_first_without_gaps_or_repeats(pool: PgPool) {
     let mut seen = Vec::new();
     let mut after: Option<TimelineCursor> = None;
     loop {
-        let page = timeline::page(&pool, alice.id, Filter::All, after.as_ref(), 3)
-            .await
-            .unwrap();
+        let page = timeline::page(
+            &pool,
+            alice.id,
+            Filter::All,
+            &PhotoFilter::default(),
+            after.as_ref(),
+            3,
+        )
+        .await
+        .unwrap();
         assert!(page.items.len() <= 3);
         seen.extend(page.items.iter().map(|a| (a.taken_at, a.node_id)));
         if !page.has_more {
@@ -51,9 +59,16 @@ async fn pages_newest_first_without_gaps_or_repeats(pool: PgPool) {
     let mut sorted = seen.clone();
     sorted.sort_by(|a, b| b.cmp(a));
     assert_eq!(seen, sorted, "newest first, ties by node id descending");
-    let first = timeline::page(&pool, alice.id, Filter::All, None, 3)
-        .await
-        .unwrap();
+    let first = timeline::page(
+        &pool,
+        alice.id,
+        Filter::All,
+        &PhotoFilter::default(),
+        None,
+        3,
+    )
+    .await
+    .unwrap();
     assert!(first.has_more);
     assert_eq!(first.items[0].taken_at, datetime!(2025-02-02 02:02));
     assert_eq!(first.items[0].thumbs_state(), MediaState::Ready);
@@ -121,9 +136,16 @@ async fn a_month_filter_keeps_its_bounds(pool: PgPool) {
         ["dec.jpg"]
     );
     assert!(
-        timeline::page(&pool, alice.id, Filter::Month(2024, 13), None, 10)
-            .await
-            .is_err()
+        timeline::page(
+            &pool,
+            alice.id,
+            Filter::Month(2024, 13),
+            &PhotoFilter::default(),
+            None,
+            10
+        )
+        .await
+        .is_err()
     );
 }
 
@@ -155,7 +177,9 @@ async fn only_the_owners_live_photos_appear(pool: PgPool) {
             .is_none()
     );
     assert_eq!(
-        timeline::months(&pool, alice.id).await.unwrap(),
+        timeline::months(&pool, alice.id, &PhotoFilter::default())
+            .await
+            .unwrap(),
         [MonthCount {
             month: "2024-07".into(),
             count: 1
@@ -200,7 +224,9 @@ async fn months_count_newest_first(pool: PgPool) {
     )
     .await;
     raw_trash(&pool, gone).await;
-    let months = timeline::months(&pool, alice.id).await.unwrap();
+    let months = timeline::months(&pool, alice.id, &PhotoFilter::default())
+        .await
+        .unwrap();
     let months: Vec<(&str, i64)> = months.iter().map(|m| (m.month.as_str(), m.count)).collect();
     assert_eq!(months, [("2024-07", 2), ("2024-06", 1)]);
 }
@@ -259,8 +285,18 @@ async fn the_keyset_is_an_index_condition(pool: PgPool) {
         .execute(&mut *tx)
         .await
         .unwrap();
-    for filter in [Filter::All, Filter::Month(2024, 7)] {
-        let plan = timeline::explain_page(&mut tx, alice.id, filter, Some(&cursor), 50)
+    let tagged = PhotoFilter {
+        tag: Some("dog".into()),
+        country: Some("FR".into()),
+        ..PhotoFilter::default()
+    };
+    let cases = [
+        (Filter::All, PhotoFilter::default()),
+        (Filter::Month(2024, 7), PhotoFilter::default()),
+        (Filter::All, tagged),
+    ];
+    for (filter, photos) in cases {
+        let plan = timeline::explain_page(&mut tx, alice.id, filter, &photos, Some(&cursor), 50)
             .await
             .unwrap();
         assert!(plan.contains("assets_timeline_idx"), "{plan}");

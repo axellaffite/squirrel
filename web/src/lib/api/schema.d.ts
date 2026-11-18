@@ -1096,6 +1096,11 @@ export interface components {
             id: string;
             name: string;
         };
+        /**
+         * @description What a photo is, for filtering.
+         * @enum {string}
+         */
+        PhotoKindFilter: "photo" | "screenshot";
         /** @description Where a photo was taken, named from the offline GeoNames dataset. */
         PlaceDto: {
             admin1?: string | null;
@@ -2655,6 +2660,19 @@ export interface operations {
                 cursor?: string;
                 /** @description Default 200, at most 500. */
                 limit?: number;
+                /** @description A tag (`GET /api/tags`), e.g. `beach`. */
+                tag?: string;
+                /** @description A country code (`GET /api/places`), e.g. `FR`. */
+                country?: string;
+                /** @description A region of `country`; needs `country`. */
+                region?: string;
+                /** @description A place of `country` (and `region` when given); needs `country`. */
+                city?: string;
+                /** @description A camera make (`GET /api/cameras`). */
+                camera_make?: string;
+                /** @description A camera model; needs `camera_make`. */
+                camera_model?: string;
+                kind?: components["schemas"]["PhotoKindFilter"];
             };
             header?: never;
             path?: never;
@@ -2679,7 +2697,7 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorBody"];
                 };
             };
-            /** @description Invalid month */
+            /** @description Invalid month or filter */
             422: {
                 headers: {
                     [name: string]: unknown;
@@ -2692,7 +2710,21 @@ export interface operations {
     };
     photo_months: {
         parameters: {
-            query?: never;
+            query?: {
+                /** @description A tag (`GET /api/tags`), e.g. `beach`. */
+                tag?: string;
+                /** @description A country code (`GET /api/places`), e.g. `FR`. */
+                country?: string;
+                /** @description A region of `country`; needs `country`. */
+                region?: string;
+                /** @description A place of `country` (and `region` when given); needs `country`. */
+                city?: string;
+                /** @description A camera make (`GET /api/cameras`). */
+                camera_make?: string;
+                /** @description A camera model; needs `camera_make`. */
+                camera_model?: string;
+                kind?: components["schemas"]["PhotoKindFilter"];
+            };
             header?: never;
             path?: never;
             cookie?: never;
@@ -2706,6 +2738,15 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["MonthCountDto"][];
+                };
+            };
+            /** @description Invalid filter */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
                 };
             };
         };
