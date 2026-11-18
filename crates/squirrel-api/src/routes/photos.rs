@@ -127,7 +127,8 @@ pub async fn media_status(
     caller: Caller,
 ) -> Result<Json<MediaStatus>, ApiError> {
     let counts = timeline::status_counts(&state.pool, caller.user.id).await?;
-    Ok(Json(counts.into()))
+    let ml = squirrel_db::ml_status::current(&state.pool).await?;
+    Ok(Json(MediaStatus::new(counts, ml)))
 }
 
 #[cfg(test)]

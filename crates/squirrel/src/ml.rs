@@ -8,16 +8,15 @@ use std::time::Duration;
 
 use anyhow::Context;
 use clap::ValueEnum;
-use sqlx::PgPool;
 use squirrel_ml::models::{ModelDir, ModelGroup};
 use squirrel_ml::serve::{Engine, EngineConfig};
 use squirrel_worker::context::MlContext;
 use squirrel_worker::ml_client::{MlBackend, MlChildConfig, MlClient};
 
 /// Hashing the models (a few hundred MB) happens before `ready`.
-const READY_TIMEOUT: Duration = Duration::from_secs(120);
-const REQUEST_TIMEOUT: Duration = Duration::from_secs(60);
-const MAX_REQUESTS: u32 = 1000;
+pub(crate) const READY_TIMEOUT: Duration = Duration::from_secs(120);
+pub(crate) const REQUEST_TIMEOUT: Duration = Duration::from_secs(60);
+pub(crate) const MAX_REQUESTS: u32 = 1000;
 /// The worker's child frees its memory after this long without a job.
 pub const WORKER_IDLE: Duration = Duration::from_secs(10 * 60);
 
@@ -39,91 +38,46 @@ pub struct MlSettings {
     pub mode: MlExecMode,
 }
 
-/// The worker's ML at start: `None` without models. Verifies the installed
-/// groups, pings the child, then makes sure the label bank of the current
-/// labels version is stored (computed once by a short-lived `clip-text`
-/// child; without the text tower photos get embeddings but no tags).
-pub async fn start(settings: MlSettings, pool: &PgPool) -> anyhow::Result<Option<Arc<MlContext>>> {
-    let worker_settings = settings.clone();
-    let Some(ml) = tokio::task::spawn_blocking(move || worker_context(&worker_settings))
-        .await
-        .context("verifying the models")??
-    else {
-        return Ok(None);
-    };
-    let ready = ml.client.health().await.context("starting the ML child")?;
-    tracing::info!(
-        groups = ?ready.groups,
-        kinds = ?ml.kinds(),
-        "ML: {} ready (ONNX Runtime {})",
-        ready.groups.join(", "),
-        ready.onnxruntime.as_deref().unwrap_or("not loaded")
-    );
-    if ml.clip
-        && let Err(err) = ensure_label_bank(&settings, pool).await
-    {
-        tracing::warn!(error = %format!("{err:#}"), "no label bank: photos get no tags");
-    }
-    Ok(Some(Arc::new(ml)))
-}
-
-/// Computes the label bank once (through its own `clip-text` child, stopped
-/// afterwards), when the text tower is installed and the bank is missing.
-async fn ensure_label_bank(settings: &MlSettings, pool: &PgPool) -> anyhow::Result<()> {
-    let models = ModelDir::new(&settings.models_dir);
-    if !models.installed(ModelGroup::ClipText) {
-        tracing::info!("the CLIP text model is not installed: photos get no tags");
-        return Ok(());
-    }
-    let labels = squirrel_ml::clip::labels::bank();
-    let stored = squirrel_db::clip::label_embeddings(
-        pool,
-        squirrel_ml::CLIP_MODEL_ID,
-        squirrel_ml::clip::labels::LABELS_VERSION,
-    )
-    .await?;
-    if stored.len() == labels.len() {
-        return Ok(());
-    }
-    let text_models = models.clone();
-    tokio::task::spawn_blocking(move || text_models.verify(ModelGroup::ClipText))
-        .await
-        .context("verifying the text model")??;
-    let dylib = ort_dylib(settings.ort_dylib.as_deref())?;
-    let groups = [ModelGroup::ClipText];
-    let backend = match settings.mode {
-        MlExecMode::Subprocess => MlBackend::Subprocess(MlChildConfig {
-            program: std::env::current_exe().context("locating the squirrel executable")?,
-            args: child_args(&groups, &models, &dylib, settings.threads),
-            ready_timeout: READY_TIMEOUT,
-            request_timeout: REQUEST_TIMEOUT,
-            max_requests: MAX_REQUESTS,
-            idle: WORKER_IDLE,
-        }),
-        MlExecMode::InProcess => {
-            let engine = Engine::load(&EngineConfig {
-                groups: groups.to_vec(),
-                models,
-                ort_dylib: Some(dylib),
-                threads: settings.threads,
-            })?;
-            MlBackend::InProcess(Arc::new(std::sync::Mutex::new(engine)))
-        }
-    };
-    let client = MlClient::new(backend);
-    let result =
-        squirrel_worker::label_bank::ensure(pool, &client, squirrel_ml::CLIP_MODEL_ID).await;
-    client.stop().await;
-    result.map(drop)
-}
-
 /// The groups the worker's child loads (the text tower lives in the server).
 const WORKER_GROUPS: [ModelGroup; 2] = [ModelGroup::ClipImage, ModelGroup::Faces];
 
+/// Why the worker runs without ML: a fixed, generic phrase for the UI (the
+/// details, with paths, go to the log only).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Unavailable {
+    NotInstalled,
+    NoRuntime,
+    Mismatch,
+    ChildFailed,
+}
+
+impl Unavailable {
+    pub fn reason(self) -> &'static str {
+        match self {
+            Self::NotInstalled => "models not installed",
+            Self::NoRuntime => "ONNX Runtime not configured",
+            Self::Mismatch => "model files do not match their pins",
+            Self::ChildFailed => "the inference process failed to start",
+        }
+    }
+}
+
+/// A start-up failure: what to tell users, and what to log.
+#[derive(Debug, thiserror::Error)]
+#[error("{}: {source:#}", why.reason())]
+pub struct StartError {
+    pub why: Unavailable,
+    pub source: anyhow::Error,
+}
+
+pub(crate) fn fail(why: Unavailable) -> impl FnOnce(anyhow::Error) -> StartError {
+    move |source| StartError { why, source }
+}
+
 /// `None` when no model group is installed (logged once). Every installed
-/// group is verified first: a file that does not match its pin stops the
-/// worker (an operator error, not a silent downgrade).
-pub fn worker_context(settings: &MlSettings) -> anyhow::Result<Option<MlContext>> {
+/// group is verified first: a file that does not match its pin is refused
+/// (an operator error, not a silent downgrade).
+pub fn worker_context(settings: &MlSettings) -> Result<Option<MlContext>, StartError> {
     let models = ModelDir::new(&settings.models_dir);
     let groups: Vec<ModelGroup> = WORKER_GROUPS
         .into_iter()
@@ -136,15 +90,18 @@ pub fn worker_context(settings: &MlSettings) -> anyhow::Result<Option<MlContext>
         );
         return Ok(None);
     }
-    let dylib = ort_dylib(settings.ort_dylib.as_deref())?;
+    let dylib = ort_dylib(settings.ort_dylib.as_deref()).map_err(fail(Unavailable::NoRuntime))?;
     for group in &groups {
         models
             .verify(*group)
-            .with_context(|| format!("verifying the {} models", group.name()))?;
+            .with_context(|| format!("verifying the {} models", group.name()))
+            .map_err(fail(Unavailable::Mismatch))?;
     }
     let backend = match settings.mode {
         MlExecMode::Subprocess => MlBackend::Subprocess(MlChildConfig {
-            program: std::env::current_exe().context("locating the squirrel executable")?,
+            program: std::env::current_exe()
+                .context("locating the squirrel executable")
+                .map_err(fail(Unavailable::ChildFailed))?,
             args: child_args(&groups, &models, &dylib, settings.threads),
             ready_timeout: READY_TIMEOUT,
             request_timeout: REQUEST_TIMEOUT,
@@ -158,7 +115,8 @@ pub fn worker_context(settings: &MlSettings) -> anyhow::Result<Option<MlContext>
                 ort_dylib: Some(dylib),
                 threads: settings.threads,
             })
-            .context("loading the models in-process")?;
+            .context("loading the models in-process")
+            .map_err(fail(Unavailable::ChildFailed))?;
             MlBackend::InProcess(Arc::new(std::sync::Mutex::new(engine)))
         }
     };
@@ -171,7 +129,7 @@ pub fn worker_context(settings: &MlSettings) -> anyhow::Result<Option<MlContext>
 
 /// The ONNX Runtime library as an absolute path, required once a model group
 /// is installed.
-fn ort_dylib(configured: Option<&Path>) -> anyhow::Result<PathBuf> {
+pub(crate) fn ort_dylib(configured: Option<&Path>) -> anyhow::Result<PathBuf> {
     let path = configured.context(
         "models are installed but SQUIRREL_ORT_DYLIB is not set (run scripts/fetch-onnxruntime.sh)",
     )?;
@@ -183,7 +141,7 @@ fn ort_dylib(configured: Option<&Path>) -> anyhow::Result<PathBuf> {
     })
 }
 
-fn child_args(
+pub(crate) fn child_args(
     groups: &[ModelGroup],
     models: &ModelDir,
     dylib: &Path,
@@ -243,6 +201,7 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         fake_group(dir.path(), ModelGroup::Faces);
         let err = worker_context(&settings(dir.path(), None)).err().unwrap();
+        assert_eq!(err.why, Unavailable::NoRuntime);
         assert!(format!("{err:#}").contains("fetch-onnxruntime"), "{err:#}");
     }
 
@@ -255,6 +214,8 @@ mod tests {
         let err = worker_context(&settings(dir.path(), Some(ort)))
             .err()
             .unwrap();
+        assert_eq!(err.why, Unavailable::Mismatch);
+        assert!(!err.why.reason().contains('/'), "no path for users");
         let message = format!("{err:#}");
         assert!(message.contains("faces"), "{message}");
         assert!(

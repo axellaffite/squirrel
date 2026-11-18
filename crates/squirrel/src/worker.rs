@@ -16,6 +16,7 @@ use squirrel_worker::exec::{Executor, SubprocessConfig};
 use squirrel_worker::geocode::GeoCache;
 
 use crate::ml::{MlExecMode, MlSettings};
+use crate::ml_start::MlWanted;
 use tokio::sync::watch;
 
 /// A claimed job is someone else's after this long without a heartbeat.
@@ -108,6 +109,13 @@ pub fn default_concurrency(cores: usize) -> usize {
 
 fn available_cores() -> usize {
     std::thread::available_parallelism().map_or(1, std::num::NonZeroUsize::get)
+}
+
+/// This machine's name (the ML status is reported per host).
+fn worker_host() -> String {
+    let name = worker_name();
+    name.rsplit_once(':')
+        .map_or(name.clone(), |(host, _)| host.to_owned())
 }
 
 /// `host:pid`, shown to admins as the holder of a running job.
@@ -302,8 +310,8 @@ pub async fn run(
         .context("running the job worker")
 }
 
-/// Verifies the installed models, checks the `ml-exec` child loads them and
-/// makes sure the label bank is stored (see [`crate::ml::start`]).
+/// Starts machine learning when this worker's kinds include ML kinds (see
+/// [`crate::ml_start::start`]).
 async fn start_ml(
     options: &WorkerOptions,
     data_dir: &Path,
@@ -320,7 +328,30 @@ async fn start_ml(
             .map_or_else(squirrel_ml::runtime::default_threads, usize::from),
         mode: options.ml_exec,
     };
-    crate::ml::start(settings, pool).await
+    crate::ml_start::start(settings, pool, &worker_host(), ml_wanted(options)).await
+}
+
+/// Every kind that needs models, whatever is installed.
+fn all_ml_kinds() -> Vec<&'static str> {
+    squirrel_worker::context::ml_kinds(true, true)
+}
+
+fn ml_wanted(options: &WorkerOptions) -> MlWanted {
+    let ml = all_ml_kinds();
+    if !options.kinds.is_empty() {
+        return if options.kinds.iter().any(|k| ml.contains(&k.as_str())) {
+            MlWanted::Required
+        } else {
+            MlWanted::No
+        };
+    }
+    if ml
+        .iter()
+        .all(|kind| options.exclude_kinds.iter().any(|e| e == kind))
+    {
+        return MlWanted::No;
+    }
+    MlWanted::IfAvailable
 }
 
 #[cfg(test)]
@@ -404,6 +435,34 @@ mod tests {
             registry.register(kind, NOOP_TIMEOUT, |_ctx| async { Ok(()) });
         }
         registry
+    }
+
+    fn options(kinds: &[&str], exclude: &[&str]) -> WorkerOptions {
+        use clap::Parser;
+        #[derive(clap::Parser)]
+        struct Cli {
+            #[command(flatten)]
+            options: WorkerOptions,
+        }
+        let mut args = vec!["x".to_owned()];
+        if !kinds.is_empty() {
+            args.extend(["--kinds".to_owned(), kinds.join(",")]);
+        }
+        if !exclude.is_empty() {
+            args.extend(["--exclude-kinds".to_owned(), exclude.join(",")]);
+        }
+        Cli::try_parse_from(args).unwrap().options
+    }
+
+    #[test]
+    fn ml_is_required_only_when_kinds_name_it() {
+        assert_eq!(ml_wanted(&options(&[], &[])), MlWanted::IfAvailable);
+        assert_eq!(ml_wanted(&options(&["faces"], &[])), MlWanted::Required);
+        assert_eq!(ml_wanted(&options(&["thumbnails"], &[])), MlWanted::No);
+        let all = all_ml_kinds();
+        assert_eq!(ml_wanted(&options(&[], &all)), MlWanted::No);
+        assert_eq!(ml_wanted(&options(&[], &["faces"])), MlWanted::IfAvailable);
+        assert_eq!(worker_host(), worker_name().rsplit_once(':').unwrap().0);
     }
 
     #[test]

@@ -200,3 +200,38 @@ async fn faces_are_on_by_default(pool: PgPool) {
         .unwrap();
     assert!(ml_settings::faces_enabled(&pool, alice.id).await.unwrap());
 }
+
+#[sqlx::test(migrator = "squirrel_db::MIGRATOR")]
+async fn ml_is_ready_when_any_worker_host_says_so(pool: PgPool) {
+    use squirrel_db::ml_status::{self, MlState};
+    let none = ml_status::current(&pool).await.unwrap();
+    assert_eq!(none.state, MlState::Unavailable);
+    assert_eq!(none.reason.as_deref(), Some(ml_status::NO_REPORT));
+    ml_status::report(
+        &pool,
+        "nas",
+        MlState::Unavailable,
+        Some("models not installed"),
+    )
+    .await
+    .unwrap();
+    let off = ml_status::current(&pool).await.unwrap();
+    assert_eq!(off.reason.as_deref(), Some("models not installed"));
+    ml_status::report(&pool, "gpu-box", MlState::Ready, None)
+        .await
+        .unwrap();
+    ml_status::report(&pool, "nas", MlState::Unavailable, Some("x"))
+        .await
+        .unwrap();
+    assert_eq!(
+        ml_status::current(&pool).await.unwrap().state,
+        MlState::Ready
+    );
+    ml_status::report(&pool, "gpu-box", MlState::Unavailable, Some("child failed"))
+        .await
+        .unwrap();
+    assert_eq!(
+        ml_status::current(&pool).await.unwrap().state,
+        MlState::Unavailable
+    );
+}
