@@ -2,7 +2,7 @@
 	import CoverCard from '#lib/components/photos/CoverCard.svelte';
 	import Locator from '#lib/components/photos/Locator.svelte';
 	import type { PlaceGroup } from '#lib/explore/api.ts';
-	import { countryName, photosHref } from '#lib/explore/filters.ts';
+	import { countryName, photosHref, placeFilter } from '#lib/explore/filters.ts';
 	import { photoCount } from '#lib/photos/albums.ts';
 
 	interface Props {
@@ -13,9 +13,7 @@
 
 	const country = $derived(place.country ?? countryName(place.country_code));
 	const name = $derived(place.city ?? country);
-	const href = $derived(
-		photosHref({ country: place.country_code, region: place.city ? (place.region ?? '') : undefined, city: place.city ?? undefined })
-	);
+	const href = $derived(photosHref(placeFilter(place)));
 </script>
 
 <CoverCard {href} {name} count={photoCount(place.count)} cover={place.cover} icon="map-pin">

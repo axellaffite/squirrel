@@ -155,3 +155,12 @@ export function chips(filter: PhotoFilter, personName: (id: string) => string | 
 	if (f.kind) out.push({ kind: 'kind', label: KIND_LABELS[f.kind], without: drop('kind') });
 	return out;
 }
+
+/**
+ * The filter for a place as Explore lists it: a city keeps its region (empty when it has none,
+ * which matches places without a region), a country stands alone.
+ */
+export function placeFilter(place: { country_code: string; region?: string | null; city?: string | null }): PhotoFilter {
+	if (!place.city) return { country: place.country_code };
+	return { country: place.country_code, region: place.region ?? '', city: place.city };
+}

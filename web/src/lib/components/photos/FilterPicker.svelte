@@ -7,7 +7,7 @@
 	import Dialog from '#lib/components/ui/Dialog.svelte';
 	import { listCameras, listPlaces, listTags, type CameraGroup, type Person, type PlaceGroup, type TagGroup } from '#lib/explore/api.ts';
 	import { personLabel, type FaceCrop } from '#lib/explore/faces.ts';
-	import { countryName, tagLabel, type PhotoFilter } from '#lib/explore/filters.ts';
+	import { countryName, placeFilter, sameFilter, tagLabel, type PhotoFilter } from '#lib/explore/filters.ts';
 	import { photoCount } from '#lib/photos/albums.ts';
 
 	interface Props {
@@ -69,8 +69,8 @@
 				label: [place.city, place.country ?? countryName(place.country_code)].filter(Boolean).join(', '),
 				count: place.count,
 				icon: 'map-pin' as const,
-				next: { ...filter, country: place.country_code, region: place.region ?? '', city: place.city ?? undefined },
-				chosen: filter.country === place.country_code && filter.city === (place.city ?? undefined)
+				next: { ...filter, region: undefined, city: undefined, ...placeFilter(place) },
+				chosen: sameFilter(placeFilter(place), { country: filter.country, region: filter.region, city: filter.city })
 			}))
 		},
 		{
