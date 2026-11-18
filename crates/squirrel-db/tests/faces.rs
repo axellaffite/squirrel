@@ -226,3 +226,26 @@ async fn people_and_faces_never_cross_owners(pool: PgPool) {
     let counts = faces::counts(&pool, t.alice).await.unwrap();
     assert_eq!((counts.faces, counts.people), (0, 1));
 }
+
+/// The photo was deleted while its faces were being computed: nothing is
+/// stored for that owner.
+#[sqlx::test(migrator = "squirrel_db::MIGRATOR")]
+async fn a_scan_of_a_photo_deleted_meanwhile_is_not_stored(pool: PgPool) {
+    let t = shared_blob(&pool).await;
+    delete_asset(&pool, t.alice_node).await;
+    assert!(
+        !faces::store_scan(&pool, t.alice, &t.sha, MODEL, &[face(0.1)])
+            .await
+            .unwrap()
+    );
+    assert_eq!(
+        faces::scan_count(&pool, t.alice, &t.sha).await.unwrap(),
+        None
+    );
+    assert!(
+        faces::store_scan(&pool, t.bob, &t.sha, MODEL, &[face(0.1)])
+            .await
+            .unwrap(),
+        "Bob still has his copy"
+    );
+}

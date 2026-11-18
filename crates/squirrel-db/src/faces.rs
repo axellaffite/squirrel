@@ -97,8 +97,9 @@ pub(crate) async fn lock_owner(
 }
 
 /// Stores `owner`'s scan of `sha256` (and its faces) in one transaction.
-/// `false` when nothing was written: faces are off for the owner by now, or
-/// the scan already exists (a retry).
+/// `false` when nothing was written: faces are off for the owner by now, the
+/// owner no longer has any copy of the photo (deleted while it was being
+/// analysed: no biometric data may outlive it), or the scan already exists.
 pub async fn store_scan(
     pool: &PgPool,
     owner: Uuid,
@@ -110,6 +111,16 @@ pub async fn store_scan(
     lock_owner(&mut tx, owner, false).await?;
     let enabled = crate::ml_settings::faces_enabled(&mut *tx, owner).await?;
     if !enabled {
+        return Ok(false);
+    }
+    let still_owned: bool = sqlx::query_scalar(
+        "SELECT EXISTS (SELECT 1 FROM assets WHERE owner_id = $1 AND sha256 = $2)",
+    )
+    .bind(owner)
+    .bind(sha256)
+    .fetch_one(&mut *tx)
+    .await?;
+    if !still_owned {
         return Ok(false);
     }
     let count = i16::try_from(faces.len()).map_err(|_| DbError::InvalidInput("too many faces"))?;
