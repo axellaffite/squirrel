@@ -25,10 +25,11 @@ pub async fn run(ctx: &MediaContext, ml: &MlContext, _job: JobContext) -> Result
             "this worker has no CLIP text model"
         )));
     };
-    let computed = ensure(&ctx.pool, text, squirrel_ml::CLIP_MODEL_ID)
-        .await
-        .map_err(JobError::retry)?;
+    let computed = ensure(&ctx.pool, text, squirrel_ml::CLIP_MODEL_ID).await;
+    // The text tower takes ≈ 1.1 GB, like the server's search one: free it
+    // now, whatever happened, rather than after the idle timeout.
     text.stop().await;
+    let computed = computed.map_err(JobError::retry)?;
     if computed {
         let mut conn = ctx.pool.acquire().await.map_err(JobError::retry)?;
         crate::backfill::queue_retag(&mut conn).await?;
