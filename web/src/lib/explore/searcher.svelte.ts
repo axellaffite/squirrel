@@ -40,7 +40,10 @@ export class PhotoSearcher {
 
 	readonly #run: RunPhotoSearch;
 	readonly #delay: number;
+	/** The pause after typing. */
 	#timer: ReturnType<typeof setTimeout> | undefined;
+	/** A retry of the request in flight's search (busy or rate-limited); part of that request. */
+	#retry: ReturnType<typeof setTimeout> | undefined;
 	#controller: AbortController | null = null;
 	/** The query of the request in flight, if any. */
 	#pending: string | null = null;
@@ -93,6 +96,7 @@ export class PhotoSearcher {
 
 	dispose(): void {
 		clearTimeout(this.#timer);
+		clearTimeout(this.#retry);
 		this.#cancel();
 	}
 
@@ -104,6 +108,7 @@ export class PhotoSearcher {
 	}
 
 	#cancel() {
+		clearTimeout(this.#retry);
 		this.#controller?.abort();
 		this.#controller = null;
 		this.#pending = null;
@@ -130,13 +135,13 @@ export class PhotoSearcher {
 				this.error = null;
 				this.loading = true;
 				this.#pending = query;
-				this.#timer = setTimeout(() => void this.#fetch(query, offset, retried, busyTries + 1), BUSY_RETRY_MS);
+				this.#retry = setTimeout(() => void this.#fetch(query, offset, retried, busyTries + 1), BUSY_RETRY_MS);
 				return;
 			}
 			const wait = result.retryAfterMs;
 			if (result.status === 429 && !retried && wait !== undefined && wait <= MAX_RETRY_WAIT_MS) {
 				this.error = result.error;
-				this.#timer = setTimeout(() => void this.#fetch(query, offset, true), wait);
+				this.#retry = setTimeout(() => void this.#fetch(query, offset, true), wait);
 				return;
 			}
 			this.error = result.status === 429 ? STILL_TOO_FAST : result.error;

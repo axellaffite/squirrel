@@ -120,4 +120,16 @@ describe('PhotoSearcher', () => {
 		expect(searcher.error).toBe(SEARCH_BUSY);
 		expect(searcher.loading).toBe(false);
 	});
+
+	it('typing the same query during a busy retry keeps the retry going', async () => {
+		let calls = 0;
+		const run = vi.fn<RunPhotoSearch>(async () => (++calls < 2 ? { ok: false, error: SEARCH_BUSY, status: 503 } : results(['a'])));
+		const searcher = new PhotoSearcher(run, 10);
+		searcher.now('dog');
+		await vi.advanceTimersByTimeAsync(0);
+		searcher.type('dog ');
+		await vi.advanceTimersByTimeAsync(BUSY_RETRY_MS);
+		expect(ids(searcher)).toEqual(['a']);
+		expect(searcher.loading).toBe(false);
+	});
 });
