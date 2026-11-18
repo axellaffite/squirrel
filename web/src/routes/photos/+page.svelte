@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { onMount } from 'svelte';
+	import { onMount, untrack } from 'svelte';
 	import { replaceState } from '$app/navigation';
 	import { page } from '$app/state';
 	import ConfirmDialog from '#lib/components/ConfirmDialog.svelte';
@@ -16,7 +16,7 @@
 	import EmptyState from '#lib/components/ui/EmptyState.svelte';
 	import FilterBar from '#lib/components/photos/FilterBar.svelte';
 	import { listPeople, type Person } from '#lib/explore/api.ts';
-	import { filterFromParams, isEmptyFilter, withFilter, type PhotoFilter } from '#lib/explore/filters.ts';
+	import { filterFromParams, isEmptyFilter, sameFilter, withFilter, type PhotoFilter } from '#lib/explore/filters.ts';
 	import { listFolder, type FileNode } from '#lib/files/api.ts';
 	import { mediaStatus, photoDetails, type AssetSummary } from '#lib/photos/api.ts';
 	import { photoInAddress, withPhoto } from '#lib/photos/address.ts';
@@ -45,6 +45,18 @@
 
 	const total = $derived(data.total);
 	const filtering = $derived(!isEmptyFilter(data.filter));
+
+	// The address is the filter's source of truth: a link to the same page with another filter
+	// (the rail's Photos item, a tag in the lightbox) changes what is shown.
+	$effect(() => {
+		const wanted = filterFromParams(page.url.searchParams);
+		untrack(() => {
+			if (sameFilter(wanted, data.filter)) return;
+			viewing = null;
+			selection.clear();
+			void data.setFilter(wanted);
+		});
+	});
 
 	/** Shows only matching photos, and keeps the filter in the address (`?tag=…`). */
 	function filterBy(filter: PhotoFilter) {

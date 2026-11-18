@@ -73,6 +73,21 @@
 		searcher.now(value);
 		return () => searcher.dispose();
 	});
+
+	// The address is the search's source of truth: following a link to /search (the rail's
+	// Search item) or to another query shows that search. Typing keeps it in step (`remember`).
+	$effect(() => {
+		const q = page.url.searchParams.get('q') ?? '';
+		const filter = filterFromParams(page.url.searchParams);
+		untrack(() => {
+			searcher.setFilter(filter);
+			if (normalizeQuery(q) === typed) return;
+			value = q;
+			viewing = null;
+			if (normalizeQuery(q)) searcher.now(q);
+			else searcher.type('');
+		});
+	});
 </script>
 
 <svelte:head><title>Search photos · Squirrel</title></svelte:head>

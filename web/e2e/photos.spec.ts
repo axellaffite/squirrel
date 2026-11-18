@@ -78,6 +78,30 @@ test('the timeline groups photos by month and day, newest first', async () => {
 		.toEqual([true, true, true]);
 });
 
+test('a filter in the address narrows the timeline, and the rail clears it', async () => {
+	await page.goto('/photos?country=FR&city=Paris');
+	await expect(page.getByRole('button', { name: 'Remove filter Paris' })).toBeVisible();
+	await expect(tiles(page)).toHaveCount(1);
+	// Same route, another address: what is shown follows it.
+	await page.getByRole('navigation', { name: 'Main' }).getByRole('link', { name: 'Photos', exact: true }).click();
+	await expect(page.getByRole('button', { name: 'Remove filter Paris' })).toHaveCount(0);
+	await expect(tiles(page)).toHaveCount(3);
+	await page.goto('/photos?country=FR&city=Lyon');
+	await page.getByRole('button', { name: 'Remove filter Lyon' }).click();
+	await expect(tiles(page)).toHaveCount(3);
+	await expect(page).toHaveURL(/\/photos$/);
+});
+
+test('the search page follows its address', async () => {
+	await page.goto('/search?q=dog');
+	await expect(page.getByLabel('Search photos')).toHaveValue('dog');
+	// No search models on the E2E server: said calmly.
+	await expect(page.getByText("Photo search isn't set up on this server", { exact: false })).toBeVisible();
+	await page.getByRole('navigation', { name: 'Main' }).getByRole('link', { name: 'Search', exact: true }).click();
+	await expect(page.getByLabel('Search photos')).toHaveValue('');
+	await expect(page).toHaveURL(/\/search$/);
+});
+
 test('the lightbox shows the details, steps with the arrows and gives focus back', async () => {
 	await page.goto('/photos');
 	await page.getByRole('button', { name: PARIS_LABEL }).click();
