@@ -5,6 +5,7 @@ import {
 	isEmptyFilter,
 	normalizeFilter,
 	photosHref,
+	placeFilter,
 	sameFilter,
 	tagLabel,
 	withFilter
@@ -52,5 +53,14 @@ describe('filters', () => {
 	it('links to the filtered timeline', () => {
 		expect(photosHref({ tag: 'dog' })).toBe('/photos?tag=dog');
 		expect(photosHref({})).toBe('/photos');
+	});
+
+	it('builds a place filter the same way everywhere, keeping an empty region', () => {
+		expect(placeFilter({ country_code: 'FR', region: null, city: null })).toEqual({ country: 'FR' });
+		const noRegion = placeFilter({ country_code: 'FJ', region: null, city: 'Labasa' });
+		expect(noRegion).toEqual({ country: 'FJ', region: '', city: 'Labasa' });
+		const url = withFilter('https://drive.local/photos', noRegion);
+		expect(url.searchParams.get('region')).toBe('');
+		expect(filterFromParams(url.searchParams)).toEqual(noRegion);
 	});
 });
