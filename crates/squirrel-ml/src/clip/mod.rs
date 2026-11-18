@@ -1,5 +1,6 @@
-//! OpenAI CLIP ViT-B/32 (`openai-vit-b32-224`): image and text towers, both
-//! producing L2-normalised 512-d vectors in the same space.
+//! SigLIP2 ViT-B/16 (`siglip2-vit-b16-224`): image and text towers, both
+//! producing L2-normalised 768-d vectors in the same space. The module keeps
+//! the generic "clip" name (contrastive image–text pre-training).
 
 pub mod image;
 pub mod labels;
@@ -14,7 +15,7 @@ pub use image::ClipImage;
 pub use text::ClipText;
 
 /// Embedding dimensions of the pinned model.
-pub const EMBEDDING_DIM: usize = 512;
+pub const EMBEDDING_DIM: usize = 768;
 /// Photo search keeps photos within this cosine distance of the query (text
 /// to image similarities are small: ≈ 0.2–0.35 for a match). PROVISIONAL:
 /// to be calibrated on real photos together with the tag thresholds.
@@ -66,6 +67,21 @@ pub fn check_unit_vector(values: &[f32], dim: usize) -> Result<(), String> {
     Ok(())
 }
 
+/// SigLIP's learned temperature, `exp(logit_scale)`: `logit_scale` is
+/// 4.724453449249268 (F32) in `open_clip_model.safetensors` of
+/// `timm/ViT-B-16-SigLIP2` @ eee10eff6dd8cabae2d7f379d4e8cfcd352030aa, the
+/// checkpoint the pinned ONNX export was made from (the export drops it).
+pub const LOGIT_SCALE: f32 = 112.668_9;
+/// SigLIP's learned bias, `logit_bias` in the same file: −16.771724700927734.
+pub const LOGIT_BIAS: f32 = -16.771_725;
+
+/// The probability SigLIP was trained to give that an image and a text
+/// match: `σ(scale · cos + bias)`, 0.5 at cos ≈ 0.1489. Independent per pair
+/// (a sigmoid, not a softmax over the candidates).
+pub fn match_probability(cosine: f32) -> f32 {
+    1.0 / (1.0 + (-(LOGIT_SCALE * cosine + LOGIT_BIAS)).exp())
+}
+
 /// Dot product of two unit vectors.
 pub fn cosine(a: &[f32], b: &[f32]) -> f32 {
     a.iter().zip(b).map(|(x, y)| x * y).sum()
@@ -83,11 +99,22 @@ mod tests {
     }
 
     #[test]
-    fn only_unit_512_d_finite_vectors_pass() {
+    fn the_match_probability_uses_the_learned_scale_and_bias() {
+        assert!((LOGIT_SCALE - 4.724_453_4_f32.exp()).abs() < 1e-3);
+        let even = -LOGIT_BIAS / LOGIT_SCALE;
+        assert!((even - 0.148_86).abs() < 1e-4, "{even}");
+        assert!((match_probability(even) - 0.5).abs() < 1e-5);
+        assert!(match_probability(0.05) < 1e-4);
+        assert!(match_probability(0.25) > 0.9999);
+        assert!(match_probability(0.14) < match_probability(0.15));
+    }
+
+    #[test]
+    fn only_unit_768_d_finite_vectors_pass() {
         let mut unit = vec![0.0; EMBEDDING_DIM];
         unit[0] = 1.0;
         assert!(check_embedding(&unit).is_ok());
-        assert!(check_embedding(&unit[..511]).is_err());
+        assert!(check_embedding(&unit[..767]).is_err());
         let mut nan = unit.clone();
         nan[1] = f32::NAN;
         assert!(check_embedding(&nan).is_err());

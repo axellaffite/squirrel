@@ -7,7 +7,8 @@ use serde::{Deserialize, Serialize};
 
 /// Longest request line the child reads (a path or 256 short texts).
 pub const MAX_REQUEST_LINE: usize = 64 * 1024;
-/// Longest response line the parent reads (256 text embeddings of 512 floats).
+/// Longest response line the parent reads (256 text embeddings of 768 floats
+/// take ≈ 3 MiB; a test checks the worst case fits).
 pub const MAX_RESPONSE_LINE: usize = 4 * 1024 * 1024;
 /// Most texts one `clip_text` request may carry.
 pub const MAX_TEXTS: usize = 256;
@@ -23,11 +24,11 @@ pub struct MlRequest {
 #[serde(tag = "op", rename_all = "snake_case")]
 pub enum MlOp {
     Ping,
-    /// The 512-d CLIP embedding of an image file (a preview WebP).
+    /// The image embedding (SigLIP2, 768-d) of an image file (a preview WebP).
     ClipImage {
         input: PathBuf,
     },
-    /// One CLIP text embedding per text.
+    /// One text embedding per text.
     ClipText {
         texts: Vec<String>,
     },
@@ -116,6 +117,20 @@ mod tests {
         let ping: MlRequest = serde_json::from_str(r#"{"id":1,"op":"ping"}"#).unwrap();
         assert_eq!(ping.op, MlOp::Ping);
         assert!(serde_json::from_str::<MlRequest>(r#"{"id":1,"op":"rm"}"#).is_err());
+    }
+
+    /// The longest floats serde writes, for the most texts one request takes.
+    #[test]
+    fn the_largest_text_response_fits_a_line() {
+        let worst = -1.234_567_9e-11_f32;
+        let response = MlResponse {
+            id: u64::MAX,
+            body: MlBody::Ok(MlOutput::Embeddings {
+                embeddings: vec![vec![worst; crate::clip::EMBEDDING_DIM]; MAX_TEXTS],
+            }),
+        };
+        let line = serde_json::to_string(&response).unwrap();
+        assert!(line.len() < MAX_RESPONSE_LINE, "{}", line.len());
     }
 
     #[test]

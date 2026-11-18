@@ -1,10 +1,10 @@
-//! Writes the golden CLIP image embeddings of the generated shapes, once, by
+//! Writes the golden image embeddings of the generated shapes, once, by
 //! a human with the pinned runtime and models:
 //!
 //!     SQUIRREL_ORT_DYLIB=… SQUIRREL_MODELS_DIR=… \
 //!       cargo run -p squirrel-ml --features test-util --example make_golden
 //!
-//! Output: `tests/fixtures/clip/golden-openai-vit-b32-224.json` and
+//! Output: `tests/fixtures/clip/golden-siglip2-vit-b16-224.json` and
 //! `tests/fixtures/faces/golden-yunet-sface-2021dec.json`.
 
 use std::collections::BTreeMap;

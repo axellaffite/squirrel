@@ -1,4 +1,6 @@
-//! The CLIP text tower: English text → CLIP BPE (77 tokens) → 512-d unit vector.
+//! The SigLIP2 text tower: text in any language → cleaned like open_clip's
+//! `canonicalize` → Gemma tokens (64, `<eos>`-terminated, 0-padded) → 768-d
+//! unit vector.
 
 use ndarray::Array2;
 use ort::session::Session;
@@ -10,13 +12,14 @@ use super::{ClipError, EMBEDDING_DIM, normalize};
 use crate::models::ModelDir;
 use crate::runtime::{self, RuntimeError};
 
-pub const TEXT_MODEL: &str = "clip/textual/model.onnx";
-pub const TOKENIZER: &str = "clip/textual/tokenizer.json";
-/// `model_max_length` of the tokenizer and the model's context.
-pub const CONTEXT: usize = 77;
-const START: u32 = 49406;
-/// End of text, also the padding token (`tokenizer_config.json`).
-const END: u32 = 49407;
+pub const TEXT_MODEL: &str = "siglip2/textual/model.onnx";
+pub const TOKENIZER: &str = "siglip2/textual/tokenizer.json";
+/// The model's context (open_clip `text_cfg.context_length`, `config.json`).
+pub const CONTEXT: usize = 64;
+/// `<eos>`, appended after the text (the tokenizer's post-processor).
+const EOS: u32 = 1;
+/// `<pad>` (`tokenizer_config.json`), fills the rest of the context.
+const PAD: u32 = 0;
 
 pub struct ClipText {
     session: Session,
@@ -52,12 +55,12 @@ impl ClipText {
         })
     }
 
-    /// `<|startoftext|>` + tokens + `<|endoftext|>`, cut to 77, padded with
-    /// `<|endoftext|>` (the model reads the first end token).
+    /// Cleaned text's tokens + `<eos>`, cut to 64 (the `<eos>` is kept),
+    /// padded with `<pad>`: what open_clip's HF tokenizer feeds the model.
     pub fn tokens(&self, text: &str) -> Result<Vec<u32>, ClipError> {
         let encoding = self
             .tokenizer
-            .encode(text, false)
+            .encode(canonicalize(text), false)
             .map_err(|err| ClipError::Inference(err.to_string()))?;
         Ok(frame(encoding.get_ids()))
     }
@@ -94,13 +97,27 @@ impl ClipText {
 }
 
 fn frame(ids: &[u32]) -> Vec<u32> {
-    let body = &ids[..ids.len().min(CONTEXT - 2)];
+    let body = &ids[..ids.len().min(CONTEXT - 1)];
     let mut tokens = Vec::with_capacity(CONTEXT);
-    tokens.push(START);
     tokens.extend_from_slice(body);
-    tokens.push(END);
-    tokens.resize(CONTEXT, END);
+    tokens.push(EOS);
+    tokens.resize(CONTEXT, PAD);
     tokens
+}
+
+/// open_clip's `canonicalize_text` (the cleaning SigLIP was trained with):
+/// `_` becomes a space, ASCII punctuation goes, lower case, single spaces.
+/// (Its ftfy/HTML pre-pass is left out: queries and labels are plain text.)
+pub fn canonicalize(text: &str) -> String {
+    let kept: String = text
+        .chars()
+        .map(|c| if c == '_' { ' ' } else { c })
+        .filter(|c| !c.is_ascii_punctuation())
+        .collect();
+    kept.to_lowercase()
+        .split_whitespace()
+        .collect::<Vec<_>>()
+        .join(" ")
 }
 
 #[cfg(test)]
@@ -108,53 +125,56 @@ mod tests {
     use super::*;
 
     #[test]
-    fn tokens_are_framed_and_padded_to_77() {
-        let tokens = frame(&[1, 2, 3]);
+    fn tokens_end_with_eos_and_are_padded_to_64() {
+        let tokens = frame(&[10, 11, 12]);
         assert_eq!(tokens.len(), CONTEXT);
-        assert_eq!(&tokens[..5], [START, 1, 2, 3, END]);
-        assert!(tokens[5..].iter().all(|t| *t == END));
-        let long: Vec<u32> = (0..200).collect();
+        assert_eq!(&tokens[..4], [10, 11, 12, EOS]);
+        assert!(tokens[4..].iter().all(|t| *t == PAD));
+        let long: Vec<u32> = (100..300).collect();
         let tokens = frame(&long);
         assert_eq!(tokens.len(), CONTEXT);
-        assert_eq!(tokens[CONTEXT - 1], END);
-        assert_eq!(tokens[CONTEXT - 2], 74);
+        assert_eq!(tokens[CONTEXT - 1], EOS, "the eos survives truncation");
+        assert_eq!(tokens[CONTEXT - 2], 162);
     }
 
-    /// Ids recorded once from the pinned tokenizer: framed, padded, 77 long.
     #[test]
-    fn a_search_text_becomes_77_framed_ids() {
+    fn text_is_cleaned_like_open_clip() {
+        assert_eq!(canonicalize("  A photo of a DOG.  "), "a photo of a dog");
+        assert_eq!(canonicalize("red_circle, (big)!"), "red circle big");
+        assert_eq!(
+            canonicalize("Cercle   ROUGE à l'école"),
+            "cercle rouge à lécole"
+        );
+        assert_eq!(canonicalize("ÉTÉ"), "été");
+        assert_eq!(canonicalize("?!"), "");
+    }
+
+    /// Ids recorded once from the pinned Gemma tokenizer (`tokenizers` reads
+    /// it as is: no new crate).
+    #[test]
+    fn the_real_tokenizer_matches_gemma() {
         let Some(models) = crate::testutil::test_models_for(&[crate::models::ModelGroup::ClipText])
         else {
             return;
         };
         let tokenizer = Tokenizer::from_file(models.file(TOKENIZER)).unwrap();
+        let ids = tokenizer
+            .encode(canonicalize("A photo of a DOG.").as_str(), false)
+            .unwrap();
+        // "a", "▁photo", "▁of", "▁a", "▁dog" (Gemma: "▁of" 576, "▁a" 476).
+        assert_eq!(ids.get_ids(), [235250, 2686, 576, 476, 5929]);
+        let with_specials = tokenizer.encode("a dog", true).unwrap();
+        assert_eq!(
+            with_specials.get_ids().last(),
+            Some(&EOS),
+            "the post-processor appends <eos>, as frame() does"
+        );
         let ids = frame(
             tokenizer
-                .encode("A dog on the beach", false)
+                .encode(canonicalize(&"chien ".repeat(300)).as_str(), false)
                 .unwrap()
                 .get_ids(),
         );
-        assert_eq!(ids.len(), CONTEXT);
-        assert_eq!(&ids[..7], [START, 320, 1929, 525, 518, 2117, END]);
-        let long = "dog ".repeat(300);
-        let ids = frame(tokenizer.encode(long.as_str(), false).unwrap().get_ids());
-        assert_eq!(ids.len(), CONTEXT);
-        assert_eq!(
-            (ids[0], ids[CONTEXT - 1]),
-            (START, END),
-            "the end token is kept"
-        );
-    }
-
-    #[test]
-    fn the_real_tokenizer_matches_clip() {
-        let Some(models) = crate::testutil::test_models_for(&[crate::models::ModelGroup::ClipText])
-        else {
-            return;
-        };
-        let tokenizer = Tokenizer::from_file(models.file(TOKENIZER)).unwrap();
-        let ids = tokenizer.encode("A photo of a DOG.", false).unwrap();
-        // CLIP BPE: lower-cased, "</w>"-suffixed words: a photo of a dog .
-        assert_eq!(ids.get_ids(), [320, 1125, 539, 320, 1929, 269]);
+        assert_eq!((ids.len(), ids[CONTEXT - 1]), (CONTEXT, EOS));
     }
 }

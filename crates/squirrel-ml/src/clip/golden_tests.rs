@@ -15,7 +15,7 @@ struct Golden {
 }
 
 fn golden() -> Golden {
-    let raw = include_str!("../../tests/fixtures/clip/golden-openai-vit-b32-224.json");
+    let raw = include_str!("../../tests/fixtures/clip/golden-siglip2-vit-b16-224.json");
     serde_json::from_str(raw).unwrap()
 }
 
@@ -25,7 +25,7 @@ fn the_golden_file_is_for_the_pinned_model() {
     assert_eq!(golden.model, CLIP_MODEL_ID);
     for shape in Shape::ALL {
         let vector = &golden.shapes[shape.name()];
-        assert_eq!(vector.len(), 512);
+        assert_eq!(vector.len(), super::EMBEDDING_DIM);
         let norm = cosine(vector, vector).sqrt();
         assert!((norm - 1.0).abs() < 1e-3, "{norm}");
     }
