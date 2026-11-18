@@ -256,3 +256,61 @@ async fn failed_starts_back_off_with_a_growing_delay() {
     tokio::time::sleep(wait).await;
     client.request(MlOp::Ping).await.unwrap();
 }
+
+/// A request whose future is dropped mid-exchange (job timeout, shutdown)
+/// must not leave its late answer to be read as the next request's.
+#[tokio::test]
+async fn a_cancelled_request_does_not_poison_the_next_one() {
+    let dir = tempfile::tempdir().unwrap();
+    // Answers clip_image after a pause, as a slow inference would.
+    let client = client(fake_child(
+        dir.path(),
+        r#"sleep 0.5; echo "{\"id\":$id,\"status\":\"ok\",\"embedding\":[1.0]}""#,
+    ));
+    client.request(MlOp::Ping).await.unwrap();
+    let first = client.child_id().await.unwrap();
+    let cancelled = tokio::time::timeout(Duration::from_millis(100), client.request(image())).await;
+    assert!(cancelled.is_err(), "dropped before the answer");
+    tokio::time::sleep(Duration::from_millis(600)).await;
+    // The late answer to the cancelled request is never read as this one's.
+    assert_eq!(
+        client.request(MlOp::Ping).await.unwrap(),
+        MlBody::Ok(MlOutput::Pong {})
+    );
+    assert_ne!(
+        client.child_id().await,
+        Some(first),
+        "the child was replaced"
+    );
+    wait_dead(first).await;
+}
+
+/// Stopping kills the child's whole process group, not just the child.
+#[tokio::test]
+async fn stopping_kills_what_the_child_started() {
+    let dir = tempfile::tempdir().unwrap();
+    let pid_file = dir.path().join("grandchild");
+    let mut config = fake_child(dir.path(), "exit 1");
+    let script = std::fs::read_to_string(&config.program).unwrap().replacen(
+        "echo '{\"ready\"",
+        &format!(
+            "sleep 30 &\necho $! > '{}'\necho '{{\"ready\"",
+            pid_file.display()
+        ),
+        1,
+    );
+    let path = dir.path().join("with-grandchild");
+    std::fs::write(&path, script).unwrap();
+    std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o755)).unwrap();
+    config.program = path;
+    let client = client(config);
+    client.request(MlOp::Ping).await.unwrap();
+    let grandchild: u32 = std::fs::read_to_string(&pid_file)
+        .unwrap()
+        .trim()
+        .parse()
+        .unwrap();
+    assert!(is_alive(grandchild));
+    client.stop().await;
+    wait_dead(grandchild).await;
+}
