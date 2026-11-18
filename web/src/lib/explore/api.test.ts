@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import { createApiClient } from '#lib/api/client.ts';
-import { peopleOnPhoto, placesByCountry, SEARCH_BUSY, SEARCH_UNAVAILABLE, searchPhotos, warmUpSearch } from '#lib/explore/api.ts';
+import { peopleOnPhoto, personChipLabel, placesByCountry, SEARCH_BUSY, SEARCH_UNAVAILABLE, searchPhotos, warmUpSearch } from '#lib/explore/api.ts';
 
 function reply(status: number, body: unknown, headers: Record<string, string> = {}) {
 	return new Response(JSON.stringify(body), { status, headers: { 'content-type': 'application/json', ...headers } });
@@ -73,5 +73,14 @@ describe('peopleOnPhoto', () => {
 			{ id: 'a', name: 'Anna', face: { face_id: 'f1', photo_id: 'p', thumbnail_version: 1, box } },
 			{ id: 'b', name: null, face: null }
 		]);
+	});
+});
+
+describe('personChipLabel', () => {
+	it('names a hidden person, or says it is hidden', () => {
+		expect(personChipLabel({ name: 'Anna', hidden: true })).toBe('Anna');
+		expect(personChipLabel({ name: null, hidden: true })).toBe('Hidden person');
+		expect(personChipLabel({ name: null, hidden: false })).toBeNull();
+		expect(personChipLabel(undefined)).toBeNull();
 	});
 });

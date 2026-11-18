@@ -5,7 +5,7 @@
 	import FaceAvatar from '#lib/components/photos/FaceAvatar.svelte';
 	import FilterPicker from '#lib/components/photos/FilterPicker.svelte';
 	import Button from '#lib/components/ui/Button.svelte';
-	import type { Person } from '#lib/explore/api.ts';
+	import { getPerson, personChipLabel, type Person } from '#lib/explore/api.ts';
 	import { chips, type ChipKind, type PhotoFilter } from '#lib/explore/filters.ts';
 
 	interface Props {
@@ -39,8 +39,22 @@
 		kind: 'image'
 	};
 
-	const person = (id: string) => people.find((p) => p.id === id);
-	const list = $derived(chips(filter, (id) => person(id)?.name ?? null));
+	/** A filtered person missing from `people` (hidden people are left out of lists). */
+	let fetched: Person | null = $state(null);
+	const person = (id: string) => people.find((p) => p.id === id) ?? (fetched?.id === id ? fetched : undefined);
+	const list = $derived(chips(filter, (id) => personChipLabel(person(id))));
+
+	$effect(() => {
+		const id = filter.person;
+		if (!id || people.some((p) => p.id === id) || fetched?.id === id) return;
+		let current = true;
+		void getPerson(id).then((result) => {
+			if (current && result.ok) fetched = result.data;
+		});
+		return () => {
+			current = false;
+		};
+	});
 </script>
 
 <!-- MASTER "Filter chip": active chips are chosen segments with a clear button. -->
