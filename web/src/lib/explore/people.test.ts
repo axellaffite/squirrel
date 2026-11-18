@@ -1,5 +1,5 @@
-import { describe, expect, it, vi } from 'vitest';
-import { cleanName, emptyReason, forEach, mergeTarget } from '#lib/explore/people.ts';
+import { describe, expect, it } from 'vitest';
+import { cleanName, emptyReason, mergeTarget } from '#lib/explore/people.ts';
 
 const person = (id: string, name: string | null, face_count: number) => ({ id, name, face_count });
 
@@ -15,12 +15,6 @@ describe('people', () => {
 		expect(cleanName('  Anna ')).toBe('Anna');
 		expect(cleanName('   ')).toBeNull();
 		expect(cleanName('é'.repeat(101))).toBeNull();
-	});
-
-	it('runs a step for every id and reports failures', async () => {
-		const step = vi.fn(async (id: string) => (id === 'b' ? { ok: false as const, error: 'nope', status: 404 } : { ok: true as const, data: null }));
-		expect(await forEach(['a', 'b', 'c'], step, 2)).toEqual({ failed: ['b'], error: 'nope' });
-		expect(step).toHaveBeenCalledTimes(3);
 	});
 
 	it('explains an empty people grid', () => {

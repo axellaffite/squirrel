@@ -15,10 +15,10 @@
 	import TextField from '#lib/components/ui/TextField.svelte';
 	import { getPerson, type Face, type Person } from '#lib/explore/api.ts';
 	import { personLabel } from '#lib/explore/faces.ts';
+	import { bulk, facesCount, Generations, moveRequest, pruneSelection } from '#lib/explore/personFaces.ts';
 	import {
 		assignFace,
 		cleanName,
-		forEach,
 		listPersonFaces,
 		mergePeople,
 		renamePerson,
@@ -57,18 +57,25 @@
 
 	const label = $derived(person ? personLabel(person.name) : 'Person');
 
+	/** Reloads are numbered: an older answer never overwrites a newer one. */
+	const personLoads = new Generations();
+	const faceLoads = new Generations();
+
 	async function loadPerson() {
+		const ticket = personLoads.next();
 		const result = await getPerson(id);
+		if (!personLoads.current(ticket)) return;
 		if (result.ok) person = result.data;
 		else error = result.error;
 	}
 
 	async function loadFaces() {
+		const ticket = faceLoads.next();
 		const result = await listPersonFaces(id);
+		if (!faceLoads.current(ticket)) return;
 		if (result.ok) {
 			faces = result.data;
-			const present = new Set(result.data.map((face) => face.id));
-			selected = new Set([...selected].filter((faceId) => present.has(faceId)));
+			selected = pruneSelection(selected, result.data);
 		} else error = result.error;
 	}
 
@@ -128,12 +135,21 @@
 		selected = next;
 	}
 
-	async function notThisPerson() {
+	/** A correction of several faces is running: a second click does nothing. */
+	let correcting = $state(false);
+	/** "Not {name}" asked to confirm, for this many faces. */
+	let confirmingNot = $state(0);
+
+	async function notThisPerson(): Promise<string | null> {
+		if (correcting) return null;
+		correcting = true;
 		const ids = [...selected];
-		const done = await forEach(ids, unassignFace);
-		error = done.error;
-		selected = new Set();
-		await refresh(`${ids.length - done.failed.length} ${ids.length === 1 ? 'face is' : 'faces are'} no longer ${label}.`);
+		const result = await bulk(ids, unassignFace);
+		correcting = false;
+		selected = result.stillSelected;
+		error = result.error;
+		await refresh(`${facesCount(result.done)} no longer ${label}.`);
+		return null;
 	}
 
 	async function picked(choice: PersonChoice) {
@@ -143,19 +159,27 @@
 			mergeInto = choice.person;
 			return;
 		}
-		if (purpose !== 'move') return;
+		if (purpose !== 'move' || correcting) return;
 		const ids = [...selected];
-		selected = new Set();
-		if ('newPerson' in choice) {
+		const request = moveRequest(choice);
+		correcting = true;
+		if (request.kind === 'split') {
 			const result = await splitPerson(id, ids);
-			if (!result.ok) error = result.error;
-			else await refresh(`${ids.length} ${ids.length === 1 ? 'face' : 'faces'} moved to a new person.`);
+			correcting = false;
+			if (!result.ok) {
+				error = result.error;
+				return;
+			}
+			selected = new Set();
+			await refresh(`${facesCount(ids.length)} moved to a new person.`);
 			return;
 		}
-		const target = choice.person;
-		const done = await forEach(ids, (faceId) => assignFace(faceId, { person: target.id }));
-		error = done.error;
-		await refresh(`${ids.length - done.failed.length} ${ids.length === 1 ? 'face' : 'faces'} moved to ${personLabel(target.name)}.`);
+		const target = 'person' in choice ? personLabel(choice.person.name) : '';
+		const result = await bulk(ids, (faceId) => assignFace(faceId, { person: request.person }));
+		correcting = false;
+		selected = result.stillSelected;
+		error = result.error;
+		await refresh(`${facesCount(result.done)} moved to ${target}.`);
 	}
 
 	async function merge(): Promise<string | null> {
@@ -275,7 +299,9 @@
 
 {#if tab === 'faces' && selected.size > 0}
 	<SelectionBar count={selected.size} label="Selected faces" onClear={() => (selected = new Set())}>
-		<Button variant="secondary" size="sm" onclick={notThisPerson}><Icon name="x" /><span class="label">Not {label}</span></Button>
+		<Button variant="secondary" size="sm" disabled={correcting} onclick={() => (confirmingNot = selected.size)}>
+			<Icon name="x" /><span class="label">Not {label}</span>
+		</Button>
 		<Button variant="secondary" size="sm" onclick={() => (picking = 'move')}><Icon name="arrow-right" /><span class="label">Move to…</span></Button>
 		{#if selected.size === 1}
 			<Button variant="secondary" size="sm" onclick={useAsCover}><Icon name="image" /><span class="label">Use as cover</span></Button>
@@ -291,6 +317,17 @@
 		onPick={picked}
 		onClose={() => (picking = null)}
 	/>
+{/if}
+
+{#if confirmingNot > 0}
+	<ConfirmDialog
+		title={`Remove ${facesCount(confirmingNot)} from ${label}?`}
+		confirmLabel="Remove"
+		onConfirm={notThisPerson}
+		onClose={() => (confirmingNot = 0)}
+	>
+		They won't be grouped with anyone again unless you move them.
+	</ConfirmDialog>
 {/if}
 
 {#if mergeInto}

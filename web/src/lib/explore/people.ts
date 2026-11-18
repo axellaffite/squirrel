@@ -94,27 +94,6 @@ export function mergeTarget<P extends Pick<Person, 'id' | 'name' | 'face_count'>
 	return best;
 }
 
-/** Runs `step` for each id, `limit` at a time; returns the ids it failed for and the first error. */
-export async function forEach(
-	ids: readonly string[],
-	step: (id: string) => Promise<Outcome<unknown>>,
-	limit = 4
-): Promise<{ failed: string[]; error: string | null }> {
-	const failed: string[] = [];
-	let error: string | null = null;
-	for (let start = 0; start < ids.length; start += limit) {
-		const batch = ids.slice(start, start + limit);
-		const results = await Promise.all(batch.map(step));
-		results.forEach((result, index) => {
-			if (!result.ok) {
-				failed.push(batch[index]);
-				error ??= result.error;
-			}
-		});
-	}
-	return { failed, error };
-}
-
 /** Why the people grid is empty, worded for the user; null when nothing explains it. */
 export function emptyReason(state: {
 	facesEnabled: boolean | null;
