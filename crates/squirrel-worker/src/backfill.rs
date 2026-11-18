@@ -162,6 +162,12 @@ async fn requeue_clip(conn: &mut PgConnection, has_bank: bool) -> Result<(), Job
     if !has_bank {
         return Ok(());
     }
+    queue_retag(conn).await
+}
+
+/// Queues `clip_embed` (re-tag only) for every embedded blob tagged with
+/// another labels version than the current one.
+pub(crate) async fn queue_retag(conn: &mut PgConnection) -> Result<(), JobError> {
     let retag = per_blob_insert(
         "SELECT e.sha256 FROM clip_embeddings e \
           WHERE e.model = $3 AND e.tagged_labels_version IS DISTINCT FROM $4",

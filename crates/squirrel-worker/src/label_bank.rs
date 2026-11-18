@@ -4,10 +4,45 @@
 
 use sqlx::PgPool;
 use squirrel_db::clip;
+use squirrel_jobs::{JobContext, JobError};
 use squirrel_ml::clip::labels::{self, LABELS_VERSION, Label};
-use squirrel_ml::protocol::{MAX_TEXTS, MlBody, MlOp, MlOutput};
+use squirrel_ml::protocol::{MlBody, MlOp, MlOutput};
 
+use crate::context::{MediaContext, MlContext};
 use crate::ml_client::MlClient;
+
+/// Prompts per request: small batches keep each request short (≈ 0.5 s),
+/// so the child never looks stuck and a cancelled job loses little.
+pub const BATCH: usize = 32;
+/// One batch, however slow the machine.
+pub const BATCH_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(60);
+
+/// `label_bank`: computes the bank (when missing or stale), then queues the
+/// re-tagging of photos embedded meanwhile.
+pub async fn run(ctx: &MediaContext, ml: &MlContext, _job: JobContext) -> Result<(), JobError> {
+    let Some(text) = &ml.text else {
+        return Err(JobError::permanent(anyhow::anyhow!(
+            "this worker has no CLIP text model"
+        )));
+    };
+    let computed = ensure(&ctx.pool, text, squirrel_ml::CLIP_MODEL_ID)
+        .await
+        .map_err(JobError::retry)?;
+    text.stop().await;
+    if computed {
+        let mut conn = ctx.pool.acquire().await.map_err(JobError::retry)?;
+        crate::backfill::queue_retag(&mut conn).await?;
+    }
+    Ok(())
+}
+
+/// Whether the bank of `model` for the current labels version and content
+/// still has to be computed.
+pub async fn missing(pool: &PgPool, model: &str) -> anyhow::Result<bool> {
+    let stored =
+        clip::label_embeddings(pool, model, LABELS_VERSION, &labels::bank_digest()).await?;
+    Ok(!complete(&stored, &labels::bank()))
+}
 
 /// Ensures the bank of `model` for [`LABELS_VERSION`] is stored. `true` when
 /// it had to be computed (one text inference per prompt), `false` when it was
@@ -43,13 +78,16 @@ fn complete(stored: &[(String, Vec<f32>)], labels: &[Label]) -> bool {
 }
 
 /// Every prompt of every label (and the background prompts), encoded in
-/// batches of [`MAX_TEXTS`], averaged per bank entry.
+/// batches of [`BATCH`], averaged per bank entry.
 async fn compute(text: &MlClient, labels: &[Label]) -> anyhow::Result<Vec<(String, Vec<f32>)>> {
     let prompts = labels::bank_prompts(labels);
     let mut grouped: Vec<(String, Vec<Vec<f32>>)> = Vec::new();
-    for batch in prompts.chunks(MAX_TEXTS) {
+    for batch in prompts.chunks(BATCH) {
         let texts = batch.iter().map(|(_, prompt)| prompt.clone()).collect();
-        let embeddings = match text.request(MlOp::ClipText { texts }).await? {
+        let answer = tokio::time::timeout(BATCH_TIMEOUT, text.request(MlOp::ClipText { texts }))
+            .await
+            .map_err(|_| anyhow::anyhow!("a batch of label prompts took over {BATCH_TIMEOUT:?}"))?;
+        let embeddings = match answer? {
             MlBody::Ok(MlOutput::Embeddings { embeddings }) => embeddings,
             other => anyhow::bail!("encoding the label prompts: {other:?}"),
         };

@@ -18,13 +18,15 @@ pub const CLIP_EMBED: &str = "clip_embed";
 pub const FACES: &str = "faces";
 pub const CLUSTER_FACES: &str = "cluster_faces";
 pub const FACE_BACKFILL: &str = "face_backfill";
+/// Encodes the label bank's prompts with the CLIP text tower.
+pub const LABEL_BANK: &str = "label_bank";
 
 /// Kinds that run model inference: they share the worker's ML slots
 /// (`--ml-concurrency`). Clustering and face backfill are SQL work.
-pub const ML_KINDS: [&str; 2] = [CLIP_EMBED, FACES];
+pub const ML_KINDS: [&str; 3] = [CLIP_EMBED, FACES, LABEL_BANK];
 
 /// Every kind this crate can register, whether or not it is registered now.
-pub const KNOWN_KINDS: [&str; 10] = [
+pub const KNOWN_KINDS: [&str; 11] = [
     squirrel_jobs::kinds::PROCESS_MEDIA,
     EXTRACT_METADATA,
     THUMBNAILS,
@@ -35,6 +37,7 @@ pub const KNOWN_KINDS: [&str; 10] = [
     FACES,
     CLUSTER_FACES,
     FACE_BACKFILL,
+    LABEL_BANK,
 ];
 
 /// Payload of every per-blob job.
@@ -74,6 +77,18 @@ pub fn clip_embed(sha256: &str, background: bool) -> NewJob {
 /// Face detection of an image blob (rows are written per owner, Milestone D).
 pub fn faces(sha256: &str, background: bool) -> NewJob {
     per_blob(FACES, sha256, priority::FACES, background)
+}
+
+/// Computes the label bank of `model` for the current labels version (one
+/// queued at a time per model and version).
+pub fn label_bank(model: &str) -> NewJob {
+    let version = squirrel_ml::clip::labels::LABELS_VERSION;
+    NewJob::new(
+        LABEL_BANK,
+        json!({ "model": model, "labels_version": version }),
+    )
+    .priority(priority::LABEL_BANK)
+    .dedupe(format!("{LABEL_BANK}:{model}:{version}"))
 }
 
 /// The ML steps of an image whose preview was just made.

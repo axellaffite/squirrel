@@ -7,15 +7,9 @@ use std::sync::Arc;
 use anyhow::Context;
 use sqlx::PgPool;
 use squirrel_db::ml_status::{self, MlState};
-use squirrel_ml::models::{ModelDir, ModelGroup};
-use squirrel_ml::serve::{Engine, EngineConfig};
 use squirrel_worker::context::MlContext;
-use squirrel_worker::ml_client::{MlBackend, MlChildConfig, MlClient};
 
-use crate::ml::{
-    MAX_REQUESTS, MlExecMode, MlSettings, READY_TIMEOUT, REQUEST_TIMEOUT, StartError, Unavailable,
-    WORKER_IDLE, child_args, fail, ort_dylib, worker_context,
-};
+use crate::ml::{MlSettings, StartError, Unavailable, fail, worker_context};
 
 /// What this worker does about ML.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -94,65 +88,29 @@ async fn try_start(
         ready.groups.join(", "),
         ready.onnxruntime.as_deref().unwrap_or("not loaded")
     );
-    if ml.clip
-        && let Err(err) = ensure_label_bank(settings, pool).await
-    {
-        tracing::warn!(error = %format!("{err:#}"), "no label bank: photos get no tags");
+    if let Err(err) = queue_label_bank(pool, &ml).await {
+        tracing::warn!(error = %format!("{err:#}"), "could not queue the label bank");
     }
     Ok(Some(Arc::new(ml)))
 }
 
-/// Computes the label bank once (through its own `clip-text` child, stopped
-/// afterwards), when the text tower is installed and the bank is missing.
-async fn ensure_label_bank(settings: &MlSettings, pool: &PgPool) -> anyhow::Result<()> {
-    let models = ModelDir::new(&settings.models_dir);
-    if !models.installed(ModelGroup::ClipText) {
+/// Queues a `label_bank` job when the bank is missing or stale and this
+/// worker can compute it; never waits for it (tags follow once it is done).
+async fn queue_label_bank(pool: &PgPool, ml: &MlContext) -> anyhow::Result<()> {
+    if ml.text.is_none() {
         tracing::info!("the CLIP text model is not installed: photos get no tags");
         return Ok(());
     }
-    let labels = squirrel_ml::clip::labels::bank();
-    let stored = squirrel_db::clip::label_embeddings(
-        pool,
-        squirrel_ml::CLIP_MODEL_ID,
-        squirrel_ml::clip::labels::LABELS_VERSION,
-        &squirrel_ml::clip::labels::bank_digest(),
-    )
-    .await?;
-    if stored.len() == labels.len() + 1 {
-        return Ok(());
+    if squirrel_worker::label_bank::missing(pool, squirrel_ml::CLIP_MODEL_ID).await? {
+        let mut conn = pool.acquire().await?;
+        squirrel_jobs::enqueue(
+            &mut conn,
+            &squirrel_worker::jobs::label_bank(squirrel_ml::CLIP_MODEL_ID),
+        )
+        .await?;
+        tracing::info!("label bank queued: tags follow once it is computed");
     }
-    let text_models = models.clone();
-    tokio::task::spawn_blocking(move || text_models.verify(ModelGroup::ClipText))
-        .await
-        .context("verifying the text model")??;
-    let dylib = ort_dylib(settings.ort_dylib.as_deref())?;
-    let groups = [ModelGroup::ClipText];
-    let backend = match settings.mode {
-        MlExecMode::Subprocess => MlBackend::Subprocess(MlChildConfig {
-            program: std::env::current_exe().context("locating the squirrel executable")?,
-            args: child_args(&groups, &models, &dylib, settings.threads),
-            ready_timeout: READY_TIMEOUT,
-            request_timeout: REQUEST_TIMEOUT,
-            max_requests: MAX_REQUESTS,
-            idle: WORKER_IDLE,
-            restart_backoff: squirrel_worker::ml_client::RESTART_BACKOFF,
-            max_restart_backoff: squirrel_worker::ml_client::MAX_RESTART_BACKOFF,
-        }),
-        MlExecMode::InProcess => {
-            let engine = Engine::load(&EngineConfig {
-                groups: groups.to_vec(),
-                models,
-                ort_dylib: Some(dylib),
-                threads: settings.threads,
-            })?;
-            MlBackend::InProcess(Arc::new(std::sync::Mutex::new(engine)))
-        }
-    };
-    let client = MlClient::new(backend);
-    let result =
-        squirrel_worker::label_bank::ensure(pool, &client, squirrel_ml::CLIP_MODEL_ID).await;
-    client.stop().await;
-    result.map(drop)
+    Ok(())
 }
 
 #[cfg(test)]
@@ -160,7 +118,8 @@ mod tests {
     use std::path::Path;
 
     use super::*;
-    use squirrel_ml::models::PINNED;
+    use crate::ml::MlExecMode;
+    use squirrel_ml::models::{ModelDir, ModelGroup, PINNED};
 
     fn settings(dir: &Path, ort: Option<std::path::PathBuf>) -> MlSettings {
         MlSettings {

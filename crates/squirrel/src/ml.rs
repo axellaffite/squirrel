@@ -19,6 +19,8 @@ pub(crate) const REQUEST_TIMEOUT: Duration = Duration::from_secs(60);
 pub(crate) const MAX_REQUESTS: u32 = 1000;
 /// The worker's child frees its memory after this long without a job.
 pub const WORKER_IDLE: Duration = Duration::from_secs(10 * 60);
+/// The text tower's child only runs `label_bank` jobs: stopped soon after.
+pub const TEXT_IDLE: Duration = Duration::from_secs(60);
 
 /// Where model inference runs.
 #[derive(ValueEnum, Debug, Clone, Copy, PartialEq, Eq)]
@@ -97,36 +99,71 @@ pub fn worker_context(settings: &MlSettings) -> Result<Option<MlContext>, StartE
             .with_context(|| format!("verifying the {} models", group.name()))
             .map_err(fail(Unavailable::Mismatch))?;
     }
-    let backend = match settings.mode {
+    let main = backend(settings, &groups, &models, &dylib, WORKER_IDLE)?;
+    let mut ml = MlContext::new(
+        MlClient::new(main),
+        groups.contains(&ModelGroup::ClipImage),
+        groups.contains(&ModelGroup::Faces),
+    );
+    // The text tower only computes the label bank: optional, and its failure
+    // only costs the tags.
+    if ml.clip && models.installed(ModelGroup::ClipText) {
+        let text = models
+            .verify(ModelGroup::ClipText)
+            .context("verifying the clip-text models")
+            .map_err(fail(Unavailable::Mismatch))
+            .and_then(|()| {
+                backend(
+                    settings,
+                    &[ModelGroup::ClipText],
+                    &models,
+                    &dylib,
+                    TEXT_IDLE,
+                )
+            });
+        match text {
+            Ok(text) => ml = ml.with_text(MlClient::new(text)),
+            Err(err) => {
+                tracing::warn!(error = %format!("{err:#}"), "no label bank: photos get no tags")
+            }
+        }
+    }
+    Ok(Some(ml))
+}
+
+/// How a child for `groups` runs: a supervised `ml-exec`, or in this process.
+fn backend(
+    settings: &MlSettings,
+    groups: &[ModelGroup],
+    models: &ModelDir,
+    dylib: &Path,
+    idle: Duration,
+) -> Result<MlBackend, StartError> {
+    Ok(match settings.mode {
         MlExecMode::Subprocess => MlBackend::Subprocess(MlChildConfig {
             program: std::env::current_exe()
                 .context("locating the squirrel executable")
                 .map_err(fail(Unavailable::ChildFailed))?,
-            args: child_args(&groups, &models, &dylib, settings.threads),
+            args: child_args(groups, models, dylib, settings.threads),
             ready_timeout: READY_TIMEOUT,
             request_timeout: REQUEST_TIMEOUT,
             max_requests: MAX_REQUESTS,
-            idle: WORKER_IDLE,
+            idle,
             restart_backoff: squirrel_worker::ml_client::RESTART_BACKOFF,
             max_restart_backoff: squirrel_worker::ml_client::MAX_RESTART_BACKOFF,
         }),
         MlExecMode::InProcess => {
             let engine = Engine::load(&EngineConfig {
-                groups: groups.clone(),
-                models,
-                ort_dylib: Some(dylib),
+                groups: groups.to_vec(),
+                models: models.clone(),
+                ort_dylib: Some(dylib.to_owned()),
                 threads: settings.threads,
             })
             .context("loading the models in-process")
             .map_err(fail(Unavailable::ChildFailed))?;
             MlBackend::InProcess(Arc::new(std::sync::Mutex::new(engine)))
         }
-    };
-    Ok(Some(MlContext::new(
-        MlClient::new(backend),
-        groups.contains(&ModelGroup::ClipImage),
-        groups.contains(&ModelGroup::Faces),
-    )))
+    })
 }
 
 /// The ONNX Runtime library as an absolute path, required once a model group

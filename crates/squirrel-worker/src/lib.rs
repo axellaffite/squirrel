@@ -35,6 +35,9 @@ const THUMBNAILS_TIMEOUT: Duration = Duration::from_secs(180);
 /// One inference (≈ 0.1–0.2 s on a mini PC) plus a cold `ml-exec` start
 /// (hashing and loading the models, a few seconds).
 const CLIP_TIMEOUT: Duration = Duration::from_secs(90);
+/// About 1 400 prompts in batches of 32 (≈ 30 s on a fast CPU, minutes on a
+/// mini PC).
+const LABEL_BANK_TIMEOUT: Duration = Duration::from_secs(20 * 60);
 /// PDF text runs in the sandbox too.
 const TEXT_TIMEOUT: Duration = Duration::from_secs(180);
 
@@ -106,14 +109,27 @@ fn register_ml(registry: &mut Registry, ctx: &Arc<MediaContext>) {
         return;
     };
     if ml.clip {
+        let clip = ml.clone();
         register(
             registry,
             ctx,
             jobs::CLIP_EMBED,
             CLIP_TIMEOUT,
             move |ctx, job| {
-                let ml = ml.clone();
+                let ml = clip.clone();
                 async move { clip_job::run(&ctx, &ml, job).await }
+            },
+        );
+    }
+    if ml.clip && ml.text.is_some() {
+        register(
+            registry,
+            ctx,
+            jobs::LABEL_BANK,
+            LABEL_BANK_TIMEOUT,
+            move |ctx, job| {
+                let ml = ml.clone();
+                async move { label_bank::run(&ctx, &ml, job).await }
             },
         );
     }
