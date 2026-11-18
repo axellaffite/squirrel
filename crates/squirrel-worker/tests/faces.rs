@@ -367,3 +367,63 @@ async fn a_backfill_for_a_user_with_faces_off_queues_nothing(pool: PgPool) {
         .unwrap();
     assert_eq!(queued, 0);
 }
+
+/// The user's corrections live on the face rows: running `faces` again and
+/// regenerating the previews (thumbnails again) change none of them.
+#[sqlx::test(migrator = "squirrel_db::MIGRATOR")]
+async fn corrections_survive_rescans_and_new_previews(pool: PgPool) {
+    let (calls, ml) = fake(vec![found(0.1), found(0.6)]);
+    let p = pair(ml.clone(), pool).await;
+    faces_job::run(&p.fx.ctx, &ml, faces_job_for(&p.sha))
+        .await
+        .unwrap();
+    let ids: Vec<Uuid> = faces::faces_of(p.fx.pool(), p.alice, &p.sha)
+        .await
+        .unwrap()
+        .iter()
+        .map(|f| f.id)
+        .collect();
+    let anna = Uuid::now_v7();
+    sqlx::query("INSERT INTO people (id, owner_id, name, hidden) VALUES ($1, $2, 'Anna', true)")
+        .bind(anna)
+        .bind(p.alice)
+        .execute(p.fx.pool())
+        .await
+        .unwrap();
+    for (face, person) in [(ids[0], Some(anna)), (ids[1], None)] {
+        sqlx::query("UPDATE faces SET person_id = $2, assigned_by = 'user' WHERE id = $1")
+            .bind(face)
+            .bind(person)
+            .execute(p.fx.pool())
+            .await
+            .unwrap();
+    }
+    let before = faces::faces_of(p.fx.pool(), p.alice, &p.sha).await.unwrap();
+
+    // New previews (a thumbnails version bump), then faces again.
+    sqlx::query(
+        "UPDATE media SET thumbs_state = 'pending', faces_state = 'pending' WHERE sha256 = $1",
+    )
+    .bind(&p.sha)
+    .execute(p.fx.pool())
+    .await
+    .unwrap();
+    thumbnails::run(&p.fx.ctx, thumbs_job(&p.sha))
+        .await
+        .unwrap();
+    faces_job::run(&p.fx.ctx, &ml, faces_job_for(&p.sha))
+        .await
+        .unwrap();
+    assert_eq!(calls.load(Ordering::SeqCst), 1, "Alice is scanned already");
+    assert_eq!(
+        faces::faces_of(p.fx.pool(), p.alice, &p.sha).await.unwrap(),
+        before
+    );
+    let (name, hidden): (Option<String>, bool) =
+        sqlx::query_as("SELECT name, hidden FROM people WHERE id = $1")
+            .bind(anna)
+            .fetch_one(p.fx.pool())
+            .await
+            .unwrap();
+    assert_eq!((name.as_deref(), hidden), (Some("Anna"), true));
+}

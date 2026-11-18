@@ -398,3 +398,119 @@ async fn another_users_people_and_faces_are_not_found(pool: PgPool) {
             .is_empty()
     );
 }
+
+/// Alice reaching for Bob's data from her own people and faces.
+#[sqlx::test(migrator = "squirrel_db::MIGRATOR")]
+async fn mixing_in_another_users_people_or_faces_changes_nothing(pool: PgPool) {
+    let w = world(&pool).await;
+    let (anna, annas) = person(&pool, w.owner, Some("Anna"), &w.photos[..1]).await;
+    let bob = user_id(&w.bob_me);
+    let bob_parent: Uuid = sqlx::query_scalar(
+        "SELECT id FROM nodes WHERE owner_id = $1 AND parent_id IS NULL AND name = 'Photos'",
+    )
+    .bind(bob)
+    .fetch_one(&pool)
+    .await
+    .unwrap();
+    let bobs_photo = photo(
+        &pool,
+        &w.bob_me,
+        bob_parent,
+        "b.jpg",
+        datetime!(2024-01-01 10:00),
+    )
+    .await;
+    let (bens, ben_faces) = person(&pool, bob, Some("Ben"), &[bobs_photo]).await;
+
+    let cases = [
+        (
+            "POST",
+            format!("/api/people/{anna}/merge"),
+            json!({"from": [bens]}),
+            StatusCode::NOT_FOUND,
+        ),
+        (
+            "PUT",
+            format!("/api/faces/{}/person", ben_faces[0]),
+            json!({"person_id": anna}),
+            StatusCode::NOT_FOUND,
+        ),
+        (
+            "PUT",
+            format!("/api/faces/{}/person", annas[0]),
+            json!({"person_id": bens}),
+            StatusCode::UNPROCESSABLE_ENTITY,
+        ),
+        (
+            "PATCH",
+            format!("/api/people/{anna}"),
+            json!({"cover_face_id": ben_faces[0]}),
+            StatusCode::UNPROCESSABLE_ENTITY,
+        ),
+        (
+            "POST",
+            format!("/api/people/{anna}/split"),
+            json!({"face_ids": [ben_faces[0]]}),
+            StatusCode::UNPROCESSABLE_ENTITY,
+        ),
+    ];
+    for (method, url, body, status) in cases {
+        send(&w.alice, &w.alice_me, method, &url, body)
+            .await
+            .assert_status(status);
+    }
+    assert_eq!(
+        assigned(&pool, ben_faces[0]).await,
+        (Some(bens), "auto".into())
+    );
+    assert_eq!(assigned(&pool, annas[0]).await, (Some(anna), "auto".into()));
+    let ben = get(&w.bob, &format!("/api/people/{bens}")).await;
+    assert_eq!(
+        (ben["name"].clone(), ben["face_count"].clone()),
+        (json!("Ben"), json!(1))
+    );
+}
+
+#[sqlx::test(migrator = "squirrel_db::MIGRATOR")]
+async fn merge_chains_end_in_one_person(pool: PgPool) {
+    let w = world(&pool).await;
+    let (a, a_faces) = person(&pool, w.owner, None, &w.photos[..1]).await;
+    let (b, _) = person(&pool, w.owner, None, &w.photos[1..2]).await;
+    let (c, _) = person(&pool, w.owner, Some("Cleo"), &w.photos[2..]).await;
+    send(
+        &w.alice,
+        &w.alice_me,
+        "POST",
+        &format!("/api/people/{b}/merge"),
+        json!({"from": [a]}),
+    )
+    .await
+    .assert_status_ok();
+    let last: Value = send(
+        &w.alice,
+        &w.alice_me,
+        "POST",
+        &format!("/api/people/{c}/merge"),
+        json!({"from": [b]}),
+    )
+    .await
+    .json();
+    assert_eq!(
+        (last["name"].clone(), last["face_count"].clone()),
+        (json!("Cleo"), json!(3))
+    );
+    assert_eq!(assigned(&pool, a_faces[0]).await, (Some(c), "user".into()));
+    send(
+        &w.alice,
+        &w.alice_me,
+        "POST",
+        &format!("/api/people/{c}/merge"),
+        json!({"from": [a]}),
+    )
+    .await
+    .assert_status(StatusCode::NOT_FOUND);
+    assert_eq!(
+        get(&w.alice, "/api/people").await.as_array().unwrap().len(),
+        1
+    );
+}

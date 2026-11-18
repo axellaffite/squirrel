@@ -515,3 +515,57 @@ async fn an_emptied_hidden_person_stays_hidden(pool: PgPool) {
     cluster(&fx, alice.id).await;
     assert_eq!(people(fx.pool(), alice.id).await, 1, "the hide is kept");
 }
+
+/// After the user merges and splits people, clustering moves none of the
+/// pinned faces; faces pinned to nobody never count as anyone's neighbours.
+#[sqlx::test(migrator = "squirrel_db::MIGRATOR")]
+async fn clustering_after_corrections_keeps_them(pool: PgPool) {
+    let fx = Fixture::new(pool);
+    let alice = admin(fx.pool()).await;
+    let sha = photo(&fx, alice.id, "a.jpg").await;
+    let ids = faces(fx.pool(), alice.id, &sha, &groups_and_noise()).await;
+    cluster(&fx, alice.id).await;
+    let first = person_of(fx.pool(), ids[0]).await.unwrap();
+    let second = person_of(fx.pool(), ids[5]).await.unwrap();
+    let merged = squirrel_db::people::merge(fx.pool(), alice.id, first, &[second])
+        .await
+        .unwrap();
+    assert!(matches!(merged, squirrel_db::people::Edit::Done(_)));
+    let split = squirrel_db::people::split(fx.pool(), alice.id, first, &ids[5..7], None)
+        .await
+        .unwrap();
+    let squirrel_db::people::Edit::Done(split) = split else {
+        panic!("{split:?}");
+    };
+    let before: Vec<Option<Uuid>> = {
+        let mut all = Vec::new();
+        for face in &ids {
+            all.push(person_of(fx.pool(), *face).await);
+        }
+        all
+    };
+    // New faces close to the second group: they join a person, never move one.
+    let new = faces(fx.pool(), alice.id, &sha, &[unit(&[(1, 1.0), (50, 0.2)])]).await;
+    cluster(&fx, alice.id).await;
+    for (face, was) in ids.iter().zip(&before) {
+        assert_eq!(person_of(fx.pool(), *face).await, *was);
+    }
+    let joined = person_of(fx.pool(), new[0]).await;
+    assert!(
+        joined == Some(first) || joined == Some(split.id),
+        "{joined:?}"
+    );
+
+    // A group pinned to nobody but for two faces: those two are not enough.
+    let lone_group: Vec<Vec<f32>> = (0..5).map(|i| unit(&[(80, 1.0), (90 + i, 0.25)])).collect();
+    let pinned = faces(fx.pool(), alice.id, &sha, &lone_group).await;
+    sqlx::query("UPDATE faces SET assigned_by = 'user' WHERE id = ANY($1)")
+        .bind(&pinned[..3])
+        .execute(fx.pool())
+        .await
+        .unwrap();
+    cluster(&fx, alice.id).await;
+    for face in &pinned {
+        assert_eq!(person_of(fx.pool(), *face).await, None);
+    }
+}
