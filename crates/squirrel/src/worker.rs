@@ -220,6 +220,12 @@ fn select_kinds(registry: &mut Registry, only: &[String], except: &[String]) -> 
         registry.retain(|kind| only.iter().any(|name| name == kind));
     }
     registry.retain(|kind| !except.iter().any(|name| name == kind));
+    if registry.kinds().is_empty() {
+        anyhow::bail!(
+            "--kinds/--exclude-kinds leave this worker no job kind it can run \
+             (ML kinds need their models installed)"
+        );
+    }
     Ok(())
 }
 
@@ -479,6 +485,18 @@ mod tests {
         let mut registry = sample_registry();
         select_kinds(&mut registry, &[], &names(&["faces", "clip_embed"])).unwrap();
         assert_eq!(registry.kinds(), ["geocode", "noop", "thumbnails"]);
+    }
+
+    #[test]
+    fn a_selection_that_leaves_nothing_to_run_is_refused() {
+        let mut registry = Registry::new();
+        registry.register(NOOP, NOOP_TIMEOUT, |_ctx| async { Ok(()) });
+        // Known, but not registered (no models): nothing left.
+        let err = select_kinds(&mut registry, &names(&["clip_embed"]), &[]).unwrap_err();
+        assert!(err.to_string().contains("no job kind"), "{err}");
+        let mut registry = sample_registry();
+        let all = names(&[NOOP, "thumbnails", "geocode", "faces"]);
+        assert!(select_kinds(&mut registry, &[], &all).is_err());
     }
 
     #[test]
