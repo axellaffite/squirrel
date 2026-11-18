@@ -42,7 +42,7 @@ fn main() -> anyhow::Result<()> {
 fn faces(models: &squirrel_ml::ModelDir) -> anyhow::Result<()> {
     let mut analyzer = squirrel_ml::faces::FaceAnalyzer::load(models, 1)?;
     let mut faces = BTreeMap::new();
-    for name in ["biden-2021", "biden-2013", "harris-2021", "harris-2017"] {
+    for name in ["koch-a", "koch-b", "glover-a", "glover-b"] {
         let path = format!(
             "{}/tests/fixtures/faces/{name}.jpg",
             env!("CARGO_MANIFEST_DIR")

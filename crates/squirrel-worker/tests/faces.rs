@@ -282,7 +282,7 @@ async fn a_real_portrait_gets_one_face(pool: PgPool) {
     let alice = admin(fx.pool()).await;
     let portrait = std::fs::read(concat!(
         env!("CARGO_MANIFEST_DIR"),
-        "/../squirrel-ml/tests/fixtures/faces/harris-2021.jpg"
+        "/../squirrel-ml/tests/fixtures/faces/koch-b.jpg"
     ))
     .unwrap();
     let sha = copy(&fx, alice.id, &portrait).await;

@@ -8,7 +8,7 @@ use super::Detector;
 use crate::models::ModelGroup;
 use crate::testutil::test_ml_for;
 
-pub(crate) const PORTRAITS: [&str; 4] = ["biden-2021", "biden-2013", "harris-2021", "harris-2017"];
+pub(crate) const PORTRAITS: [&str; 4] = ["koch-a", "koch-b", "glover-a", "glover-b"];
 
 pub(crate) fn portrait(name: &str) -> RgbImage {
     let path: PathBuf = [
@@ -80,15 +80,15 @@ fn the_same_person_matches_and_two_people_do_not() {
         assert_eq!(faces.len(), 1, "{name}");
         faces[0].embedding.clone()
     };
-    let b1 = embed(&mut analyzer, "biden-2021");
-    let b2 = embed(&mut analyzer, "biden-2013");
-    let h1 = embed(&mut analyzer, "harris-2021");
-    let h2 = embed(&mut analyzer, "harris-2017");
+    let k1 = embed(&mut analyzer, "koch-a");
+    let k2 = embed(&mut analyzer, "koch-b");
+    let g1 = embed(&mut analyzer, "glover-a");
+    let g2 = embed(&mut analyzer, "glover-b");
     let cos = crate::clip::cosine;
-    for (same, a, b) in [("biden", &b1, &b2), ("harris", &h1, &h2)] {
+    for (same, a, b) in [("koch", &k1, &k2), ("glover", &g1, &g2)] {
         assert!(cos(a, b) >= super::SAME_PERSON, "{same}: {}", cos(a, b));
     }
-    for (a, b) in [(&b1, &h1), (&b1, &h2), (&b2, &h1), (&b2, &h2)] {
+    for (a, b) in [(&k1, &g1), (&k1, &g2), (&k2, &g1), (&k2, &g2)] {
         assert!(
             cos(a, b) < super::SAME_PERSON,
             "different people: {}",
@@ -102,7 +102,7 @@ fn faces_are_relative_to_the_preview() {
     let Some(mut analyzer) = analyzer() else {
         return;
     };
-    let faces = analyzer.analyze(&portrait("harris-2021")).unwrap();
+    let faces = analyzer.analyze(&portrait("koch-b")).unwrap();
     let [x, y, w, h] = faces[0].bbox;
     assert!(
         x > 0.0 && y > 0.0 && x + w < 1.0 && y + h < 1.0,
@@ -112,7 +112,7 @@ fn faces_are_relative_to_the_preview() {
     assert!(faces[0].landmarks.iter().all(|v| (0.0..=1.0).contains(v)));
     // A large preview gives the same relative box as the original.
     let big = image::imageops::resize(
-        &portrait("harris-2021"),
+        &portrait("koch-b"),
         1000,
         1250,
         image::imageops::FilterType::CatmullRom,
