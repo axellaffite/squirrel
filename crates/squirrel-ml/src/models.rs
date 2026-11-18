@@ -8,8 +8,10 @@ use std::path::{Path, PathBuf};
 
 use sha2::{Digest, Sha256};
 
-/// OpenAI CLIP ViT-B/32 (`immich-app/ViT-B-32__openai`), 512-d, 224 px.
-pub const CLIP_MODEL_ID: &str = "openai-vit-b32-224";
+/// SigLIP2 ViT-B/16 trained on WebLI (`immich-app/ViT-B-16-SigLIP2__webli`),
+/// 768-d, 224 px, multilingual. The "clip" names (groups, tables, jobs) mean
+/// the image–text model, whichever it is.
+pub const CLIP_MODEL_ID: &str = "siglip2-vit-b16-224";
 /// YuNet (2026may) + SFace (2021dec), 128-d.
 pub const FACE_MODEL_ID: &str = "yunet-sface-2021dec";
 
@@ -89,16 +91,16 @@ const fn pin(
 /// `scripts/fetch-models.sh` carries the same list (a test keeps them equal).
 #[rustfmt::skip]
 pub static PINNED: &[PinnedFile] = &[
-    // immich-app/ViT-B-32__openai @ a857c8de2c07bbcfa6646adfcf31b798845afa1e
-    pin(CLIP_ALL, "clip/config.json", 196, "59a182a6dce0adeb303f3d72d73758d68ba29516d928dd92740465f498290409", FileRole::Data),
-    pin(CLIP_IMAGE, "clip/visual/model.onnx", 351_613_724, "33a3df41ceef21acdf371af00f6dd0456ec1f9eba24d03a7720f9c3734e40859", FileRole::Model),
-    pin(CLIP_IMAGE, "clip/visual/preprocess_cfg.json", 197, "c4fd008cd177c58a8fe107b099bac98913eaa6be6114dd59a4b45145c3c7673f", FileRole::Data),
-    pin(CLIP_TEXT, "clip/textual/model.onnx", 254_193_396, "b80cf0af751533a6712d92247f0ddc0c95208748bc59a1a27f33e67be6864e3b", FileRole::Model),
-    pin(CLIP_TEXT, "clip/textual/tokenizer.json", 3_642_073, "6d9109cc838977f3ca94a379eec36aecc7c807e1785cd729660ca2fc0171fb35", FileRole::Data),
-    pin(CLIP_TEXT, "clip/textual/tokenizer_config.json", 736, "39bae5313c2da6467866dee758e754d69f0e302a875027b142531cb9c51c7c28", FileRole::Data),
-    pin(CLIP_TEXT, "clip/textual/special_tokens_map.json", 588, "2cdb3b8331a60c92fc1e55a13e9fd61fd2293c5a51275fdcccd62b780052530e", FileRole::Data),
-    // openai/CLIP @ d05afc436d78f1c48dc0dbf8e5980a9d471f35f6 (MIT)
-    pin(CLIP_ALL, "clip/LICENSE", 1064, "987e63b32f6c89ff5160e429458a872ff048e6860b590a3912e938f9da8f14db", FileRole::Licence),
+    // immich-app/ViT-B-16-SigLIP2__webli @ 5f3fc29104ebcf51e9d893af57604badd51a3ea6
+    pin(CLIP_ALL, "siglip2/config.json", 547, "a33af509278a65855fd6b4fd8a17ed1b1e3482ff5d438c3fc43b07d4999e01b5", FileRole::Data),
+    pin(CLIP_IMAGE, "siglip2/visual/model.onnx", 371_674_292, "fee10c729875dd203d94f396ac3d664e301d39c977ef6d92e7f467a2a716f0b0", FileRole::Model),
+    pin(CLIP_IMAGE, "siglip2/visual/preprocess_cfg.json", 154, "d78a80d49dca4e62d17f802a685d67d821f7102844cb89f65a0bb1a5d0601f43", FileRole::Data),
+    pin(CLIP_TEXT, "siglip2/textual/model.onnx", 1_129_435_819, "fc9991b415d7d0fac7ed540e875fd08a647c8a1abba99f12542531b004c4b68f", FileRole::Model),
+    pin(CLIP_TEXT, "siglip2/textual/tokenizer.json", 34_362_885, "220c63d496e0c14e63eb656c91e0215e926202e4c74b1f089e09f1920d779b04", FileRole::Data),
+    pin(CLIP_TEXT, "siglip2/textual/tokenizer_config.json", 46_386, "958146aa289a0a39e4fcb20087a78facb157d29c7ef017374ac3ccab0549aae4", FileRole::Data),
+    pin(CLIP_TEXT, "siglip2/textual/special_tokens_map.json", 555, "db82f8bd9b25d14f9c788e6bde64de84d42f1c2538f1c245ba6cb3e872d14b18", FileRole::Data),
+    // google-research/big_vision @ 0127fb6b337ee2a27bf4e54dea79cff176527356 (Apache-2.0)
+    pin(CLIP_ALL, "siglip2/LICENSE", 11_356, "43070e2d4e532684de521b885f385d0841030efa2b1a20bafb76133a5e1379c1", FileRole::Licence),
     // opencv/opencv_zoo @ eb9f4f2d4b79b58e5513b5d25d5f0243a8357bf4
     pin(FACES, "faces/face_detection_yunet_2026may.onnx", 229_738, "ebafce4e3c118d6554634be5c27ab333b4c047a9a8c3faf1d7cf93101c22f0f0", FileRole::Model),
     pin(FACES, "faces/LICENSE-yunet", 1085, "c83b8120c50ccbd4c4f96edf53141bdd566ebb8f8e9227e415326aa1b1aba958", FileRole::Licence),

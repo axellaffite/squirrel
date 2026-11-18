@@ -1,4 +1,4 @@
-//! The CLIP image tower: preview → preprocessed tensor → 512-d unit vector.
+//! The SigLIP2 image tower: preview → preprocessed tensor → 768-d unit vector.
 
 use std::path::Path;
 
@@ -12,11 +12,11 @@ use crate::input::{InputError, MAX_PREVIEW_PIXELS, load_preview};
 use crate::models::ModelDir;
 use crate::runtime::{self, RuntimeError};
 
-pub const IMAGE_MODEL: &str = "clip/visual/model.onnx";
-pub const PREPROCESS_CFG: &str = "clip/visual/preprocess_cfg.json";
-/// Longer than 20:1 (a panorama strip, a corrupt header): the centre crop
-/// would show a sliver, and resizing the short side to 224 would make the
-/// long one huge. Refused rather than guessed.
+pub const IMAGE_MODEL: &str = "siglip2/visual/model.onnx";
+pub const PREPROCESS_CFG: &str = "siglip2/visual/preprocess_cfg.json";
+/// Longer than 20:1 (a panorama strip, a corrupt header): squashed to a
+/// square it would be unrecognisable (and a centre crop would keep a sliver).
+/// Refused rather than guessed.
 pub const MAX_ASPECT: u32 = 20;
 
 /// [`MAX_ASPECT`] as an `Unsupported` error.

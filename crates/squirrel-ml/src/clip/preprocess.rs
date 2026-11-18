@@ -1,6 +1,7 @@
-//! CLIP image preprocessing, as the model's `visual/preprocess_cfg.json`
-//! describes it (OpenCLIP): shortest side to the input size (bicubic), centre
-//! crop, then `(x / 255 − mean) / std` per channel, NCHW.
+//! Image preprocessing, as the model's `visual/preprocess_cfg.json` describes
+//! it (OpenCLIP): either squash to the input size (SigLIP2) or shortest side to
+//! the input size and centre crop (OpenAI CLIP), both bicubic; then
+//! `(x / 255 − mean) / std` per channel, NCHW.
 
 use fast_image_resize::{FilterType, ResizeAlg, ResizeOptions, Resizer};
 use image::{DynamicImage, RgbImage};
@@ -19,8 +20,18 @@ pub enum PreprocessError {
 #[derive(Debug, Clone, PartialEq)]
 pub struct PreprocessCfg {
     pub size: u32,
+    pub resize: ResizeMode,
     pub mean: [f32; 3],
     pub std: [f32; 3],
+}
+
+/// OpenCLIP's `resize_mode`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ResizeMode {
+    /// Both sides to the input size: the aspect ratio is not kept.
+    Squash,
+    /// Shortest side to the input size, then a centre crop.
+    Shortest,
 }
 
 #[derive(Deserialize)]
@@ -51,35 +62,33 @@ impl PreprocessCfg {
         if raw.interpolation != "bicubic" {
             return unsupported("interpolation", &raw.interpolation);
         }
-        if raw.resize_mode != "shortest" {
-            return unsupported("resize_mode", &raw.resize_mode);
-        }
+        let resize = match raw.resize_mode.as_str() {
+            "squash" => ResizeMode::Squash,
+            "shortest" => ResizeMode::Shortest,
+            other => return unsupported("resize_mode", other),
+        };
         if raw.std.iter().any(|s| *s <= 0.0) {
             return unsupported("std", &format!("{:?}", raw.std));
         }
         Ok(Self {
             size: raw.size[0],
+            resize,
             mean: raw.mean,
             std: raw.std,
         })
     }
 }
 
-/// Resize so the shortest side is `cfg.size` (torchvision's `Resize(int)`:
-/// the long side is truncated), centre crop (torchvision's rounding), normalise.
+/// Resize as `cfg.resize` says (squash: torchvision's `Resize((s, s))`;
+/// shortest: `Resize(int)`, the long side truncated, then a centre crop with
+/// torchvision's rounding), normalise.
 pub fn preprocess(image: &RgbImage, cfg: &PreprocessCfg) -> Result<Array4<f32>, PreprocessError> {
     let size = cfg.size;
-    let (width, height) = image.dimensions();
-    let (short, long) = (width.min(height).max(1), width.max(height));
-    let long_scaled = ((u64::from(size) * u64::from(long)) / u64::from(short)).max(u64::from(size));
-    let long_scaled =
-        u32::try_from(long_scaled).map_err(|_| PreprocessError::Resize("too wide".into()))?;
-    let (new_w, new_h) = if width <= height {
-        (size, long_scaled)
-    } else {
-        (long_scaled, size)
+    let (new_w, new_h) = match cfg.resize {
+        ResizeMode::Squash => (size, size),
+        ResizeMode::Shortest => shortest_side_to(image.dimensions(), size)?,
     };
-    let resized = if (new_w, new_h) == (width, height) {
+    let resized = if (new_w, new_h) == image.dimensions() {
         image.clone()
     } else {
         let src = DynamicImage::ImageRgb8(image.clone());
@@ -100,6 +109,18 @@ pub fn preprocess(image: &RgbImage, cfg: &PreprocessCfg) -> Result<Array4<f32>, 
     }))
 }
 
+fn shortest_side_to((width, height): (u32, u32), size: u32) -> Result<(u32, u32), PreprocessError> {
+    let (short, long) = (width.min(height).max(1), width.max(height));
+    let long_scaled = ((u64::from(size) * u64::from(long)) / u64::from(short)).max(u64::from(size));
+    let long_scaled =
+        u32::try_from(long_scaled).map_err(|_| PreprocessError::Resize("too wide".into()))?;
+    Ok(if width <= height {
+        (size, long_scaled)
+    } else {
+        (long_scaled, size)
+    })
+}
+
 /// torchvision's `CenterCrop`: `int(round((length - size) / 2))`.
 fn crop_offset(length: u32, size: u32) -> u32 {
     (f64::from(length - size) / 2.0).round_ties_even() as u32
@@ -111,21 +132,49 @@ mod tests {
 
     const OPENAI: &str = r#"{"size": [224, 224], "mode": "RGB", "mean": [0.48145466, 0.4578275, 0.40821073], "std": [0.26862954, 0.26130258, 0.27577711], "interpolation": "bicubic", "resize_mode": "shortest", "fill_color": 0}"#;
 
+    /// The pinned SigLIP2 export's `visual/preprocess_cfg.json`.
+    const SIGLIP2: &str = r#"{"size": [224, 224], "mode": "RGB", "mean": [0.5, 0.5, 0.5], "std": [0.5, 0.5, 0.5], "interpolation": "bicubic", "resize_mode": "squash", "fill_color": 0}"#;
+
     fn cfg() -> PreprocessCfg {
         PreprocessCfg::parse(OPENAI.as_bytes()).unwrap()
     }
 
     #[test]
     fn the_models_config_parses() {
-        let cfg = cfg();
-        assert_eq!(cfg.size, 224);
+        let cfg = PreprocessCfg::parse(SIGLIP2.as_bytes()).unwrap();
+        assert_eq!(
+            (cfg.size, cfg.resize, cfg.mean, cfg.std),
+            (224, ResizeMode::Squash, [0.5; 3], [0.5; 3])
+        );
+        let cfg = self::cfg();
+        assert_eq!(cfg.resize, ResizeMode::Shortest);
         assert!((cfg.mean[0] - 0.481_454_66).abs() < 1e-7);
+    }
+
+    #[test]
+    fn squash_keeps_the_whole_image() {
+        // 448 × 224: red left half, blue right half; both survive the squash.
+        let image = RgbImage::from_fn(448, 224, |x, _| {
+            if x < 224 {
+                image::Rgb([255, 0, 0])
+            } else {
+                image::Rgb([0, 0, 255])
+            }
+        });
+        let cfg = PreprocessCfg::parse(SIGLIP2.as_bytes()).unwrap();
+        let tensor = preprocess(&image, &cfg).unwrap();
+        assert_eq!(tensor.shape(), [1, 3, 224, 224]);
+        // (1 − 0.5) / 0.5 = 1, (0 − 0.5) / 0.5 = −1.
+        assert!((tensor[[0, 0, 100, 10]] - 1.0).abs() < 1e-5);
+        assert!((tensor[[0, 2, 100, 10]] + 1.0).abs() < 1e-5);
+        assert!((tensor[[0, 0, 100, 213]] + 1.0).abs() < 1e-5);
+        assert!((tensor[[0, 2, 100, 213]] - 1.0).abs() < 1e-5);
     }
 
     #[test]
     fn unknown_modes_are_refused() {
         for (from, to) in [
-            ("\"shortest\"", "\"squash\""),
+            ("\"shortest\"", "\"longest\""),
             ("\"bicubic\"", "\"bilinear\""),
             ("\"RGB\"", "\"BGR\""),
         ] {

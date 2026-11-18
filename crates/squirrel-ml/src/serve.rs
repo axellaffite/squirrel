@@ -272,7 +272,7 @@ mod tests {
     }
 
     #[test]
-    fn clip_image_returns_a_512_d_unit_vector() {
+    fn clip_image_returns_a_768_d_unit_vector() {
         let Some((dylib, models)) = crate::testutil::test_ml_for(&[ModelGroup::ClipImage]) else {
             return;
         };
@@ -293,7 +293,7 @@ mod tests {
         else {
             panic!("no embedding");
         };
-        assert_eq!(embedding.len(), 512);
+        assert_eq!(embedding.len(), crate::clip::EMBEDDING_DIM);
         let norm: f32 = embedding.iter().map(|v| v * v).sum::<f32>().sqrt();
         assert!((norm - 1.0).abs() < 1e-4, "{norm}");
     }
