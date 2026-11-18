@@ -1,8 +1,8 @@
 <script lang="ts">
 	import { page } from '$app/state';
 	import { onMount } from 'svelte';
-	import ConfirmDialog from '#lib/components/ConfirmDialog.svelte';
 	import Icon from '#lib/components/icons/Icon.svelte';
+	import MergeDialog from '#lib/components/photos/MergeDialog.svelte';
 	import PeopleGrid from '#lib/components/photos/PeopleGrid.svelte';
 	import PhotosTabs from '#lib/components/photos/PhotosTabs.svelte';
 	import SelectionBar from '#lib/components/photos/SelectionBar.svelte';
@@ -13,7 +13,7 @@
 	import Toggle from '#lib/components/ui/Toggle.svelte';
 	import { listPeople, type Person } from '#lib/explore/api.ts';
 	import { personLabel } from '#lib/explore/faces.ts';
-	import { emptyReason, getMlSettings, MAX_MERGE, mergePeople, mergeTarget } from '#lib/explore/people.ts';
+	import { emptyReason, getMlSettings, MAX_MERGE, mergePeople } from '#lib/explore/people.ts';
 	import { mediaStatus } from '#lib/photos/api.ts';
 
 	let people = $state<Person[] | null>(null);
@@ -26,7 +26,6 @@
 	let reason: ReturnType<typeof emptyReason> = $state(null);
 
 	const chosen = $derived((people ?? []).filter((person) => selected.has(person.id)));
-	const target = $derived(mergeTarget(chosen));
 
 	async function load() {
 		const result = await listPeople(showHidden);
@@ -59,10 +58,9 @@
 		selected = new Set();
 	}
 
-	async function merge(): Promise<string | null> {
-		if (!target) return null;
-		const from = chosen.filter((person) => person.id !== target.id).map((person) => person.id);
-		const result = await mergePeople(target.id, from);
+	async function merge(keep: Person): Promise<string | null> {
+		const from = chosen.filter((person) => person.id !== keep.id).map((person) => person.id);
+		const result = await mergePeople(keep.id, from);
 		if (!result.ok) return result.error;
 		notice = `Merged ${chosen.length} people into ${personLabel(result.data.name)}.`;
 		stopSelecting();
@@ -124,15 +122,8 @@
 	</SelectionBar>
 {/if}
 
-{#if merging && target}
-	<ConfirmDialog
-		title={`Merge ${chosen.length} people into ${personLabel(target.name)}?`}
-		confirmLabel="Merge"
-		onConfirm={merge}
-		onClose={() => (merging = false)}
-	>
-		Their faces all become {personLabel(target.name)}'s, and the other people are removed. Faces moved by hand stay where you put them.
-	</ConfirmDialog>
+{#if merging && chosen.length > 1}
+	<MergeDialog people={chosen} onMerge={merge} onClose={() => (merging = false)} />
 {/if}
 
 <style>

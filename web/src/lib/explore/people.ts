@@ -94,6 +94,15 @@ export function mergeTarget<P extends Pick<Person, 'id' | 'name' | 'face_count'>
 	return best;
 }
 
+/** Why `target` is offered as the person a merge keeps. */
+export function mergeReason(target: Pick<Person, 'name'>, people: readonly Pick<Person, 'name'>[]): string {
+	const named = people.filter((person) => person.name?.trim()).length;
+	if (target.name?.trim()) {
+		return named > 1 ? 'Chosen because they are named and have the most photos.' : 'Chosen because they are the only one with a name.';
+	}
+	return 'Chosen because they have the most photos.';
+}
+
 /** Why the people grid is empty, worded for the user; null when nothing explains it. */
 export function emptyReason(state: {
 	facesEnabled: boolean | null;
