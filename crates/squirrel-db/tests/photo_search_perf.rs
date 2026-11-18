@@ -103,6 +103,7 @@ async fn exact_search_latency(pool: PgPool) {
     measure(&pool, alice.id, "10k photos (beside a 50k user)").await;
     library(&pool, alice.id, alice_root, 40_000, "c").await;
     measure(&pool, alice.id, "50k photos (beside a 50k user)").await;
+    timeline_with_a_tag(&pool, alice.id).await;
     let vector = query_vector(1);
     let filter = PhotoFilter::default();
     let plan = photo_search::explain(
@@ -118,4 +119,43 @@ async fn exact_search_latency(pool: PgPool) {
     .await
     .unwrap();
     println!("{plan}");
+}
+
+/// The timeline's first page with a tag filter (one photo in ten tagged).
+async fn timeline_with_a_tag(pool: &PgPool, owner: Uuid) {
+    sqlx::query(
+        "INSERT INTO asset_tags (sha256, tag, source, score, labels_version) \
+         SELECT sha256, 'dog', 'clip', 0.3, 2 FROM assets \
+          WHERE owner_id = $1 AND random() < 0.1",
+    )
+    .bind(owner)
+    .execute(pool)
+    .await
+    .unwrap();
+    sqlx::query("ANALYZE").execute(pool).await.unwrap();
+    let dog = PhotoFilter {
+        tag: Some("dog".into()),
+        ..PhotoFilter::default()
+    };
+    let mut times = Vec::new();
+    for _ in 0..20 {
+        let start = Instant::now();
+        let page = squirrel_db::timeline::page(
+            pool,
+            owner,
+            squirrel_db::timeline::Filter::All,
+            &dog,
+            None,
+            200,
+        )
+        .await
+        .unwrap();
+        times.push(start.elapsed());
+        assert_eq!(page.items.len(), 200);
+    }
+    times.sort_unstable();
+    println!(
+        "timeline page of 200 with a tag filter (50k photos, 10 % tagged): p50 {:.1?}, p95 {:.1?}",
+        times[10], times[19]
+    );
 }
