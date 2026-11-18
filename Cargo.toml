@@ -66,3 +66,7 @@ squirrel-jobs = { path = "crates/squirrel-jobs" }
 squirrel-media = { path = "crates/squirrel-media" }
 squirrel-worker = { path = "crates/squirrel-worker" }
 squirrel-ml = { path = "crates/squirrel-ml" }
+
+# Model files are hashed before every load (hundreds of MB): keep that fast in debug builds too.
+[profile.dev.package.sha2]
+opt-level = 3
