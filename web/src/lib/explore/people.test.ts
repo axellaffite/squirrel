@@ -22,6 +22,8 @@ describe('people', () => {
 		expect(cleanName('  Anna ')).toBe('Anna');
 		expect(cleanName('   ')).toBeNull();
 		expect(cleanName('é'.repeat(101))).toBeNull();
+		expect(cleanName('An\u0007na')).toBeNull();
+		expect(cleanName('Ann\ta')).toBeNull();
 	});
 
 	it('explains an empty people grid', () => {

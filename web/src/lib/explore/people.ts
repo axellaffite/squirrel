@@ -22,9 +22,11 @@ async function call<T>(request: Promise<{ data?: T; error?: unknown; response: R
 	}
 }
 
-/** A name to save: trimmed, 1–100 characters; null when it is not one (shown as a problem). */
+/** A name to save: trimmed, 1–100 characters, no control character; null when it is not one. */
 export function cleanName(raw: string): string | null {
 	const name = raw.trim();
+	// The server refuses control characters too.
+	if (/\p{Cc}/u.test(name)) return null;
 	return name.length >= 1 && [...name].length <= MAX_NAME ? name : null;
 }
 
