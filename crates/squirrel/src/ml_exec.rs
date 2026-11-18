@@ -20,6 +20,9 @@ pub const DEFAULT_MEMORY_MB: u64 = 4096;
 /// `nice` value: the web server and thumbnails win CPU contention.
 const NICE: i32 = 10;
 const MAX_OPEN_FILES: u64 = 64;
+/// RLIMIT_FSIZE: 0 would kill the child (SIGXFSZ) on its first log line when
+/// stderr is a regular file.
+const MAX_FILE_BYTES: u64 = 16 * 1024 * 1024;
 
 #[derive(clap::Args, Debug)]
 pub struct MlExecArgs {
@@ -72,8 +75,8 @@ fn limits(args: &MlExecArgs) -> [(Resource, u64); 4] {
     [
         (Resource::As, args.max_memory_mb.saturating_mul(1024 * 1024)),
         (Resource::Nofile, MAX_OPEN_FILES),
-        // It writes no file at all.
-        (Resource::Fsize, 0),
+        // It writes no file of its own, but stderr may be one (when run by hand).
+        (Resource::Fsize, MAX_FILE_BYTES),
         (Resource::Core, 0),
     ]
 }
@@ -94,7 +97,7 @@ mod tests {
     }
 
     #[test]
-    fn the_child_writes_no_file_and_dumps_no_core() {
+    fn the_child_writes_small_files_only_and_dumps_no_core() {
         let args = MlExecArgs {
             groups: Vec::new(),
             models_dir: "/m".into(),
@@ -103,7 +106,7 @@ mod tests {
             max_memory_mb: 4096,
         };
         let limits = limits(&args);
-        assert!(limits.contains(&(Resource::Fsize, 0)));
+        assert!(limits.contains(&(Resource::Fsize, MAX_FILE_BYTES)));
         assert!(limits.contains(&(Resource::Core, 0)));
         assert!(limits.contains(&(Resource::As, 4096 * 1024 * 1024)));
     }
