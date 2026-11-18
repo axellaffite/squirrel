@@ -24,6 +24,8 @@ import platform.Foundation.NSURL
 import platform.Foundation.NSUserDomainMask
 import platform.Foundation.closeFile
 import platform.Foundation.fileHandleForReadingAtPath
+import platform.Foundation.fileHandleForWritingAtPath
+import platform.Foundation.writeData
 import platform.Foundation.readDataOfLength
 import platform.Foundation.seekToFileOffset
 import platform.Foundation.timeIntervalSince1970
@@ -53,18 +55,36 @@ class AssetExporter(private val dir: String = defaultDir()) {
         val partial = "$path.part"
         files.removeItemAtPath(partial, null)
         val options = PHAssetResourceRequestOptions().apply { networkAccessAllowed = allowNetwork }
+        try {
+            copy(resource, options, partial)
+        } catch (e: Throwable) {
+            files.removeItemAtPath(partial, null)
+            throw e
+        }
+        if (!files.moveItemAtPath(partial, toPath = path, error = null)) throw ExportFailed("Could not keep the export")
+        return path
+    }
+
+    /**
+     * Streams [resource] into [path]. Cancelling the caller cancels the PhotoKit request (an iCloud
+     * download stops); the file handle is closed by the request's own completion, after its last write.
+     */
+    private suspend fun copy(resource: PHAssetResource, options: PHAssetResourceRequestOptions, path: String) {
+        if (!files.createFileAtPath(path, contents = null, attributes = null)) throw ExportFailed("Could not create the export")
+        val out = NSFileHandle.fileHandleForWritingAtPath(path) ?: throw ExportFailed("Could not write the export")
+        val manager = PHAssetResourceManager.defaultManager()
         suspendCancellableCoroutine { continuation ->
-            PHAssetResourceManager.defaultManager().writeDataForAssetResource(
+            val request = manager.requestDataForAssetResource(
                 resource,
-                toFile = NSURL.fileURLWithPath(partial),
                 options = options,
+                dataReceivedHandler = { data -> if (data != null) out.writeData(data) },
             ) { error ->
+                out.closeFile()
                 if (error == null) continuation.resume(Unit)
                 else continuation.resumeWithException(ExportFailed(error.localizedDescription))
             }
+            continuation.invokeOnCancellation { manager.cancelDataRequest(request) }
         }
-        files.moveItemAtPath(partial, toPath = path, error = null)
-        return path
     }
 
     /** Removes every export of [id] (after its upload completed). */
