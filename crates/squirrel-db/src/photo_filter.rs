@@ -5,12 +5,16 @@
 
 use sqlx::{Postgres, QueryBuilder};
 
+use uuid::Uuid;
+
 use crate::assets::AssetKind;
 
 /// One value per filter, combined with AND. Checked by the API (place parts
 /// need their parents, a camera model its make).
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct PhotoFilter {
+    /// One of the owner's people: photos with one of their faces.
+    pub person: Option<Uuid>,
     /// A tag slug of any source.
     pub tag: Option<String>,
     /// ISO 3166 country code, as geocoded.
@@ -32,6 +36,16 @@ impl PhotoFilter {
 
     /// Appends ` AND …` for each filter set.
     pub fn push(&self, query: &mut QueryBuilder<'_, Postgres>) {
+        if let Some(person) = self.person {
+            // Faces are the owner's own: another user's person matches nothing.
+            query
+                .push(
+                    " AND EXISTS (SELECT 1 FROM faces f \
+                       WHERE f.owner_id = a.owner_id AND f.sha256 = a.sha256 AND f.person_id = ",
+                )
+                .push_bind(person)
+                .push(")");
+        }
         if let Some(tag) = &self.tag {
             query
                 .push(

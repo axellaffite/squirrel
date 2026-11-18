@@ -5,11 +5,13 @@ use serde::Deserialize;
 use squirrel_db::assets::AssetKind;
 use squirrel_db::photo_filter::PhotoFilter;
 use utoipa::{IntoParams, ToSchema};
+use uuid::Uuid;
 
 use crate::error::ApiError;
 
 /// The query parameters of [`PhotoFilterQuery`].
-pub const FILTER_PARAMS: [&str; 7] = [
+pub const FILTER_PARAMS: [&str; 8] = [
+    "person",
     "tag",
     "country",
     "region",
@@ -40,6 +42,8 @@ pub enum PhotoKindFilter {
 #[derive(Debug, Default, Deserialize, IntoParams)]
 #[into_params(parameter_in = Query)]
 pub struct PhotoFilterQuery {
+    /// A person (`GET /api/people`): photos with one of their faces.
+    pub person: Option<Uuid>,
     /// A tag (`GET /api/tags`), e.g. `beach`.
     pub tag: Option<String>,
     /// A country code (`GET /api/places`), e.g. `FR`.
@@ -80,6 +84,7 @@ impl PhotoFilterQuery {
             _ => value("region", &self.region)?,
         };
         let filter = PhotoFilter {
+            person: self.person,
             tag,
             country: value("country", &self.country)?,
             region,

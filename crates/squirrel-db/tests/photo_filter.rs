@@ -261,3 +261,66 @@ async fn filtered_pages_resume_after_their_cursor(pool: PgPool) {
     tagged.reverse();
     assert_eq!(seen, tagged);
 }
+
+/// A person of `owner` with one face on the photo `node`'s blob.
+async fn person_on(pool: &PgPool, owner: Uuid, node: Uuid) -> Uuid {
+    let person = Uuid::now_v7();
+    sqlx::query("INSERT INTO people (id, owner_id) VALUES ($1, $2)")
+        .bind(person)
+        .bind(owner)
+        .execute(pool)
+        .await
+        .unwrap();
+    sqlx::query(
+        "INSERT INTO faces (id, owner_id, sha256, model, box_x, box_y, box_w, box_h, landmarks, \
+                            score, embedding, person_id) \
+         SELECT gen_random_uuid(), $1, blob_sha256, 'm', 0.1, 0.1, 0.2, 0.2, \
+                array_fill(0.2::real, ARRAY[10]), 0.9, \
+                array_fill(0.0::real, ARRAY[128])::halfvec, $3 \
+           FROM nodes WHERE id = $2",
+    )
+    .bind(owner)
+    .bind(node)
+    .bind(person)
+    .execute(pool)
+    .await
+    .unwrap();
+    person
+}
+
+async fn node_named(pool: &PgPool, owner: Uuid, name: &str) -> Uuid {
+    sqlx::query_scalar("SELECT id FROM nodes WHERE owner_id = $1 AND name = $2")
+        .bind(owner)
+        .bind(name)
+        .fetch_one(pool)
+        .await
+        .unwrap()
+}
+
+#[sqlx::test(migrator = "squirrel_db::MIGRATOR")]
+async fn the_person_filter_keeps_photos_with_their_face(pool: PgPool) {
+    let lib = library(&pool).await;
+    let dog = node_named(&pool, lib.alice, "dog.jpg").await;
+    let beach = node_named(&pool, lib.alice, "beach.jpg").await;
+    let anna = person_on(&pool, lib.alice, dog).await;
+    person_on(&pool, lib.alice, beach).await;
+    let only = |person| PhotoFilter {
+        person: Some(person),
+        ..filter()
+    };
+    assert_eq!(names(&pool, lib.alice, &only(anna)).await, ["dog.jpg"]);
+    let with_tag = PhotoFilter {
+        tag: Some("beach".into()),
+        ..only(anna)
+    };
+    assert!(names(&pool, lib.alice, &with_tag).await.is_empty());
+    assert!(
+        names(&pool, lib.bob, &only(anna)).await.is_empty(),
+        "Bob holds the same blob, but Anna is Alice's"
+    );
+    assert!(
+        names(&pool, lib.alice, &only(Uuid::now_v7()))
+            .await
+            .is_empty()
+    );
+}
