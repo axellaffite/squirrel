@@ -10,23 +10,50 @@ use uuid::Uuid;
 use crate::DbError;
 use crate::faces::lock_owner;
 
-/// A person with its face count and cover (the chosen face, else the best
-/// scoring one; `None` only for a named person without faces).
+/// A person with its face count and cover face.
 #[derive(Debug, Clone, PartialEq, FromRow)]
 pub struct PersonRecord {
     pub id: Uuid,
     pub name: Option<String>,
     pub hidden: bool,
     pub face_count: i64,
+    #[sqlx(flatten)]
+    pub cover: CoverColumns,
+}
+
+/// The face shown for a person: the one the user chose, else the best-scoring
+/// face on a live photo with a ready thumbnail (else any on a live photo).
+/// All `None` for a person without such a face.
+#[derive(Debug, Clone, PartialEq, FromRow)]
+pub struct CoverColumns {
     pub cover_face_id: Option<Uuid>,
+    pub cover_photo_id: Option<Uuid>,
+    pub cover_box_x: Option<f32>,
+    pub cover_box_y: Option<f32>,
+    pub cover_box_w: Option<f32>,
+    pub cover_box_h: Option<f32>,
+    pub cover_thumbs_version: Option<i16>,
 }
 
 const PERSON_SELECT: &str = "SELECT p.id, p.name, p.hidden, \
        (SELECT count(*) FROM faces f WHERE f.owner_id = p.owner_id AND f.person_id = p.id) AS face_count, \
-       COALESCE(p.cover_face_id, (SELECT f.id FROM faces f \
-                 WHERE f.owner_id = p.owner_id AND f.person_id = p.id \
-                 ORDER BY f.score DESC, f.id LIMIT 1)) AS cover_face_id \
-  FROM people p";
+       cv.id AS cover_face_id, cv.node_id AS cover_photo_id, cv.box_x AS cover_box_x, \
+       cv.box_y AS cover_box_y, cv.box_w AS cover_box_w, cv.box_h AS cover_box_h, \
+       cv.thumbs_version AS cover_thumbs_version \
+  FROM people p \
+  LEFT JOIN LATERAL ( \
+    SELECT f.id, c.node_id, f.box_x, f.box_y, f.box_w, f.box_h, \
+           CASE WHEN m.thumbs_state = 'ready' THEN m.thumbs_version END AS thumbs_version \
+      FROM faces f \
+      JOIN media m ON m.sha256 = f.sha256 \
+      CROSS JOIN LATERAL (SELECT a.node_id FROM assets a \
+           JOIN nodes n ON n.id = a.node_id AND n.deleted_at IS NULL \
+          WHERE a.owner_id = f.owner_id AND a.sha256 = f.sha256 \
+          ORDER BY a.taken_at DESC, a.node_id DESC LIMIT 1) c \
+     WHERE f.owner_id = p.owner_id AND f.person_id = p.id \
+     ORDER BY f.id = p.cover_face_id DESC NULLS LAST, m.thumbs_state = 'ready' DESC, \
+              f.score DESC, f.id \
+     LIMIT 1) cv ON true";
 
 /// Most people listed at once.
 pub const MAX_PEOPLE: i64 = 5_000;
@@ -250,11 +277,15 @@ pub struct FaceRow {
     pub person_name: Option<String>,
     pub assigned_by: String,
     pub taken_at: PrimitiveDateTime,
+    /// The thumbnail version of the photo, once its thumbnails are ready.
+    pub thumbs_version: Option<i16>,
 }
 
 const FACE_SELECT: &str = "SELECT f.id, c.node_id AS photo_id, f.sha256, f.box_x, f.box_y, \
-       f.box_w, f.box_h, f.score, f.person_id, p.name AS person_name, f.assigned_by, c.taken_at \
+       f.box_w, f.box_h, f.score, f.person_id, p.name AS person_name, f.assigned_by, c.taken_at, \
+       CASE WHEN m.thumbs_state = 'ready' THEN m.thumbs_version END AS thumbs_version \
   FROM faces f \
+  JOIN media m ON m.sha256 = f.sha256 \
   CROSS JOIN LATERAL (SELECT a.node_id, a.taken_at FROM assets a \
        JOIN nodes n ON n.id = a.node_id AND n.deleted_at IS NULL \
       WHERE a.owner_id = f.owner_id AND a.sha256 = f.sha256 \

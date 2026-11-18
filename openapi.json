@@ -4946,7 +4946,7 @@
       },
       "FaceBoxDto": {
         "type": "object",
-        "description": "A face's box, relative to the displayed image (0–1).",
+        "description": "A face's box, relative to the displayed image and to every thumbnail size\n(0–1, from the top left).",
         "required": [
           "x",
           "y",
@@ -4972,8 +4972,40 @@
           }
         }
       },
+      "FaceCrop": {
+        "type": "object",
+        "description": "How to show a face. There is no face image on the server: a client crops\nthe photo's thumbnail itself, `GET /api/files/{photo_id}/thumbnail?size=thumb&v={thumbnail_version}`,\nto `box` (e.g. CSS `object-fit`/`object-position`, or a Compose crop).",
+        "required": [
+          "face_id",
+          "photo_id",
+          "box"
+        ],
+        "properties": {
+          "box": {
+            "$ref": "#/components/schemas/FaceBoxDto"
+          },
+          "face_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "photo_id": {
+            "type": "string",
+            "format": "uuid",
+            "description": "The photo (file node) whose thumbnail holds the face."
+          },
+          "thumbnail_version": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32",
+            "description": "The thumbnail's `v`; `null` while the photo has no thumbnail yet."
+          }
+        }
+      },
       "FaceDto": {
         "type": "object",
+        "description": "A face. Show it by cropping the photo's thumbnail to `box` (see\n[`FaceCrop`]): the server stores no face images.",
         "required": [
           "id",
           "photo_id",
@@ -5011,6 +5043,14 @@
             "type": "number",
             "format": "float",
             "description": "Detector confidence, 0–1."
+          },
+          "thumbnail_version": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32",
+            "description": "The photo thumbnail's `v`; `null` while it has none."
           }
         }
       },
@@ -5588,13 +5628,16 @@
           "face_count"
         ],
         "properties": {
-          "cover_face_id": {
-            "type": [
-              "string",
-              "null"
-            ],
-            "format": "uuid",
-            "description": "The face to show for this person (the chosen one, else the best\nscoring one); `null` for a named person left without faces."
+          "cover": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/FaceCrop",
+                "description": "The face to show for this person: the one chosen with `cover_face_id`,\nelse the best-scoring face on a photo with a ready thumbnail. `null`\nfor a person without a face on a live photo."
+              }
+            ]
           },
           "face_count": {
             "type": "integer",

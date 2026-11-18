@@ -125,7 +125,7 @@ async fn world(pool: &PgPool) -> World {
 #[sqlx::test(migrator = "squirrel_db::MIGRATOR")]
 async fn people_are_listed_named_first_then_by_face_count(pool: PgPool) {
     let w = world(&pool).await;
-    let (many, _) = person(&pool, w.owner, None, &w.photos).await;
+    let (many, faces_many) = person(&pool, w.owner, None, &w.photos).await;
     let (named, _) = person(&pool, w.owner, Some("Zoé"), &w.photos[..1]).await;
     let (hidden, _) = person(&pool, w.owner, None, &w.photos[..2]).await;
     sqlx::query("UPDATE people SET hidden = true WHERE id = $1")
@@ -142,7 +142,15 @@ async fn people_are_listed_named_first_then_by_face_count(pool: PgPool) {
         .collect();
     assert_eq!(ids, [named.to_string(), many.to_string()]);
     assert_eq!(list[1]["face_count"], 3);
-    assert!(list[1]["cover_face_id"].is_string());
+    let cover = &list[1]["cover"];
+    assert_eq!(
+        cover["face_id"],
+        faces_many[2].to_string(),
+        "the best score"
+    );
+    assert_eq!(cover["photo_id"], w.photos[2].to_string());
+    assert_eq!(cover["thumbnail_version"], 1);
+    assert!((cover["box"]["x"].as_f64().unwrap() - 0.3).abs() < 1e-6);
     let all = get(&w.alice, "/api/people?include_hidden=true").await;
     assert_eq!(all.as_array().unwrap().len(), 3);
     assert_eq!(get(&w.bob, "/api/people").await, json!([]));
@@ -181,7 +189,7 @@ async fn rename_hide_and_choose_a_cover(pool: PgPool) {
     )
     .await
     .json::<Value>();
-    assert_eq!(cover["cover_face_id"], faces[0].to_string());
+    assert_eq!(cover["cover"]["face_id"], faces[0].to_string());
     assert_eq!(cover["hidden"], true);
     let (_, other_faces) = person(&pool, w.owner, None, &w.photos[..1]).await;
     send(
@@ -275,6 +283,7 @@ async fn a_persons_faces_page_newest_photo_first(pool: PgPool) {
     assert_eq!(items[0]["id"], faces[2].to_string());
     assert_eq!(items[0]["photo_id"], w.photos[2].to_string());
     assert_eq!(items[0]["assigned_by"], "auto");
+    assert_eq!(items[0]["thumbnail_version"], 1);
     assert!((items[0]["box"]["x"].as_f64().unwrap() - 0.3).abs() < 1e-6);
     assert_eq!(items[1]["id"], faces[1].to_string());
     let cursor = first["next_cursor"].as_str().unwrap();
