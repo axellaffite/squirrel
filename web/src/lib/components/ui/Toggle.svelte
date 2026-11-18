@@ -4,14 +4,15 @@
 		checked?: boolean;
 		disabled?: boolean;
 		onchange?: (checked: boolean) => void;
+		/** The parent owns the state: a click only asks for the change (through `onchange`). */
+		controlled?: boolean;
 	}
 
-	let { label, checked = $bindable(false), disabled = false, onchange }: Props = $props();
+	let { label, checked = $bindable(false), disabled = false, onchange, controlled = false }: Props = $props();
 
 	function toggle() {
-		// Read before writing: with a function binding the parent may keep the old value.
 		const next = !checked;
-		checked = next;
+		if (!controlled) checked = next;
 		onchange?.(next);
 	}
 </script>

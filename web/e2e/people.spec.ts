@@ -126,6 +126,7 @@ test('turning faces off deletes them all; turning them on finds the people again
 	await expect(openDialog(page)).toContainText('This deletes 2 people and 8 faces');
 	await expect(toggle).toBeChecked();
 	await openDialog(page).getByRole('button', { name: 'Cancel' }).click();
+	await expect(openDialog(page)).toHaveCount(0);
 	await expect(toggle).toBeChecked();
 	expect(await people(page)).toHaveLength(2);
 	await toggle.click();
