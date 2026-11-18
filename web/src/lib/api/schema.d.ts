@@ -1242,6 +1242,8 @@ export interface components {
              * @description Detector confidence, 0–1.
              */
             score: number;
+            /** @description When the photo was taken (wall clock, no offset), e.g. `2024-07-14T18:30:05`. */
+            taken_at: string;
             /**
              * Format: int32
              * @description The photo thumbnail's `v`; `null` while it has none.

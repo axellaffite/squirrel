@@ -7,6 +7,7 @@ use uuid::Uuid;
 
 use crate::albums_dto::present;
 use crate::error::ApiError;
+use crate::photos_dto::format_taken_at;
 
 /// Most people merged at once.
 pub const MAX_MERGE: usize = 50;
@@ -168,6 +169,8 @@ pub struct FaceDto {
     pub photo_id: Uuid,
     /// The photo thumbnail's `v`; `null` while it has none.
     pub thumbnail_version: Option<i16>,
+    /// When the photo was taken (wall clock, no offset), e.g. `2024-07-14T18:30:05`.
+    pub taken_at: String,
     #[serde(rename = "box")]
     pub bbox: FaceBoxDto,
     /// Detector confidence, 0–1.
@@ -182,6 +185,7 @@ impl From<FaceRow> for FaceDto {
             id: row.id,
             photo_id: row.photo_id,
             thumbnail_version: row.thumbs_version,
+            taken_at: format_taken_at(row.taken_at),
             bbox: FaceBoxDto {
                 x: row.box_x,
                 y: row.box_y,
