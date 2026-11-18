@@ -1,5 +1,6 @@
 import { api, errorMessage } from '#lib/api/client.ts';
 import type { components } from '#lib/api/schema.d.ts';
+import { filterQuery, type PhotoFilter } from '#lib/explore/filters.ts';
 import { collectPages, type Outcome } from '#lib/files/pages.ts';
 
 export type { Outcome } from '#lib/files/pages.ts';
@@ -27,13 +28,18 @@ async function call<T>(request: Promise<{ data?: T; error?: unknown; response: R
 	}
 }
 
-/** `[{month, count}]`, newest first. */
-export const listMonths = (): Promise<Outcome<MonthCount[]>> => call(api.GET('/api/photos/months'));
+/** `[{month, count}]` of the photos matching `filter`, newest first. */
+export const listMonths = (filter: PhotoFilter = {}): Promise<Outcome<MonthCount[]>> =>
+	call(api.GET('/api/photos/months', { params: { query: filterQuery(filter) } }));
 
-/** Every photo of one month (`YYYY-MM`), newest first. */
-export function listMonth(month: string): Promise<Outcome<AssetSummary[]>> {
+/** Every photo of one month (`YYYY-MM`) matching `filter`, newest first. */
+export function listMonth(month: string, filter: PhotoFilter = {}): Promise<Outcome<AssetSummary[]>> {
 	return collectPages((cursor) =>
-		call(api.GET('/api/photos', { params: { query: { month, cursor: cursor ?? undefined, limit: MONTH_PAGE } } }))
+		call(
+			api.GET('/api/photos', {
+				params: { query: { month, cursor: cursor ?? undefined, limit: MONTH_PAGE, ...filterQuery(filter) } }
+			})
+		)
 	);
 }
 

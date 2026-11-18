@@ -80,4 +80,21 @@ describe('TimelineData', () => {
 		expect(data.months).toEqual([{ month: '2024-07', count: 1 }]);
 		expect(data.total).toBe(1);
 	});
+
+	it('a filter change drops what was loaded and lists the matching months', async () => {
+		const src = source();
+		const data = new TimelineData(src);
+		await data.reload();
+		await data.loadMonth('2024-07');
+		src.listMonths.mockResolvedValueOnce({ ok: true, data: [{ month: '2024-06', count: 1 }] });
+		await data.setFilter({ tag: 'dog' });
+		expect(src.listMonths).toHaveBeenLastCalledWith({ tag: 'dog' });
+		expect(data.items).toEqual({});
+		expect(data.loaded.size).toBe(0);
+		expect(data.total).toBe(1);
+		await data.loadMonth('2024-06');
+		expect(src.listMonth).toHaveBeenLastCalledWith('2024-06', { tag: 'dog' });
+		await data.setFilter({ tag: 'dog' });
+		expect(src.listMonths).toHaveBeenCalledTimes(2);
+	});
 });
