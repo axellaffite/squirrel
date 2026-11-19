@@ -8,6 +8,11 @@ concurrency:
   group: ci-${{ github.ref }}
   cancel-in-progress: true
 
+env:
+  # Full debug info made ~100 test binaries fill the runner's disk (the linker died
+  # with SIGBUS). Line tables keep file:line in backtraces at a fraction of the size.
+  CARGO_PROFILE_DEV_DEBUG: line-tables-only
+
 jobs:
   rust:
     runs-on: ubuntu-latest
@@ -27,6 +32,11 @@ jobs:
         with:
           # Full history, so the migration check can diff against the PR base.
           fetch-depth: 0
+      - name: Free disk space
+        # The runner's preinstalled SDKs (Android, .NET, Haskell, CodeQL) take ~25 GB.
+        run: |
+          sudo rm -rf /usr/local/lib/android /usr/share/dotnet /opt/ghc /usr/local/.ghcup /opt/hostedtoolcache/CodeQL
+          df -h /
       - name: Committed migrations are not modified
         if: github.event_name == 'pull_request'
         run: |
@@ -90,6 +100,11 @@ jobs:
           --health-cmd "pg_isready -U squirrel" --health-interval 2s --health-timeout 3s --health-retries 20
     steps:
       - uses: actions/checkout@v4
+      - name: Free disk space
+        # The runner's preinstalled SDKs (Android, .NET, Haskell, CodeQL) take ~25 GB.
+        run: |
+          sudo rm -rf /usr/local/lib/android /usr/share/dotnet /opt/ghc /usr/local/.ghcup /opt/hostedtoolcache/CodeQL
+          df -h /
       - name: Install libheif
         run: |
           sudo apt-get update

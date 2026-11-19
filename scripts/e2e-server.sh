@@ -33,15 +33,17 @@ else
 	"${COMPOSE[@]}" exec -T postgres createdb -U squirrel "${E2E_DB}"
 fi
 
-# Use Node 22 from nvm when available; otherwise (CI) rely on the node on PATH.
-if [[ -s "${NVM_DIR:-$HOME/.nvm}/nvm.sh" ]]; then
+node_major() { if command -v node >/dev/null; then node -p 'process.versions.node.split(".")[0]'; else echo 0; fi; }
+# Switch to nvm's Node 22 only when the node on PATH is older: CI runners ship nvm
+# without Node 22 (setup-node puts it on PATH), and `nvm use 22` fails there.
+if (( $(node_major) < 22 )) && [[ -s "${NVM_DIR:-$HOME/.nvm}/nvm.sh" ]]; then
 	set +u
 	# shellcheck disable=SC1091
 	source "${NVM_DIR:-$HOME/.nvm}/nvm.sh"
 	nvm use 22 >/dev/null
 	set -u
 fi
-node_major="$(node -p 'process.versions.node.split(".")[0]')"
+node_major="$(node_major)"
 if (( node_major < 22 )); then
 	echo "e2e-server: Node 22 or newer is required, found $(node --version)" >&2
 	exit 1
