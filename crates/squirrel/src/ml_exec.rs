@@ -16,10 +16,11 @@ use crate::media_exec::{apply, no_new_privs};
 
 /// Address space for every model group plus ONNX Runtime's arenas and thread
 /// stacks (which reserve far more than they touch). Linux only. Measured on
-/// Linux arm64 with all three groups and `MALLOC_ARENA_MAX=2` (set by the
-/// supervisor): VmPeak 1.1 GiB at 1 thread, 1.9 GiB at 32, 2.9 GiB at 64 (the
-/// most `--ml-threads` allows); VmHWM 1.0 GiB throughout.
-pub const DEFAULT_MEMORY_MB: u64 = 4096;
+/// Linux arm64 with SigLIP2 and `MALLOC_ARENA_MAX=2` (set by the supervisor):
+/// all three groups reach VmPeak 2.4 GiB at 1–4 threads and 3.9 GiB at 64 (the
+/// most `--ml-threads` allows), mostly the text tower while ONNX Runtime loads
+/// it; VmHWM 2.3 GiB. 6 GiB leaves the plan's 50 % headroom at 64 threads.
+pub const DEFAULT_MEMORY_MB: u64 = 6144;
 /// `nice` value: the web server and thumbnails win CPU contention.
 const NICE: i32 = 10;
 const MAX_OPEN_FILES: u64 = 64;

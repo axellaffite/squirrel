@@ -74,7 +74,7 @@ async fn the_child_runs_under_its_address_space_limit() {
         .find(|l| l.starts_with("Max address space"))
         .unwrap();
     assert!(
-        line.contains(&(4096u64 * 1024 * 1024).to_string()),
+        line.contains(&(6144u64 * 1024 * 1024).to_string()),
         "{line}"
     );
     let core = limits
