@@ -310,8 +310,8 @@ async fn start(config: &MlChildConfig, generation: u64) -> Result<(Running, Read
     }
     // glibc gives each thread up to 8 × cores malloc arenas of 64 MB reserved
     // address space: with 32 threads the child reserved 8.9 GiB (measured on
-    // Linux arm64) and failed under its RLIMIT_AS. Two arenas: 1.9 GiB, and
-    // 2.9 GiB at 64 threads; the resident set is the same (1.0 GiB).
+    // Linux arm64, CLIP B/32) and failed under its RLIMIT_AS. Two arenas:
+    // 1.9 GiB, and 2.9 GiB at 64 threads; the resident set was the same.
     command.env("MALLOC_ARENA_MAX", MALLOC_ARENA_MAX);
     // Its own process group: whatever it starts is killed with it.
     command.process_group(0);
