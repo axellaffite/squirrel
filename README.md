@@ -213,13 +213,15 @@ bigger machine can share the data directory read-only:
 `squirrel worker --exclude-kinds clip_embed,faces,cluster_faces,label_bank` on the home
 server (`SQUIRREL_WORKER_KINDS` / `SQUIRREL_WORKER_EXCLUDE_KINDS`). `--ml-concurrency` stays 1.
 
-**Memory.** Inference runs in a long-lived `squirrel ml-exec` child, restarted on a crash and
-stopped when idle, with an address-space limit of 4 GiB on Linux. Measured on Linux (arm64,
-all three model groups loaded, real photos): about 1.0 GiB resident; the reserved address
-space (VmPeak) is 1.1 GiB with one thread, 1.9 GiB with 32 and 2.9 GiB with 64. The worker starts
-the child with `MALLOC_ARENA_MAX=2`: without it glibc reserves 64 MB per thread and 32 threads
-need 8.9 GiB, which the limit refuses. The server's search model takes about 0.4 GB while
-searches happen and is stopped after 5 idle minutes. Plan for 4 GB of RAM on the box.
+**Memory.** Inference runs in long-lived `squirrel ml-exec` children, restarted on a crash and
+stopped when idle, with an address-space limit of 6 GiB each on Linux. Measured on Linux
+(arm64, release, SigLIP2): the worker's child (image embedding and faces) takes about 0.5–0.6 GiB
+resident. The text model takes about 1.9 GiB resident; it runs in the server while searches
+happen (stopped after 5 idle minutes) and in the worker while it builds the label bank (once per
+model and label list). The reserved address space (VmPeak) is at most 2.1 GiB at 1–4 threads,
+and 3.9 GiB with every model in one child at 64 threads, the most allowed. The children start
+with `MALLOC_ARENA_MAX=2`: without it glibc reserves 64 MB per thread, and 32 threads need far
+more than the limit. Plan for 4 GB of RAM on the box.
 
 **Time per photo** (measured on an Apple M4 Pro, release build, 2 threads): the SigLIP2 image
 embedding takes about 48 ms (43 ms in the model) and face detection with embedding about 21 ms,
