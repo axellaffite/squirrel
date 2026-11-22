@@ -7,6 +7,8 @@ rust-version.workspace = true
 [features]
 # HEIC/HEIF/AVIF decoding through the system libheif (>= 1.17).
 heic = ["squirrel-media/heic"]
+# Lightbox previews through the system libvips (>= 8.15).
+vips = ["squirrel-media/vips", "squirrel-sandbox/vips"]
 
 [dependencies]
 anyhow.workspace = true
@@ -21,6 +23,7 @@ squirrel-storage.workspace = true
 squirrel-jobs.workspace = true
 squirrel-media.workspace = true
 squirrel-ml.workspace = true
+squirrel-sandbox.workspace = true
 squirrel-worker.workspace = true
 rustix.workspace = true
 serde_json.workspace = true

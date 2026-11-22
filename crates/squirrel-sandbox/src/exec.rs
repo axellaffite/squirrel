@@ -77,6 +77,9 @@ enum ExchangeError {
 /// The only variables the sandbox inherits: where to find programs, and
 /// libheif's decoder plugins (a packaged libheif may need it to find libde265).
 const PASSED_ENV: [&str; 2] = ["PATH", "LIBHEIF_PLUGIN_PATH"];
+/// Set for every child: glibc's allocator keeps at most two arenas (each
+/// reserves 64 MiB of address space, counted by RLIMIT_AS, per thread otherwise).
+const FIXED_ENV: [(&str, &str); 1] = [("MALLOC_ARENA_MAX", "2")];
 
 async fn run_child(
     config: &SubprocessConfig,
@@ -92,6 +95,7 @@ async fn run_child(
             command.env(name, value);
         }
     }
+    command.envs(FIXED_ENV);
     // Its own process group: whatever it starts is killed with it.
     command.process_group(0);
     let mut child = command
@@ -275,6 +279,7 @@ mod tests {
         assert!(matches!(err, ExecError::Protocol(_)), "{err}");
         let env = std::fs::read_to_string(&dump).unwrap();
         assert!(env.lines().any(|l| l.starts_with("PATH=")), "{env}");
+        assert!(env.lines().any(|l| l == "MALLOC_ARENA_MAX=2"), "{env}");
         for secret in ["DATABASE_URL", "SQUIRREL_", "CARGO"] {
             assert!(
                 !env.lines().any(|l| l.starts_with(secret)),

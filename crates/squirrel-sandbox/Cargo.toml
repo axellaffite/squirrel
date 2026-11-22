@@ -10,6 +10,11 @@ serde_json.workspace = true
 squirrel-media.workspace = true
 thiserror.workspace = true
 tokio.workspace = true
+tracing.workspace = true
+
+[features]
+# libvips previews (passed through to squirrel-media, for this crate's tests).
+vips = ["squirrel-media/vips"]
 
 [dev-dependencies]
 squirrel-media = { workspace = true, features = ["test-util"] }
