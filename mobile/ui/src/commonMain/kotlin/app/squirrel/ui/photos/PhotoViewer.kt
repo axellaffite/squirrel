@@ -10,6 +10,7 @@ import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
@@ -48,6 +49,7 @@ import androidx.compose.ui.unit.IntSize
 import app.squirrel.api.models.AssetDetails
 import app.squirrel.api.models.AssetSummary
 import app.squirrel.api.models.ThumbnailStatus
+import app.squirrel.shared.api.PreviewSize
 import app.squirrel.shared.api.SquirrelApi
 import app.squirrel.shared.api.bodyOrThrow
 import app.squirrel.theme.Shapes
@@ -71,6 +73,7 @@ import kotlinx.coroutines.CancellationException
 
 private const val MAX_ZOOM = 4f
 private const val DOUBLE_TAP_ZOOM = 2.5f
+private const val PREFETCHED_PAGES = 1
 
 /**
  * MASTER.md lightbox: a full-screen graphite stage (`--rail`), the photo's `preview` variant,
@@ -128,9 +131,18 @@ fun PhotoViewer(
         SystemBack(onBack = onClose)
         StageBars()
         // The graphite stage runs under the system bars; it takes every touch the photo leaves.
-        Box(Modifier.fillMaxSize().background(scheme.rail.brush()).pointerInput(Unit) { blockTouches() }) {
-            HorizontalPager(pager, userScrollEnabled = !zoomed, key = { items[it].id }, modifier = Modifier.fillMaxSize()) { page ->
-                ZoomablePhoto(api, items[page], onZoom = { if (page == pager.currentPage) zoomed = it })
+        BoxWithConstraints(Modifier.fillMaxSize().background(scheme.rail.brush()).pointerInput(Unit) { blockTouches() }) {
+            // The stage in device pixels: what a preview has to fill.
+            val stage = IntSize(constraints.maxWidth, constraints.maxHeight)
+            // One page each side is composed ahead, so its preview is loading before the swipe.
+            HorizontalPager(
+                pager,
+                userScrollEnabled = !zoomed,
+                key = { items[it].id },
+                beyondViewportPageCount = PREFETCHED_PAGES,
+                modifier = Modifier.fillMaxSize(),
+            ) { page ->
+                ZoomablePhoto(api, items[page], stage, onZoom = { if (page == pager.currentPage) zoomed = it })
             }
             val current = items.getOrNull(pager.currentPage) ?: items.last()
             Row(
@@ -195,14 +207,15 @@ private fun StageButton(icon: SquirrelIcon, label: String, onClick: () -> Unit) 
 
 /** Pinch or double-tap to zoom; one finger pans while zoomed and swipes the pager otherwise. */
 @Composable
-private fun ZoomablePhoto(api: SquirrelApi, item: AssetSummary, onZoom: (Boolean) -> Unit) {
+private fun ZoomablePhoto(api: SquirrelApi, item: AssetSummary, screen: IntSize, onZoom: (Boolean) -> Unit) {
     var scale by remember { mutableFloatStateOf(1f) }
     var offset by remember { mutableStateOf(Offset.Zero) }
     var stage by remember { mutableStateOf(IntSize.Zero) }
     LaunchedEffect(scale > 1f) { onZoom(scale > 1f) }
     val ready = item.thumbnail.state == ThumbnailStatus.ready
+    val px = PreviewSize.px(item.width, item.height, screen.width.toDouble(), screen.height.toDouble(), density = 1.0)
     Thumbnail(
-        url = if (ready) api.thumbnailUrl(item.id, item.thumbnail.version, preview = true) else null,
+        url = if (ready) api.thumbnailUrl(item.id, item.thumbnail.version, preview = true, px = px) else null,
         blurhash = item.blurhash,
         contentDescription = photoLabel(item),
         unsupported = !ready && item.thumbnail.state != ThumbnailStatus.pending,
