@@ -304,3 +304,42 @@ async fn groups_are_paged_newest_first(pool: PgPool) {
     assert_eq!(second["items"][0]["id"], json!(w.group));
     assert_eq!(second["next_cursor"], Value::Null);
 }
+
+#[sqlx::test(migrator = "squirrel_db::MIGRATOR")]
+async fn a_reopened_group_is_open_with_nothing_kept_and_hidden_photos_still_hidden(pool: PgPool) {
+    let w = world(&pool).await;
+    post(
+        &w.alice,
+        &w.me,
+        &format!("/api/duplicates/{}/keep", w.group),
+        json!({ "asset": w.a }),
+    )
+    .await
+    .assert_status_ok();
+    let photos = root_id(&w.instance, &w.me, "Photos").await;
+    let d = photo(&pool, &w.me, photos, "d.jpg", datetime!(2024-07-01 11:00)).await;
+    let mut conn = pool.acquire().await.unwrap();
+    let joined = squirrel_db::duplicates::join_group(&mut conn, user_id(&w.me), w.group, d, 2)
+        .await
+        .unwrap();
+    assert!(joined);
+    let page = get(&w.alice, "/api/duplicates").await;
+    let group = &page["items"][0];
+    assert_eq!(group["state"], "open");
+    assert_eq!(group["kept_id"], Value::Null);
+    let members = group["members"].as_array().unwrap();
+    let hidden = |id: Uuid| {
+        members
+            .iter()
+            .find(|m| m["asset"]["id"] == json!(id))
+            .map(|m| m["hidden"].as_bool().unwrap())
+            .unwrap()
+    };
+    assert_eq!(
+        [hidden(w.a), hidden(w.b), hidden(w.c), hidden(d)],
+        [false, true, true, false]
+    );
+    // The new photo waits for a decision: it shows in the timeline.
+    let names = timeline(&get(&w.alice, "/api/photos").await);
+    assert!(names.contains(&d.to_string()) && names.contains(&w.a.to_string()));
+}
