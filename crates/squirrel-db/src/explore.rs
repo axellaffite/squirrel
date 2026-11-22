@@ -7,7 +7,7 @@ use sqlx::{FromRow, PgPool};
 use uuid::Uuid;
 
 use crate::documents::timed_out_is_busy;
-use crate::timeline::FROM;
+use crate::timeline::{FROM, FROM_ANY};
 use crate::{DbError, bounded};
 
 /// Groups listed at most.
@@ -126,15 +126,15 @@ pub async fn cameras(pool: &PgPool, owner_id: Uuid) -> Result<Vec<CameraGroup>, 
     Ok(rows)
 }
 
-/// The tags of one of the caller's live photos, best first (empty for
-/// anything else).
+/// The tags of one of the caller's live photos (hidden ones too), best first
+/// (empty for anything else).
 pub async fn tags_of_photo(
     pool: &PgPool,
     owner_id: Uuid,
     node_id: Uuid,
 ) -> Result<Vec<String>, DbError> {
     let sql = format!(
-        "SELECT t.tag {FROM} JOIN asset_tags t ON t.sha256 = a.sha256 \
+        "SELECT t.tag {FROM_ANY} JOIN asset_tags t ON t.sha256 = a.sha256 \
           WHERE a.owner_id = $1 AND a.node_id = $2 ORDER BY t.score DESC, t.tag"
     );
     Ok(sqlx::query_scalar(&sql)
