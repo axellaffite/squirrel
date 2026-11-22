@@ -216,7 +216,8 @@ fn previews(data_dir: &Path, cache_mb: u64, action: PreviewsAction) -> anyhow::R
         max_bytes: cache_mb.saturating_mul(1024 * 1024),
         min_free_bytes: 0,
     };
-    let cache = PreviewCache::open(data_dir, config)
+    // Read-only indexing: the server's budget and files are left alone (only `clear` deletes).
+    let cache = PreviewCache::inspect(data_dir, config)
         .with_context(|| format!("opening the preview cache in {}", data_dir.display()))?;
     match action {
         PreviewsAction::Stats => {
