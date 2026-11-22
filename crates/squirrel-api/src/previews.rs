@@ -6,11 +6,12 @@ use std::collections::HashMap;
 use std::sync::{Arc, Mutex, PoisonError, Weak};
 use std::time::Duration;
 
+use squirrel_media::preview::PreviewFormat;
 use squirrel_media::thumbs::DecodeLimits;
 use squirrel_sandbox::exec::Executor;
 use squirrel_sandbox::preview::PreviewRenderer;
 use squirrel_storage::CacheKey;
-use tokio::sync::{OwnedSemaphorePermit, Semaphore};
+use tokio::sync::{OwnedMutexGuard, OwnedSemaphorePermit, Semaphore};
 use uuid::Uuid;
 
 use crate::upload_runtime::{UserRate, UserRateLimiter};
@@ -48,8 +49,22 @@ pub struct Previews {
     slots: Arc<Semaphore>,
     slot_wait: Duration,
     rate: Option<UserRateLimiter>,
-    in_flight: Mutex<HashMap<CacheKey, Weak<tokio::sync::Mutex<()>>>>,
+    in_flight: Mutex<HashMap<CacheKey, Weak<KeyTurn>>>,
 }
+
+/// What the request that rendered a key ended with, for those that waited on
+/// it: they answer the same instead of rendering again one after the other.
+#[derive(Debug, Clone)]
+pub enum Outcome {
+    Preview(Arc<Vec<u8>>, PreviewFormat),
+    /// Cannot be rendered now: the stored preview (if any) answers.
+    Impossible,
+    /// No slot, a timeout or an error: retry later.
+    Busy,
+}
+
+/// The per-key lock; it holds the outcome once the first request is done.
+pub type KeyTurn = tokio::sync::Mutex<Option<Outcome>>;
 
 impl Previews {
     pub fn new(executor: Executor, limits: &PreviewLimits) -> Self {
@@ -68,8 +83,8 @@ impl Previews {
     }
 
     /// The lock every request for `key` takes before rendering it: the first
-    /// renders, the others then find it cached.
-    pub fn key_lock(&self, key: &CacheKey) -> Arc<tokio::sync::Mutex<()>> {
+    /// renders and records its [`Outcome`], the others answer with it.
+    fn key_lock(&self, key: &CacheKey) -> Arc<KeyTurn> {
         let mut in_flight = self
             .in_flight
             .lock()
@@ -80,9 +95,18 @@ impl Previews {
         if in_flight.len() >= PRUNE_KEYS_ABOVE {
             in_flight.retain(|_, lock| lock.strong_count() > 0);
         }
-        let lock = Arc::new(tokio::sync::Mutex::new(()));
+        let lock = Arc::new(tokio::sync::Mutex::new(None));
         in_flight.insert(key.clone(), Arc::downgrade(&lock));
         lock
+    }
+
+    /// This request's turn on `key`, or `None` when the one rendering it does
+    /// not finish within the slot wait (answer busy). The guard holds the
+    /// earlier request's outcome, if one finished meanwhile.
+    pub async fn turn(&self, key: &CacheKey) -> Option<OwnedMutexGuard<Option<Outcome>>> {
+        tokio::time::timeout(self.slot_wait, self.key_lock(key).lock_owned())
+            .await
+            .ok()
     }
 
     /// A render slot, or `None` when none frees up within the configured wait.
@@ -117,6 +141,42 @@ mod tests {
         drop(first);
         let again = previews.key_lock(&key());
         assert_eq!(Arc::strong_count(&again), 1);
+    }
+
+    fn limits(wait_ms: u64) -> PreviewLimits {
+        PreviewLimits {
+            concurrency: 1,
+            slot_wait: Duration::from_millis(wait_ms),
+            render_rate: None,
+        }
+    }
+
+    /// A failed render is not repeated by every request that waited for it.
+    #[tokio::test]
+    async fn waiters_get_the_first_requests_outcome() {
+        let previews = Arc::new(Previews::new(Executor::InProcess, &limits(5_000)));
+        let mut first = previews.turn(&key()).await.unwrap();
+        assert!(first.is_none(), "nobody rendered it yet");
+        let waiter = {
+            let previews = previews.clone();
+            tokio::spawn(async move { previews.turn(&key()).await.map(|turn| turn.clone()) })
+        };
+        tokio::time::sleep(Duration::from_millis(20)).await;
+        *first = Some(Outcome::Impossible);
+        drop(first);
+        let seen = waiter.await.unwrap().expect("its turn came");
+        assert!(matches!(seen, Some(Outcome::Impossible)), "{seen:?}");
+        // Once nobody holds the key, a later request starts afresh.
+        assert!(previews.turn(&key()).await.unwrap().is_none());
+    }
+
+    #[tokio::test]
+    async fn waiting_for_a_key_is_bounded_by_the_slot_wait() {
+        let previews = Previews::new(Executor::InProcess, &limits(20));
+        let held = previews.turn(&key()).await.unwrap();
+        assert!(previews.turn(&key()).await.is_none());
+        drop(held);
+        assert!(previews.turn(&key()).await.is_some());
     }
 
     #[tokio::test]
