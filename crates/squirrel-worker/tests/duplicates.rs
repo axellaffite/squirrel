@@ -163,6 +163,11 @@ async fn a_new_copy_reopens_a_resolved_group_and_stays_visible(pool: PgPool) {
         vec![(sorted(vec![a, b, c]), false)],
         "reopened"
     );
+    let kept: Option<Uuid> = sqlx::query_scalar("SELECT kept_node_id FROM duplicate_groups")
+        .fetch_one(fx.pool())
+        .await
+        .unwrap();
+    assert_eq!(kept, None, "open again: no photo counts as kept");
     assert!(
         !hidden(fx.pool(), c).await,
         "the new copy waits for a decision"
