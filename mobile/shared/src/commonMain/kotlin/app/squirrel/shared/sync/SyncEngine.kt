@@ -45,6 +45,12 @@ const val HASH_CONCURRENCY = 2
 private const val MAX_SHARED_BACKOFF_MS = 60_000L
 
 /**
+ * An asset that fails like an outage while the server answers its health check is not offline
+ * (a reset on that one request, a timeout): after this many such rounds it spends a normal attempt.
+ */
+private const val FALSE_OFFLINE_ROUNDS = 2
+
+/**
  * One backup pass: scan → hash ([hashConcurrency] files at a time) → check (≤ 500 per call) →
  * upload what is missing ([uploadConcurrency] assets at a time). Runs never overlap; a run stops
  * early, keeping everything done so far, when [conditions] stop holding or its deadline passes:
@@ -111,27 +117,43 @@ class SyncEngine(
         /**
          * Waits until the phone has a network and the server answers, probing it on a growing
          * delay; after [offlineGraceMillis] the run ends as [ErrorReason.Unreachable]. No attempt
-         * is spent on any asset meanwhile.
+         * is spent on any asset meanwhile. False when the server answered at once (a false alarm:
+         * the caller then waits a probe delay itself and counts the round).
          */
-        suspend fun awaitServer() = offline.withLock {
+        suspend fun awaitServer(): Boolean = offline.withLock {
             val since = now()
             var attempt = 0
-            while (true) {
-                if (conditions.check(backup) != PauseReason.NoNetwork && reachable()) return@withLock
+            while (conditions.check(backup) == PauseReason.NoNetwork || !reachable()) {
                 if (now() - since >= offlineGraceMillis) throw Stop(StopCause.Error, SyncState.Error(ErrorReason.Unreachable))
                 _state.value = SyncState.WaitingForNetwork
                 network.await(probeDelay(attempt++))
             }
+            attempt > 0
+        }
+
+        /**
+         * After an "offline" failure: waits for the server. A false alarm (the server answers)
+         * waits one probe delay anyway and returns false once [FALSE_OFFLINE_ROUNDS] have passed:
+         * then it is the request, not the network, and the caller spends a normal attempt.
+         */
+        suspend fun outage(falseAlarms: MutableStateFlow<Int>): Boolean {
+            if (awaitServer()) {
+                falseAlarms.value = 0
+                return true
+            }
+            sleep(PROBE_BASE_MS)
+            falseAlarms.update { it + 1 }
+            return falseAlarms.value < FALSE_OFFLINE_ROUNDS
         }
 
         /** [call], again once the server is back when a persistent run cannot reach it. */
         suspend fun <T> reaching(call: suspend () -> T): T {
+            val falseAlarms = MutableStateFlow(0)
             while (true) {
                 try {
                     return call()
                 } catch (e: IOException) {
-                    if (!persistent) throw e
-                    awaitServer()
+                    if (!persistent || !outage(falseAlarms)) throw e
                 }
             }
         }
@@ -290,6 +312,8 @@ class SyncEngine(
         val total = candidates.size
         inParallel(candidates, uploadConcurrency, run) { id ->
             // A persistent run tries the same asset again once the network is back.
+            val falseAlarms = MutableStateFlow(0)
+            var offlineAllowed = true
             while (true) {
                 waitWhileBusy(run)
                 val asset = queue.get(id)?.takeIf { it.state == QueueState.Missing || it.state == QueueState.Uploading }
@@ -300,13 +324,15 @@ class SyncEngine(
                 }
                 _state.value = SyncState.Uploading(asset.name, done.value, total)
                 val progress: (Float) -> Unit = { _state.value = SyncState.Uploading(asset.name, done.value, total, it) }
-                when (uploader.upload(asset, shouldContinue = run::mayContinue, onProgress = progress)) {
+                val offline = run.persistent && offlineAllowed
+                when (uploader.upload(asset, shouldContinue = run::mayContinue, onProgress = progress, reportOffline = offline)) {
                     UploadResult.Uploaded -> run.count { it.copy(uploaded = it.uploaded + 1) }
                     UploadResult.Deduplicated -> run.count { it.copy(deduplicated = it.deduplicated + 1) }
                     UploadResult.Failed -> run.count { it.copy(failed = it.failed + 1) }
                     UploadResult.Interrupted -> if (run.persistent) continue else interrupted.value = true
                     UploadResult.Offline -> {
-                        run.awaitServer()
+                        // Not the network after all: the next try spends an attempt like any failure.
+                        if (!run.outage(falseAlarms)) offlineAllowed = false
                         continue
                     }
                     UploadResult.Skipped, UploadResult.Changed, is UploadResult.RetryLater -> Unit
@@ -319,7 +345,6 @@ class SyncEngine(
         if (interrupted.value) throw run.stop()
     }
 
-    /** The server said it is busy: no new upload starts before the time it gave (capped). */
     /** Whether the server answers at all (any HTTP answer, even an error, counts). */
     private suspend fun reachable(): Boolean = try {
         api.health()
@@ -333,6 +358,7 @@ class SyncEngine(
         true
     }
 
+    /** The server said it is busy: no new upload starts before the time it gave (capped). */
     private suspend fun waitWhileBusy(run: Run) {
         while (true) {
             val wait = run.busyUntil.value - now()
