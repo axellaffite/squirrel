@@ -14,6 +14,9 @@ pub mod priority {
     pub const TEXT: i16 = 40;
     pub const GEOCODE: i16 = 30;
     pub const BACKFILL: i16 = 0;
+    /// Grouping a user's near-identical photos (SQL only, debounced): after
+    /// every media step, before machine learning, which needs no models.
+    pub const DUPLICATES: i16 = 10;
     /// Machine learning runs after every other step, fresh or backfilled.
     pub const CLIP: i16 = -25;
     /// Computing the label bank (once per labels version): after fresh CLIP

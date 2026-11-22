@@ -226,6 +226,40 @@ pub async fn reap_expired(pool: &PgPool) -> Result<u64, sqlx::Error> {
     Ok(reaped.rows_affected())
 }
 
+/// Asks for a run of the debounced `job` (it has a dedupe key and usually a
+/// delay) in the caller's transaction, so that some run starts after it
+/// commits and sees what the transaction wrote:
+/// - a queued run is held (row lock) until then, so it cannot start early;
+/// - while a run is going (it holds the key), a follow-up run is queued under
+///   `<key>:next`.
+pub async fn request_debounced(conn: &mut PgConnection, job: &NewJob) -> Result<(), sqlx::Error> {
+    for _ in 0..3 {
+        if enqueue(conn, job).await? {
+            return Ok(());
+        }
+        let status: Option<String> = sqlx::query_scalar(
+            "SELECT status FROM jobs WHERE dedupe_key = $1 AND status IN ('queued', 'running') \
+              FOR SHARE",
+        )
+        .bind(job.dedupe_key.as_deref())
+        .fetch_optional(&mut *conn)
+        .await?;
+        match status.as_deref() {
+            Some("queued") => return Ok(()),
+            Some(_) => {
+                let next = NewJob {
+                    dedupe_key: job.dedupe_key.as_ref().map(|key| format!("{key}:next")),
+                    ..job.clone()
+                };
+                enqueue(conn, &next).await?;
+                return Ok(());
+            }
+            None => {} // finished meanwhile: the key is free again
+        }
+    }
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

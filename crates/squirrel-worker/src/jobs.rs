@@ -20,6 +20,9 @@ pub use squirrel_jobs::kinds::{CLUSTER_FACES, FACE_BACKFILL, FACES, faces};
 pub const LABEL_BANK: &str = "label_bank";
 /// Deletes the photo previews stored before they were rendered on request.
 pub const DROP_PREVIEWS: &str = "drop_previews";
+/// The perceptual hash of a photo rendered before hashes existed.
+pub const VISUAL_HASH: &str = "visual_hash";
+pub use squirrel_jobs::kinds::{GROUP_DUPLICATES, group_duplicates};
 
 /// Background ML kinds: they share the worker's ML slot (`--ml-concurrency`),
 /// so the other slots always stay free for fresh uploads. Model inference,
@@ -28,7 +31,7 @@ pub const DROP_PREVIEWS: &str = "drop_previews";
 pub const ML_KINDS: [&str; 4] = [CLIP_EMBED, FACES, LABEL_BANK, CLUSTER_FACES];
 
 /// Every kind this crate can register, whether or not it is registered now.
-pub const KNOWN_KINDS: [&str; 12] = [
+pub const KNOWN_KINDS: [&str; 14] = [
     squirrel_jobs::kinds::PROCESS_MEDIA,
     EXTRACT_METADATA,
     THUMBNAILS,
@@ -41,6 +44,8 @@ pub const KNOWN_KINDS: [&str; 12] = [
     FACE_BACKFILL,
     LABEL_BANK,
     DROP_PREVIEWS,
+    VISUAL_HASH,
+    GROUP_DUPLICATES,
 ];
 
 /// Payload of every per-blob job.
@@ -66,6 +71,30 @@ pub fn extract_metadata(sha256: &str, background: bool) -> NewJob {
 
 pub fn thumbnails(sha256: &str, background: bool) -> NewJob {
     per_blob(THUMBNAILS, sha256, priority::THUMBNAILS, background)
+}
+
+/// The perceptual hash of a photo's stored thumbnail (backfill only).
+pub fn visual_hash(sha256: &str) -> NewJob {
+    per_blob(VISUAL_HASH, sha256, priority::THUMBNAILS, true)
+}
+
+/// Asks for a duplicates grouping run of every owner of `sha256` with a photo
+/// not grouped yet, in the caller's transaction (the one that made the photo
+/// groupable: its hash, its capture time, a new copy).
+pub async fn request_grouping_of_blob(
+    conn: &mut sqlx::PgConnection,
+    sha256: &str,
+) -> Result<(), squirrel_jobs::JobError> {
+    use squirrel_jobs::JobError;
+    let owners = squirrel_db::duplicates::owners_to_group(&mut *conn, sha256)
+        .await
+        .map_err(JobError::retry)?;
+    for owner in owners {
+        squirrel_jobs::request_debounced(&mut *conn, &group_duplicates(owner))
+            .await
+            .map_err(JobError::retry)?;
+    }
+    Ok(())
 }
 
 pub fn geocode(sha256: &str, background: bool) -> NewJob {
@@ -108,32 +137,7 @@ pub async fn request_clustering(
     conn: &mut sqlx::PgConnection,
     owner: Uuid,
 ) -> Result<(), sqlx::Error> {
-    let job = cluster_faces(owner);
-    for _ in 0..3 {
-        if squirrel_jobs::enqueue(conn, &job).await? {
-            return Ok(());
-        }
-        let status: Option<String> = sqlx::query_scalar(
-            "SELECT status FROM jobs WHERE dedupe_key = $1 AND status IN ('queued', 'running') \
-              FOR SHARE",
-        )
-        .bind(job.dedupe_key.as_deref())
-        .fetch_optional(&mut *conn)
-        .await?;
-        match status.as_deref() {
-            Some("queued") => return Ok(()),
-            Some(_) => {
-                let next = NewJob {
-                    dedupe_key: job.dedupe_key.as_ref().map(|key| format!("{key}:next")),
-                    ..job.clone()
-                };
-                squirrel_jobs::enqueue(conn, &next).await?;
-                return Ok(());
-            }
-            None => {} // finished meanwhile: the key is free again
-        }
-    }
-    Ok(())
+    squirrel_jobs::request_debounced(conn, &cluster_faces(owner)).await
 }
 
 /// How long new faces wait before they are clustered:

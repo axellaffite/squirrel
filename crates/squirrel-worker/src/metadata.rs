@@ -103,6 +103,8 @@ async fn settle(ctx: &MediaContext, sha256: &str, update: &MetadataUpdate) -> Re
             .await
             .map_err(JobError::retry)?;
     }
+    // Capture times are settled: hashed photos can be grouped.
+    jobs::request_grouping_of_blob(&mut tx, sha256).await?;
     tx.commit().await.map_err(JobError::retry)
 }
 

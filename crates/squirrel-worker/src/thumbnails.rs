@@ -166,6 +166,7 @@ async fn install_for(
         duplicates::set_phash(&mut *tx, hash.as_str(), phash)
             .await
             .map_err(JobError::retry)?;
+        crate::jobs::request_grouping_of_blob(&mut tx, hash.as_str()).await?;
     }
     if recorded && let Some(job) = job {
         queue_ml(&mut tx, hash.as_str(), job).await?;

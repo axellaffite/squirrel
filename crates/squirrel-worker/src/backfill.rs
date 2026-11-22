@@ -68,6 +68,7 @@ pub async fn run_page(ctx: &MediaContext, job: JobContext, page: i64) -> Result<
     }
     if after.is_none() {
         requeue_stale_steps(&mut tx, dataset.as_deref()).await?;
+        requeue_duplicates(&mut tx).await?;
         if let Some(has_bank) = clip {
             requeue_clip(&mut tx, has_bank).await?;
         }
@@ -131,6 +132,32 @@ async fn requeue_stale_steps(
         .execute(&mut *conn)
         .await
         .map_err(JobError::retry)?;
+    Ok(())
+}
+
+/// Photos rendered before perceptual hashes existed are hashed from their
+/// stored thumbnail, and owners with photos not grouped yet get a run.
+async fn requeue_duplicates(conn: &mut PgConnection) -> Result<(), JobError> {
+    let unhashed = per_blob_insert(
+        "SELECT sha256 FROM media \
+          WHERE kind = 'image' AND thumbs_state = 'ready' AND phash IS NULL \
+            AND thumbs_version = $3",
+    );
+    sqlx::query(&unhashed)
+        .bind(jobs::VISUAL_HASH)
+        .bind(priority::background(priority::THUMBNAILS))
+        .bind(THUMBS_VERSION)
+        .execute(&mut *conn)
+        .await
+        .map_err(JobError::retry)?;
+    let owners = squirrel_db::duplicates::owners_waiting(&mut *conn)
+        .await
+        .map_err(JobError::retry)?;
+    for owner in owners {
+        squirrel_jobs::request_debounced(&mut *conn, &jobs::group_duplicates(owner))
+            .await
+            .map_err(JobError::retry)?;
+    }
     Ok(())
 }
 
