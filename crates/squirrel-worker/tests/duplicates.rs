@@ -382,3 +382,33 @@ async fn a_hidden_photo_in_no_group_is_shown_again(pool: PgPool) {
     group_owner(fx.pool(), alice.id, BUDGET).await.unwrap();
     assert!(!hidden(fx.pool(), a).await);
 }
+
+#[sqlx::test(migrator = "squirrel_db::MIGRATOR")]
+async fn deleting_a_user_deletes_their_groups(pool: PgPool) {
+    let fx = Fixture::new(pool);
+    let alice = admin(fx.pool()).await;
+    let bob = invited(fx.pool(), &alice, "bob").await;
+    let a = photo(&fx, bob.id, "a.jpg", &scene_jpeg(15, 1200, 900, 90)).await;
+    photo(&fx, bob.id, "b.jpg", &scene_jpeg(15, 1000, 750, 70)).await;
+    photo(&fx, bob.id, "c.jpg", &scene_jpeg(15, 800, 600, 60)).await;
+    let mine = photo(&fx, alice.id, "m.jpg", &scene_jpeg(15, 1200, 900, 90)).await;
+    let mine2 = photo(&fx, alice.id, "m2.jpg", &scene_jpeg(15, 900, 675, 70)).await;
+    group_owner(fx.pool(), bob.id, BUDGET).await.unwrap();
+    group_owner(fx.pool(), alice.id, BUDGET).await.unwrap();
+    resolve(fx.pool(), bob.id, a).await;
+
+    sqlx::query("DELETE FROM users WHERE id = $1")
+        .bind(bob.id)
+        .execute(fx.pool())
+        .await
+        .unwrap();
+    let left: Vec<Uuid> = sqlx::query_scalar("SELECT owner_id FROM duplicate_groups")
+        .fetch_all(fx.pool())
+        .await
+        .unwrap();
+    assert_eq!(left, vec![alice.id]);
+    assert_eq!(
+        groups(fx.pool(), alice.id).await,
+        vec![(sorted(vec![mine, mine2]), false)]
+    );
+}
