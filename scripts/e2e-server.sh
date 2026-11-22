@@ -72,6 +72,9 @@ export SQUIRREL_DATA_DIR="${DATA_DIR}"
 # Media processing runs in the server, with the tiny offline geodata sample (Paris, Lyon, …).
 # SQUIRREL_MEDIA_EXEC stays the default (subprocess): E2E exercises the decoding sandbox.
 export SQUIRREL_EMBEDDED_WORKER=true
+# Two slots whatever the core count: on a 2-core runner the default is one, and the
+# label bank (minutes there) then holds it while every thumbnail waits.
+export SQUIRREL_WORKER_CONCURRENCY="${SQUIRREL_WORKER_CONCURRENCY:-2}"
 export SQUIRREL_GEODATA_FILE="${PWD}/crates/squirrel-media/tests/fixtures/geo-sample.tsv"
 # PDF thumbnails and text when pdfium was fetched (scripts/fetch-pdfium.sh); otherwise PDFs are unsupported.
 # Machine learning when ONNX Runtime and the models are installed (scripts/fetch-onnxruntime.sh,
