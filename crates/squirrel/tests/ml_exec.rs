@@ -7,6 +7,9 @@ use squirrel_ml::protocol::{MlBody, MlOp, MlOutput};
 use squirrel_worker::ml_client::{MlBackend, MlChildConfig, MlClient};
 
 fn config(args: &[&std::ffi::OsStr]) -> MlChildConfig {
+    // The supervisor forwards the child's stderr through `tracing`: without a
+    // subscriber, a child that dies while loading fails with no reason shown.
+    let _ = tracing_subscriber::fmt().with_test_writer().try_init();
     MlChildConfig {
         program: env!("CARGO_BIN_EXE_squirrel").into(),
         args: args.iter().map(OsString::from).collect(),
