@@ -119,9 +119,12 @@ async fn settle_failure(
             retryable: true,
         }) => return outcome::give_up_or_retry_all(ctx, job, sha256, steps, reason).await,
         Ok(ExecResponse::Failed { reason, .. }) => (MediaState::Failed, reason),
-        Ok(ExecResponse::Image { .. } | ExecResponse::Pdf { .. }) => {
-            (MediaState::Failed, "unexpected sandbox response".to_owned())
-        }
+        Ok(
+            ExecResponse::Image { .. }
+            | ExecResponse::Pdf { .. }
+            | ExecResponse::Preview { .. }
+            | ExecResponse::Probe { .. },
+        ) => (MediaState::Failed, "unexpected sandbox response".to_owned()),
         Err(err @ (ExecError::Crashed { .. } | ExecError::TimedOut(_)))
             if job.attempt >= MAX_SANDBOX_CRASHES =>
         {

@@ -2,3 +2,4 @@
 //! text, ML frames) and the server (previews rendered on demand).
 
 pub mod exec;
+pub mod preview;

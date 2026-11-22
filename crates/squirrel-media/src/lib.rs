@@ -11,10 +11,16 @@ pub mod geo_data;
 pub mod heic;
 pub mod metadata;
 pub mod pdf;
+pub mod preview;
 pub mod render;
 #[cfg(any(test, feature = "test-util"))]
 pub mod testutil;
 pub mod thumbs;
+#[cfg(feature = "vips")]
+pub mod vips;
+
+/// Whether this build renders previews with libvips (cargo feature `vips`).
+pub const VIPS_COMPILED: bool = cfg!(feature = "vips");
 
 /// Whether this build decodes HEIC/HEIF/AVIF (cargo feature `heic`).
 pub const HEIC_SUPPORTED: bool = cfg!(feature = "heic");

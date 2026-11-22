@@ -67,7 +67,9 @@ pub async fn run(ctx: &MediaContext, job: JobContext) -> Result<(), JobError> {
         Ok(ExecResponse::Image { rendered }) => {
             install_for(ctx, &hash, scratch, &rendered, Some(&job)).await
         }
-        Ok(ExecResponse::Pdf { .. }) => {
+        Ok(
+            ExecResponse::Pdf { .. } | ExecResponse::Preview { .. } | ExecResponse::Probe { .. },
+        ) => {
             let reason = "unexpected sandbox response";
             mark(ctx, &sha256, MediaState::Failed, reason).await
         }
