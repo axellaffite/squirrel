@@ -63,16 +63,22 @@ struct Entry {
     used: SystemTime,
     /// When `used` was last written to the file's mtime.
     touched: SystemTime,
+    /// Which insertion this is (set by [`Index::insert`]): tells a re-inserted
+    /// entry from the one a reader found.
+    generation: u64,
 }
 
 #[derive(Debug, Default)]
 struct Index {
     entries: HashMap<CacheKey, Entry>,
     bytes: u64,
+    next_generation: u64,
 }
 
 impl Index {
-    fn insert(&mut self, key: CacheKey, entry: Entry) -> Option<Entry> {
+    fn insert(&mut self, key: CacheKey, mut entry: Entry) -> Option<Entry> {
+        self.next_generation += 1;
+        entry.generation = self.next_generation;
         self.bytes += entry.size;
         let previous = self.entries.insert(key, entry);
         if let Some(old) = &previous {
@@ -182,6 +188,7 @@ impl PreviewCache {
                             size: meta.len(),
                             used,
                             touched: used,
+                            generation: 0,
                         };
                         if let Some(old) = index.insert(key.clone(), entry) {
                             // The same key in both formats: keep the newer.
@@ -219,13 +226,22 @@ impl PreviewCache {
         let bytes = match fs::read(&path) {
             Ok(bytes) => bytes,
             Err(err) if err.kind() == io::ErrorKind::NotFound => {
-                self.lock().remove(key);
+                self.forget(key, entry.generation);
                 return Ok(None);
             }
             Err(err) => return Err(err.into()),
         };
         self.mark_used(key, &path)?;
         Ok(Some((bytes, entry.extension)))
+    }
+
+    /// Drops `key` from the index if it is still the entry of `generation`
+    /// (not one inserted again since it was looked up).
+    fn forget(&self, key: &CacheKey, generation: u64) {
+        let mut index = self.lock();
+        if index.entries.get(key).map(|entry| entry.generation) == Some(generation) {
+            index.remove(key);
+        }
     }
 
     fn mark_used(&self, key: &CacheKey, path: &Path) -> Result<()> {
@@ -287,6 +303,7 @@ impl PreviewCache {
             size: meta.len(),
             used: now,
             touched: now,
+            generation: 0,
         };
         if let Some(old) = index.insert(key.clone(), entry)
             && old.extension != extension
@@ -555,6 +572,23 @@ mod tests {
         assert_eq!(cache.clear().unwrap(), 1);
         assert_eq!(cache.stats().entries, 0);
         assert!(cache.read(&key(B, 1440)).unwrap().is_none());
+    }
+
+    #[test]
+    fn a_missing_file_never_drops_an_entry_inserted_again_since() {
+        let dir = tempfile::tempdir().unwrap();
+        let cache = PreviewCache::open(dir.path(), config(u64::MAX)).unwrap();
+        let k = key(A, 1440);
+        put(dir.path(), &cache, &k, 10);
+        let seen = cache.lock().entries[&k].generation;
+        // Re-rendered meanwhile (another request): the stale reader must leave it.
+        put(dir.path(), &cache, &k, 12);
+        cache.forget(&k, seen);
+        let (bytes, _) = cache.read(&k).unwrap().unwrap();
+        assert_eq!(bytes.len(), 12);
+        let current = cache.lock().entries[&k].generation;
+        cache.forget(&k, current);
+        assert_eq!(cache.stats().entries, 0);
     }
 
     #[test]
