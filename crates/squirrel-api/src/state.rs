@@ -2,7 +2,7 @@ use std::sync::Arc;
 use std::time::Duration as StdDuration;
 
 use sqlx::PgPool;
-use squirrel_storage::BlobStore;
+use squirrel_storage::{BlobStore, PreviewCache, PreviewCacheConfig};
 use time::Duration;
 use tokio::sync::Semaphore;
 
@@ -69,6 +69,8 @@ pub struct ApiConfig {
     pub trash_retention: Duration,
     /// Blobs are deleted only after this long without any reference.
     pub blob_gc_grace: Duration,
+    /// Disk budget of previews rendered on demand (`<data_dir>/cache/previews`).
+    pub preview_cache_bytes: u64,
 }
 
 /// Available cores clamped to 2..=4: enough for a few simultaneous logins,
@@ -122,6 +124,23 @@ impl Default for ApiConfig {
             download_limits: DownloadLimits::default(),
             trash_retention: Duration::days(30),
             blob_gc_grace: Duration::hours(24),
+            preview_cache_bytes: 1536 * 1024 * 1024,
+        }
+    }
+}
+
+/// Opens (and indexes) the preview cache; logs and goes without on failure.
+fn open_preview_cache(storage: &BlobStore, config: &ApiConfig) -> Option<Arc<PreviewCache>> {
+    let cache_config = PreviewCacheConfig {
+        version: squirrel_media::preview::PREVIEW_VERSION,
+        max_bytes: config.preview_cache_bytes,
+        min_free_bytes: config.min_free_bytes,
+    };
+    match PreviewCache::open(storage.data_dir(), cache_config) {
+        Ok(cache) => Some(Arc::new(cache)),
+        Err(err) => {
+            tracing::error!(error = %err, "cannot open the preview cache: previews will not be cached");
+            None
         }
     }
 }
@@ -149,6 +168,9 @@ pub struct AppState {
     pub text_encoder: Option<Arc<crate::ml::TextEncoder>>,
     /// Model groups installed where the server looks (media status).
     pub models_installed: ModelsInstalled,
+    /// Previews rendered on demand; `None` when the cache directory could not
+    /// be opened (previews are then rendered for every request).
+    pub preview_cache: Option<Arc<PreviewCache>>,
 }
 
 /// What the server found in its models directory at start.
@@ -161,7 +183,9 @@ pub struct ModelsInstalled {
 impl AppState {
     pub fn new(pool: PgPool, storage: BlobStore, config: ApiConfig) -> Self {
         let store = storage.clone();
+        let preview_cache = open_preview_cache(&storage, &config);
         Self {
+            preview_cache,
             pool,
             storage,
             free_space: Arc::new(move || store.available_space()),

@@ -175,9 +175,13 @@ async fn delete_row_then_file(
     }
     // Row first: a crash between the two leaves an orphan file, never a row without its file.
     let (store, blob) = (state.storage.clone(), hash.clone());
+    let previews = state.preview_cache.clone();
     run_storage(move || {
         store.remove_blob(&blob)?;
-        store.derived().remove_all(&blob)
+        store.derived().remove_all(&blob)?;
+        // A cached preview of content nobody owns any more must not outlive it.
+        previews.map_or(Ok(0), |cache| cache.remove_hash(&blob))?;
+        Ok(())
     })
     .await?;
     tracing::debug!(%hash, "blob deleted");

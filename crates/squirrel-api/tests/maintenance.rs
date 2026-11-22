@@ -228,6 +228,14 @@ async fn collecting_a_blob_removes_its_derived_files(pool: PgPool) {
     let store = &instance.state.storage;
     let hash = ContentHash::parse(&files::sha256_hex(b"gone")).unwrap();
     install_thumbnail(store, &hash);
+    let previews = instance.state.preview_cache.clone().unwrap();
+    let key = squirrel_storage::CacheKey {
+        hash: hash.clone(),
+        bucket: 2160,
+    };
+    let rendered = store.data_dir().join("tmp/preview.jpg");
+    std::fs::write(&rendered, b"jpeg").unwrap();
+    assert!(previews.insert(&key, &rendered, "jpg", u64::MAX).unwrap());
     browser
         .delete(&format!("/api/nodes/{}", gone["id"].as_str().unwrap()))
         .add_header(common::CSRF, common::csrf(&me))
@@ -240,6 +248,11 @@ async fn collecting_a_blob_removes_its_derived_files(pool: PgPool) {
         1
     );
     assert!(!store.derived().dir(&hash).exists());
+    assert!(
+        previews.read(&key).unwrap().is_none(),
+        "cached preview removed"
+    );
+    assert_eq!(previews.stats().entries, 0);
 }
 
 #[sqlx::test(migrator = "squirrel_db::MIGRATOR")]
