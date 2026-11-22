@@ -111,9 +111,15 @@ class SquirrelApi(
     /** The authenticated client, for image loading and downloads (bearer and refresh included). */
     val httpClient: HttpClient get() = authed
 
-    /** `GET /api/files/{id}/thumbnail`; [version] makes the URL immutable (and cacheable). */
-    fun thumbnailUrl(id: String, version: Int, preview: Boolean = false): String =
-        "$baseUrl/api/files/${id.encodeURLPathPart()}/thumbnail?size=${if (preview) "preview" else "thumb"}&v=$version"
+    /**
+     * `GET /api/files/{id}/thumbnail`; [version] makes the URL change whenever it is regenerated.
+     * [px] (previews only, see [PreviewSize]): the long side wanted, in device pixels; without it, 1440.
+     */
+    fun thumbnailUrl(id: String, version: Int, preview: Boolean = false, px: Int? = null): String {
+        val size = if (preview) "preview" else "thumb"
+        val sized = px?.let { "&px=$it" }.orEmpty()
+        return "$baseUrl/api/files/${id.encodeURLPathPart()}/thumbnail?size=$size&v=$version$sized"
+    }
 
     /** `GET /api/files/{id}/content`: the original bytes. */
     fun contentUrl(id: String): String = "$baseUrl/api/files/${id.encodeURLPathPart()}/content"
