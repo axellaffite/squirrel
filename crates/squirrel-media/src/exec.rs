@@ -49,6 +49,12 @@ pub enum ExecRequest {
     },
     /// Whether libvips works in the sandbox, and which loaders it has.
     Probe,
+    /// The perceptual hash ([`crate::phash`]) of a stored thumbnail, for
+    /// photos rendered before hashes existed.
+    VisualHash {
+        input: PathBuf,
+        limits: DecodeLimits,
+    },
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -66,6 +72,9 @@ pub enum ExecResponse {
     },
     Probe {
         report: ProbeReport,
+    },
+    VisualHash {
+        phash: u64,
     },
     /// Nothing to do for this input (format not compiled in, too large, encrypted).
     Unsupported {
@@ -130,7 +139,22 @@ pub fn execute(request: &ExecRequest) -> ExecResponse {
             execute_preview(&job, *engine)
         }
         ExecRequest::Probe => ExecResponse::Probe { report: probe() },
+        ExecRequest::VisualHash { input, limits } => {
+            if let Some(refused) = check_size(input) {
+                return refused;
+            }
+            match visual_hash(input, *limits) {
+                Ok(phash) => ExecResponse::VisualHash { phash },
+                Err(err) => classify(err),
+            }
+        }
     }
+}
+
+fn visual_hash(input: &Path, limits: DecodeLimits) -> Result<u64, ThumbError> {
+    let file = std::io::BufReader::new(std::fs::File::open(input)?);
+    let image = crate::thumbs::decode(file, limits)?.upright();
+    crate::phash::phash(&image)
 }
 
 struct PreviewJob<'a> {
@@ -624,6 +648,27 @@ mod tests {
         let (preview, _) = preview_of("in.heic", &bytes, PreviewEngine::Vips);
         assert_eq!(preview.engine, PreviewEngine::Vips);
         assert_eq!((preview.width, preview.height), (32, 64));
+    }
+
+    #[test]
+    fn a_stored_thumbnail_hashes_like_the_render_that_made_it() {
+        let dir = tempfile::tempdir().unwrap();
+        let input = dir.path().join("in.jpg");
+        std::fs::write(&input, crate::testutil::scene_jpeg(3, 1200, 900, 85)).unwrap();
+        let out = tempfile::tempdir().unwrap();
+        let request = image_request(input, out.path().into(), DecodeLimits::default());
+        let ExecResponse::Image { rendered } = execute(&request) else {
+            panic!("no thumbnail");
+        };
+        let request = ExecRequest::VisualHash {
+            input: out.path().join(THUMB_FILE),
+            limits: DecodeLimits::default(),
+        };
+        let ExecResponse::VisualHash { phash } = execute(&request) else {
+            panic!("no hash");
+        };
+        let rendered = rendered.phash.expect("a photo's render has a hash");
+        assert!(crate::phash::distance(rendered, phash) <= 2);
     }
 
     #[test]
