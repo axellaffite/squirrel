@@ -282,3 +282,52 @@ fn generated_pdfs_have_a_consistent_xref() {
     let obj5 = text.find("5 0 obj").unwrap();
     assert!(text.contains(&format!("{obj5:010} 00000 n ")));
 }
+
+/// A deterministic "photo": smooth gradients, a few soft blobs and fine
+/// noise, different for every `seed`.
+pub fn scene(seed: u64, width: u32, height: u32) -> image::DynamicImage {
+    let mut state = seed
+        .wrapping_mul(6364136223846793005)
+        .wrapping_add(1442695040888963407);
+    let mut next = move || {
+        state = state
+            .wrapping_mul(6364136223846793005)
+            .wrapping_add(1442695040888963407);
+        ((state >> 33) as f64) / f64::from(u32::MAX >> 1)
+    };
+    let blobs: Vec<[f64; 6]> = (0..6)
+        .map(|_| [next(), next(), 0.05 + next() * 0.3, next(), next(), next()])
+        .collect();
+    let tilt = [next() * 2.0 - 1.0, next() * 2.0 - 1.0];
+    let base = [next(), next(), next()];
+    let mut noise = next;
+    let image = image::RgbImage::from_fn(width, height, |x, y| {
+        let (fx, fy) = (
+            f64::from(x) / f64::from(width),
+            f64::from(y) / f64::from(height),
+        );
+        let mut c = base.map(|b| 0.5 * b + 0.25 * (tilt[0] * fx + tilt[1] * fy));
+        for [bx, by, r, cr, cg, cb] in &blobs {
+            let d2 = (fx - bx).powi(2) + (fy - by).powi(2);
+            let w = (-d2 / (r * r)).exp();
+            for (channel, colour) in c.iter_mut().zip([cr, cg, cb]) {
+                *channel = *channel * (1.0 - w) + colour * w;
+            }
+        }
+        let grain = (noise() - 0.5) * 0.04;
+        image::Rgb(c.map(|v| ((v + grain).clamp(0.0, 1.0) * 255.0) as u8))
+    });
+    image::DynamicImage::ImageRgb8(image)
+}
+
+/// [`scene`] as a JPEG of `quality`: two calls with different sizes or
+/// qualities give different bytes that look the same (near-duplicates).
+pub fn scene_jpeg(seed: u64, width: u32, height: u32, quality: u8) -> Vec<u8> {
+    let mut bytes = Vec::new();
+    let encoder = image::codecs::jpeg::JpegEncoder::new_with_quality(&mut bytes, quality);
+    scene(seed, width, height)
+        .to_rgb8()
+        .write_with_encoder(encoder)
+        .expect("jpeg");
+    bytes
+}

@@ -50,6 +50,12 @@ async fn renders_installs_and_records_the_thumbnail_only(pool: PgPool) {
     assert_eq!(media.thumbs_version, THUMBS_VERSION);
     assert_eq!((media.width, media.height), (Some(400), Some(300)));
     assert!(media.blurhash.is_some());
+    let phash: Option<i64> = sqlx::query_scalar("SELECT phash FROM media WHERE sha256 = $1")
+        .bind(&sha)
+        .fetch_one(fx.pool())
+        .await
+        .unwrap();
+    assert!(phash.is_some(), "photos get their perceptual hash");
     let hash = ContentHash::parse(&sha).unwrap();
     let derived = fx.ctx.storage.derived();
     assert!(

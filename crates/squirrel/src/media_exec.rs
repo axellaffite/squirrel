@@ -91,7 +91,8 @@ fn limits(args: &MediaExecArgs) -> [(Resource, u64); 5] {
 /// The limits `request` lowers further ([`apply`] never raises one).
 fn operation_limits(request: &ExecRequest) -> Vec<(Resource, u64)> {
     match request {
-        ExecRequest::Preview { .. } | ExecRequest::Probe => vec![
+        // A hash decodes one stored thumbnail: the preview limits are ample.
+        ExecRequest::Preview { .. } | ExecRequest::Probe | ExecRequest::VisualHash { .. } => vec![
             (Resource::As, PREVIEW_MEMORY_MB * 1024 * 1024),
             (Resource::Cpu, PREVIEW_CPU_SECS),
         ],
@@ -168,5 +169,10 @@ mod tests {
             limits: squirrel_media::thumbs::DecodeLimits::default(),
         };
         assert!(operation_limits(&thumbs).is_empty());
+        let hash = ExecRequest::VisualHash {
+            input: "/a".into(),
+            limits: squirrel_media::thumbs::DecodeLimits::default(),
+        };
+        assert!(operation_limits(&hash).contains(&(Resource::Cpu, PREVIEW_CPU_SECS)));
     }
 }

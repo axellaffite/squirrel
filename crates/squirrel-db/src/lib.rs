@@ -9,6 +9,7 @@ pub mod clustering;
 pub mod device_assets;
 pub mod devices;
 pub mod documents;
+pub mod duplicates;
 mod error;
 pub mod explore;
 pub mod faces;
