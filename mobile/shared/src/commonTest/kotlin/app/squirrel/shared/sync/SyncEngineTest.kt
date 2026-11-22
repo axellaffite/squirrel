@@ -149,7 +149,9 @@ class SyncEngineTest {
         // The chunks already in flight (one per asset, both assets at once) finish; no new one starts.
         assertTrue(server.sent.size in 1..2)
         assertEquals(0, summary.uploaded)
-        assertEquals(server.sent.map { it.first }.distinct().size.toLong(), queue.counts()[QueueState.Uploading])
+        // Both may have opened their session (kept to resume); none is done.
+        assertTrue(queue.counts()[QueueState.Uploading] in 1L..2L)
+        assertEquals(null, queue.counts()[QueueState.Done])
     }
 
     @Test
