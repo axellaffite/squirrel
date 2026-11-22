@@ -1,15 +1,23 @@
 /**
  * As-you-type photo search: waits for a pause in typing, aborts the request a newer query (or
- * filter) replaced, pages with "Load more". Only the latest search's answers are ever shown.
+ * filter, or order) replaced, pages as the view nears the end. Only the latest search's answers
+ * are ever shown.
  */
-import { MAX_PHOTO_QUERY, MAX_PHOTO_RESULTS, searchPhotos, type PhotoSearchOutcome } from '#lib/explore/api.ts';
+import {
+	MAX_PHOTO_QUERY,
+	MAX_PHOTO_RESULTS,
+	searchPhotos,
+	type PhotoSearchOutcome,
+	type SearchOrder,
+	type SearchPage
+} from '#lib/explore/api.ts';
 import { normalizeFilter, sameFilter, type PhotoFilter } from '#lib/explore/filters.ts';
 import { MAX_RETRY_WAIT_MS, SEARCH_DEBOUNCE_MS, normalizeQuery } from '#lib/files/search.ts';
 import type { AssetSummary } from '#lib/photos/api.ts';
 
 export type RunPhotoSearch = (
 	query: string,
-	offset: number,
+	page: SearchPage,
 	filter: PhotoFilter,
 	signal: AbortSignal
 ) => Promise<PhotoSearchOutcome>;
@@ -25,6 +33,26 @@ export const TOO_LONG = `Searches use at most ${MAX_PHOTO_QUERY} characters.`;
 /** Shown when the retry after a 429 was rate-limited again. */
 export const STILL_TOO_FAST = 'The server is still busy with searches. Wait a moment, then search again.';
 
+/** Results come as a timeline unless the user asks for the best matches first. */
+export const DEFAULT_ORDER: SearchOrder = 'date';
+
+/** The address keeps only a departure from the default: `?order=relevance`. */
+export const orderFromParams = (params: Pick<URLSearchParams, 'get'>): SearchOrder =>
+	params.get('order') === 'relevance' ? 'relevance' : DEFAULT_ORDER;
+
+/** `url` showing `order` (other keys kept). */
+export function withOrder(url: string | URL, order: SearchOrder): URL {
+	const next = new URL(url);
+	if (order === DEFAULT_ORDER) next.searchParams.delete('order');
+	else next.searchParams.set('order', order);
+	return next;
+}
+
+const firstPage = (order: SearchOrder): SearchPage =>
+	order === 'date' ? { order: 'date', cursor: null } : { order: 'relevance', offset: 0 };
+
+const isFirstPage = (page: SearchPage): boolean => (page.order === 'date' ? page.cursor === null : page.offset === 0);
+
 export const isPhotoQuery = (query: string): boolean => {
 	const q = normalizeQuery(query);
 	return q.length >= 1 && q.length <= MAX_PHOTO_QUERY;
@@ -34,7 +62,11 @@ export class PhotoSearcher {
 	/** The query the results belong to ('' before any search). */
 	query = $state('');
 	filter: PhotoFilter = $state.raw({});
+	/** The order asked for (the next search's). */
+	order: SearchOrder = $state(DEFAULT_ORDER);
 	items: AssetSummary[] = $state.raw([]);
+	/** The order `items` came in: the view follows it, never an order still loading. */
+	itemsOrder: SearchOrder = $state(DEFAULT_ORDER);
 	hasMore = $state(false);
 	loading = $state(false);
 	error: string | null = $state(null);
@@ -52,6 +84,8 @@ export class PhotoSearcher {
 	#pending: string | null = null;
 	/** The query typed last (searched once the filter changes). */
 	#typed = '';
+	/** Where the next date-ordered page starts. */
+	#cursor: string | null = null;
 
 	constructor(run: RunPhotoSearch = searchPhotos, delay: number = SEARCH_DEBOUNCE_MS) {
 		this.#run = run;
@@ -72,7 +106,7 @@ export class PhotoSearcher {
 			if (query.length > MAX_PHOTO_QUERY) this.error = TOO_LONG;
 			return;
 		}
-		this.#timer = setTimeout(() => void this.#fetch(query, 0), this.#delay);
+		this.#timer = setTimeout(() => void this.#fetch(query, firstPage(this.order)), this.#delay);
 	}
 
 	/** Searches at once (the form was submitted, or the page opened with a query). */
@@ -80,7 +114,7 @@ export class PhotoSearcher {
 		clearTimeout(this.#timer);
 		const query = normalizeQuery(raw);
 		this.#typed = query;
-		if (isPhotoQuery(query)) void this.#fetch(query, 0);
+		if (isPhotoQuery(query)) void this.#fetch(query, firstPage(this.order));
 		else if (query.length > MAX_PHOTO_QUERY) {
 			this.#cancel();
 			this.#clear();
@@ -93,15 +127,27 @@ export class PhotoSearcher {
 		if (sameFilter(filter, this.filter)) return;
 		this.filter = normalizeFilter(filter);
 		clearTimeout(this.#timer);
-		if (isPhotoQuery(this.#typed)) void this.#fetch(this.#typed, 0);
+		if (isPhotoQuery(this.#typed)) void this.#fetch(this.#typed, firstPage(this.order));
 		else this.#clear();
+	}
+
+	/** Orders the results otherwise: searches the current query again at once. */
+	setOrder(order: SearchOrder): void {
+		if (order === this.order) return;
+		this.order = order;
+		clearTimeout(this.#timer);
+		if (isPhotoQuery(this.#typed)) void this.#fetch(this.#typed, firstPage(order));
 	}
 
 	/** The next page of the current results. */
 	more(): void {
 		// Not while a request (or its retry) is pending: it would replace it.
 		if (!this.hasMore || this.loading || this.#pending !== null || this.items.length >= MAX_PHOTO_RESULTS) return;
-		void this.#fetch(this.query, this.items.length);
+		if (this.itemsOrder === 'relevance') {
+			void this.#fetch(this.query, { order: 'relevance', offset: this.items.length });
+		} else if (this.#cursor !== null) {
+			void this.#fetch(this.query, { order: 'date', cursor: this.#cursor });
+		}
 	}
 
 	dispose(): void {
@@ -114,6 +160,7 @@ export class PhotoSearcher {
 		this.query = '';
 		this.items = [];
 		this.hasMore = false;
+		this.#cursor = null;
 		this.error = null;
 	}
 
@@ -125,14 +172,14 @@ export class PhotoSearcher {
 		this.loading = false;
 	}
 
-	async #fetch(query: string, offset: number, retried = false, busyTries = 0) {
+	async #fetch(query: string, page: SearchPage, retried = false, busyTries = 0) {
 		this.#cancel();
 		const controller = new AbortController();
 		this.#controller = controller;
 		this.#pending = query;
 		this.loading = true;
 		const filter = this.filter;
-		const result = await this.#run(query, offset, filter, controller.signal);
+		const result = await this.#run(query, page, filter, controller.signal);
 		if (controller !== this.#controller) return;
 		this.#controller = null;
 		this.#pending = null;
@@ -145,7 +192,7 @@ export class PhotoSearcher {
 				this.error = null;
 				this.loading = true;
 				this.#pending = query;
-				this.#retry = setTimeout(() => void this.#fetch(query, offset, retried, busyTries + 1), BUSY_RETRY_MS);
+				this.#retry = setTimeout(() => void this.#fetch(query, page, retried, busyTries + 1), BUSY_RETRY_MS);
 				return;
 			}
 			const wait = result.retryAfterMs;
@@ -153,22 +200,26 @@ export class PhotoSearcher {
 				this.error = result.error;
 				// Still this query's request: typing it again waits for the retry, never sooner.
 				this.#pending = query;
-				this.#retry = setTimeout(() => void this.#fetch(query, offset, true), wait);
+				this.#retry = setTimeout(() => void this.#fetch(query, page, true), wait);
 				return;
 			}
 			this.error = result.status === 429 ? STILL_TOO_FAST : result.error;
 			// Results of another search must not pass for this one's.
-			if (offset === 0) {
+			if (isFirstPage(page)) {
 				this.query = '';
 				this.items = [];
 				this.hasMore = false;
+				this.#cursor = null;
 			}
 			return;
 		}
 		this.error = null;
 		this.unavailable = false;
 		this.query = query;
-		this.items = offset === 0 ? result.data.items : [...this.items, ...result.data.items];
-		this.hasMore = result.data.has_more && this.items.length < MAX_PHOTO_RESULTS;
+		this.itemsOrder = page.order;
+		this.items = isFirstPage(page) ? result.data.items : [...this.items, ...result.data.items];
+		this.#cursor = page.order === 'date' ? (result.data.next_cursor ?? null) : null;
+		const reachable = page.order === 'relevance' || this.#cursor !== null;
+		this.hasMore = result.data.has_more && reachable && this.items.length < MAX_PHOTO_RESULTS;
 	}
 }

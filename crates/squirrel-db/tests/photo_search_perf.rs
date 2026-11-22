@@ -62,6 +62,7 @@ fn query_vector(seed: u32) -> Vec<f32> {
 async fn measure(pool: &PgPool, owner: Uuid, label: &str) {
     let filter = PhotoFilter::default();
     let mut times = Vec::new();
+    let mut by_date = Vec::new();
     for seed in 0..20 {
         let vector = query_vector(seed);
         // The largest label group's siblings (9), all scored.
@@ -82,7 +83,19 @@ async fn measure(pool: &PgPool, owner: Uuid, label: &str) {
             .unwrap();
         times.push(start.elapsed());
         assert_eq!(page.items.len(), 50);
+        // The timeline order: the 200 best, newest first.
+        let start = Instant::now();
+        let page = photo_search::search_by_date(pool, owner, &query, 200, None, 50)
+            .await
+            .unwrap();
+        by_date.push(start.elapsed());
+        assert_eq!(page.items.len(), 50);
     }
+    report(&format!("{label}, best first"), times);
+    report(&format!("{label}, by date"), by_date);
+}
+
+fn report(label: &str, mut times: Vec<Duration>) {
     times.sort_unstable();
     let p = |q: f64| times[((times.len() - 1) as f64 * q).round() as usize];
     println!(

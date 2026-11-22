@@ -1,16 +1,29 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { SEARCH_BUSY, SEARCH_UNAVAILABLE } from '#lib/explore/api.ts';
-import { BUSY_RETRIES, BUSY_RETRY_MS, PhotoSearcher, STILL_TOO_FAST, TOO_LONG, type RunPhotoSearch } from '#lib/explore/searcher.svelte.ts';
+import { SEARCH_BUSY, SEARCH_UNAVAILABLE, type SearchPage } from '#lib/explore/api.ts';
+import { BUSY_RETRIES, BUSY_RETRY_MS, orderFromParams, PhotoSearcher, STILL_TOO_FAST, TOO_LONG, withOrder, type RunPhotoSearch } from '#lib/explore/searcher.svelte.ts';
 
 const photo = (id: string) => ({ id }) as never;
 const ids = (searcher: PhotoSearcher) => searcher.items.map((item) => (item as { id: string }).id);
 
-function results(list: string[], hasMore = false) {
-	return { ok: true as const, data: { items: list.map(photo), has_more: hasMore } };
+function results(list: string[], hasMore = false, nextCursor: string | null = null) {
+	return { ok: true as const, data: { items: list.map(photo), has_more: hasMore, next_cursor: nextCursor } };
 }
+
+const isFirst = (page: SearchPage) => (page.order === 'date' ? page.cursor === null : page.offset === 0);
 
 beforeEach(() => vi.useFakeTimers());
 afterEach(() => vi.useRealTimers());
+
+describe('the order in the address', () => {
+	it('defaults to the timeline and keeps only best match', () => {
+		expect(orderFromParams(new URLSearchParams(''))).toBe('date');
+		expect(orderFromParams(new URLSearchParams('order=relevance'))).toBe('relevance');
+		expect(orderFromParams(new URLSearchParams('order=nonsense'))).toBe('date');
+		const best = withOrder('http://local/search?q=dog&tag=beach', 'relevance');
+		expect(best.search).toBe('?q=dog&tag=beach&order=relevance');
+		expect(withOrder(best, 'date').search).toBe('?q=dog&tag=beach');
+	});
+});
 
 describe('PhotoSearcher', () => {
 	it('waits for a pause in typing and sends only the last query', async () => {
@@ -56,16 +69,72 @@ describe('PhotoSearcher', () => {
 		expect(run).toHaveBeenCalledTimes(2);
 	});
 
-	it('pages with more until the server has no more', async () => {
-		const run = vi.fn<RunPhotoSearch>(async (_q, offset) => (offset === 0 ? results(['a', 'b'], true) : results(['c'])));
+	it('pages a timeline with the cursor until the server has no more', async () => {
+		const run = vi.fn<RunPhotoSearch>(async (_q, page) => (isFirst(page) ? results(['a', 'b'], true, 'next') : results(['c'])));
 		const searcher = new PhotoSearcher(run, 10);
 		searcher.now('dog');
 		await vi.advanceTimersByTimeAsync(0);
+		expect(run.mock.calls[0][1]).toEqual({ order: 'date', cursor: null });
 		searcher.more();
 		await vi.advanceTimersByTimeAsync(0);
-		expect(run.mock.calls[1][1]).toBe(2);
+		expect(run.mock.calls[1][1]).toEqual({ order: 'date', cursor: 'next' });
 		expect(ids(searcher)).toEqual(['a', 'b', 'c']);
 		expect(searcher.hasMore).toBe(false);
+	});
+
+	it('pages the best matches by offset', async () => {
+		const run = vi.fn<RunPhotoSearch>(async (_q, page) => (isFirst(page) ? results(['a', 'b'], true) : results(['c'])));
+		const searcher = new PhotoSearcher(run, 10);
+		searcher.setOrder('relevance');
+		searcher.now('dog');
+		await vi.advanceTimersByTimeAsync(0);
+		expect(run.mock.calls[0][1]).toEqual({ order: 'relevance', offset: 0 });
+		searcher.more();
+		await vi.advanceTimersByTimeAsync(0);
+		expect(run.mock.calls[1][1]).toEqual({ order: 'relevance', offset: 2 });
+		expect(ids(searcher)).toEqual(['a', 'b', 'c']);
+	});
+
+	it('searches again in the new order, and shows the old one until it answers', async () => {
+		let release: (() => void) | undefined;
+		const run = vi.fn<RunPhotoSearch>((_q, page) =>
+			page.order === 'date'
+				? Promise.resolve(results(['new', 'old'], true, 'next'))
+				: new Promise((resolve) => (release = () => resolve(results(['old', 'new'], true))))
+		);
+		const searcher = new PhotoSearcher(run, 10);
+		searcher.now('dog');
+		await vi.advanceTimersByTimeAsync(0);
+		expect(searcher.itemsOrder).toBe('date');
+		searcher.setOrder('relevance');
+		searcher.setOrder('relevance');
+		expect(run).toHaveBeenCalledTimes(2);
+		expect(searcher.order).toBe('relevance');
+		expect(searcher.itemsOrder).toBe('date');
+		release?.();
+		await vi.advanceTimersByTimeAsync(0);
+		expect(searcher.itemsOrder).toBe('relevance');
+		expect(ids(searcher)).toEqual(['old', 'new']);
+	});
+
+	it('changes only the order to come without a query', async () => {
+		const run = vi.fn<RunPhotoSearch>(async () => results(['a']));
+		const searcher = new PhotoSearcher(run, 10);
+		searcher.setOrder('relevance');
+		expect(run).not.toHaveBeenCalled();
+		searcher.now('dog');
+		await vi.advanceTimersByTimeAsync(0);
+		expect(run.mock.calls[0][1]).toEqual({ order: 'relevance', offset: 0 });
+	});
+
+	it('asks for no next date page without a cursor', async () => {
+		const run = vi.fn<RunPhotoSearch>(async () => results(['a'], true, null));
+		const searcher = new PhotoSearcher(run, 10);
+		searcher.now('dog');
+		await vi.advanceTimersByTimeAsync(0);
+		expect(searcher.hasMore).toBe(false);
+		searcher.more();
+		expect(run).toHaveBeenCalledTimes(1);
 	});
 
 	it('says when search is not set up, without results', async () => {
@@ -164,8 +233,8 @@ describe('PhotoSearcher', () => {
 
 	it('loads no next page while a request is pending', async () => {
 		let release: (() => void) | undefined;
-		const run = vi.fn<RunPhotoSearch>((_q, offset) =>
-			offset === 0 ? Promise.resolve(results(['a'], true)) : new Promise((resolve) => (release = () => resolve(results(['b']))))
+		const run = vi.fn<RunPhotoSearch>((_q, page) =>
+			isFirst(page) ? Promise.resolve(results(['a'], true, 'next')) : new Promise((resolve) => (release = () => resolve(results(['b']))))
 		);
 		const searcher = new PhotoSearcher(run, 10);
 		searcher.now('dog');
