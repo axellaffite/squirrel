@@ -5,7 +5,8 @@ pub mod backfill;
 pub mod clip_job;
 pub mod cluster_job;
 pub mod context;
-pub mod exec;
+/// The sandbox launcher (in `squirrel-sandbox`, shared with the server).
+pub use squirrel_sandbox::exec;
 pub mod face_backfill;
 pub mod faces_job;
 mod facts;
