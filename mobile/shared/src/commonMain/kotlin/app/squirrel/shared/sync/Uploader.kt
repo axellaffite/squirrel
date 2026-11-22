@@ -94,15 +94,19 @@ class Uploader(
         data object Reopen : Transfer
     }
 
+    /** [reportOffline]: this attempt's choice (the engine spends a normal attempt after false alarms). */
     suspend fun upload(
         asset: QueuedAsset,
         shouldContinue: () -> Boolean = { true },
         onProgress: (Float) -> Unit = {},
+        reportOffline: Boolean = this.reportOffline,
     ): UploadResult {
-        val reader = source.open(asset.deviceAssetId) ?: run {
+        val opened = source.open(asset.deviceAssetId) ?: run {
             queue.markSkipped(asset.deviceAssetId)
             return UploadResult.Skipped
         }
+        // The phone's own read failures (SD card gone, provider error) are never "offline".
+        val reader = LocalReads(opened)
         val result = reader.use {
             try {
                 transfer(asset, reader, shouldContinue, onProgress)
@@ -122,6 +126,19 @@ class Uploader(
         }
         if (result == UploadResult.Uploaded || result == UploadResult.Deduplicated) source.backedUp(asset.deviceAssetId)
         return result
+    }
+
+    /** Thrown for a failed read of the file on the phone: an ordinary attempt, whatever its cause. */
+    private class LocalReadFailed(cause: Exception) : Exception(cause.message ?: "The file could not be read", cause)
+
+    private class LocalReads(private val inner: AssetReader) : AssetReader by inner {
+        override suspend fun read(position: Long, into: ByteArray, offset: Int, length: Int): Int = try {
+            inner.read(position, into, offset, length)
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            throw LocalReadFailed(e)
+        }
     }
 
     private suspend fun transfer(

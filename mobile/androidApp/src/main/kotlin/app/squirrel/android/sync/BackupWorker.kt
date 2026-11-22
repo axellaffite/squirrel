@@ -52,13 +52,23 @@ interface BackupHost {
  */
 fun isForegroundRefusal(e: Throwable): Boolean = e is IllegalStateException || e is SecurityException
 
+/** Stops that must not bring the run back by themselves. */
+private val FINAL_STOPS = setOf(
+    WorkInfo.STOP_REASON_NOT_STOPPED,
+    // Automatic backup turned off, signed out.
+    WorkInfo.STOP_REASON_CANCELLED_BY_APP,
+    // The user stopped it (the notification's Stop, the task manager): they meant it.
+    WorkInfo.STOP_REASON_USER,
+    // Android 15's daily dataSync limit: a continuation would only run into it again.
+    WorkInfo.STOP_REASON_FOREGROUND_SERVICE_TIMEOUT,
+)
+
 /**
  * Whether a run the system stopped ([stopReason], WorkInfo.STOP_REASON_*) should continue in a
- * follow-up: every stop but the app's own cancellation (automatic backup off, signed out).
- * WorkManager may also reschedule it; the engine never runs twice at once.
+ * follow-up: constraints, quotas, the device's state, but not [FINAL_STOPS]. WorkManager may also
+ * reschedule it; the engine never runs twice at once.
  */
-fun continuesAfterStop(stopReason: Int): Boolean =
-    stopReason != WorkInfo.STOP_REASON_CANCELLED_BY_APP && stopReason != WorkInfo.STOP_REASON_NOT_STOPPED
+fun continuesAfterStop(stopReason: Int): Boolean = stopReason !in FINAL_STOPS
 
 class BackupWorker(context: Context, params: WorkerParameters) : CoroutineWorker(context, params) {
     private val notifications = ForegroundInfoFactory(context)
