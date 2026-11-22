@@ -7,6 +7,7 @@
 	import { averageColor, isBlurhash } from '#lib/photos/blurhash.ts';
 	import { browserCanShow } from '#lib/photos/info.ts';
 	import { placeholders } from '#lib/photos/placeholder.ts';
+	import { PREVIEW_RETRY_MS, windowPreviewPx } from '#lib/photos/previewSize.ts';
 
 	interface Props {
 		asset: AssetSummary;
@@ -17,12 +18,30 @@
 	let { asset, overlay }: Props = $props();
 
 	let failedId: string | null = $state(null);
+	/** A preview the server was too busy to render (503/429) is asked for once more. */
+	let retriedId: string | null = $state(null);
+	let attempt = $state(0);
 
+	const dimensions = $derived(asset.width && asset.height ? { width: asset.width, height: asset.height } : null);
 	const source = $derived.by(() => {
 		if (failedId === asset.id) return null;
-		if (asset.thumbnail.state === 'ready') return thumbnailUrl(asset.id, 'preview', asset.thumbnail.version);
+		if (asset.thumbnail.state === 'ready') {
+			return thumbnailUrl(asset.id, 'preview', asset.thumbnail.version, windowPreviewPx(dimensions));
+		}
 		return browserCanShow(asset.mime) ? contentUrl(asset.id) : null;
 	});
+
+	function failed() {
+		const id = asset.id;
+		if (asset.thumbnail.state !== 'ready' || retriedId === id) {
+			failedId = id;
+			return;
+		}
+		retriedId = id;
+		setTimeout(() => {
+			if (asset.id === id) attempt += 1;
+		}, PREVIEW_RETRY_MS);
+	}
 	const hash = $derived(isBlurhash(asset.blurhash) ? asset.blurhash : null);
 	const blur = $derived(hash ? placeholders.load(hash) : null);
 	const ratio = $derived(asset.width && asset.height ? asset.width / asset.height : null);
@@ -39,8 +58,8 @@
 			style:background-color={hash ? averageColor(hash) : undefined}
 			style:background-image={blur ? `url("${blur}")` : undefined}
 		>
-			{#key source}
-				<img src={source} alt={asset.name} decoding="async" draggable="false" onerror={() => (failedId = asset.id)} />
+			{#key `${source}#${attempt}`}
+				<img src={source} alt={asset.name} decoding="async" draggable="false" onerror={failed} />
 			{/key}
 			{@render overlay?.()}
 		</div>

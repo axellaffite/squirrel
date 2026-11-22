@@ -9,6 +9,7 @@
 	import { contentUrl, formatBytes, formatDate, previewKind } from '#lib/files/format.ts';
 	import { fetchTextPreview, TEXT_PREVIEW_BYTES } from '#lib/files/textPreview.ts';
 	import { thumbnailUrl } from '#lib/photos/api.ts';
+	import { windowPreviewPx } from '#lib/photos/previewSize.ts';
 
 	interface Props {
 		node: FileNode;
@@ -21,8 +22,10 @@
 	let open = $state(true);
 	const kind = $derived(previewKind(node.mime));
 	const url = $derived(contentUrl(node.id));
-	/** Images show the 1440 px preview once it exists; "Open in new tab" keeps the original. */
-	const imageUrl = $derived(node.thumbnail ? thumbnailUrl(node.id, 'preview', node.thumbnail.version) : url);
+	/** Images show a screen-sized preview once one can be made; "Open in new tab" keeps the original. */
+	const imageUrl = $derived(
+		node.thumbnail ? thumbnailUrl(node.id, 'preview', node.thumbnail.version, windowPreviewPx(null)) : url
+	);
 	let text: string | null = $state(null);
 	let textError: string | null = $state(null);
 
