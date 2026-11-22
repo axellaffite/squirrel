@@ -5,7 +5,10 @@ pub mod backfill;
 pub mod clip_job;
 pub mod cluster_job;
 pub mod context;
-pub mod exec;
+pub mod drop_previews;
+/// The sandbox launcher (in `squirrel-sandbox`, shared with the server).
+pub use squirrel_sandbox::exec;
+pub use squirrel_sandbox::preview;
 pub mod face_backfill;
 pub mod faces_job;
 mod facts;
@@ -13,6 +16,7 @@ pub mod geocode;
 pub mod jobs;
 pub mod label_bank;
 pub mod metadata;
+pub mod ml_frame;
 /// The `ml-exec` supervisor (in `squirrel-ml`, shared with the server).
 pub use squirrel_ml::client as ml_client;
 mod outcome;
@@ -49,6 +53,8 @@ const LABEL_BANK_TIMEOUT: Duration = Duration::from_secs(20 * 60);
 const CLUSTER_TIMEOUT: Duration = Duration::from_secs(5 * 60);
 /// PDF text runs in the sandbox too.
 const TEXT_TIMEOUT: Duration = Duration::from_secs(180);
+/// One page of file deletions.
+const DROP_PREVIEWS_TIMEOUT: Duration = Duration::from_secs(120);
 
 /// Registers `kind` with a handler that borrows the shared context.
 fn register<F, Fut>(
@@ -108,6 +114,13 @@ pub fn register_all(registry: &mut Registry, ctx: Arc<MediaContext>) {
         jobs::BACKFILL,
         BACKFILL_TIMEOUT,
         |ctx, job| async move { backfill::run(&ctx, job).await },
+    );
+    register(
+        registry,
+        &ctx,
+        jobs::DROP_PREVIEWS,
+        DROP_PREVIEWS_TIMEOUT,
+        |ctx, job| async move { drop_previews::run(&ctx, job).await },
     );
     register_ml(registry, &ctx);
 }

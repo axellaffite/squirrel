@@ -170,6 +170,11 @@ impl BlobStore {
         &self.root
     }
 
+    /// The data directory this store is rooted at.
+    pub fn data_dir(&self) -> &Path {
+        &self.root
+    }
+
     pub(crate) fn blobs_dir(&self) -> &Path {
         &self.blobs
     }

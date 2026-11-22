@@ -73,7 +73,7 @@ enum Command {
 
 #[derive(Args)]
 struct AdminArgs {
-    /// Required by every command except `geodata`.
+    /// Required by every command except `geodata` and `previews`.
     #[arg(long, env = "SQUIRREL_DATABASE_URL")]
     database_url: Option<String>,
     #[command(subcommand)]
@@ -134,6 +134,15 @@ struct ServeArgs {
         action = ArgAction::Set
     )]
     embedded_worker: bool,
+    /// Disk budget of the lightbox previews rendered on demand
+    /// (`<data_dir>/cache/previews`), in MB.
+    #[arg(long, env = "SQUIRREL_PREVIEW_CACHE_MB", default_value_t = 1536,
+          value_parser = clap::value_parser!(u64).range(16..=1_048_576))]
+    preview_cache_mb: u64,
+    /// Previews rendered at once (each decodes one photo on up to two cores).
+    #[arg(long, env = "SQUIRREL_PREVIEW_CONCURRENCY", default_value_t = 2,
+          value_parser = clap::value_parser!(u16).range(1..=16))]
+    preview_concurrency: u16,
     #[command(flatten)]
     worker_options: worker::WorkerOptions,
 }
@@ -257,16 +266,30 @@ async fn serve(args: ServeArgs) -> anyhow::Result<()> {
         worker::pdfium_dir(args.worker_options.pdfium_dir.as_deref())?;
     }
     let setup_token = resolve_setup_token(&pool, args.setup_token.clone()).await?;
+    let defaults = ApiConfig::default();
     let config = ApiConfig {
         cookie_secure: args.cookie_secure,
         setup_token,
         trusted_proxies: args.trusted_proxies.clone(),
-        ..ApiConfig::default()
+        preview_cache_bytes: args.preview_cache_mb * 1024 * 1024,
+        preview_limits: squirrel_api::previews::PreviewLimits {
+            concurrency: usize::from(args.preview_concurrency),
+            ..defaults.preview_limits.clone()
+        },
+        ..defaults
     };
     let (text_encoder, models_installed) =
         ml::server_ml(&worker::ml_settings(&args.worker_options, &args.data_dir));
     let state = AppState::new(pool.clone(), storage.clone(), config)
-        .with_ml(text_encoder, models_installed);
+        .with_ml(text_encoder, models_installed)
+        .with_preview_executor(media_exec::preview_executor(
+            args.worker_options.media_exec,
+        )?);
+    // Logs which pipeline renders previews (libvips or built-in) at start.
+    let previews = state.previews.clone();
+    tokio::spawn(async move {
+        previews.renderer.probe().await;
+    });
     let app = squirrel_api::router(state.clone()).layer(TraceLayer::new_for_http());
 
     // Precompute the timing-equalizer hash so the first unknown-user login isn't slower.

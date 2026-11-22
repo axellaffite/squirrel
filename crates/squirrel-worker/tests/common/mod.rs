@@ -17,6 +17,7 @@ use squirrel_storage::BlobStore;
 use squirrel_worker::MediaContext;
 use squirrel_worker::exec::Executor;
 use squirrel_worker::geocode::GeoCache;
+use squirrel_worker::preview::PreviewRenderer;
 use time::{Duration, OffsetDateTime};
 use uuid::Uuid;
 
@@ -63,6 +64,7 @@ impl Fixture {
             decode_limits: DecodeLimits::default(),
             geo: GeoCache::disabled(),
             ml: None,
+            previews: PreviewRenderer::new(Executor::InProcess, DecodeLimits::default()),
         })
     }
 
@@ -77,6 +79,7 @@ impl Fixture {
         let ctx = MediaContext {
             pool,
             storage,
+            previews: PreviewRenderer::new(executor.clone(), DecodeLimits::default()),
             executor,
             pdfium_dir,
             decode_limits: DecodeLimits::default(),

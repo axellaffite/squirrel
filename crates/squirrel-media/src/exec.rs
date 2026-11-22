@@ -7,6 +7,9 @@ use std::path::{Path, PathBuf};
 use serde::{Deserialize, Serialize};
 
 use crate::pdf::{self, PdfError, PdfWork};
+use crate::preview::{
+    PreviewEncoding, PreviewEngine, ProbeReport, RenderedPreview, render_builtin,
+};
 use crate::render::{Rendered, render_image, render_variants};
 use crate::thumbs::{DecodeLimits, ThumbError};
 
@@ -32,6 +35,20 @@ pub enum ExecRequest {
         render: bool,
         text: bool,
     },
+    /// A preview fitting `bucket` (long side), written to `out_dir` as
+    /// [`crate::preview::PreviewFormat::file_name`]. `engine: Vips` still
+    /// falls back to the built-in pipeline for inputs libvips has no allowed
+    /// loader for.
+    Preview {
+        input: PathBuf,
+        out_dir: PathBuf,
+        bucket: u32,
+        encoding: PreviewEncoding,
+        engine: PreviewEngine,
+        limits: DecodeLimits,
+    },
+    /// Whether libvips works in the sandbox, and which loaders it has.
+    Probe,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -43,6 +60,12 @@ pub enum ExecResponse {
     Pdf {
         rendered: Option<Rendered>,
         page_count: u32,
+    },
+    Preview {
+        preview: RenderedPreview,
+    },
+    Probe {
+        report: ProbeReport,
     },
     /// Nothing to do for this input (format not compiled in, too large, encrypted).
     Unsupported {
@@ -86,7 +109,97 @@ pub fn execute(request: &ExecRequest) -> ExecResponse {
             };
             execute_pdf(input, out_dir, pdfium_dir, work)
         }
+        ExecRequest::Preview {
+            input,
+            out_dir,
+            bucket,
+            encoding,
+            engine,
+            limits,
+        } => {
+            if let Some(refused) = check_size(input) {
+                return refused;
+            }
+            let job = PreviewJob {
+                input,
+                out_dir,
+                bucket: *bucket,
+                encoding: *encoding,
+                limits: *limits,
+            };
+            execute_preview(&job, *engine)
+        }
+        ExecRequest::Probe => ExecResponse::Probe { report: probe() },
     }
+}
+
+struct PreviewJob<'a> {
+    input: &'a Path,
+    out_dir: &'a Path,
+    bucket: u32,
+    encoding: PreviewEncoding,
+    limits: DecodeLimits,
+}
+
+fn execute_preview(job: &PreviewJob<'_>, engine: PreviewEngine) -> ExecResponse {
+    if engine == PreviewEngine::Vips
+        && let Some(response) = execute_vips(job)
+    {
+        return response;
+    }
+    match render_builtin(job.input, job.out_dir, job.bucket, job.encoding, job.limits) {
+        Ok(preview) => ExecResponse::Preview { preview },
+        Err(err) => classify(err),
+    }
+}
+
+/// libvips' answer, or `None` to fall back to the built-in pipeline (no
+/// allowed loader for this input, libvips unusable, or not compiled in).
+#[cfg(feature = "vips")]
+fn execute_vips(job: &PreviewJob<'_>) -> Option<ExecResponse> {
+    use crate::vips::{self, VipsError, VipsOutcome};
+    match vips::render(job.input, job.out_dir, job.bucket, job.encoding, job.limits) {
+        Ok(VipsOutcome::Rendered(preview)) => Some(ExecResponse::Preview { preview }),
+        Ok(VipsOutcome::NoLoader) | Err(VipsError::Unavailable(_)) => None,
+        Err(err @ VipsError::TooLarge(..)) => Some(ExecResponse::Unsupported {
+            reason: err.to_string(),
+        }),
+        Err(err @ VipsError::Failed(_)) => Some(ExecResponse::Failed {
+            reason: err.to_string(),
+            retryable: false,
+        }),
+        Err(err @ VipsError::Io(_)) => Some(ExecResponse::Failed {
+            reason: err.to_string(),
+            retryable: true,
+        }),
+    }
+}
+
+#[cfg(not(feature = "vips"))]
+fn execute_vips(_job: &PreviewJob<'_>) -> Option<ExecResponse> {
+    None
+}
+
+/// What libvips looks like from inside the sandbox.
+pub fn probe() -> ProbeReport {
+    #[cfg(feature = "vips")]
+    {
+        match crate::vips::probe() {
+            Ok((version, loaders)) => ProbeReport {
+                compiled: true,
+                version: Some(version),
+                loaders,
+                error: None,
+            },
+            Err(err) => ProbeReport {
+                compiled: true,
+                error: Some(err.to_string()),
+                ..ProbeReport::default()
+            },
+        }
+    }
+    #[cfg(not(feature = "vips"))]
+    ProbeReport::default()
 }
 
 /// `Some(response)` when the input cannot be decoded for its size (or is gone).
@@ -204,7 +317,7 @@ mod tests {
             other => panic!("unexpected {other:?}"),
         }
         assert!(out.path().join(THUMB_FILE).is_file());
-        assert!(out.path().join(PREVIEW_FILE).is_file());
+        assert!(!out.path().join(PREVIEW_FILE).exists());
     }
 
     #[test]
@@ -315,6 +428,202 @@ mod tests {
                 ..
             }
         ));
+    }
+
+    fn preview_request(
+        input: PathBuf,
+        out_dir: PathBuf,
+        engine: PreviewEngine,
+        limits: DecodeLimits,
+    ) -> ExecRequest {
+        ExecRequest::Preview {
+            input,
+            out_dir,
+            bucket: 1440,
+            encoding: PreviewEncoding::Display,
+            engine,
+            limits,
+        }
+    }
+
+    const ENGINES: [PreviewEngine; 2] = [PreviewEngine::Builtin, PreviewEngine::Vips];
+
+    /// Renders `bytes` (saved as `name`) with `engine`; the decoded output.
+    fn preview_of(
+        name: &str,
+        bytes: &[u8],
+        engine: PreviewEngine,
+    ) -> (RenderedPreview, image::RgbImage) {
+        let dir = tempfile::tempdir().unwrap();
+        let input = dir.path().join(name);
+        std::fs::write(&input, bytes).unwrap();
+        let request = preview_request(input, dir.path().into(), engine, DecodeLimits::default());
+        let ExecResponse::Preview { preview } = execute(&request) else {
+            panic!("no preview for {name}");
+        };
+        let written = image::open(dir.path().join(preview.format.file_name()))
+            .unwrap()
+            .to_rgb8();
+        assert_eq!(written.dimensions(), (preview.width, preview.height));
+        (preview, written)
+    }
+
+    fn mean_difference(a: &image::RgbImage, b: &image::RgbImage) -> u64 {
+        assert_eq!(a.dimensions(), b.dimensions());
+        let diff: u64 = a
+            .as_raw()
+            .iter()
+            .zip(b.as_raw())
+            .map(|(x, y)| u64::from(x.abs_diff(*y)))
+            .sum();
+        diff / a.as_raw().len() as u64
+    }
+
+    #[test]
+    fn every_orientation_matches_the_builtin_pipeline() {
+        for orientation in 1..=8 {
+            let spec = ExifSpec {
+                orientation: Some(orientation),
+                ..ExifSpec::default()
+            };
+            let jpeg = jpeg_sized_with_exif(300, 200, &spec);
+            let (builtin, reference) = preview_of("in.jpg", &jpeg, PreviewEngine::Builtin);
+            let expected = if orientation >= 5 {
+                (200, 300)
+            } else {
+                (300, 200)
+            };
+            assert_eq!((builtin.width, builtin.height), expected, "{orientation}");
+            let (vips, rendered) = preview_of("in.jpg", &jpeg, PreviewEngine::Vips);
+            let engine = if crate::VIPS_COMPILED {
+                PreviewEngine::Vips
+            } else {
+                PreviewEngine::Builtin
+            };
+            assert_eq!(vips.engine, engine);
+            assert_eq!(vips.format, crate::preview::PreviewFormat::Jpeg);
+            let mean = mean_difference(&reference, &rendered);
+            assert!(
+                mean <= 6,
+                "orientation {orientation}: mean difference {mean}"
+            );
+        }
+    }
+
+    #[test]
+    fn previews_over_the_pixel_limit_are_refused_by_both_engines() {
+        let dir = tempfile::tempdir().unwrap();
+        let input = dir.path().join("in.jpg");
+        std::fs::write(&input, jpeg_sized_with_exif(64, 64, &ExifSpec::default())).unwrap();
+        let limits = DecodeLimits {
+            max_pixels: 64 * 63,
+            ..DecodeLimits::default()
+        };
+        for engine in ENGINES {
+            let request = preview_request(input.clone(), dir.path().into(), engine, limits);
+            match execute(&request) {
+                ExecResponse::Unsupported { reason } => {
+                    assert!(reason.contains("exceeds"), "{reason}");
+                }
+                other => panic!("{engine:?}: unexpected {other:?}"),
+            }
+        }
+    }
+
+    #[test]
+    fn garbage_previews_fail_for_good() {
+        let dir = tempfile::tempdir().unwrap();
+        let input = dir.path().join("in.jpg");
+        std::fs::write(&input, b"\xFF\xD8\xFF not really a jpeg").unwrap();
+        for engine in ENGINES {
+            let request = preview_request(
+                input.clone(),
+                dir.path().into(),
+                engine,
+                DecodeLimits::default(),
+            );
+            assert!(
+                matches!(
+                    execute(&request),
+                    ExecResponse::Failed {
+                        retryable: false,
+                        ..
+                    }
+                ),
+                "{engine:?}"
+            );
+        }
+    }
+
+    /// BMP has no allowed libvips loader: the built-in pipeline renders it.
+    #[test]
+    fn inputs_without_an_allowed_loader_fall_back_to_the_builtin_pipeline() {
+        let image = image::RgbImage::from_fn(40, 30, |x, y| image::Rgb([x as u8, y as u8, 9]));
+        let mut bmp = Vec::new();
+        image
+            .write_to(&mut std::io::Cursor::new(&mut bmp), image::ImageFormat::Bmp)
+            .unwrap();
+        let (preview, _) = preview_of("in.bmp", &bmp, PreviewEngine::Vips);
+        assert_eq!(preview.engine, PreviewEngine::Builtin);
+        assert_eq!((preview.width, preview.height), (40, 30));
+    }
+
+    #[test]
+    fn transparent_previews_are_webp_and_models_get_png() {
+        let image = image::RgbaImage::from_fn(40, 30, |x, _| image::Rgba([200, 10, 10, x as u8]));
+        let mut png = Vec::new();
+        image
+            .write_to(&mut std::io::Cursor::new(&mut png), image::ImageFormat::Png)
+            .unwrap();
+        for engine in ENGINES {
+            let (preview, _) = preview_of("in.png", &png, engine);
+            assert_eq!(
+                preview.format,
+                crate::preview::PreviewFormat::Webp,
+                "{engine:?}"
+            );
+            let dir = tempfile::tempdir().unwrap();
+            let input = dir.path().join("in.png");
+            std::fs::write(&input, &png).unwrap();
+            let request = ExecRequest::Preview {
+                input,
+                out_dir: dir.path().into(),
+                bucket: 1440,
+                encoding: PreviewEncoding::Png,
+                engine,
+                limits: DecodeLimits::default(),
+            };
+            let ExecResponse::Preview { preview } = execute(&request) else {
+                panic!("{engine:?}: no png");
+            };
+            assert_eq!(preview.format, crate::preview::PreviewFormat::Png);
+            assert!(dir.path().join("preview.png").is_file());
+        }
+    }
+
+    #[test]
+    fn the_probe_reports_what_this_build_has() {
+        let ExecResponse::Probe { report } = execute(&ExecRequest::Probe) else {
+            panic!("no probe report");
+        };
+        assert_eq!(report.compiled, crate::VIPS_COMPILED);
+        if crate::VIPS_COMPILED {
+            assert!(report.usable(), "{report:?}");
+        } else {
+            assert_eq!(report, ProbeReport::default());
+        }
+    }
+
+    /// libvips applies HEIF's own rotation once (see `thumbs::heif_rotation_is_applied_once`).
+    #[cfg(feature = "vips")]
+    #[test]
+    fn libvips_heif_previews_are_upright() {
+        let Some(bytes) = crate::testutil::ci_fixture("tests/fixtures/rotated.heic") else {
+            return;
+        };
+        let (preview, _) = preview_of("in.heic", &bytes, PreviewEngine::Vips);
+        assert_eq!(preview.engine, PreviewEngine::Vips);
+        assert_eq!((preview.width, preview.height), (32, 64));
     }
 
     #[test]

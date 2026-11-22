@@ -5,6 +5,8 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.key
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.produceState
@@ -19,6 +21,7 @@ import androidx.compose.ui.graphics.painter.BitmapPainter
 import androidx.compose.ui.layout.ContentScale
 import coil3.ImageLoader
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
 import coil3.compose.AsyncImage
 import app.squirrel.theme.SquirrelIcon
@@ -31,6 +34,8 @@ val LocalImageLoader = staticCompositionLocalOf<ImageLoader?> { null }
 private const val HASH_W = 16
 private const val HASH_H = 12
 private const val HASH_CACHE = 256
+/** The server's `Retry-After` when it is too busy to render a preview. */
+private const val PREVIEW_RETRY_MS = 1000L
 
 /** Small decoded previews, bounded: a 16 × 12 bitmap per hash, scaled behind the tile. */
 private val previews = LruCache<String, ImageBitmap>(HASH_CACHE)
@@ -63,6 +68,16 @@ fun Thumbnail(
     val decoded by produceState<ImageBitmap?>(null, blurhash) { value = blurhash?.let { blurhashBitmap(it) } }
     // A load that failed (offline, deleted, refused) shows `image-off`, not a blurhash forever.
     var failed by remember(url) { mutableStateOf(false) }
+    // A viewer preview the server was too busy to render (503/429) is asked for once more.
+    var attempt by remember(url) { mutableStateOf(0) }
+    var retrying by remember(url) { mutableStateOf(false) }
+    LaunchedEffect(retrying) {
+        if (retrying) {
+            delay(PREVIEW_RETRY_MS)
+            attempt += 1
+            retrying = false
+        }
+    }
     val preview = decoded.takeUnless { failed }
     Box(if (fit) modifier else modifier.background(scheme.tint), contentAlignment = Alignment.Center) {
         if (preview != null && !fit) {
@@ -75,14 +90,18 @@ fun Thumbnail(
         }
         val loader = LocalImageLoader.current
         when {
-            url != null && loader != null && !failed -> AsyncImage(
-                model = url,
-                imageLoader = loader,
-                contentDescription = contentDescription,
-                contentScale = if (fit) ContentScale.Fit else ContentScale.Crop,
-                onError = { failed = true },
-                modifier = Modifier.fillMaxSize(),
-            )
+            url != null && loader != null && !failed -> key(attempt) {
+                AsyncImage(
+                    model = url,
+                    imageLoader = loader,
+                    contentDescription = contentDescription,
+                    contentScale = if (fit) ContentScale.Fit else ContentScale.Crop,
+                    onError = {
+                        if (fit && attempt == 0) retrying = true else failed = true
+                    },
+                    modifier = Modifier.fillMaxSize(),
+                )
+            }
             unsupported || failed -> Icon(SquirrelIcon.ImageOff, contentDescription = contentDescription, tint = scheme.inkMuted)
             preview == null -> Icon(SquirrelIcon.Image, contentDescription = contentDescription, tint = scheme.inkMuted)
         }

@@ -1,11 +1,13 @@
 //! `squirrel admin …`: operator commands run on the server.
 
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use clap::Subcommand;
 use sqlx::PgPool;
 use squirrel_core::Username;
 use squirrel_jobs::admin::{self, FailedJob, KindSummary, RetryOutcome};
+use squirrel_media::preview::ProbeReport;
+use squirrel_storage::{CacheStats, PreviewCache, PreviewCacheConfig};
 use time::format_description::well_known::Rfc3339;
 
 #[derive(Subcommand)]
@@ -46,6 +48,25 @@ pub enum AdminCommand {
         #[command(subcommand)]
         action: GeodataAction,
     },
+    /// The cache of previews rendered on request (no database needed).
+    Previews {
+        /// The server's data directory (the cache is `cache/previews/` in it).
+        #[arg(long, env = "SQUIRREL_DATA_DIR")]
+        data_dir: PathBuf,
+        /// The server's cache budget, in MB (as `squirrel serve`).
+        #[arg(long, env = "SQUIRREL_PREVIEW_CACHE_MB", default_value_t = 1536)]
+        preview_cache_mb: u64,
+        #[command(subcommand)]
+        action: PreviewsAction,
+    },
+}
+
+#[derive(Subcommand)]
+pub enum PreviewsAction {
+    /// Entries and size of the cache, and how previews are rendered here.
+    Stats,
+    /// Delete every cached preview (they are rendered again on request).
+    Clear,
 }
 
 #[derive(Subcommand)]
@@ -78,6 +99,10 @@ pub enum MediaAction {
     /// thumbnails made with older settings, and places not named with the
     /// current geodata). A worker runs it.
     Backfill,
+    /// Delete the 1440 px previews stored for photos before they were rendered
+    /// on request (500 per job; PDF previews stay). Run once, after checking
+    /// the release serves previews. A worker runs it.
+    DropPreviews,
 }
 
 #[derive(Subcommand)]
@@ -120,6 +145,14 @@ pub fn run_offline(command: AdminCommand) -> anyhow::Result<Option<AdminCommand>
             crate::geodata::run(action)?;
             Ok(None)
         }
+        AdminCommand::Previews {
+            data_dir,
+            preview_cache_mb,
+            action,
+        } => {
+            previews(&data_dir, preview_cache_mb, action)?;
+            Ok(None)
+        }
         other => Ok(Some(other)),
     }
 }
@@ -146,6 +179,23 @@ pub async fn run(pool: &PgPool, command: AdminCommand) -> anyhow::Result<()> {
             action: FacesAction::Recluster { username },
         } => recluster(pool, &username).await,
         AdminCommand::Geodata { action } => crate::geodata::run(action),
+        AdminCommand::Previews {
+            data_dir,
+            preview_cache_mb,
+            action,
+        } => previews(&data_dir, preview_cache_mb, action),
+        AdminCommand::Media {
+            action: MediaAction::DropPreviews,
+        } => {
+            let mut conn = pool.acquire().await?;
+            let job = squirrel_worker::drop_previews::first();
+            if squirrel_jobs::enqueue(&mut conn, &job).await? {
+                println!("dropping stored photo previews: queued (a worker runs it)");
+            } else {
+                println!("dropping stored photo previews is already queued or running");
+            }
+            Ok(())
+        }
         AdminCommand::Media {
             action: MediaAction::Backfill,
         } => {
@@ -157,6 +207,46 @@ pub async fn run(pool: &PgPool, command: AdminCommand) -> anyhow::Result<()> {
             Ok(())
         }
     }
+}
+
+fn previews(data_dir: &Path, cache_mb: u64, action: PreviewsAction) -> anyhow::Result<()> {
+    use anyhow::Context;
+    let config = PreviewCacheConfig {
+        version: squirrel_media::preview::PREVIEW_VERSION,
+        max_bytes: cache_mb.saturating_mul(1024 * 1024),
+        min_free_bytes: 0,
+    };
+    // Read-only indexing: the server's budget and files are left alone (only `clear` deletes).
+    let cache = PreviewCache::inspect(data_dir, config)
+        .with_context(|| format!("opening the preview cache in {}", data_dir.display()))?;
+    match action {
+        PreviewsAction::Stats => {
+            print!(
+                "{}",
+                format_preview_stats(&cache.stats(), &squirrel_media::exec::probe())
+            );
+        }
+        PreviewsAction::Clear => println!("{} cached previews deleted", cache.clear()?),
+    }
+    Ok(())
+}
+
+fn format_preview_stats(stats: &CacheStats, probe: &ProbeReport) -> String {
+    const MB: u64 = 1024 * 1024;
+    let renderer = match (&probe.version, probe.usable()) {
+        (Some(version), true) => format!("libvips {version} ({})", probe.loaders.join(", ")),
+        _ if !probe.compiled => "built-in (built without libvips)".to_owned(),
+        _ => format!(
+            "built-in (libvips unusable: {})",
+            probe.error.as_deref().unwrap_or("missing loaders")
+        ),
+    };
+    format!(
+        "cached previews  {}\nsize             {} MB of {} MB\nrenderer         {renderer}\n",
+        stats.entries,
+        stats.bytes.div_ceil(MB),
+        stats.max_bytes / MB
+    )
 }
 
 async fn jobs(pool: &PgPool, action: Option<JobsAction>) -> anyhow::Result<()> {
@@ -274,6 +364,32 @@ mod tests {
             "{out}"
         );
         assert_eq!(format_jobs(&[], &[], true), "no jobs\n");
+    }
+
+    #[test]
+    fn preview_stats_name_the_renderer() {
+        let stats = CacheStats {
+            entries: 3,
+            bytes: 5 * 1024 * 1024 + 1,
+            max_bytes: 1536 * 1024 * 1024,
+        };
+        let vips = ProbeReport {
+            compiled: true,
+            version: Some("8.18.0".into()),
+            loaders: ["jpegload", "pngload", "webpload"]
+                .map(String::from)
+                .to_vec(),
+            error: None,
+        };
+        let out = format_preview_stats(&stats, &vips);
+        assert!(out.contains("cached previews  3\n"), "{out}");
+        assert!(out.contains("size             6 MB of 1536 MB"), "{out}");
+        assert!(
+            out.contains("libvips 8.18.0 (jpegload, pngload, webpload)"),
+            "{out}"
+        );
+        let none = format_preview_stats(&stats, &ProbeReport::default());
+        assert!(none.contains("built-in (built without libvips)"), "{none}");
     }
 
     #[test]

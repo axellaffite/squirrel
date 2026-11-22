@@ -2,14 +2,16 @@ use std::sync::Arc;
 use std::time::Duration as StdDuration;
 
 use sqlx::PgPool;
-use squirrel_storage::BlobStore;
+use squirrel_storage::{BlobStore, PreviewCache, PreviewCacheConfig};
 use time::Duration;
 use tokio::sync::Semaphore;
 
 use crate::client_ip::TrustedProxies;
 use crate::downloads::DownloadLimits;
+use crate::previews::{PreviewLimits, Previews};
 use crate::setup_token::SetupToken;
 use crate::upload_runtime::{Slots, UploadLimits, UploadRuntime, UserRate, UserRateLimiter};
+use squirrel_sandbox::exec::Executor;
 
 #[derive(Debug, Clone, Copy)]
 pub struct RateLimit {
@@ -69,6 +71,10 @@ pub struct ApiConfig {
     pub trash_retention: Duration,
     /// Blobs are deleted only after this long without any reference.
     pub blob_gc_grace: Duration,
+    /// Disk budget of previews rendered on demand (`<data_dir>/cache/previews`).
+    pub preview_cache_bytes: u64,
+    /// Render concurrency, slot wait and per-user render rate of previews.
+    pub preview_limits: PreviewLimits,
 }
 
 /// Available cores clamped to 2..=4: enough for a few simultaneous logins,
@@ -122,6 +128,24 @@ impl Default for ApiConfig {
             download_limits: DownloadLimits::default(),
             trash_retention: Duration::days(30),
             blob_gc_grace: Duration::hours(24),
+            preview_cache_bytes: 1536 * 1024 * 1024,
+            preview_limits: PreviewLimits::default(),
+        }
+    }
+}
+
+/// Opens (and indexes) the preview cache; logs and goes without on failure.
+fn open_preview_cache(storage: &BlobStore, config: &ApiConfig) -> Option<Arc<PreviewCache>> {
+    let cache_config = PreviewCacheConfig {
+        version: squirrel_media::preview::PREVIEW_VERSION,
+        max_bytes: config.preview_cache_bytes,
+        min_free_bytes: config.min_free_bytes,
+    };
+    match PreviewCache::open(storage.data_dir(), cache_config) {
+        Ok(cache) => Some(Arc::new(cache)),
+        Err(err) => {
+            tracing::error!(error = %err, "cannot open the preview cache: previews will not be cached");
+            None
         }
     }
 }
@@ -149,6 +173,11 @@ pub struct AppState {
     pub text_encoder: Option<Arc<crate::ml::TextEncoder>>,
     /// Model groups installed where the server looks (media status).
     pub models_installed: ModelsInstalled,
+    /// Previews rendered on demand; `None` when the cache directory could not
+    /// be opened (previews are then rendered for every request).
+    pub preview_cache: Option<Arc<PreviewCache>>,
+    /// The preview renderer (in-process until [`AppState::with_preview_executor`]).
+    pub previews: Arc<Previews>,
 }
 
 /// What the server found in its models directory at start.
@@ -161,7 +190,10 @@ pub struct ModelsInstalled {
 impl AppState {
     pub fn new(pool: PgPool, storage: BlobStore, config: ApiConfig) -> Self {
         let store = storage.clone();
+        let preview_cache = open_preview_cache(&storage, &config);
         Self {
+            preview_cache,
+            previews: Arc::new(Previews::new(Executor::InProcess, &config.preview_limits)),
             pool,
             storage,
             free_space: Arc::new(move || store.available_space()),
@@ -186,6 +218,14 @@ impl AppState {
         Self {
             text_encoder: text_encoder.map(Arc::new),
             models_installed,
+            ..self
+        }
+    }
+
+    /// This state, rendering previews with `executor` (the sandbox in production).
+    pub fn with_preview_executor(self, executor: Executor) -> Self {
+        Self {
+            previews: Arc::new(Previews::new(executor, &self.config.preview_limits)),
             ..self
         }
     }

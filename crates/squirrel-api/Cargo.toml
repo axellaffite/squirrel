@@ -22,7 +22,9 @@ squirrel-auth.workspace = true
 squirrel-core.workspace = true
 squirrel-db.workspace = true
 squirrel-jobs.workspace = true
+squirrel-media.workspace = true
 squirrel-ml.workspace = true
+squirrel-sandbox.workspace = true
 squirrel-storage.workspace = true
 subtle.workspace = true
 thiserror.workspace = true
@@ -37,6 +39,8 @@ utoipa-axum.workspace = true
 uuid.workspace = true
 
 [dev-dependencies]
+image.workspace = true
+squirrel-media = { workspace = true, features = ["test-util"] }
 pgvector.workspace = true
 squirrel-ml = { workspace = true, features = ["test-util"] }
 squirrel-storage = { workspace = true, features = ["test-util"] }

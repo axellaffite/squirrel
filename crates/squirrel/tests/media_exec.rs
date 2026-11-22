@@ -1,6 +1,7 @@
 use std::time::Duration;
 
 use squirrel_media::exec::{ExecRequest, ExecResponse, TEXT_FILE};
+use squirrel_media::preview::{PreviewEncoding, PreviewEngine};
 use squirrel_media::testutil::{ExifSpec, jpeg_sized_with_exif, pdf_with_text};
 use squirrel_media::thumbs::DecodeLimits;
 use squirrel_worker::exec::{ExecError, Executor, SubprocessConfig};
@@ -36,6 +37,57 @@ async fn renders_in_a_child_process() {
         other => panic!("unexpected {other:?}"),
     }
     assert!(out.path().join("thumb.webp").is_file());
+}
+
+/// A phone-sized preview of a 4 MP photo, in the child with its preview
+/// limits (RLIMIT_AS 1.5 GiB on Linux), through libvips when built with it.
+#[tokio::test]
+async fn renders_a_preview_in_a_child_process() {
+    let dir = tempfile::tempdir().unwrap();
+    let input = dir.path().join("in.jpg");
+    let spec = ExifSpec {
+        orientation: Some(6),
+        ..ExifSpec::default()
+    };
+    std::fs::write(&input, jpeg_sized_with_exif(2400, 1800, &spec)).unwrap();
+    let request = ExecRequest::Preview {
+        input,
+        out_dir: dir.path().into(),
+        bucket: 2160,
+        encoding: PreviewEncoding::Display,
+        engine: PreviewEngine::Vips,
+        limits: DecodeLimits::default(),
+    };
+    let response = executor(Duration::from_secs(60))
+        .run(request)
+        .await
+        .unwrap();
+    let ExecResponse::Preview { preview } = response else {
+        panic!("unexpected {response:?}");
+    };
+    assert_eq!((preview.width, preview.height), (1620, 2160));
+    let engine = if squirrel_media::VIPS_COMPILED {
+        PreviewEngine::Vips
+    } else {
+        PreviewEngine::Builtin
+    };
+    assert_eq!(preview.engine, engine);
+    assert!(dir.path().join("preview.jpg").is_file());
+}
+
+#[test]
+fn the_probe_flag_reports_libvips() {
+    let output = std::process::Command::new(env!("CARGO_BIN_EXE_squirrel"))
+        .args(["media-exec", "--probe"])
+        .output()
+        .unwrap();
+    assert!(output.status.success(), "{output:?}");
+    let response: ExecResponse = serde_json::from_slice(&output.stdout).unwrap();
+    let ExecResponse::Probe { report } = response else {
+        panic!("unexpected {response:?}");
+    };
+    assert_eq!(report.compiled, squirrel_media::VIPS_COMPILED);
+    assert_eq!(report.usable(), squirrel_media::VIPS_COMPILED, "{report:?}");
 }
 
 /// With pdfium (`scripts/fetch-pdfium.sh`); skipped otherwise.

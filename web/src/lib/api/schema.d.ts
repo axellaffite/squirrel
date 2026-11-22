@@ -2725,13 +2725,19 @@ export interface operations {
     thumbnail: {
         parameters: {
             query: {
-                /** @description `thumb` (grid, 360 px tall) or `preview` (lightbox, 1440 px). */
+                /** @description `thumb` (grid, 360 px tall) or `preview` (lightbox). */
                 size: "thumb" | "preview";
                 /**
-                 * @description The `thumbnail.version` from the listing. Only a URL with the current
-                 *     version is cached as immutable.
+                 * @description The `thumbnail.version` from the listing. Only a thumbnail URL with
+                 *     the current version is cached as immutable.
                  */
                 v?: number;
+                /**
+                 * @description `preview` of a photo only: the long side wanted, in device pixels. Rounded
+                 *     up to 1440, 2160 or 3200 (capped), never above the original's size.
+                 *     Without it: 1440. PDF previews are always 1440.
+                 */
+                px?: number;
             };
             header?: never;
             path: {
@@ -2742,12 +2748,14 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
+            /** @description WebP, or JPEG for an opaque photo preview */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
                     "image/webp": number[];
+                    "image/jpeg": number[];
                 };
             };
             /** @description Unchanged (If-None-Match) */
@@ -2767,6 +2775,24 @@ export interface operations {
             };
             /** @description not_found, or not_ready while the worker has not produced it */
             404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description rate_limited: too many previews rendered; retry after `Retry-After` */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description busy: every preview renderer is in use; retry after `Retry-After` */
+            503: {
                 headers: {
                     [name: string]: unknown;
                 };
