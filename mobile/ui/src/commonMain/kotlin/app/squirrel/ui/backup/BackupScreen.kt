@@ -70,6 +70,11 @@ fun BackupScreen(vm: BackupViewModel, picker: AlbumPickerViewModel, actions: Pho
             }
         }
         state.locationWarning?.let { Alert(it) }
+        state.batteryNotice?.let { notice ->
+            Alert(notice) {
+                Button("Allow background use", onClick = actions::openBatterySettings, variant = ButtonVariant.Secondary, size = ButtonSize.Sm)
+            }
+        }
         Well {
             // What is backed up, where people look for it (it is also in Backup › Settings).
             ListRow(albums.kind.title, icon = albums.kind.icon, meta = albums.label, onClick = picker::open)

@@ -28,6 +28,7 @@ fun BackupTab(graph: AppGraph, actions: PhotoAccessActions) {
             now = { Clock.System.now().toEpochMilliseconds() },
             onBackUpNow = graph::backUpNow,
             failures = { withContext(Dispatchers.IO) { graph.queue.failures() } },
+            batteryRestricted = { graph.backup?.batteryRestricted() ?: false },
         )
     }
     // One choice of albums or folders behind both the Backup screen and its settings.
