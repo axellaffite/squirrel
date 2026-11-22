@@ -12,6 +12,8 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.io.IOException
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -197,8 +199,7 @@ class OfflineRunTest {
     @Test
     fun aRequestThatKeepsFailingWhileTheServerAnswersSpendsAnAttemptInsteadOfLooping() = runApiTest {
         put(1)
-        var tries = 0
-        server.chunkFailure = { _, _ -> tries++; IOException("connection reset") } // healthz answers all along
+        server.chunkFailure = { _, _ -> IOException("connection reset") } // healthz answers all along
         val engine = engine()
 
         val summary = engine.runOnce(waitForNetwork = true)
@@ -207,7 +208,8 @@ class OfflineRunTest {
         val asset = queue.get("images:0")!!
         assertEquals(1, asset.attempts) // the third try counted as an ordinary failure
         assertEquals(QueueState.Uploading, asset.state) // its session is kept for the next run
-        assertEquals(3, tries) // two false alarms, then the attempt: no hot loop
+        // Three tries (a new session, then two resumes): two false alarms, then the attempt. No hot loop.
+        assertEquals(3, server.requests.count { it.url.encodedPath.startsWith("/api/uploads") })
         assertEquals(listOf(PROBE_BASE_MS, PROBE_BASE_MS), sleeps) // each false alarm waited a probe delay
         assertTrue(waits.isEmpty())
     }
@@ -244,22 +246,23 @@ class OfflineRunTest {
             }
         }
         val states = mutableListOf<SyncState>()
+        val statesLock = Mutex() // common code: no `synchronized`
         var restoredAt = -1
         val engine = engine(
             transport = transport,
             network = NetworkWaiter {
                 delay(300) // meanwhile the other asset sends its chunks
-                synchronized(states) { restoredAt = states.size }
+                statesLock.withLock { restoredAt = states.size }
                 healthDown = false
             },
         )
-        val collector = launch { engine.state.collect { synchronized(states) { states += it } } }
+        val collector = launch { engine.state.collect { statesLock.withLock { states += it } } }
 
         val summary = engine.runOnce(waitForNetwork = true)
         collector.cancel()
 
         assertEquals(2, summary.uploaded)
-        val seen = synchronized(states) { states.toList() }
+        val seen = statesLock.withLock { states.toList() }
         val from = seen.indexOf(SyncState.WaitingForNetwork)
         assertTrue(from >= 0 && restoredAt > from, "states: $seen")
         // No flip back to "Uploading" (the notification) while a worker waits for the server.
