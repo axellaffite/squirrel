@@ -73,7 +73,7 @@ enum Command {
 
 #[derive(Args)]
 struct AdminArgs {
-    /// Required by every command except `geodata`.
+    /// Required by every command except `geodata` and `previews`.
     #[arg(long, env = "SQUIRREL_DATABASE_URL")]
     database_url: Option<String>,
     #[command(subcommand)]

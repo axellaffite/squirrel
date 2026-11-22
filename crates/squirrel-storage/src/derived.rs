@@ -174,6 +174,27 @@ impl DerivedStore {
         Ok(())
     }
 
+    /// Removes every version of `variant` stored for `hash`; how many files
+    /// went. Nothing there is not an error.
+    pub fn remove_variant(&self, hash: &ContentHash, variant: Variant) -> Result<usize> {
+        let dir = self.dir(hash);
+        let entries = match fs::read_dir(&dir) {
+            Ok(entries) => entries,
+            Err(err) if err.kind() == io::ErrorKind::NotFound => return Ok(0),
+            Err(err) => return Err(err.into()),
+        };
+        let prefix = format!("{}-v", variant.stem());
+        let mut removed = 0;
+        for entry in entries {
+            let name = entry?.file_name();
+            if name.to_str().is_some_and(|name| name.starts_with(&prefix)) {
+                crate::fsutil::remove_if_exists(&dir.join(name))?;
+                removed += 1;
+            }
+        }
+        Ok(removed)
+    }
+
     /// The bytes of one installed variant.
     pub fn read(&self, hash: &ContentHash, variant: Variant, version: i16) -> Result<Vec<u8>> {
         fs::read(self.variant_path(hash, variant, version)).map_err(|err| match err.kind() {
@@ -335,6 +356,24 @@ mod tests {
                 .unwrap();
         }
         assert!(store.read(&hash, Variant::Thumb, 1).is_ok());
+    }
+
+    #[test]
+    fn one_variant_can_be_removed_in_every_version() {
+        let (_dir, store) = store();
+        let hash = ContentHash::parse(HASH).unwrap();
+        store
+            .install(
+                &hash,
+                1,
+                &scratch_with(&store, &["thumb.webp", "preview.webp"]),
+            )
+            .unwrap();
+        assert_eq!(store.remove_variant(&hash, Variant::Preview).unwrap(), 1);
+        assert_eq!(store.remove_variant(&hash, Variant::Preview).unwrap(), 0);
+        assert!(store.read(&hash, Variant::Thumb, 1).is_ok());
+        let gone = ContentHash::parse(&"0".repeat(64)).unwrap();
+        assert_eq!(store.remove_variant(&gone, Variant::Preview).unwrap(), 0);
     }
 
     #[test]

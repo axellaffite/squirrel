@@ -317,7 +317,7 @@ mod tests {
             other => panic!("unexpected {other:?}"),
         }
         assert!(out.path().join(THUMB_FILE).is_file());
-        assert!(out.path().join(PREVIEW_FILE).is_file());
+        assert!(!out.path().join(PREVIEW_FILE).exists());
     }
 
     #[test]

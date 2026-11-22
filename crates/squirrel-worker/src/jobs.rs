@@ -18,6 +18,8 @@ pub const CLIP_EMBED: &str = "clip_embed";
 pub use squirrel_jobs::kinds::{CLUSTER_FACES, FACE_BACKFILL, FACES, faces};
 /// Encodes the label bank's prompts with the CLIP text tower.
 pub const LABEL_BANK: &str = "label_bank";
+/// Deletes the photo previews stored before they were rendered on request.
+pub const DROP_PREVIEWS: &str = "drop_previews";
 
 /// Background ML kinds: they share the worker's ML slot (`--ml-concurrency`),
 /// so the other slots always stay free for fresh uploads. Model inference,
@@ -26,7 +28,7 @@ pub const LABEL_BANK: &str = "label_bank";
 pub const ML_KINDS: [&str; 4] = [CLIP_EMBED, FACES, LABEL_BANK, CLUSTER_FACES];
 
 /// Every kind this crate can register, whether or not it is registered now.
-pub const KNOWN_KINDS: [&str; 11] = [
+pub const KNOWN_KINDS: [&str; 12] = [
     squirrel_jobs::kinds::PROCESS_MEDIA,
     EXTRACT_METADATA,
     THUMBNAILS,
@@ -38,6 +40,7 @@ pub const KNOWN_KINDS: [&str; 11] = [
     CLUSTER_FACES,
     FACE_BACKFILL,
     LABEL_BANK,
+    DROP_PREVIEWS,
 ];
 
 /// Payload of every per-blob job.
