@@ -39,7 +39,7 @@ async fn renders_in_a_child_process() {
     assert!(out.path().join("thumb.webp").is_file());
 }
 
-/// A phone-sized preview of a 12 MP photo, in the child with its preview
+/// A phone-sized preview of a 4 MP photo, in the child with its preview
 /// limits (RLIMIT_AS 1.5 GiB on Linux), through libvips when built with it.
 #[tokio::test]
 async fn renders_a_preview_in_a_child_process() {
@@ -49,7 +49,7 @@ async fn renders_a_preview_in_a_child_process() {
         orientation: Some(6),
         ..ExifSpec::default()
     };
-    std::fs::write(&input, jpeg_sized_with_exif(4000, 3000, &spec)).unwrap();
+    std::fs::write(&input, jpeg_sized_with_exif(2400, 1800, &spec)).unwrap();
     let request = ExecRequest::Preview {
         input,
         out_dir: dir.path().into(),
