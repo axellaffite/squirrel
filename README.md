@@ -37,6 +37,8 @@ request logs may include invitation tokens (they appear in `/api/join/{token}` p
 | `SQUIRREL_SETUP_TOKEN` | generated and logged | Setup code for the first administrator |
 | `SQUIRREL_TRUSTED_PROXIES` | empty | Comma-separated IPs/CIDRs of reverse proxies whose `X-Forwarded-For` is trusted for rate limiting and logs. Leave empty when clients connect directly |
 | `SQUIRREL_LOG_JSON` | `false` | JSON logs |
+| `SQUIRREL_PREVIEW_CACHE_MB` | `1536` | Disk budget of the photo previews rendered on request (`cache/previews/`), least recently used first out |
+| `SQUIRREL_PREVIEW_CONCURRENCY` | `2` | Photo previews rendered at once; a request waiting more than 3 s for a slot gets 503 `busy` (`Retry-After: 1`) |
 | `RUST_LOG` | `info,squirrel=debug,tower_http=info` | Log filter ([`tracing` `EnvFilter`](https://docs.rs/tracing-subscriber/latest/tracing_subscriber/filter/struct.EnvFilter.html) syntax) |
 
 Each variable also exists as a `serve` flag (`--data-dir`, `--bind`, …; see `squirrel serve --help`).
@@ -66,7 +68,8 @@ database or a data directory would not see each other's locks.
       .squirrel-instance     id of the installation (database) this directory belongs to
       blobs/ab/cd/<sha256>   file contents, stored once per distinct content (read-only)
       tmp/uploads/<id>       uploads in progress (expire after 24 h without activity)
-      derived/ab/cd/<sha256>/{thumb,preview}-v<N>.webp   thumbnails, per distinct content
+      derived/ab/cd/<sha256>/thumb-v<N>.webp   thumbnails, per distinct content (plus preview-v<N>.webp for PDFs)
+      cache/previews/ab/<sha256>-<bucket>-r<N>.{jpg,webp}   photo previews rendered on request (a bounded cache)
       geo/                   the GeoNames dataset (scripts/install-geodata.sh)
 
 The database holds names, folders and who owns what; the blobs hold the bytes. Back up
@@ -177,6 +180,25 @@ libheif ≥ 1.17 with its libde265 HEVC plugin (`apt install libheif-dev libheif
 `brew install libheif`). Other builds still read their date and place, and show them with
 an "unsupported preview" tile.
 
+**Previews** (the lightbox) are rendered on request from the original, at the screen's size:
+clients send `px` (device pixels) and get the 1440, 2160 or 3200 px bucket above it (never
+larger than the photo), kept in a least-recently-used cache (`SQUIRREL_PREVIEW_CACHE_MB`, not
+counted in quotas). Thumbnails, and PDF previews, stay stored. Each render runs in its own
+`squirrel media-exec` child (1.5 GiB address space on Linux, 10 s of CPU), through **libvips**
+in builds with `--features vips` (the Docker image): shrink-on-load JPEG ≈ 0.1–0.3 s, HEIC
+≈ 0.5 s for 12 MP. It needs the system libvips ≥ 8.15 (`apt install --no-install-recommends
+libvips-dev`, `brew install vips`; LGPL-2.1+, linked dynamically) and only lets it load JPEG, PNG,
+WebP, TIFF, GIF and HEIF. Without it, or when `squirrel media-exec --probe` finds it broken or
+missing a loader, the built-in decoders render previews 2–3× slower. Per user, 40 renders then 4 a
+second (429 beyond); cached previews cost nothing.
+
+    squirrel admin previews stats         # SQUIRREL_DATA_DIR set: entries, size, renderer
+    squirrel admin previews clear         # rendered again on request
+
+Installations from before on-demand previews still hold a stored 1440 px preview per photo
+(≈ 7–15 GB per 50 000 photos). Once the new release serves previews, delete them once with
+`squirrel admin media drop-previews` (a worker deletes them 500 photos at a time; PDFs keep theirs).
+
 **Document search** looks at file names, PDFs and text files: words of three letters or more
 match as prefixes, two-letter words only as whole words, one-letter words are ignored. Each
 search runs at most 5 s (then answers 503) and is rate limited per client (20 at once, then one
@@ -208,8 +230,9 @@ are never used**: their licence allows non-commercial research only, which does 
 home server; YuNet and SFace are permissively licensed, at the cost of somewhat more split
 people (merging is one click).
 
-**Running ML on another machine.** Inference only reads previews and writes Postgres, so a
-bigger machine can share the data directory read-only:
+**Running ML on another machine.** Inference reads originals (it renders a temporary 1440 px
+frame in the system's temp directory) and writes Postgres, so a bigger machine can share the
+data directory read-only:
 `squirrel worker --kinds clip_embed,faces,cluster_faces,label_bank` there, and
 `squirrel worker --exclude-kinds clip_embed,faces,cluster_faces,label_bank` on the home
 server (`SQUIRREL_WORKER_KINDS` / `SQUIRREL_WORKER_EXCLUDE_KINDS`). `--ml-concurrency` stays 1.

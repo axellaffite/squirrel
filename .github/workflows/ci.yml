@@ -154,6 +154,57 @@ jobs:
       # The sandboxed path: `squirrel media-exec` registers the HEIC decoder in the child.
       - run: cargo test -p squirrel --features squirrel/heic
 
+  rust-vips:
+    # Previews through the system libvips (feature `vips`; the Docker image builds with it).
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: pgvector/pgvector:0.8.7-pg17@sha256:b513c48566e4777cd3370451400000c78eda6a08131d68f4c31d4a76f27bd8fd
+        env:
+          POSTGRES_USER: squirrel
+          POSTGRES_PASSWORD: squirrel
+          POSTGRES_DB: squirrel_dev
+        ports: ["55432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U squirrel" --health-interval 2s --health-timeout 3s --health-retries 20
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install libvips
+        run: |
+          sudo apt-get update
+          # The HEIF loader is a libvips module; heif-enc (with x265) encodes the test fixture.
+          sudo apt-get install -y --no-install-recommends libvips-dev libvips-tools pkg-config \
+            libheif-plugin-libde265 libheif-examples libheif-plugin-x265
+          vips --version
+          vips --vips-config | grep -i heif
+      - name: Encode the HEIC test fixture
+        run: |
+          heif-enc -q 50 -o crates/squirrel-media/tests/fixtures/rotated.heic \
+            crates/squirrel-media/tests/fixtures/rotated-source.jpg
+      - uses: dtolnay/rust-toolchain@1.94
+        with:
+          components: clippy
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: vips
+      - run: cargo clippy -p squirrel -p squirrel-media -p squirrel-sandbox --features squirrel/vips --all-targets -- -D warnings
+      # The PDF tests of these crates need pdfium (with CI set they fail rather than skip).
+      - name: Fetch pdfium
+        run: |
+          set -o pipefail
+          scripts/fetch-pdfium.sh "$PWD/.cache/squirrel-assets/pdfium" | tail -n 1 >> "$GITHUB_ENV"
+      # libvips in-process: every orientation against the built-in pipeline, limits, fallbacks, HEIF.
+      - run: cargo test -p squirrel-media -p squirrel-sandbox --features squirrel-media/vips,squirrel-sandbox/vips
+      # libvips in the sandbox child, under the preview limits (RLIMIT_AS 1.5 GiB, MALLOC_ARENA_MAX=2).
+      - run: cargo test -p squirrel --features squirrel/vips --test media_exec
+      - name: The child's probe finds libvips and its loaders
+        run: |
+          report=$(cargo run -q -p squirrel --features squirrel/vips -- media-exec --probe)
+          echo "$report"
+          echo "$report" | grep -q '"heifload"' || { echo "::error::libvips without its HEIF loader"; exit 1; }
+      # The API's previews rendered by libvips (in-process in tests).
+      - run: cargo test -p squirrel-api --features squirrel-media/vips --test previews
+
   web:
     runs-on: ubuntu-latest
     defaults:
