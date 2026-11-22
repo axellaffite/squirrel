@@ -1,6 +1,8 @@
 //! Job kinds enqueued across crates. Light on purpose: `squirrel-api` enqueues
 //! media work without depending on the media crates.
 
+use std::time::Duration;
+
 use serde_json::json;
 use uuid::Uuid;
 
@@ -11,6 +13,34 @@ pub const PROCESS_MEDIA: &str = "process_media";
 pub const FACE_BACKFILL: &str = "face_backfill";
 /// Clusters a user's new faces (Phase 5).
 pub const CLUSTER_FACES: &str = "cluster_faces";
+
+/// Groups a user's near-identical photos (duplicates).
+pub const GROUP_DUPLICATES: &str = "group_duplicates";
+
+/// How long new photos wait before they are grouped:
+/// `SQUIRREL_DUPLICATES_DELAY_SECS`, default [`DEFAULT_DUPLICATES_DELAY`]
+/// (the E2E server sets 1).
+pub fn duplicates_delay() -> Duration {
+    static DELAY: std::sync::OnceLock<Duration> = std::sync::OnceLock::new();
+    *DELAY.get_or_init(|| {
+        std::env::var("SQUIRREL_DUPLICATES_DELAY_SECS")
+            .ok()
+            .and_then(|v| v.trim().parse().ok())
+            .map_or(DEFAULT_DUPLICATES_DELAY, Duration::from_secs)
+    })
+}
+
+pub const DEFAULT_DUPLICATES_DELAY: Duration = Duration::from_secs(60);
+
+/// Groups `owner`'s new photos, at most once per [`duplicates_delay`] while
+/// photos keep arriving (the dedupe key collapses the requests). Ask for it
+/// with [`crate::request_debounced`].
+pub fn group_duplicates(owner: Uuid) -> NewJob {
+    NewJob::new(GROUP_DUPLICATES, json!({ "owner_id": owner }))
+        .priority(priority::DUPLICATES)
+        .dedupe(format!("{GROUP_DUPLICATES}:{owner}"))
+        .delay(duplicates_delay())
+}
 
 /// Face detection of an image blob (rows are written per owner).
 pub const FACES: &str = "faces";

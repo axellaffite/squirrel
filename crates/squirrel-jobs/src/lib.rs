@@ -10,5 +10,5 @@ mod worker;
 
 pub use backoff::{jitter, retry_delay};
 pub use job::{JobContext, JobError, NewJob, priority};
-pub use queue::enqueue;
+pub use queue::{enqueue, request_debounced};
 pub use worker::{Registry, Worker, WorkerConfig};
