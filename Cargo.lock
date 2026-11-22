@@ -3059,6 +3059,7 @@ dependencies = [
  "squirrel-core",
  "squirrel-db",
  "squirrel-jobs",
+ "squirrel-media",
  "squirrel-ml",
  "squirrel-storage",
  "subtle",

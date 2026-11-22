@@ -22,6 +22,7 @@ squirrel-auth.workspace = true
 squirrel-core.workspace = true
 squirrel-db.workspace = true
 squirrel-jobs.workspace = true
+squirrel-media.workspace = true
 squirrel-ml.workspace = true
 squirrel-storage.workspace = true
 subtle.workspace = true
