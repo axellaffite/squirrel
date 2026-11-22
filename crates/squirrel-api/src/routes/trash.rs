@@ -79,7 +79,9 @@ pub async fn restore(
             .await
             .map_err(DbError::from)?;
     }
-    // Photos leave their duplicates group in the trash: back, they are grouped again.
+    // Photos leave their duplicates group in the trash: back, they are grouped
+    // again, and none comes back hidden without a group to restore it from.
+    squirrel_db::duplicates::unhide_orphans(&mut tx, caller.user.id).await?;
     if squirrel_db::duplicates::needs_grouping(&mut tx, caller.user.id).await? {
         let job = squirrel_jobs::kinds::group_duplicates(caller.user.id);
         squirrel_jobs::request_debounced(&mut tx, &job)

@@ -163,6 +163,17 @@ async fn lock(
     owner: Uuid,
     id: Uuid,
 ) -> Result<Option<Vec<Uuid>>, DbError> {
+    // Members first, in node order, as trashing a photo does (its member row,
+    // then the group): a trash waits for this decision and sees its outcome,
+    // and the two never deadlock.
+    let members: Vec<Uuid> = sqlx::query_scalar(
+        "SELECT node_id FROM duplicate_members WHERE group_id = $1 AND owner_id = $2 \
+          ORDER BY node_id FOR UPDATE",
+    )
+    .bind(id)
+    .bind(owner)
+    .fetch_all(&mut *conn)
+    .await?;
     let found: Option<Uuid> = sqlx::query_scalar(
         "SELECT id FROM duplicate_groups WHERE id = $1 AND owner_id = $2 FOR UPDATE",
     )
@@ -170,15 +181,7 @@ async fn lock(
     .bind(owner)
     .fetch_optional(&mut *conn)
     .await?;
-    if found.is_none() {
-        return Ok(None);
-    }
-    Ok(Some(
-        sqlx::query_scalar("SELECT node_id FROM duplicate_members WHERE group_id = $1")
-            .bind(id)
-            .fetch_all(conn)
-            .await?,
-    ))
+    Ok(found.map(|_| members))
 }
 
 /// Keeps `node` of group `id`: every other member is hidden, `node` is shown
@@ -200,11 +203,13 @@ pub async fn keep(
         "UPDATE assets SET \
                 hidden_at = CASE WHEN node_id = $3 THEN NULL ELSE COALESCE(hidden_at, now()) END, \
                 hidden_reason = CASE WHEN node_id = $3 THEN NULL ELSE 'duplicate' END \
-          WHERE owner_id = $1 AND node_id = ANY($2)",
+          WHERE owner_id = $1 AND node_id = ANY($2) \
+            AND node_id IN (SELECT node_id FROM duplicate_members WHERE group_id = $4)",
     )
     .bind(owner)
     .bind(&members)
     .bind(node)
+    .bind(id)
     .execute(&mut *tx)
     .await?;
     sqlx::query(
