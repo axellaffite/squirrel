@@ -16,6 +16,7 @@ squirrel-db.workspace = true
 squirrel-jobs.workspace = true
 squirrel-media.workspace = true
 squirrel-ml.workspace = true
+squirrel-sandbox.workspace = true
 squirrel-storage.workspace = true
 thiserror.workspace = true
 time.workspace = true

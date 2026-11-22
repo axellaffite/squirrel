@@ -15,6 +15,7 @@ pub mod nodes;
 pub mod people;
 pub mod photo_search;
 pub mod photos;
+mod preview_render;
 pub mod search;
 pub mod setup;
 pub mod storage;

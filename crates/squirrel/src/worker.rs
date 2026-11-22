@@ -304,10 +304,15 @@ pub async fn run(
     if let Some(dir) = &pdfium_dir {
         tracing::info!(dir = %dir.display(), "PDF thumbnails and text use pdfium");
     }
+    let executor = executor(options.media_exec)?;
     let media = Arc::new(MediaContext {
         pool: pool.clone(),
         storage,
-        executor: executor(options.media_exec)?,
+        previews: squirrel_sandbox::preview::PreviewRenderer::new(
+            executor.clone(),
+            DecodeLimits::default(),
+        ),
+        executor,
         pdfium_dir,
         decode_limits: DecodeLimits::default(),
         geo: GeoCache::new(geo),

@@ -20,6 +20,7 @@ use squirrel_worker::context::{MediaContext, MlContext};
 use squirrel_worker::exec::{Executor, SubprocessConfig};
 use squirrel_worker::geocode::GeoCache;
 use squirrel_worker::ml_client::{MlBackend, MlChildConfig, MlClient};
+use squirrel_worker::preview::PreviewRenderer;
 use squirrel_worker::{clip_job, jobs, label_bank};
 use uuid::Uuid;
 
@@ -117,15 +118,17 @@ async fn backfill_throughput(pool: PgPool) {
         true,
         false,
     ));
+    let executor = Executor::Subprocess(SubprocessConfig {
+        program: program.clone(),
+        max_memory_mb: 2048,
+        max_cpu_secs: 120,
+        timeout: Duration::from_secs(150),
+    });
     let ctx = Arc::new(MediaContext {
         pool: pool.clone(),
         storage,
-        executor: Executor::Subprocess(SubprocessConfig {
-            program: program.clone(),
-            max_memory_mb: 2048,
-            max_cpu_secs: 120,
-            timeout: Duration::from_secs(150),
-        }),
+        previews: PreviewRenderer::new(executor.clone(), DecodeLimits::default()),
+        executor,
         pdfium_dir: None,
         decode_limits: DecodeLimits::default(),
         geo: GeoCache::new(GeoSource::Disabled),

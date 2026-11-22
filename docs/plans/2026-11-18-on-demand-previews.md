@@ -1,5 +1,11 @@
 # On-demand previews with libvips
 
+**As built (2026-11-22).**
+- Task 1 (M-series Mac, libvips 8.18, in-process / with child, 1440·2160·3200): 12 MP JPEG 57·61·64 / 136·141·146 ms; 50 MP JPEG 147·224·234 / 228·308·320 ms; 12 MP HEIC 437·438·450 ms; 48 MP HEIC (single-image, not a grid) ≈ 1.75 s. WebP at 3200 px ≈ 620 ms, so JPEG stays. Peak RSS 50–90 MB (JPEG), 120 MB (WebP 3200), 130 MB (12 MP HEIC), 420 MB (48 MP HEIC).
+- Spawn + `vips_init` 75 ms on macOS (Homebrew loads many modules), 33 ms on Debian arm64: one child per request kept. **Open:** measure on the i3; past 60 ms switch to the recycled pool, and check big HEICs stay under the 10 s CPU limit (two threads count double); the same limit applies to ML frames rendered by the built-in pipeline. A blob collected mid-render can leave an orphan cache entry (LRU evicts it).
+- Deviations: the render limit (40, then 4/s) is per user, not per IP; a photo that cannot be rendered falls back to its stored preview while one exists; the worker probes libvips too; four non-variadic libvips setters the crate does not wrap (`block_untrusted`, `operation_block_set`, `type_find`, `foreign_find_load`) are called through its `bindings` (`unsafe`, `vips.rs` only); plain `thumbnail` (box from the header, no `fail_on=error`) because the crate's `thumbnail_with_opts` breaks on libvips 8.16 (Debian trixie).
+- `drop-previews` is implemented, not run.
+
 **Goal:** stop storing the 1440 px lightbox preview of images; render it from the original on request, at a screen-fitting size bucket, behind a small LRU disk cache. Saves disk on the NUC (≈ 7–15 GB per 50 000 photos) and gives phones and 4K screens sharper previews.
 
 **Architecture:** `GET /api/files/{id}/thumbnail?size=preview&px=N` rounds N up to a bucket, looks in `<data_dir>/cache/previews/`, and on a miss runs a sandboxed `squirrel media-exec` child (new op `preview`) that calls libvips `thumbnail` (shrink-on-load for JPEG, heifload for HEIC), installs the result in the cache and serves it. Thumbnails, PDF previews and video posters stay stored. ML jobs render a temporary 1440 px frame the same way and delete it.

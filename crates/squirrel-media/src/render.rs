@@ -1,4 +1,6 @@
-//! The two stored variants of an image (grid thumbnail and lightbox preview).
+//! The stored variants: the grid thumbnail of every image and PDF, and the
+//! 1440 px preview of a PDF's first page. Photo previews are rendered on
+//! request instead (`crate::preview`).
 
 use std::fs::{self, File};
 use std::io::BufReader;
@@ -29,16 +31,24 @@ pub struct Rendered {
     pub blurhash: String,
 }
 
-/// Writes `thumb.webp` and `preview.webp` into `out_dir`.
+/// Writes `thumb.webp` and `preview.webp` into `out_dir` (a PDF page).
 pub fn render_variants(image: &DynamicImage, out_dir: &Path) -> Result<Rendered, ThumbError> {
     let (width, height) = (image.width(), image.height());
     let (pw, ph) = fit(width, height, PREVIEW_SIDE, PREVIEW_SIDE);
     let preview = resize(image, pw, ph)?;
-    write_variants(preview, width, height, out_dir)
+    write_variants(preview, width, height, out_dir, StorePreview::Yes)
 }
 
-/// [`render_variants`] for a decoded image not yet upright: it is resized in
-/// its stored orientation, and only the small preview is rotated.
+/// Whether the 1440 px intermediate is stored as `preview.webp` too.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum StorePreview {
+    Yes,
+    No,
+}
+
+/// The thumbnail of a photo, decoded but not yet upright: it is resized in
+/// its stored orientation to 1440 px, and only that copy is rotated, then
+/// reduced. Only `thumb.webp` is written.
 pub fn render_decoded(decoded: Decoded, out_dir: &Path) -> Result<Rendered, ThumbError> {
     let (width, height) = (decoded.width, decoded.height);
     let (pw, ph) = fit(width, height, PREVIEW_SIDE, PREVIEW_SIDE);
@@ -50,25 +60,28 @@ pub fn render_decoded(decoded: Decoded, out_dir: &Path) -> Result<Rendered, Thum
     let mut preview = resize(&decoded.image, rw, rh)?;
     drop(decoded.image);
     preview.apply_orientation(decoded.orientation);
-    write_variants(preview, width, height, out_dir)
+    write_variants(preview, width, height, out_dir, StorePreview::No)
 }
 
-/// Writes the preview and a thumbnail made from it. `width`/`height`: the
-/// source as displayed.
+/// Writes a thumbnail made from `preview` (and the preview itself when asked).
+/// `width`/`height`: the source as displayed.
 fn write_variants(
     preview: DynamicImage,
     width: u32,
     height: u32,
     out_dir: &Path,
+    store_preview: StorePreview,
 ) -> Result<Rendered, ThumbError> {
     let (pw, ph) = (preview.width(), preview.height());
     // From the preview: 4–16× fewer pixels to filter, no visible difference at 360 px.
     let (tw, th) = fit(pw, ph, THUMB_MAX_WIDTH, THUMB_HEIGHT);
     let thumb = resize(&preview, tw, th)?;
-    fs::write(
-        out_dir.join(PREVIEW_FILE),
-        encode_webp(&preview, PREVIEW_QUALITY),
-    )?;
+    if store_preview == StorePreview::Yes {
+        fs::write(
+            out_dir.join(PREVIEW_FILE),
+            encode_webp(&preview, PREVIEW_QUALITY),
+        )?;
+    }
     fs::write(out_dir.join(THUMB_FILE), encode_webp(&thumb, THUMB_QUALITY))?;
     Ok(Rendered {
         width,
@@ -92,7 +105,7 @@ mod tests {
     use crate::testutil::{ExifSpec, jpeg_sized_with_exif};
 
     #[test]
-    fn writes_both_variants_and_reports_displayed_size() {
+    fn photos_store_only_their_thumbnail_and_report_displayed_size() {
         let dir = tempfile::tempdir().unwrap();
         let input = dir.path().join("in.jpg");
         std::fs::write(
@@ -111,9 +124,11 @@ mod tests {
         let rendered = render_image(&input, out.path(), DecodeLimits::default()).unwrap();
         assert_eq!((rendered.width, rendered.height), (1000, 2000), "rotated");
         let thumb = image::open(out.path().join(THUMB_FILE)).unwrap();
-        let preview = image::open(out.path().join(PREVIEW_FILE)).unwrap();
         assert_eq!((thumb.width(), thumb.height()), (180, 360));
-        assert_eq!((preview.width(), preview.height()), (720, 1440));
+        assert!(
+            !out.path().join(PREVIEW_FILE).exists(),
+            "rendered on request"
+        );
         assert!(!rendered.blurhash.is_empty());
     }
 
@@ -147,10 +162,8 @@ mod tests {
         let (late, early) = (tempfile::tempdir().unwrap(), tempfile::tempdir().unwrap());
         render_decoded(decode_it(), late.path()).unwrap();
         render_variants(&decode_it().upright(), early.path()).unwrap();
-        let a = image::open(late.path().join(PREVIEW_FILE))
-            .unwrap()
-            .to_rgb8();
-        let b = image::open(early.path().join(PREVIEW_FILE))
+        let a = image::open(late.path().join(THUMB_FILE)).unwrap().to_rgb8();
+        let b = image::open(early.path().join(THUMB_FILE))
             .unwrap()
             .to_rgb8();
         assert_eq!(a.dimensions(), b.dimensions());
