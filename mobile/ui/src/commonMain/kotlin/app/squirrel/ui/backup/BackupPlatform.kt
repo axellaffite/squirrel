@@ -4,6 +4,7 @@ import app.squirrel.shared.settings.BackupSettings
 import app.squirrel.shared.sync.AssetSource
 import app.squirrel.shared.sync.ChunkTransport
 import app.squirrel.shared.sync.Conditions
+import app.squirrel.shared.sync.NetworkWaiter
 import app.squirrel.shared.api.SquirrelApi
 import app.squirrel.theme.SquirrelIcon
 
@@ -32,6 +33,9 @@ interface BackupPlatform {
 
     /** Signed out: no more background work. */
     fun cancel()
+
+    /** What wakes a foreground run waiting for the network; null: plain timed probes. */
+    fun networkWaiter(): NetworkWaiter? = null
 
     /** How chunks travel for [api] (iOS: the background session); null: Ktor with the bearer token. */
     fun transport(api: SquirrelApi): ChunkTransport? = null

@@ -61,6 +61,9 @@ class BackupUiTest {
         assertEquals("Looking for new photos", ui(status.copy(state = SyncState.Scanning)).progressLabel)
         assertEquals("Preparing 40 items", ui(status.copy(state = SyncState.Hashing(10, 40))).progressLabel)
         assertEquals("Checking what your Squirrel already has", ui(status.copy(state = SyncState.Checking)).progressLabel)
+        val waiting = ui(status.copy(state = SyncState.WaitingForNetwork))
+        assertEquals("Waiting for the network to reach your Squirrel", waiting.progressLabel)
+        assertTrue(waiting.running) // still the same run: "Back up now" stays disabled
     }
 
     @Test
