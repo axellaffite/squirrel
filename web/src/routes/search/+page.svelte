@@ -8,16 +8,26 @@
 	import FilterBar from '#lib/components/photos/FilterBar.svelte';
 	import Lightbox from '#lib/components/photos/Lightbox.svelte';
 	import PhotoGrid from '#lib/components/photos/PhotoGrid.svelte';
+	import Scrubber from '#lib/components/photos/Scrubber.svelte';
+	import SearchTimeline from '#lib/components/photos/SearchTimeline.svelte';
+	import type { Geometry } from '#lib/components/photos/Timeline.svelte';
 	import Page from '#lib/components/shell/Page.svelte';
 	import Alert from '#lib/components/ui/Alert.svelte';
 	import Button from '#lib/components/ui/Button.svelte';
 	import EmptyState from '#lib/components/ui/EmptyState.svelte';
-	import { listPeople, warmUpSearch, type Person } from '#lib/explore/api.ts';
+	import SegmentedControl from '#lib/components/ui/SegmentedControl.svelte';
+	import { listPeople, warmUpSearch, type Person, type SearchOrder } from '#lib/explore/api.ts';
 	import { filterFromParams, withFilter, type PhotoFilter } from '#lib/explore/filters.ts';
-	import { PhotoSearcher } from '#lib/explore/searcher.svelte.ts';
+	import { orderFromParams, PhotoSearcher, withOrder } from '#lib/explore/searcher.svelte.ts';
 	import { normalizeQuery } from '#lib/files/search.ts';
 	import type { AssetSummary } from '#lib/photos/api.ts';
+	import { newestFirst } from '#lib/photos/searchTimeline.ts';
 	import { neighbourAfterRemoval, trashPhotos } from '#lib/photos/trash.ts';
+
+	const ORDERS: readonly { value: SearchOrder; label: string }[] = [
+		{ value: 'date', label: 'Timeline' },
+		{ value: 'relevance', label: 'Best match' }
+	];
 
 	const searcher = new PhotoSearcher();
 	let value = $state(untrack(() => page.url.searchParams.get('q') ?? ''));
@@ -26,14 +36,20 @@
 	let picking: readonly string[] | null = $state(null);
 	let notice: string | null = $state(null);
 	let grid: PhotoGrid | undefined = $state();
+	let timeline: SearchTimeline | undefined = $state();
+	let geometry: Geometry | undefined = $state();
 	const noSelection: ReadonlySet<string> = new Set();
 
 	const typed = $derived(normalizeQuery(value));
 	const settled = $derived(searcher.query !== '' && searcher.query === typed && !searcher.loading);
+	/** The view follows the order the results came in, not one still loading. */
+	const asTimeline = $derived(searcher.itemsOrder === 'date');
+	/** The results in the order shown, which is also the lightbox's. */
+	const shown = $derived(asTimeline ? newestFirst(searcher.items) : searcher.items);
 
-	/** Keeps `?q=` and the filter in the address, so reloading or going back shows the same search. */
-	function remember(query: string, filter: PhotoFilter) {
-		const url = withFilter(page.url.href, filter);
+	/** Keeps `?q=`, the filter and the order in the address, so reloading or going back shows the same search. */
+	function remember(query: string, filter: PhotoFilter, order: SearchOrder) {
+		const url = withOrder(withFilter(page.url.href, filter), order);
 		if (query) url.searchParams.set('q', query);
 		else url.searchParams.delete('q');
 		replaceState(url, {});
@@ -41,22 +57,27 @@
 
 	function typing(next: string) {
 		searcher.type(next);
-		remember(normalizeQuery(next), searcher.filter);
+		remember(normalizeQuery(next), searcher.filter, searcher.order);
 	}
 
 	function filtered(filter: PhotoFilter) {
 		searcher.setFilter(filter);
-		remember(typed, searcher.filter);
+		remember(typed, searcher.filter, searcher.order);
+	}
+
+	function ordered(order: SearchOrder) {
+		searcher.setOrder(order);
+		remember(typed, searcher.filter, searcher.order);
 	}
 
 	function closeViewer() {
 		const id = viewing?.id;
 		viewing = null;
-		if (id) void grid?.focusTile(id);
+		if (id) void (asTimeline ? timeline?.focusTile(id) : grid?.focusTile(id));
 	}
 
 	async function deleteViewed(asset: AssetSummary): Promise<string | null> {
-		const after = neighbourAfterRemoval(searcher.items, asset.id);
+		const after = neighbourAfterRemoval(shown, asset.id);
 		const result = await trashPhotos([asset.id]);
 		if (result.error) return result.error;
 		searcher.items = searcher.items.filter((item) => !result.moved.includes(item.id));
@@ -69,6 +90,7 @@
 		void listPeople().then((result) => {
 			if (result.ok) people = result.data;
 		});
+		searcher.setOrder(orderFromParams(page.url.searchParams));
 		searcher.setFilter(filterFromParams(page.url.searchParams));
 		searcher.now(value);
 		return () => searcher.dispose();
@@ -79,7 +101,9 @@
 	$effect(() => {
 		const q = page.url.searchParams.get('q') ?? '';
 		const filter = filterFromParams(page.url.searchParams);
+		const order = orderFromParams(page.url.searchParams);
 		untrack(() => {
+			searcher.setOrder(order);
 			searcher.setFilter(filter);
 			if (normalizeQuery(q) === typed) return;
 			value = q;
@@ -101,6 +125,9 @@
 	<div class="field">
 		<SearchField bind:value oninput={typing} onsubmit={(query) => searcher.now(query)} label="Search photos" placeholder="Search your photos" wide autofocus />
 		<FilterBar filter={searcher.filter} {people} onChange={filtered} />
+		{#if !searcher.unavailable}
+			<SegmentedControl label="Show results" name="search-order" options={ORDERS} value={searcher.order} onchange={ordered} />
+		{/if}
 	</div>
 
 	{#if searcher.unavailable}
@@ -115,11 +142,27 @@
 	<p class="visually-hidden" aria-live="polite">{notice ?? ''}</p>
 	{#if notice}<Alert tone="success" role="note">{notice}</Alert>{/if}
 
-	{#if searcher.items.length > 0}
+	{#if searcher.items.length > 0 && asTimeline}
+		<section class="results timeline" aria-label="Search results" aria-busy={searcher.loading}>
+			<SearchTimeline
+				bind:this={timeline}
+				bind:geometry
+				items={shown}
+				selected={noSelection}
+				selecting={false}
+				onOpen={(asset) => (viewing = asset)}
+				onToggle={(asset) => (viewing = asset)}
+				onNearEnd={() => searcher.more()}
+			/>
+			{#if geometry}
+				<Scrubber boxes={geometry.boxes} total={geometry.total} current={geometry.current} onJump={(index) => timeline?.jumpTo(index)} />
+			{/if}
+		</section>
+	{:else if searcher.items.length > 0}
 		<section class="results" aria-label="Search results" aria-busy={searcher.loading}>
 			<PhotoGrid
 				bind:this={grid}
-				items={searcher.items}
+				items={shown}
 				days={false}
 				selected={noSelection}
 				selecting={false}
@@ -136,7 +179,7 @@
 		<p class="muted">Searching…</p>
 	{:else if typed === '' && !searcher.unavailable}
 		<EmptyState icon="sparkles" title="Search by what is in your photos">
-			Type a few words. Results come best match first.
+			Type a few words. Results show by date, or best match first.
 		</EmptyState>
 	{/if}
 </Page>
@@ -144,7 +187,7 @@
 {#if viewing}
 	<Lightbox
 		asset={viewing}
-		items={searcher.items}
+		items={shown}
 		onNavigate={(asset) => (viewing = asset)}
 		onClose={closeViewer}
 		onDelete={deleteViewed}
@@ -170,5 +213,13 @@
 	.results {
 		display: grid;
 		min-width: 0;
+	}
+
+	@media (min-width: 48rem) {
+		.timeline {
+			grid-template-columns: minmax(0, 1fr) var(--scrubber-w);
+			gap: var(--space-4);
+			align-items: start;
+		}
 	}
 </style>
