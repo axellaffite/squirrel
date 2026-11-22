@@ -39,6 +39,9 @@ On the server (Debian or Ubuntu with SSH access):
          mkdir -p ~/squirrel-data/data ~/squirrel-data/postgres
          docker run --rm -v ~/squirrel-data:/r alpine chown 10001:10001 /r/data
 
+     Rootless Docker is a service of your user: let it start at boot without a login with
+     `loginctl enable-linger $USER`.
+
 4. Settings: `mkdir ~/squirrel`, copy `deploy/env.example` to `~/squirrel/.env`,
    `chmod 600 ~/squirrel/.env`, and fill in `POSTGRES_PASSWORD` (`openssl rand -hex 24`) and
    `SQUIRREL_SETUP_TOKEN` (`openssl rand -hex 16`).
