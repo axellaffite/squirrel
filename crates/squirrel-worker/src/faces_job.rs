@@ -1,22 +1,21 @@
-//! `faces`: one inference per blob (YuNet + SFace on its preview), then rows
+//! `faces`: one inference per blob (YuNet + SFace on a 1440 px frame), then rows
 //! **per owner**: for each owner of a live copy who has faces on and no scan
 //! yet, their faces and a scan row (also when none was found), and a
 //! clustering run queued for them. Nothing is stored for owners with faces off.
 
 use squirrel_core::{ContentHash, MediaKind};
 use squirrel_db::faces::{self, NewFace};
-use squirrel_db::media::{self, MediaRecord, MediaState, Step};
+use squirrel_db::media::{self, MediaState, Step};
 use squirrel_jobs::{JobContext, JobError};
 use squirrel_ml::FACE_MODEL_ID;
 use squirrel_ml::clip::{check_unit_vector, normalize};
 use squirrel_ml::faces::{FACE_DIM, FaceFound};
 use squirrel_ml::protocol::{MlBody, MlOp, MlOutput};
-use squirrel_storage::Variant;
 
 use crate::clip_job::WAIT_FOR_PREVIEW;
 use crate::context::{MediaContext, MlContext};
 use crate::jobs::{self, ShaPayload};
-use crate::outcome;
+use crate::{ml_frame, outcome};
 
 pub async fn run(ctx: &MediaContext, ml: &MlContext, job: JobContext) -> Result<(), JobError> {
     let ShaPayload { sha256 } = job.payload()?;
@@ -49,7 +48,7 @@ pub async fn run(ctx: &MediaContext, ml: &MlContext, job: JobContext) -> Result<
     if owners.is_empty() {
         return Ok(());
     }
-    let Some(found) = detect(ctx, ml, &job, &media, &hash).await? else {
+    let Some(found) = detect(ctx, ml, &job, &hash).await? else {
         return Ok(());
     };
     let rows: Vec<NewFace> = found.into_iter().map(new_face).collect();
@@ -71,20 +70,20 @@ pub async fn run(ctx: &MediaContext, ml: &MlContext, job: JobContext) -> Result<
         .map_err(JobError::retry)
 }
 
-/// Runs the face models on the preview. `None`: the step ended without a
-/// result (state recorded).
+/// Runs the face models on a temporary 1440 px frame (the geometry and the
+/// 40 px face threshold of the stored previews). `None`: the step ended
+/// without a result (state recorded).
 async fn detect(
     ctx: &MediaContext,
     ml: &MlContext,
     job: &JobContext,
-    media: &MediaRecord,
     hash: &ContentHash,
 ) -> Result<Option<Vec<FaceFound>>, JobError> {
     let sha256 = hash.as_str();
-    let input = ctx
-        .storage
-        .derived()
-        .variant_path(hash, Variant::Preview, media.thumbs_version);
+    let Some(frame) = ml_frame::for_step(ctx, job, hash, Step::Faces).await? else {
+        return Ok(None);
+    };
+    let input = frame.path().to_owned();
     let reason = match ml.client.request(MlOp::Faces { input }).await {
         Ok(MlBody::Ok(MlOutput::Faces { faces })) => match faces.iter().find_map(invalid) {
             Some(why) => format!("the ML child answered an invalid face: {why}"),

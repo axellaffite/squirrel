@@ -394,6 +394,12 @@ fn checked(source: &Path) -> Result<fs::Metadata> {
     Ok(meta)
 }
 
+/// Checks a renderer's output (an exited sandbox child's) like
+/// [`PreviewCache::insert`] does, without reading it.
+pub fn check_rendered(source: &Path) -> Result<()> {
+    checked(source).map(|_| ())
+}
+
 /// The bytes of a renderer's output (an exited sandbox child's), checked like
 /// [`PreviewCache::insert`] does.
 pub fn read_rendered(source: &Path) -> Result<Vec<u8>> {
