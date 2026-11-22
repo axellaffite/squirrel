@@ -40,18 +40,20 @@ class OfflineRunTest {
         server.chunkFailure = { _, _ -> if (offline) IOException("connection reset") else null }
     }
 
-    private suspend fun engine() = SyncEngine(
+    private val sleeps = mutableListOf<Long>()
+
+    private suspend fun engine(source: AssetSource = this.source, transport: ChunkTransport = server.transport) = SyncEngine(
         source = source,
         api = server.api(),
         queue = queue,
         scanner = Scanner(source, db, queue, settings, now = { clock }),
-        transport = server.transport,
+        transport = transport,
         conditions = conditions,
         settings = settings,
         now = { clock },
         random = { 0.5 },
         io = Dispatchers.Default,
-        sleep = { server.locked { clock += it } },
+        sleep = { server.locked { sleeps += it; clock += it } },
         network = NetworkWaiter { millis ->
             server.locked {
                 waits += millis
@@ -146,5 +148,76 @@ class OfflineRunTest {
         assertEquals(StopCause.Error, summary.stoppedBy)
         assertEquals(SyncState.Error(ErrorReason.Unreachable), engine.state.value)
         assertTrue(waits.isEmpty())
+    }
+
+    @Test
+    fun aFileThePhoneCannotReadSpendsAttemptsUntilItFails() = runApiTest {
+        put(1)
+        var checked = false
+        server.onRequest = { request, _ ->
+            if (request.url.encodedPath == "/api/sync/check") checked = true
+            null
+        }
+        // Hashing reads it fine; from the upload on, the SD card is gone.
+        val failing = object : AssetSource by source {
+            override suspend fun open(deviceAssetId: String): AssetReader? {
+                val inner = source.open(deviceAssetId) ?: return null
+                return object : AssetReader by inner {
+                    override suspend fun read(position: Long, into: ByteArray, offset: Int, length: Int): Int =
+                        if (checked) throw IOException("No such device") else inner.read(position, into, offset, length)
+                }
+            }
+        }
+        // A transport that reads the chunk from the file, as the real one does.
+        val reading = object : ChunkTransport {
+            override suspend fun put(session: UploadSession, index: Int, reader: AssetReader) {
+                reader.read(0, ByteArray(16), 0, 16)
+                server.transport.put(session, index, reader)
+            }
+        }
+        val engine = engine(failing, reading)
+
+        repeat(MAX_ATTEMPTS) {
+            val summary = engine.runOnce(waitForNetwork = true)
+            assertEquals(StopCause.Finished, summary.stoppedBy) // never a wait for the network
+            clock += 60 * 60_000L // past the backoff
+        }
+
+        assertEquals(QueueState.Failed, queue.get("images:0")!!.state)
+        assertEquals(MAX_ATTEMPTS, queue.get("images:0")!!.attempts)
+        assertTrue(waits.isEmpty())
+    }
+
+    @Test
+    fun aRequestThatKeepsFailingWhileTheServerAnswersSpendsAnAttemptInsteadOfLooping() = runApiTest {
+        put(1)
+        var tries = 0
+        server.chunkFailure = { _, _ -> tries++; IOException("connection reset") } // healthz answers all along
+        val engine = engine()
+
+        val summary = engine.runOnce(waitForNetwork = true)
+
+        assertEquals(StopCause.Finished, summary.stoppedBy)
+        val asset = queue.get("images:0")!!
+        assertEquals(1, asset.attempts) // the third try counted as an ordinary failure
+        assertEquals(QueueState.Uploading, asset.state) // its session is kept for the next run
+        assertEquals(3, tries) // two false alarms, then the attempt: no hot loop
+        assertEquals(listOf(PROBE_BASE_MS, PROBE_BASE_MS), sleeps) // each false alarm waited a probe delay
+        assertTrue(waits.isEmpty())
+    }
+
+    @Test
+    fun aSyncCheckThatKeepsFailingWhileTheServerAnswersEndsTheRun() = runApiTest {
+        put(1)
+        server.onRequest = { request, _ ->
+            if (request.url.encodedPath == "/api/sync/check") throw IOException("connection reset") else null
+        }
+        val engine = engine()
+
+        val summary = engine.runOnce(waitForNetwork = true)
+
+        assertEquals(StopCause.Error, summary.stoppedBy)
+        assertEquals(SyncState.Error(ErrorReason.Unreachable), engine.state.value)
+        assertEquals(2, server.requests.count { it.url.encodedPath == "/api/sync/check" })
     }
 }
