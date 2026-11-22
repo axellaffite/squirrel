@@ -1,0 +1,14 @@
+# Build context for the Dockerfile: sources only.
+.git
+.cache
+.github
+target
+mobile
+docs
+**/node_modules
+web/build
+web/.svelte-kit
+web/test-results
+web/playwright-report
+.env
+deploy/.env
