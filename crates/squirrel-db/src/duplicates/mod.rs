@@ -186,15 +186,50 @@ pub async fn ungrouped_matches(
         .await?)
 }
 
+/// Those of `nodes` still live, share-locked for the transaction (in node
+/// order): trashing one waits until this run commits, then takes it out of
+/// its group (a photo trashed meanwhile is never grouped).
+async fn lock_live(
+    conn: &mut PgConnection,
+    owner: Uuid,
+    nodes: &[Uuid],
+) -> Result<Vec<Uuid>, DbError> {
+    Ok(sqlx::query_scalar(
+        "SELECT id FROM nodes WHERE owner_id = $1 AND id = ANY($2) AND deleted_at IS NULL \
+          ORDER BY id FOR SHARE",
+    )
+    .bind(owner)
+    .bind(nodes)
+    .fetch_all(conn)
+    .await?)
+}
+
 /// Adds `node` to `group`. A resolved group is reopened: the new photo stays
-/// visible until the user decides again (photos hidden before stay hidden).
+/// visible until the user decides again (photos hidden before stay hidden). `false`: the photo was trashed
+/// meanwhile, or the group is gone.
 pub async fn join_group(
     conn: &mut PgConnection,
     owner: Uuid,
     group: Uuid,
     node: Uuid,
     distance: i16,
-) -> Result<(), DbError> {
+) -> Result<bool, DbError> {
+    if lock_live(conn, owner, &[node]).await?.is_empty() {
+        return Ok(false);
+    }
+    // Locked before the member is added: a photo leaving the group at the
+    // same time waits for this one before counting what is left.
+    let reopened = sqlx::query(
+        "UPDATE duplicate_groups SET resolved_at = NULL, updated_at = now() \
+          WHERE id = $1 AND owner_id = $2",
+    )
+    .bind(group)
+    .bind(owner)
+    .execute(&mut *conn)
+    .await?;
+    if reopened.rows_affected() == 0 {
+        return Ok(false);
+    }
     sqlx::query(
         "INSERT INTO duplicate_members (node_id, owner_id, group_id, distance) \
          VALUES ($1, $2, $3, $4) ON CONFLICT (node_id) DO NOTHING",
@@ -203,27 +238,29 @@ pub async fn join_group(
     .bind(owner)
     .bind(group)
     .bind(distance)
-    .execute(&mut *conn)
-    .await?;
-    sqlx::query(
-        "UPDATE duplicate_groups SET resolved_at = NULL, updated_at = now() \
-          WHERE id = $1 AND owner_id = $2",
-    )
-    .bind(group)
-    .bind(owner)
     .execute(conn)
     .await?;
-    Ok(())
+    Ok(true)
 }
 
 /// Creates a group anchored at `anchor` holding `members` (with their
-/// distance to the anchor).
+/// distance to the anchor) that are still live; `None` when fewer than two are.
 pub async fn create_group(
     conn: &mut PgConnection,
     owner: Uuid,
     anchor: &Candidate,
     members: &[(Uuid, i16)],
-) -> Result<Uuid, DbError> {
+) -> Result<Option<Uuid>, DbError> {
+    let ids: Vec<Uuid> = members.iter().map(|(id, _)| *id).collect();
+    let live = lock_live(conn, owner, &ids).await?;
+    let (nodes, distances): (Vec<Uuid>, Vec<i16>) = members
+        .iter()
+        .copied()
+        .filter(|(id, _)| live.contains(id))
+        .unzip();
+    if nodes.len() < 2 {
+        return Ok(None);
+    }
     let id = Uuid::now_v7();
     sqlx::query(
         "INSERT INTO duplicate_groups (id, owner_id, anchor_phash, anchor_taken_at) \
@@ -235,7 +272,6 @@ pub async fn create_group(
     .bind(anchor.taken_at)
     .execute(&mut *conn)
     .await?;
-    let (nodes, distances): (Vec<Uuid>, Vec<i16>) = members.iter().copied().unzip();
     sqlx::query(
         "INSERT INTO duplicate_members (node_id, owner_id, group_id, distance) \
          SELECT node, $2, $3, distance FROM unnest($1::uuid[], $4::int2[]) AS x (node, distance) \
@@ -247,7 +283,21 @@ pub async fn create_group(
     .bind(&distances)
     .execute(conn)
     .await?;
-    Ok(id)
+    Ok(Some(id))
+}
+
+/// Shows again `owner`'s hidden photos that are in no group: nothing should
+/// leave a photo hidden without a way to restore it, and this makes sure.
+pub async fn unhide_orphans(conn: &mut PgConnection, owner: Uuid) -> Result<u64, DbError> {
+    let done = sqlx::query(
+        "UPDATE assets a SET hidden_at = NULL, hidden_reason = NULL \
+          WHERE a.owner_id = $1 AND a.hidden_at IS NOT NULL \
+            AND NOT EXISTS (SELECT 1 FROM duplicate_members d WHERE d.node_id = a.node_id)",
+    )
+    .bind(owner)
+    .execute(conn)
+    .await?;
+    Ok(done.rows_affected())
 }
 
 /// Marks `nodes` as looked at.

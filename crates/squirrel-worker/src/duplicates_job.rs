@@ -66,6 +66,12 @@ pub async fn group_owner(
     loop {
         let mut tx = pool.begin().await?;
         duplicates::lock_owner(&mut tx, owner).await?;
+        if total.checked == 0 {
+            let shown = duplicates::unhide_orphans(&mut tx, owner).await?;
+            if shown > 0 {
+                tracing::warn!(owner_id = %owner, shown, "hidden photos in no group shown again");
+            }
+        }
         let page = duplicates::unchecked_page(&mut tx, owner, BATCH).await?;
         if page.is_empty() {
             tx.commit().await?;
@@ -99,14 +105,18 @@ async fn group_one(
     if photo.grouped || is_grouped(tx, photo.node_id).await? {
         return Ok(());
     }
-    if let Some((group, d)) = duplicates::nearest_group(tx, owner, photo).await? {
-        duplicates::join_group(tx, owner, group, photo.node_id, d).await?;
+    if let Some((group, d)) = duplicates::nearest_group(tx, owner, photo).await?
+        && duplicates::join_group(tx, owner, group, photo.node_id, d).await?
+    {
         total.joined += 1;
         return Ok(());
     }
     let matches = duplicates::ungrouped_matches(tx, owner, photo).await?;
-    if let Some(plan) = plan_group(photo, &matches) {
-        duplicates::create_group(tx, owner, &plan.anchor, &plan.members).await?;
+    if let Some(plan) = plan_group(photo, &matches)
+        && duplicates::create_group(tx, owner, &plan.anchor, &plan.members)
+            .await?
+            .is_some()
+    {
         total.groups_created += 1;
     }
     Ok(())
