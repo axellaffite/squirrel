@@ -14,7 +14,7 @@ use std::sync::OnceLock;
 use libvips::bindings::{
     vips_block_untrusted_set, vips_foreign_find_load, vips_operation_block_set, vips_type_find,
 };
-use libvips::ops::{self, FailOn, ForeignKeep, Interpretation, Size, ThumbnailOptions};
+use libvips::ops::{self, ForeignKeep, Interpretation};
 use libvips::{VipsApp, VipsImage};
 
 use crate::preview::{PreviewEncoding, PreviewEngine, PreviewFormat, RenderedPreview, format_for};
@@ -146,14 +146,13 @@ fn render_with(
         return Err(VipsError::TooLarge(width, height));
     }
     drop(header);
-    let side = i32::try_from(bucket).map_err(|err| VipsError::Failed(err.to_string()))?;
-    let options = ThumbnailOptions {
-        height: side,
-        size: Size::Down,
-        fail_on: FailOn::Error,
-        ..ThumbnailOptions::default()
-    };
-    let mut image = ops::thumbnail_with_opts(path, side, &options).map_err(failed)?;
+    // The box is `side` × `side` (height defaults to width), so the long side fits; capped at
+    // the original's long side, it never upscales. Plain `thumbnail`, not `thumbnail_with_opts`:
+    // the crate's option struct always sends `input-profile`, which libvips < 8.17 (Debian
+    // trixie's 8.16) rejects. The loaders' default `fail_on=none` decodes what it can.
+    let side = bucket.min(width.max(height)).max(1);
+    let side = i32::try_from(side).map_err(|err| VipsError::Failed(err.to_string()))?;
+    let mut image = ops::thumbnail(path, side).map_err(failed)?;
     if !matches!(image.get_interpretation(), Ok(Interpretation::Srgb)) {
         image = ops::colourspace(&image, Interpretation::Srgb).map_err(failed)?;
     }

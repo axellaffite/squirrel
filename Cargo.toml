@@ -75,3 +75,17 @@ squirrel-sandbox = { path = "crates/squirrel-sandbox" }
 # Model files are hashed before every load (hundreds of MB): keep that fast in debug builds too.
 [profile.dev.package.sha2]
 opt-level = 3
+# The built-in image pipeline runs in debug builds too (tests, E2E): unoptimised, one 12 MP
+# preview needs more than the sandbox's 10 s of CPU.
+[profile.dev.package.image]
+opt-level = 3
+[profile.dev.package.zune-jpeg]
+opt-level = 3
+[profile.dev.package.fast_image_resize]
+opt-level = 3
+[profile.dev.package.png]
+opt-level = 3
+[profile.dev.package.fdeflate]
+opt-level = 3
+[profile.dev.package.image-webp]
+opt-level = 3
