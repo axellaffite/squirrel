@@ -24,7 +24,12 @@ use crate::error::{Result, StorageError};
 use crate::fsutil::{create_dir_all_durable, device_of, make_read_only, remove_if_exists};
 
 /// A cached preview larger than this is refused (a 3200 px JPEG is ≈ 1 MB).
+/// Larger ones are still served, just not cached.
 pub const MAX_ENTRY_BYTES: u64 = 5 * 1024 * 1024;
+/// A renderer's output larger than this is refused outright: the sandbox
+/// child cannot write more (its RLIMIT_FSIZE). A lossless 1440 px PNG frame
+/// for the models (up to ≈ 6 MB) or a noisy 3200 px JPEG fit well under it.
+pub const MAX_RENDERED_BYTES: u64 = 64 * 1024 * 1024;
 /// Last use is written back to disk at most this often per entry.
 const TOUCH_EVERY: Duration = Duration::from_secs(60 * 60);
 /// Eviction stops at this share of the budget, so it runs in batches.
@@ -302,9 +307,10 @@ impl PreviewCache {
 
     /// Moves `source` (a renderer's output in `<data_dir>/tmp/`) into the
     /// cache as `key`, read-only, then evicts down to budget. `Ok(false)`:
-    /// not cached because the disk is nearly full (`free_bytes` now); the
-    /// caller still owns `source`. A symlink, a non-file or an oversized file
-    /// is refused (`InvalidData`): the renderer is untrusted.
+    /// not cached, because it is over [`MAX_ENTRY_BYTES`] or the disk is nearly
+    /// full (`free_bytes` now); the caller still owns `source`. A symlink, a
+    /// non-file or a file over [`MAX_RENDERED_BYTES`] is refused
+    /// (`InvalidData`): the renderer is untrusted.
     pub fn insert(
         &self,
         key: &CacheKey,
@@ -317,7 +323,9 @@ impl PreviewCache {
             .find(|e| *e == extension)
             .ok_or_else(|| invalid(format!("unknown preview extension {extension}")))?;
         let meta = checked(source)?;
-        if free_bytes < self.config.min_free_bytes.saturating_add(meta.len()) {
+        if meta.len() > MAX_ENTRY_BYTES
+            || free_bytes < self.config.min_free_bytes.saturating_add(meta.len())
+        {
             return Ok(false);
         }
         make_read_only(source)?;
@@ -435,7 +443,7 @@ fn checked(source: &Path) -> Result<fs::Metadata> {
             source.display()
         )));
     }
-    if meta.len() > MAX_ENTRY_BYTES {
+    if meta.len() > MAX_RENDERED_BYTES {
         return Err(invalid(format!(
             "{} is {} bytes",
             source.display(),
@@ -572,6 +580,22 @@ mod tests {
         assert!(!empty.path().join("cache").exists());
     }
 
+    /// A preview over the caching cap (a noisy 3200 px JPEG, a 1440 px PNG
+    /// frame) is still served and handed to the models, just not cached.
+    #[test]
+    fn large_renders_are_served_but_not_cached() {
+        let dir = tempfile::tempdir().unwrap();
+        let cache = PreviewCache::open(dir.path(), config(u64::MAX)).unwrap();
+        let big = dir.path().join("tmp/big.jpg");
+        let size = usize::try_from(MAX_ENTRY_BYTES).unwrap() + 1024 * 1024;
+        fs::write(&big, vec![7u8; size]).unwrap();
+        assert_eq!(read_rendered(&big).unwrap().len(), size);
+        assert!(check_rendered(&big).is_ok());
+        assert!(!cache.insert(&key(A, 3200), &big, "jpg", u64::MAX).unwrap());
+        assert!(big.exists(), "left to the caller");
+        assert_eq!(cache.stats().entries, 0);
+    }
+
     #[test]
     fn symlinks_and_oversized_files_are_refused() {
         let dir = tempfile::tempdir().unwrap();
@@ -581,12 +605,14 @@ mod tests {
         let link = dir.path().join("tmp/link.jpg");
         std::os::unix::fs::symlink(&secret, &link).unwrap();
         assert!(cache.insert(&key(A, 1440), &link, "jpg", u64::MAX).is_err());
-        let big = dir.path().join("tmp/big.jpg");
-        File::create(&big)
+        let huge = dir.path().join("tmp/huge.jpg");
+        File::create(&huge)
             .unwrap()
-            .set_len(MAX_ENTRY_BYTES + 1)
+            .set_len(MAX_RENDERED_BYTES + 1)
             .unwrap();
-        assert!(cache.insert(&key(A, 1440), &big, "jpg", u64::MAX).is_err());
+        assert!(cache.insert(&key(A, 1440), &huge, "jpg", u64::MAX).is_err());
+        assert!(read_rendered(&huge).is_err());
+        assert!(read_rendered(&link).is_err());
         assert_eq!(cache.stats().entries, 0);
 
         // A symlink planted in the cache directory is dropped at start.
