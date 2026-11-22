@@ -13,7 +13,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 
-data class AlbumsState(val albums: List<AlbumDto>? = null, val loading: Boolean = true, val error: String? = null)
+data class AlbumsState(val albums: List<AlbumDto>? = null, val loading: Boolean = false, val error: String? = null)
 
 /** The read-only album list. */
 class AlbumsViewModel(private val api: SquirrelApi) : ViewModel() {
