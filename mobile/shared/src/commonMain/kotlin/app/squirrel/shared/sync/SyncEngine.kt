@@ -15,6 +15,8 @@ import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.IO
 import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
@@ -64,6 +66,9 @@ class SyncEngine(
     private val hashConcurrency: Int = HASH_CONCURRENCY,
     /** Waits that many milliseconds of [now]'s clock (tests advance a fake one). */
     private val sleep: suspend (Long) -> Unit = { delay(it) },
+    /** Between probes of an unreachable server (Android wakes it on network changes). */
+    private val network: NetworkWaiter = NetworkWaiter.Delay,
+    private val offlineGraceMillis: Long = OFFLINE_GRACE_MS,
 ) {
     private val mutex = Mutex()
     private val _state = MutableStateFlow<SyncState>(SyncState.Idle)
@@ -72,7 +77,11 @@ class SyncEngine(
     /** Thrown inside a run when it must stop between steps. */
     private class Stop(val stopCause: StopCause, val state: SyncState) : Exception()
 
-    private inner class Run(val deadline: Long?, val backup: BackupSettings) {
+    /**
+     * [persistent]: a foreground run with no deadline. Losing the network (or the server: a VPN
+     * paused with the screen off) does not end it: it waits, probing, then resumes where it was.
+     */
+    private inner class Run(val deadline: Long?, val backup: BackupSettings, val persistent: Boolean) {
         private val counts = MutableStateFlow(RunSummary())
         val summary: RunSummary get() = counts.value
 
@@ -82,9 +91,49 @@ class SyncEngine(
         /** Until when the server asked to wait (429/503): no upload starts before it. */
         val busyUntil = MutableStateFlow(0L)
 
-        /** Throws [Stop] when the run must end here. */
-        fun checkpoint() {
-            if (!mayContinue()) throw stop()
+        /** One worker probes while the others wait for its answer. */
+        private val offline = Mutex()
+
+        /** Throws [Stop] when the run must end here (after waiting out a network loss, when persistent). */
+        suspend fun checkpoint() {
+            if (!ready()) throw stop()
+        }
+
+        /** Whether the run may go on; a persistent run first waits for the network to come back. */
+        suspend fun ready(): Boolean {
+            while (true) {
+                val reason = conditions.check(backup) ?: return deadline == null || now() < deadline
+                if (reason != PauseReason.NoNetwork || !persistent) return false
+                awaitServer()
+            }
+        }
+
+        /**
+         * Waits until the phone has a network and the server answers, probing it on a growing
+         * delay; after [offlineGraceMillis] the run ends as [ErrorReason.Unreachable]. No attempt
+         * is spent on any asset meanwhile.
+         */
+        suspend fun awaitServer() = offline.withLock {
+            val since = now()
+            var attempt = 0
+            while (true) {
+                if (conditions.check(backup) != PauseReason.NoNetwork && reachable()) return@withLock
+                if (now() - since >= offlineGraceMillis) throw Stop(StopCause.Error, SyncState.Error(ErrorReason.Unreachable))
+                _state.value = SyncState.WaitingForNetwork
+                network.await(probeDelay(attempt++))
+            }
+        }
+
+        /** [call], again once the server is back when a persistent run cannot reach it. */
+        suspend fun <T> reaching(call: suspend () -> T): T {
+            while (true) {
+                try {
+                    return call()
+                } catch (e: IOException) {
+                    if (!persistent) throw e
+                    awaitServer()
+                }
+            }
         }
 
         fun mayContinue(): Boolean =
@@ -106,23 +155,23 @@ class SyncEngine(
      * Network and server failures end the run as [ErrorReason.Unreachable]; anything else is a
      * bug and is rethrown after the state says [ErrorReason.Unexpected].
      */
-    suspend fun runOnce(deadline: Long? = null, reconcile: Boolean = false): RunSummary {
+    suspend fun runOnce(deadline: Long? = null, reconcile: Boolean = false, waitForNetwork: Boolean = false): RunSummary {
         if (!mutex.tryLock()) return RunSummary(stoppedBy = StopCause.AlreadyRunning)
         try {
-            return withContext(io) { runLocked(deadline, reconcile) }
+            return withContext(io) { runLocked(deadline, reconcile, waitForNetwork && deadline == null) }
         } finally {
             mutex.unlock()
         }
     }
 
-    private suspend fun runLocked(deadline: Long?, reconcile: Boolean): RunSummary {
+    private suspend fun runLocked(deadline: Long?, reconcile: Boolean, persistent: Boolean): RunSummary {
         var run: Run? = null
         fun stopped(state: SyncState, cause: StopCause): RunSummary {
             _state.value = state
             return (run?.summary ?: RunSummary()).copy(stoppedBy = cause)
         }
         try {
-            run = Run(deadline, settings.backup())
+            run = Run(deadline, settings.backup(), persistent)
             if (source.access() == MediaAccess.None) throw Stop(StopCause.Paused, SyncState.Paused(PauseReason.NoPhotoAccess))
             run.checkpoint()
             _state.value = SyncState.Scanning
@@ -218,7 +267,7 @@ class SyncEngine(
             run.checkpoint()
             _state.value = SyncState.Checking
             val request = SyncCheckRequest(batch.map { SyncCheckItem(it.deviceAssetId, checkNotNull(it.sha256)) })
-            val missing = api.sync.syncCheck(request).bodyOrThrow().missing
+            val missing = run.reaching { api.sync.syncCheck(request).bodyOrThrow().missing }
             queue.applyCheck(batch.map { it.deviceAssetId }, missing)
             val absent = missing.toSet()
             batch.filter { it.deviceAssetId !in absent }.forEach { source.backedUp(it.deviceAssetId) }
@@ -233,34 +282,57 @@ class SyncEngine(
         val uploader = Uploader(
             api, transport, source, queue, now, random,
             parallelChunks = 1,
+            reportOffline = run.persistent,
             onServerBusy = { until -> run.busyUntil.update { maxOf(it, minOf(until, now() + MAX_SHARED_BACKOFF_MS)) } },
         )
         val done = MutableStateFlow(0)
         val interrupted = MutableStateFlow(false)
         val total = candidates.size
         inParallel(candidates, uploadConcurrency, run) { id ->
-            waitWhileBusy(run)
-            val asset = queue.get(id)?.takeIf { it.state == QueueState.Missing || it.state == QueueState.Uploading }
-            if (asset == null || !run.mayContinue()) {
-                if (asset != null) interrupted.value = true
+            // A persistent run tries the same asset again once the network is back.
+            while (true) {
+                waitWhileBusy(run)
+                val asset = queue.get(id)?.takeIf { it.state == QueueState.Missing || it.state == QueueState.Uploading }
+                    ?: return@inParallel
+                if (!run.ready()) {
+                    interrupted.value = true
+                    return@inParallel
+                }
+                _state.value = SyncState.Uploading(asset.name, done.value, total)
+                val progress: (Float) -> Unit = { _state.value = SyncState.Uploading(asset.name, done.value, total, it) }
+                when (uploader.upload(asset, shouldContinue = run::mayContinue, onProgress = progress)) {
+                    UploadResult.Uploaded -> run.count { it.copy(uploaded = it.uploaded + 1) }
+                    UploadResult.Deduplicated -> run.count { it.copy(deduplicated = it.deduplicated + 1) }
+                    UploadResult.Failed -> run.count { it.copy(failed = it.failed + 1) }
+                    UploadResult.Interrupted -> if (run.persistent) continue else interrupted.value = true
+                    UploadResult.Offline -> {
+                        run.awaitServer()
+                        continue
+                    }
+                    UploadResult.Skipped, UploadResult.Changed, is UploadResult.RetryLater -> Unit
+                }
+                done.update { it + 1 }
                 return@inParallel
             }
-            _state.value = SyncState.Uploading(asset.name, done.value, total)
-            val progress: (Float) -> Unit = { _state.value = SyncState.Uploading(asset.name, done.value, total, it) }
-            when (uploader.upload(asset, shouldContinue = run::mayContinue, onProgress = progress)) {
-                UploadResult.Uploaded -> run.count { it.copy(uploaded = it.uploaded + 1) }
-                UploadResult.Deduplicated -> run.count { it.copy(deduplicated = it.deduplicated + 1) }
-                UploadResult.Failed -> run.count { it.copy(failed = it.failed + 1) }
-                UploadResult.Interrupted, UploadResult.Offline -> interrupted.value = true
-                UploadResult.Skipped, UploadResult.Changed, is UploadResult.RetryLater -> Unit
-            }
-            done.update { it + 1 }
         }
         // An item stopped between chunks; the others in flight have ended too: the run stops.
         if (interrupted.value) throw run.stop()
     }
 
     /** The server said it is busy: no new upload starts before the time it gave (capped). */
+    /** Whether the server answers at all (any HTTP answer, even an error, counts). */
+    private suspend fun reachable(): Boolean = try {
+        api.health()
+        true
+    } catch (e: CancellationException) {
+        if (!currentCoroutineContext().isActive) throw e
+        false // a timeout that cancels internally
+    } catch (_: IOException) {
+        false
+    } catch (_: Exception) {
+        true
+    }
+
     private suspend fun waitWhileBusy(run: Run) {
         while (true) {
             val wait = run.busyUntil.value - now()
