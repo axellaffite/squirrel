@@ -9,4 +9,5 @@
         <item quantity="other">Preparing %1$s items</item>
     </plurals>
     <string name="backup_checking">Checking what is new</string>
+    <string name="backup_waiting_network">Waiting for network…</string>
 </resources>

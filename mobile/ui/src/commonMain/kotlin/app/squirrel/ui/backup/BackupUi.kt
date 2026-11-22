@@ -42,13 +42,15 @@ data class BackupUi(
 fun backupUi(status: BackupStatus, settings: BackupSettings, locationsIncluded: Boolean, now: Long): BackupUi {
     val state = status.state
     val running = state is SyncState.Scanning || state is SyncState.Hashing || state is SyncState.Checking ||
-        state is SyncState.Uploading
+        state is SyncState.Uploading || state is SyncState.WaitingForNetwork
     val (progress, progressLabel) = when (state) {
         is SyncState.Uploading ->
             (if (state.of <= 0) 0f else ((state.done + state.current) / state.of).coerceIn(0f, 1f)) to "Uploading ${state.name}"
         is SyncState.Hashing -> fraction(state.done, state.of) to "Preparing ${formatCount(state.of.toLong())} items"
         SyncState.Scanning -> null to "Looking for new photos"
         SyncState.Checking -> null to "Checking what your Squirrel already has"
+        // The run goes on by itself once the server answers again (a VPN reconnecting, say).
+        SyncState.WaitingForNetwork -> null to "Waiting for the network to reach your Squirrel"
         else -> null to null
     }
     val (notice, isError) = when (state) {

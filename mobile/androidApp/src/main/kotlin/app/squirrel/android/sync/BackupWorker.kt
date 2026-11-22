@@ -2,9 +2,11 @@ package app.squirrel.android.sync
 
 import android.app.NotificationManager
 import android.content.Context
+import android.os.Build
 import android.util.Log
 import androidx.work.CoroutineWorker
 import androidx.work.ForegroundInfo
+import androidx.work.WorkInfo
 import androidx.work.WorkerParameters
 import app.squirrel.shared.sync.SyncState
 import kotlinx.coroutines.CancellationException
@@ -22,8 +24,11 @@ interface BackupRunner {
     /** Assets and bytes left, to decide on a foreground run. */
     suspend fun pending(): Pair<Long, Long>
     val progress: Flow<SyncState>
-    /** [manual]: "Back up now" (runs even with automatic backup off). */
-    suspend fun run(deadline: Long?, manual: Boolean, reconcile: Boolean = false): RunOutcome
+    /**
+     * [manual]: "Back up now" (runs even with automatic backup off). [waitForNetwork]: a
+     * foreground run, which waits out a network loss instead of ending.
+     */
+    suspend fun run(deadline: Long?, manual: Boolean, reconcile: Boolean = false, waitForNetwork: Boolean = false): RunOutcome
     /** After any run, before the worker returns: re-arm the content trigger; after a deadline: continue. */
     suspend fun afterRun(outcome: RunOutcome?, manual: Boolean)
 }
@@ -47,6 +52,14 @@ interface BackupHost {
  */
 fun isForegroundRefusal(e: Throwable): Boolean = e is IllegalStateException || e is SecurityException
 
+/**
+ * Whether a run the system stopped ([stopReason], WorkInfo.STOP_REASON_*) should continue in a
+ * follow-up: every stop but the app's own cancellation (automatic backup off, signed out).
+ * WorkManager may also reschedule it; the engine never runs twice at once.
+ */
+fun continuesAfterStop(stopReason: Int): Boolean =
+    stopReason != WorkInfo.STOP_REASON_CANCELLED_BY_APP && stopReason != WorkInfo.STOP_REASON_NOT_STOPPED
+
 class BackupWorker(context: Context, params: WorkerParameters) : CoroutineWorker(context, params) {
     private val notifications = ForegroundInfoFactory(context)
 
@@ -64,7 +77,12 @@ class BackupWorker(context: Context, params: WorkerParameters) : CoroutineWorker
                 val progress = if (foreground) launch { showProgress(runner) } else null
                 val deadline = if (foreground) null else System.currentTimeMillis() + DEADLINE_MS
                 // The 6-hourly run also checks waiting assets against the phone (deleted ones).
-                outcome = runner.run(deadline, manual, reconcile = tags.contains(BackupScheduler.PERIODIC_TAG))
+                outcome = runner.run(
+                    deadline, manual,
+                    reconcile = tags.contains(BackupScheduler.PERIODIC_TAG),
+                    // In the foreground, a VPN or Wi-Fi pausing with the screen off is waited out.
+                    waitForNetwork = foreground,
+                )
                 progress?.cancel()
             }
             when (outcome) {
@@ -72,7 +90,9 @@ class BackupWorker(context: Context, params: WorkerParameters) : CoroutineWorker
                 else -> Result.success()
             }
         } catch (e: CancellationException) {
-            Log.i(TAG, "Backup stopped by the system (reason $stopReasonText); it resumes on the next run")
+            Log.i(TAG, "Backup stopped by the system (reason $stopReasonText); it continues in a follow-up")
+            // What was done is kept; a follow-up (promoted to the foreground when allowed) goes on.
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S && continuesAfterStop(stopReason)) outcome = RunOutcome.Continue
             throw e
         } catch (e: Exception) {
             Log.e(TAG, "Backup run failed", e)
@@ -97,14 +117,14 @@ class BackupWorker(context: Context, params: WorkerParameters) : CoroutineWorker
     private suspend fun showProgress(runner: BackupRunner) {
         val manager = applicationContext.getSystemService(NotificationManager::class.java)
         runner.progress.collect { state ->
-            if (state is SyncState.Uploading || state is SyncState.Hashing) {
+            if (state is SyncState.Uploading || state is SyncState.Hashing || state is SyncState.WaitingForNetwork) {
                 manager.notify(ForegroundInfoFactory.NOTIFICATION_ID, notifications.notification(state))
             }
         }
     }
 
     private val stopReasonText: String
-        get() = if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.S) stopReason.toString() else "?"
+        get() = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) stopReason.toString() else "?"
 
     companion object {
         private const val TAG = "SquirrelBackup"
