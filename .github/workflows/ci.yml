@@ -53,8 +53,12 @@ jobs:
       - run: cargo fmt --all --check
       - run: cargo clippy --workspace --all-targets -- -D warnings
       # PDF tests need pdfium; with CI set they fail rather than skip when it is missing.
+      # Outside target/: rust-cache restores target/ with unknown files pruned,
+      # which left a half pdfium that the script (rightly) refused to overwrite.
       - name: Fetch pdfium
-        run: scripts/fetch-pdfium.sh && echo "SQUIRREL_PDFIUM_DIR=$PWD/target/pdfium/lib" >> "$GITHUB_ENV"
+        run: |
+          set -o pipefail
+          scripts/fetch-pdfium.sh "$PWD/.cache/squirrel-assets/pdfium" | tail -n 1 >> "$GITHUB_ENV"
       # ML tests need ONNX Runtime and the models (~650 MB); with CI set they fail rather than skip.
       # Separate caches, keyed by each pin list; outside target/ so rust-cache does not store them too.
       # The scripts verify every hash on a cache hit and only download what is missing or wrong.
@@ -119,7 +123,9 @@ jobs:
         with:
           key: heic
       - name: Fetch pdfium
-        run: scripts/fetch-pdfium.sh && echo "SQUIRREL_PDFIUM_DIR=$PWD/target/pdfium/lib" >> "$GITHUB_ENV"
+        run: |
+          set -o pipefail
+          scripts/fetch-pdfium.sh "$PWD/.cache/squirrel-assets/pdfium" | tail -n 1 >> "$GITHUB_ENV"
       # ML tests need ONNX Runtime and the models (~650 MB); with CI set they fail rather than skip.
       # Separate caches, keyed by each pin list; outside target/ so rust-cache does not store them too.
       # The scripts verify every hash on a cache hit and only download what is missing or wrong.
@@ -199,7 +205,9 @@ jobs:
         run: cargo build -p squirrel
       # The documents scenario checks PDF thumbnails and text (it skips them without pdfium).
       - name: Fetch pdfium
-        run: scripts/fetch-pdfium.sh && echo "SQUIRREL_PDFIUM_DIR=$PWD/target/pdfium/lib" >> "$GITHUB_ENV"
+        run: |
+          set -o pipefail
+          scripts/fetch-pdfium.sh "$PWD/.cache/squirrel-assets/pdfium" | tail -n 1 >> "$GITHUB_ENV"
       # The search, people and Explore scenarios run the real models (with CI set they fail
       # rather than skip). Same caches as the rust job: one download per pin change.
       - name: Cache ONNX Runtime
@@ -273,7 +281,7 @@ jobs:
       - name: Android SDK platform 37 (compileSdk)
         run: |
           yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --licenses > /dev/null
-          "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" "platforms;android-37"
+          "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" "platforms;android-37.0"
       # The native theme is generated from web/src/lib/styles/tokens.css: no drift allowed.
       - uses: pnpm/action-setup@v4
         with:
