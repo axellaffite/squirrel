@@ -125,7 +125,9 @@ class PhotosViewModel(
      * (they were on screen when they failed; their placeholders' effects will not run twice).
      */
     fun retry() {
-        if (_state.value.months.isEmpty()) return loadMonths()
+        val current = _state.value
+        if (current.loadingMonths || current.refreshing) return // its answer is on the way
+        if (current.months.isEmpty()) return loadMonths()
         if (refreshFailed) return refresh()
         val failed = _state.value.months.filter { it.failed }.map { it.month }
         _state.update { state -> state.copy(error = null, months = state.months.map { it.copy(failed = false) }) }
