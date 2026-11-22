@@ -25,6 +25,8 @@ http-body-util = "0.1"
 ipnet = "2"
 kamadak-exif = "0.6.2"
 libheif-rs = { version = "3.0.0", default-features = false, features = ["v1_17", "image"] }
+# Bindings to the system libvips (LGPL-2.1+, linked dynamically): previews rendered on demand.
+libvips = "=2.3.0"
 mime_guess = "2"
 ndarray = "0.17"
 # A release candidate: its API moves between rcs, hence the exact pin. The ONNX Runtime

@@ -9,11 +9,14 @@ rust-version.workspace = true
 test-util = []
 # HEIC/HEIF (and AVIF) decoding through the system libheif (>= 1.17).
 heic = ["dep:libheif-rs"]
+# Lightbox previews through the system libvips (>= 8.15); without it the built-in pipeline renders them.
+vips = ["dep:libvips"]
 
 [dependencies]
 blurhash.workspace = true
 fast_image_resize.workspace = true
 libheif-rs = { workspace = true, optional = true }
+libvips = { workspace = true, optional = true }
 serde_json.workspace = true
 sha2.workspace = true
 webp.workspace = true
@@ -23,6 +26,10 @@ pdfium-render.workspace = true
 serde.workspace = true
 thiserror.workspace = true
 time.workspace = true
+
+[[example]]
+name = "preview_bench"
+required-features = ["vips"]
 
 [[example]]
 name = "make_fixtures"
