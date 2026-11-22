@@ -12,6 +12,10 @@ env:
   # Full debug info made ~100 test binaries fill the runner's disk (the linker died
   # with SIGBUS). Line tables keep file:line in backtraces at a fraction of the size.
   CARGO_PROFILE_DEV_DEBUG: line-tables-only
+  # The ML test loads every model at 64 threads. On the runners' CPU that reserves
+  # more than the 6 GiB default (bad_alloc while loading); real installs use half
+  # the cores. The test prints the child's peak (VmPeak) for reference.
+  SQUIRREL_ML_MAX_MEMORY_MB: 12288
 
 jobs:
   rust:

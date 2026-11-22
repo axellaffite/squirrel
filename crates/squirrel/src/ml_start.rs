@@ -126,6 +126,7 @@ mod tests {
             models_dir: dir.to_owned(),
             ort_dylib: ort,
             threads: 1,
+            max_memory_mb: crate::ml_exec::DEFAULT_MEMORY_MB,
             mode: MlExecMode::Subprocess,
         }
     }

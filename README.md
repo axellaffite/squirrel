@@ -132,6 +132,7 @@ by a backfill job queued at every worker start.
 | `SQUIRREL_MODELS_DIR` | `<data_dir>/models` | Pinned ML models (`scripts/fetch-models.sh`). Checked against their SHA-256 at start: a mismatch stops the worker. Without models, photo tags, search and faces are off |
 | `SQUIRREL_ORT_DYLIB` | unset | The pinned ONNX Runtime library (`scripts/fetch-onnxruntime.sh`), required once models are installed |
 | `SQUIRREL_ML_THREADS` | half the cores | Threads for one inference |
+| `SQUIRREL_ML_MAX_MEMORY_MB` | `6144` | Address-space limit of each inference child (Linux). It grows with the thread count: raise it for many threads |
 | `SQUIRREL_ML_EXEC` | `subprocess` | `subprocess` runs inference in a long-lived `squirrel ml-exec` child (resource limits, restarted on crash, stopped after 10 idle minutes; the server's search model after 5); `in-process` is for tests only: it loads the models at start and keeps them loaded |
 | `SQUIRREL_MEDIA_EXEC` | `subprocess` | `subprocess` decodes untrusted files in short-lived `squirrel media-exec` children with memory, CPU and file limits; `in-process` is for tests only |
 | `SQUIRREL_PDFIUM_DIR` | unset | Directory holding the pdfium library. Without it, PDFs get no thumbnail or text |
@@ -214,7 +215,8 @@ bigger machine can share the data directory read-only:
 server (`SQUIRREL_WORKER_KINDS` / `SQUIRREL_WORKER_EXCLUDE_KINDS`). `--ml-concurrency` stays 1.
 
 **Memory.** Inference runs in long-lived `squirrel ml-exec` children, restarted on a crash and
-stopped when idle, with an address-space limit of 6 GiB each on Linux. Measured on Linux
+stopped when idle, with an address-space limit of 6 GiB each on Linux
+(`SQUIRREL_ML_MAX_MEMORY_MB`). Measured on Linux
 (arm64, release, SigLIP2): the worker's child (image embedding and faces) takes about 0.5–0.6 GiB
 resident. The text model takes about 1.9 GiB resident; it runs in the server while searches
 happen (stopped after 5 idle minutes) and in the worker while it builds the label bank (once per
