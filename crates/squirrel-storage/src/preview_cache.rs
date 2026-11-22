@@ -96,6 +96,13 @@ impl Index {
     }
 }
 
+/// Whether indexing removes what does not belong in the cache.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Prune {
+    Yes,
+    No,
+}
+
 #[derive(Debug)]
 pub struct PreviewCache {
     root: PathBuf,
@@ -120,9 +127,26 @@ impl PreviewCache {
             config,
             index: Mutex::default(),
         };
-        let index = cache.scan()?;
+        let index = cache.scan(Prune::Yes)?;
         *cache.lock() = index;
         cache.trim(&mut cache.lock())?;
+        Ok(cache)
+    }
+
+    /// The cache as it is on disk, for another process than the server
+    /// (`squirrel admin previews`): nothing is created, removed or evicted
+    /// while indexing, whatever budget `config` names. Only [`PreviewCache::clear`]
+    /// changes anything.
+    pub fn inspect(data_dir: &Path, config: PreviewCacheConfig) -> Result<Self> {
+        let cache = Self {
+            root: data_dir.join("cache").join("previews"),
+            config,
+            index: Mutex::default(),
+        };
+        if cache.root.is_dir() {
+            let index = cache.scan(Prune::No)?;
+            *cache.lock() = index;
+        }
         Ok(cache)
     }
 
@@ -162,12 +186,14 @@ impl PreviewCache {
         (version == self.config.version).then_some((CacheKey { hash, bucket }, extension))
     }
 
-    fn scan(&self) -> Result<Index> {
+    fn scan(&self, prune: Prune) -> Result<Index> {
         let mut index = Index::default();
         for shard in fs::read_dir(&self.root)? {
             let shard = shard?;
             if !shard.file_type()?.is_dir() {
-                remove_if_exists(&shard.path())?;
+                if prune == Prune::Yes {
+                    remove_if_exists(&shard.path())?;
+                }
                 continue;
             }
             for file in fs::read_dir(shard.path())? {
@@ -192,9 +218,10 @@ impl PreviewCache {
                         };
                         if let Some(old) = index.insert(key.clone(), entry) {
                             // The same key in both formats: keep the newer.
-                            self.keep_newer(&mut index, key, old)?;
+                            self.keep_newer(&mut index, key, old, prune)?;
                         }
                     }
+                    _ if prune == Prune::No => {}
                     _ if meta.is_dir() => fs::remove_dir_all(&path)?,
                     _ => remove_if_exists(&path)?,
                 }
@@ -203,14 +230,16 @@ impl PreviewCache {
         Ok(index)
     }
 
-    fn keep_newer(&self, index: &mut Index, key: CacheKey, old: Entry) -> Result<()> {
+    fn keep_newer(&self, index: &mut Index, key: CacheKey, old: Entry, prune: Prune) -> Result<()> {
         let current = index.entries[&key].clone();
         let (keep, drop) = if old.used > current.used {
             (old, current)
         } else {
             (current, old)
         };
-        remove_if_exists(&self.path(&key, drop.extension))?;
+        if prune == Prune::Yes {
+            remove_if_exists(&self.path(&key, drop.extension))?;
+        }
         index.remove(&key);
         index.insert(key, keep);
         Ok(())
@@ -368,7 +397,12 @@ impl PreviewCache {
     pub fn clear(&self) -> Result<usize> {
         let mut index = self.lock();
         let mut removed = 0;
-        for shard in fs::read_dir(&self.root)? {
+        let shards = match fs::read_dir(&self.root) {
+            Ok(shards) => shards,
+            Err(err) if err.kind() == io::ErrorKind::NotFound => return Ok(0),
+            Err(err) => return Err(err.into()),
+        };
+        for shard in shards {
             let path = shard?.path();
             if path.is_dir() {
                 removed += fs::read_dir(&path)?.count();
@@ -512,6 +546,30 @@ mod tests {
         assert!(!shard.join(format!("{A}-1440-r0.jpg")).exists());
         assert!(!shard.join("stray.txt").exists());
         assert!(cache.read(&key(B, 3200)).unwrap().is_some());
+    }
+
+    #[test]
+    fn inspecting_changes_nothing_whatever_the_budget() {
+        let dir = tempfile::tempdir().unwrap();
+        let cache = PreviewCache::open(dir.path(), config(1000)).unwrap();
+        put(dir.path(), &cache, &key(A, 1440), 300);
+        put(dir.path(), &cache, &key(B, 1440), 300);
+        let shard = dir.path().join("cache/previews/2c");
+        fs::write(shard.join(format!("{A}-1440-r0.jpg")), b"old").unwrap();
+        fs::write(shard.join("stray.txt"), b"?").unwrap();
+        drop(cache);
+        // A budget far below what is there: nothing is evicted or removed.
+        let seen = PreviewCache::inspect(dir.path(), config(10)).unwrap();
+        assert_eq!(seen.stats().entries, 2);
+        assert_eq!(seen.stats().bytes, 600);
+        assert!(shard.join(format!("{A}-1440-r0.jpg")).exists());
+        assert!(shard.join("stray.txt").exists());
+        assert!(shard.join(format!("{A}-1440-r1.jpg")).exists());
+        // No cache yet: nothing created.
+        let empty = tempfile::tempdir().unwrap();
+        let none = PreviewCache::inspect(empty.path(), config(10)).unwrap();
+        assert_eq!(none.stats().entries, 0);
+        assert!(!empty.path().join("cache").exists());
     }
 
     #[test]
