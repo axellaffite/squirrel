@@ -128,17 +128,18 @@ class MediaStoreSource(context: Context, private val access: MediaAccessReader) 
         }.orEmpty()
     }
 
-    /** Buckets with their photo and video counts, for the album filter (by id, per volume). */
+    /** Buckets (folders) with their paths and photo and video counts, for the filter (by id, per volume). */
     suspend fun albums(): List<Album> = withContext(Dispatchers.IO) {
         val found = mutableMapOf<String, Album>()
         for (volume in MediaStore.getExternalVolumeNames(app)) {
             for (kind in listOf(images, videos)) {
-                val projection = arrayOf(MediaColumns.BUCKET_ID, MediaColumns.BUCKET_DISPLAY_NAME)
+                val projection = arrayOf(MediaColumns.BUCKET_ID, MediaColumns.BUCKET_DISPLAY_NAME, MediaColumns.RELATIVE_PATH)
                 resolver.query(kind.uriFor(volume), projection, null, null, null)?.use { c ->
                     while (c.moveToNext()) {
                         val id = c.getString(0) ?: continue
                         val name = c.getString(1)?.takeIf { it.isNotEmpty() } ?: continue
-                        val current = found[id] ?: Album(id, name, volume, 0)
+                        // A bucket is one directory: every row of it has the same RELATIVE_PATH.
+                        val current = found[id] ?: Album(id, name, volume, 0, path = c.getString(2))
                         found[id] = current.copy(count = current.count + 1)
                     }
                 }

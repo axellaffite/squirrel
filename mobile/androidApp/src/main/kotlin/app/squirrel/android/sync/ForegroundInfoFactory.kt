@@ -32,6 +32,7 @@ class ForegroundInfoFactory(private val context: Context) {
             is SyncState.Hashing -> builder
                 .setContentText(context.resources.getQuantityString(R.plurals.backup_preparing, state.of, formatCount(state.of.toLong())))
                 .setProgress(0, 0, true)
+            SyncState.WaitingForNetwork -> builder.setContentText(context.getString(R.string.backup_waiting_network)).setProgress(0, 0, false)
             else -> builder.setContentText(context.getString(R.string.backup_checking)).setProgress(0, 0, true)
         }
         return builder.build()

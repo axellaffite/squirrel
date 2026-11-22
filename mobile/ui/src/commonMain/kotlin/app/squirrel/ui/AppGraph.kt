@@ -23,6 +23,7 @@ import kotlinx.coroutines.withContext
 import app.squirrel.shared.sync.BackupStatus
 import app.squirrel.shared.sync.KtorChunkTransport
 import app.squirrel.shared.sync.MediaAccess
+import app.squirrel.shared.sync.NetworkWaiter
 import app.squirrel.shared.sync.Queue
 import app.squirrel.shared.sync.SCAN_ACCESS_KEY
 import app.squirrel.shared.sync.Scanner
@@ -165,6 +166,7 @@ class AppGraph(
             settings = settings,
             now = clock,
             io = io,
+            network = platform.networkWaiter() ?: NetworkWaiter.Delay,
         )
     }
 

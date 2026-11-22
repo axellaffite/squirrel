@@ -16,6 +16,8 @@ data class MonthPage(
     val started: Boolean = false,
     val loading: Boolean = false,
     val failed: Boolean = false,
+    /** Bumped when a refresh replaces this month: a page asked for before it is dropped. */
+    val epoch: Int = 0,
 ) {
     val complete: Boolean get() = started && nextCursor == null
     val label: String get() = monthLabel(month)
@@ -24,6 +26,8 @@ data class MonthPage(
 data class PhotosState(
     val months: List<MonthPage> = emptyList(),
     val loadingMonths: Boolean = true,
+    /** Reloading over what is shown: the months stay until the new ones arrive. */
+    val refreshing: Boolean = false,
     val error: String? = null,
 ) {
     val busy: Boolean get() = loadingMonths || months.any { it.loading }

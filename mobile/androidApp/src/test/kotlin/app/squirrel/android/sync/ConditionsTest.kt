@@ -21,6 +21,28 @@ class ConditionsTest {
         assertEquals(null, pauseReason(BackupSettings(), ok.copy(batteryLow = true, charging = true)))
     }
 
+    private val wifi = NetworkFacts(vpn = false, internet = true, unmetered = true)
+    private val mobile = NetworkFacts(vpn = false, internet = true, unmetered = false)
+
+    @Test
+    fun withoutAVpnTheDefaultNetworkDecides() {
+        assertEquals(true to true, networkState(wifi, emptyList()))
+        assertEquals(true to false, networkState(mobile, emptyList()))
+        assertEquals(false to false, networkState(null, emptyList()))
+    }
+
+    @Test
+    fun behindAVpnTheNetworksUnderItDecide() {
+        // Tailscale's network may say "metered" (or nothing) whatever carries it.
+        val tailscale = NetworkFacts(vpn = true, internet = true, unmetered = false)
+        assertEquals(true to true, networkState(tailscale, listOf(wifi, tailscale))) // on Wi-Fi: not paused
+        assertEquals(true to false, networkState(tailscale, listOf(mobile))) // on mobile data: waits for Wi-Fi
+        assertEquals(true to true, networkState(tailscale, listOf(wifi, mobile))) // Wi-Fi with mobile data on standby
+        // A VPN whose own flags are all there is.
+        assertEquals(true to true, networkState(tailscale.copy(unmetered = true), emptyList()))
+        assertEquals(false to false, networkState(tailscale.copy(internet = false), emptyList()))
+    }
+
     @Test
     fun theDeviceStateIsReadAtMostEveryFiveSeconds() {
         var clock = 0L

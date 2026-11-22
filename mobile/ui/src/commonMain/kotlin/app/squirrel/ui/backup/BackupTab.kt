@@ -28,6 +28,16 @@ fun BackupTab(graph: AppGraph, actions: PhotoAccessActions) {
             now = { Clock.System.now().toEpochMilliseconds() },
             onBackUpNow = graph::backUpNow,
             failures = { withContext(Dispatchers.IO) { graph.queue.failures() } },
+            batteryRestricted = { graph.backup?.batteryRestricted() ?: false },
+        )
+    }
+    // One choice of albums or folders behind both the Backup screen and its settings.
+    val picker = viewModel(key = "backup-albums") {
+        AlbumPickerViewModel(
+            store = graph.settings,
+            applySchedule = graph::applySchedule,
+            loadAlbums = { graph.backup?.albums().orEmpty() },
+            kind = graph.backup?.albumKind ?: AlbumKind.Albums,
         )
     }
     var settingsOpen by rememberSaveable { mutableStateOf(false) }
@@ -36,7 +46,6 @@ fun BackupTab(graph: AppGraph, actions: PhotoAccessActions) {
             BackupSettingsViewModel(
                 store = graph.settings,
                 applySchedule = graph::applySchedule,
-                loadAlbums = { graph.backup?.albums().orEmpty() },
                 rename = { name ->
                     val api = checkNotNull(graph.api) { "Signed out" }
                     val kept = api.devices.renameCurrentDevice(RenameDeviceRequest(name)).bodyOrThrow().device.name
@@ -46,8 +55,8 @@ fun BackupTab(graph: AppGraph, actions: PhotoAccessActions) {
                 deviceName = (graph.state.value as? AppState.SignedIn)?.account?.deviceName.orEmpty(),
             )
         }
-        BackupSettingsScreen(settingsVm, onBack = { settingsOpen = false })
+        BackupSettingsScreen(settingsVm, picker, onBack = { settingsOpen = false })
     } else {
-        BackupScreen(vm, actions, onOpenSettings = { settingsOpen = true })
+        BackupScreen(vm, picker, actions, onOpenSettings = { settingsOpen = true })
     }
 }

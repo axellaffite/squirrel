@@ -10,6 +10,8 @@ sealed interface SyncState {
     /** [done] of [of] assets are through; [current] is how far the one in flight is (0–1). */
     data class Uploading(val name: String, val done: Int, val of: Int, val current: Float = 0f) : SyncState
     data class Paused(val reason: PauseReason) : SyncState
+    /** A foreground run lost the network or the server and waits for it to come back. */
+    data object WaitingForNetwork : SyncState
     data class Error(val reason: ErrorReason) : SyncState
 }
 

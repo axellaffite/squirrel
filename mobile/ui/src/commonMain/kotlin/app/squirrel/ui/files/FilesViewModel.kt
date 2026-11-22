@@ -4,10 +4,12 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import app.squirrel.api.models.NodeDto
 import app.squirrel.api.models.NodeKind
+import app.squirrel.api.models.NodeListing
 import app.squirrel.api.models.PathSegmentDto
 import app.squirrel.shared.api.SquirrelApi
 import app.squirrel.shared.api.bodyOrThrow
 import app.squirrel.shared.sync.formatBytes
+import app.squirrel.ui.ResumeThrottle
 import app.squirrel.ui.attempt
 import app.squirrel.ui.photos.UNREACHABLE
 import kotlinx.coroutines.Job
@@ -29,6 +31,8 @@ data class FilesState(
     val nextCursor: String? = null,
     val started: Boolean = false,
     val loading: Boolean = false,
+    /** Reloading the folder: the rows stay until the new first page replaces them. */
+    val refreshing: Boolean = false,
     val error: String? = null,
     /** Download progress (0–1) per file id. */
     val downloads: Map<String, Float> = emptyMap(),
@@ -40,8 +44,8 @@ data class FilesState(
     val title: String get() = path.lastOrNull()?.name ?: "Files"
     val confirmText: String? get() = confirm?.let { "Download ${formatBytes(it.propertySize)}?" }
 
-    /** The first page has not arrived yet: the screen shows its loading rows. */
-    val firstLoad: Boolean get() = loading && items.isEmpty()
+    /** The folder's first page has not arrived yet: the screen shows its loading rows. */
+    val firstLoad: Boolean get() = loading && !started
 }
 
 /** The read-only file browser: folders, breadcrumbs, keyset paging, open with another app. */
@@ -49,6 +53,7 @@ class FilesViewModel(
     private val api: SquirrelApi,
     private val handoff: FileHandoff?,
     private val pageSize: Int = 100,
+    private val throttle: ResumeThrottle = ResumeThrottle(),
 ) : ViewModel() {
     private val _state = MutableStateFlow(FilesState())
     val state: StateFlow<FilesState> = _state.asStateFlow()
@@ -56,8 +61,11 @@ class FilesViewModel(
     /** The folder load or page in flight; a new folder cancels it. */
     private var loadJob: Job? = null
 
-    /** Bumped on every folder change: late answers for an older folder are dropped. */
+    /** Bumped on every folder change and refresh: late answers for an older listing are dropped. */
     private var generation = 0
+
+    /** The last refresh failed: "Try again" refreshes again (rather than paging on). */
+    private var refreshFailed = false
 
     init {
         enter(null)
@@ -67,6 +75,8 @@ class FilesViewModel(
     fun enter(id: String?) {
         loadJob?.cancel()
         val gen = ++generation
+        refreshFailed = false
+        throttle.loaded()
         _state.update { FilesState(folderId = id, loading = true, downloads = it.downloads) }
         loadJob = viewModelScope.launch {
             try {
@@ -108,10 +118,45 @@ class FilesViewModel(
         }
     }
 
+    /**
+     * The current folder again, from its first page. The rows stay until that page arrives; a
+     * page in flight is cancelled and its answer dropped, so the two never mix.
+     */
+    fun refresh() {
+        val current = _state.value
+        if (current.refreshing || current.firstLoad) return
+        if (!current.started) return enter(current.folderId)
+        loadJob?.cancel()
+        val gen = ++generation
+        throttle.loaded()
+        _state.update { it.copy(loading = true, refreshing = true, error = null) }
+        loadJob = viewModelScope.launch {
+            var listing: NodeListing? = null
+            try {
+                listing = attempt { api.files.listNodes(parentId = current.folderId, cursor = null, limit = pageSize).bodyOrThrow() }
+            } finally {
+                val fresh = listing
+                if (gen == generation) refreshFailed = fresh == null
+                update(gen) { state ->
+                    val settled = state.copy(loading = false, refreshing = false)
+                    if (fresh == null) settled.copy(error = UNREACHABLE)
+                    else settled.copy(items = fresh.items.distinctBy { it.id }, nextCursor = fresh.nextCursor)
+                }
+            }
+        }
+    }
+
+    /** The app came back: a refresh, unless the folder was loaded moments ago. */
+    fun resumed() {
+        if (_state.value.started && throttle.due()) refresh()
+    }
+
     fun retry() {
         val current = _state.value
         if (!current.started) {
             enter(current.folderId)
+        } else if (refreshFailed) {
+            refresh()
         } else {
             _state.update { it.copy(error = null) }
             more()
