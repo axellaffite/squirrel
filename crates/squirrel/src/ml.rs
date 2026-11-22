@@ -38,6 +38,8 @@ pub struct MlSettings {
     pub models_dir: PathBuf,
     pub ort_dylib: Option<PathBuf>,
     pub threads: usize,
+    /// The child's address-space limit (`--max-memory-mb`).
+    pub max_memory_mb: u64,
     pub mode: MlExecMode,
 }
 
@@ -145,7 +147,13 @@ fn backend(
             program: std::env::current_exe()
                 .context("locating the squirrel executable")
                 .map_err(fail(Unavailable::ChildFailed))?,
-            args: child_args(groups, models, dylib, settings.threads),
+            args: child_args(
+                groups,
+                models,
+                dylib,
+                settings.threads,
+                settings.max_memory_mb,
+            ),
             ready_timeout: READY_TIMEOUT,
             request_timeout: REQUEST_TIMEOUT,
             max_requests: MAX_REQUESTS,
@@ -240,6 +248,7 @@ pub(crate) fn child_args(
     models: &ModelDir,
     dylib: &Path,
     threads: usize,
+    max_memory_mb: u64,
 ) -> Vec<OsString> {
     let groups: Vec<&str> = groups.iter().map(|group| group.name()).collect();
     vec![
@@ -252,7 +261,7 @@ pub(crate) fn child_args(
         "--threads".into(),
         threads.max(1).to_string().into(),
         "--max-memory-mb".into(),
-        crate::ml_exec::DEFAULT_MEMORY_MB.to_string().into(),
+        max_memory_mb.to_string().into(),
     ]
 }
 
@@ -266,6 +275,7 @@ mod tests {
             models_dir: dir.to_owned(),
             ort_dylib: ort,
             threads: 1,
+            max_memory_mb: crate::ml_exec::DEFAULT_MEMORY_MB,
             mode: MlExecMode::Subprocess,
         }
     }
@@ -350,6 +360,7 @@ mod tests {
             &ModelDir::new("/m"),
             Path::new("/o/lib.so"),
             0,
+            8192,
         );
         let args: Vec<_> = args
             .iter()
@@ -358,5 +369,6 @@ mod tests {
         assert_eq!(&args[..2], ["--groups", "clip-image,faces"]);
         assert!(args.windows(2).any(|w| w == ["--threads", "1"]));
         assert!(args.windows(2).any(|w| w == ["--ort-dylib", "/o/lib.so"]));
+        assert!(args.windows(2).any(|w| w == ["--max-memory-mb", "8192"]));
     }
 }

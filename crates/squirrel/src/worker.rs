@@ -93,6 +93,11 @@ pub struct WorkerOptions {
     /// Threads for one inference. Default: half the cores.
     #[arg(long, env = "SQUIRREL_ML_THREADS", value_parser = clap::value_parser!(u16).range(1..=64))]
     pub ml_threads: Option<u16>,
+    /// Address-space limit of each inference child, in MB (Linux only). The
+    /// reserved space grows with `--ml-threads`: raise it for many threads.
+    #[arg(long, env = "SQUIRREL_ML_MAX_MEMORY_MB", default_value_t = crate::ml_exec::DEFAULT_MEMORY_MB,
+          value_parser = clap::value_parser!(u64).range(1024..=262_144))]
+    pub ml_max_memory_mb: u64,
     /// Where model inference runs: `subprocess` (isolated, default) or `in-process`.
     #[arg(long, env = "SQUIRREL_ML_EXEC", value_enum, default_value_t = MlExecMode::Subprocess)]
     pub ml_exec: MlExecMode,
@@ -341,6 +346,7 @@ pub fn ml_settings(options: &WorkerOptions, data_dir: &Path) -> MlSettings {
         threads: options
             .ml_threads
             .map_or_else(squirrel_ml::runtime::default_threads, usize::from),
+        max_memory_mb: options.ml_max_memory_mb,
         mode: options.ml_exec,
     }
 }
@@ -562,6 +568,7 @@ mod tests {
             models_dir: None,
             ort_dylib: None,
             ml_threads: None,
+            ml_max_memory_mb: crate::ml_exec::DEFAULT_MEMORY_MB,
             ml_exec: MlExecMode::InProcess,
         };
         let dir = tempfile::tempdir().unwrap();

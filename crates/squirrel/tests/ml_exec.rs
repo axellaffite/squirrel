@@ -144,13 +144,14 @@ fn image_fixture(path: &std::path::Path) {
     std::fs::write(path, bytes).unwrap();
 }
 
-/// Every group loads and answers under the default address-space limit, even
-/// with the most threads the worker allows (Linux only: macOS has no
+/// Every group loads and answers under the address-space limit (the default,
+/// or SQUIRREL_ML_MAX_MEMORY_MB), even with the most threads the worker allows,
+/// and prints the child's peak (Linux only: macOS has no
 /// RLIMIT_AS). Without the child's malloc arena cap, glibc's per-thread arenas
 /// reserve 64 MB each and this fails from about 24 threads.
 #[cfg(target_os = "linux")]
 #[tokio::test]
-async fn every_group_runs_under_the_default_memory_limit() {
+async fn every_group_runs_under_the_memory_limit() {
     use squirrel_ml::ModelGroup;
     let Some((dylib, models)) = squirrel_ml::testutil::test_ml_for(&[
         ModelGroup::ClipImage,
@@ -160,8 +161,10 @@ async fn every_group_runs_under_the_default_memory_limit() {
         return;
     };
     let threads = "64";
-    // No `--max-memory-mb`: the child's default, which the worker passes too.
-    let client = MlClient::new(MlBackend::Subprocess(config(&[
+    // The child's default unless SQUIRREL_ML_MAX_MEMORY_MB says otherwise, as
+    // for the worker (CI's CPU reserves more per thread than the default allows).
+    let limit = std::env::var_os("SQUIRREL_ML_MAX_MEMORY_MB");
+    let mut args: Vec<&std::ffi::OsStr> = vec![
         "--groups".as_ref(),
         "clip-image,clip-text,faces".as_ref(),
         "--models-dir".as_ref(),
@@ -170,7 +173,11 @@ async fn every_group_runs_under_the_default_memory_limit() {
         dylib.as_os_str(),
         "--threads".as_ref(),
         threads.as_ref(),
-    ])));
+    ];
+    if let Some(limit) = &limit {
+        args.extend(["--max-memory-mb".as_ref(), limit.as_os_str()]);
+    }
+    let client = MlClient::new(MlBackend::Subprocess(config(&args)));
     let dir = tempfile::tempdir().unwrap();
     let input = dir.path().join("preview.jpg");
     image_fixture(&input);
