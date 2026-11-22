@@ -7,7 +7,6 @@ import app.squirrel.api.models.AssetSummary
 import app.squirrel.shared.api.SquirrelApi
 import app.squirrel.shared.api.bodyOrThrow
 import app.squirrel.ui.attempt
-import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -20,16 +19,16 @@ data class AlbumsState(val albums: List<AlbumDto>? = null, val loading: Boolean 
 class AlbumsViewModel(private val api: SquirrelApi) : ViewModel() {
     private val _state = MutableStateFlow(AlbumsState())
     val state: StateFlow<AlbumsState> = _state.asStateFlow()
-    private var job: Job? = null
 
     init {
         load()
     }
 
     fun load() {
-        if (job?.isActive == true) return
+        // `loading`, not the job: the load clears it in `finally`, while its job is still active.
+        if (_state.value.loading) return
         _state.update { it.copy(loading = true, error = null) }
-        job = viewModelScope.launch {
+        viewModelScope.launch {
             try {
                 val albums = attempt { api.albums.listAlbums().bodyOrThrow() }
                 _state.update { if (albums == null) it.copy(error = UNREACHABLE) else it.copy(albums = albums) }

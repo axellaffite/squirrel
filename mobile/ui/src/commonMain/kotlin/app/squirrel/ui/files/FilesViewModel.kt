@@ -95,7 +95,8 @@ class FilesViewModel(
     /** The next page; never while the folder itself is still loading. */
     fun more() {
         val current = _state.value
-        if (loadJob?.isActive == true || current.complete || current.error != null || !current.started) return
+        // `loading`, not the job: a load clears it in `finally`, while its job is still active.
+        if (current.loading || current.complete || current.error != null || !current.started) return
         val gen = generation
         _state.update { it.copy(loading = true) }
         loadJob = viewModelScope.launch {
