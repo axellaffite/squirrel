@@ -3,6 +3,8 @@
 //! group's anchor, taken within [`WINDOW_HOURS`] of it, belongs to that group.
 //! Groups never mix users; a photo is in at most one group.
 
+pub mod review;
+
 use sqlx::{FromRow, PgConnection, PgExecutor};
 use time::PrimitiveDateTime;
 use uuid::Uuid;
