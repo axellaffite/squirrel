@@ -3,8 +3,12 @@ import { fileURLToPath } from 'node:url';
 import { expect, test, type Page } from '@playwright/test';
 import type { UploadFile } from './files.ts';
 
-/** Inference, clustering and tagging are awaited at most this long. */
-export const ML_TIMEOUT = 180_000;
+/**
+ * Inference, clustering and tagging are awaited at most this long. The first ML
+ * scenario also waits for the label bank: about 6 minutes on a 2-core CI runner,
+ * once per server. The polls return as soon as the queue is empty.
+ */
+export const ML_TIMEOUT = 480_000;
 
 const PORTRAITS = fileURLToPath(new URL('../../../crates/squirrel-ml/tests/fixtures/faces/', import.meta.url));
 const MIRRORED = fileURLToPath(new URL('../fixtures/faces/', import.meta.url));
