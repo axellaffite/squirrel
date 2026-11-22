@@ -37,8 +37,11 @@ import app.squirrel.theme.components.Loading
 import app.squirrel.theme.components.Icon
 import app.squirrel.theme.components.ListRow
 import app.squirrel.theme.components.Progress
+import app.squirrel.theme.components.PullToRefresh
 import app.squirrel.theme.components.Sheet
 import app.squirrel.ui.AppGraph
+import app.squirrel.ui.OnForeground
+import app.squirrel.ui.PullableColumn
 import app.squirrel.ui.images.Thumbnail
 import app.squirrel.ui.photos.ErrorRetry
 import app.squirrel.ui.photos.RailClearance
@@ -54,27 +57,32 @@ fun FilesTab(graph: AppGraph) {
     val api = graph.api ?: return
     val vm = viewModel(key = "files") { FilesViewModel(api, graph.files) }
     val state by vm.state.collectAsStateWithLifecycle()
+    OnForeground(vm::resumed)
     SystemBack(enabled = state.folderId != null) { vm.up() }
     Column(Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(Tokens.space2)) {
         PageHeader(state.title, onBack = if (state.folderId != null) ({ vm.up() }) else null, backLabel = "Up one folder")
         if (state.path.isNotEmpty()) Breadcrumbs(state.path.map { it.id to it.name }, vm::enter)
         state.message?.let { Alert(it) }
         when {
-            state.error != null && state.items.isEmpty() -> ErrorRetry(checkNotNull(state.error), vm::retry)
+            state.error != null && state.items.isEmpty() ->
+                PullableColumn(state.refreshing, vm::refresh) { ErrorRetry(checkNotNull(state.error), vm::retry) }
             state.firstLoad -> Loading()
-            state.complete && state.items.isEmpty() ->
+            state.complete && state.items.isEmpty() -> PullableColumn(state.refreshing, vm::refresh) {
                 EmptyState(SquirrelIcon.Folder, "Nothing here yet", "Files you add on the web or back up from this phone appear here.")
-            else -> LazyColumn(
-                modifier = Modifier.fillMaxSize(),
-                verticalArrangement = Arrangement.spacedBy(Tokens.space2),
-                contentPadding = PaddingValues(bottom = RailClearance),
-            ) {
-                itemsIndexed(state.items, key = { _, node -> node.id }) { index, node ->
-                    // The last row coming into view asks for the next page (by place, not by value).
-                    if (index == state.items.lastIndex) LaunchedEffect(state.items.size) { vm.more() }
-                    NodeRow(api, node, state.downloads[node.id]) { vm.open(node) }
+            }
+            else -> PullToRefresh(state.refreshing, vm::refresh) {
+                LazyColumn(
+                    modifier = Modifier.fillMaxSize(),
+                    verticalArrangement = Arrangement.spacedBy(Tokens.space2),
+                    contentPadding = PaddingValues(bottom = RailClearance),
+                ) {
+                    itemsIndexed(state.items, key = { _, node -> node.id }) { index, node ->
+                        // The last row coming into view asks for the next page (by place, not by value).
+                        if (index == state.items.lastIndex) LaunchedEffect(state.items.size) { vm.more() }
+                        NodeRow(api, node, state.downloads[node.id]) { vm.open(node) }
+                    }
+                    state.error?.let { error -> item(key = "error") { ErrorRetry(error, vm::retry) } }
                 }
-                state.error?.let { error -> item(key = "error") { ErrorRetry(error, vm::retry) } }
             }
         }
     }
