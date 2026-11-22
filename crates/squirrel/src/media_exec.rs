@@ -25,6 +25,26 @@ pub struct MediaExecArgs {
 /// asks: a preview decodes one photo, interactively (see the previews plan).
 pub const PREVIEW_MEMORY_MB: u64 = 1536;
 pub const PREVIEW_CPU_SECS: u64 = 10;
+/// The server's wall clock on one preview render.
+const PREVIEW_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(10);
+
+/// The server's preview renderer: a `media-exec` child per render with the
+/// preview limits, or in-process (`SQUIRREL_MEDIA_EXEC=in-process`).
+pub fn preview_executor(
+    mode: crate::worker::MediaExecMode,
+) -> anyhow::Result<squirrel_sandbox::exec::Executor> {
+    use anyhow::Context;
+    use squirrel_sandbox::exec::{Executor, SubprocessConfig};
+    Ok(match mode {
+        crate::worker::MediaExecMode::InProcess => Executor::InProcess,
+        crate::worker::MediaExecMode::Subprocess => Executor::Subprocess(SubprocessConfig {
+            program: std::env::current_exe().context("locating the squirrel executable")?,
+            max_memory_mb: PREVIEW_MEMORY_MB,
+            max_cpu_secs: PREVIEW_CPU_SECS,
+            timeout: PREVIEW_TIMEOUT,
+        }),
+    })
+}
 
 /// Largest file the child may write (its outputs are thumbnails of a few hundred KB).
 const MAX_FILE_BYTES: u64 = 64 * 1024 * 1024;

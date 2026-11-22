@@ -18,6 +18,7 @@ pub mod maintenance;
 pub mod ml;
 mod people_dto;
 mod photos_dto;
+pub mod previews;
 mod rate_limit;
 mod routes;
 mod search_dto;
