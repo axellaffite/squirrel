@@ -13,6 +13,7 @@
 	import { contentUrl } from '#lib/files/format.ts';
 	import { latestOnly } from '#lib/files/latest.ts';
 	import { photoDetails, thumbnailUrl, type AssetDetails, type AssetSummary } from '#lib/photos/api.ts';
+	import { windowPreviewPx } from '#lib/photos/previewSize.ts';
 	import { tileDateTime } from '#lib/photos/dates.ts';
 
 	/** A horizontal finger move longer than this (px) goes to the neighbouring photo. */
@@ -97,7 +98,8 @@
 	$effect(() => {
 		for (const neighbour of [previous, next]) {
 			if (neighbour?.thumbnail.state !== 'ready') continue;
-			new Image().src = thumbnailUrl(neighbour.id, 'preview', neighbour.thumbnail.version);
+			const size = neighbour.width && neighbour.height ? { width: neighbour.width, height: neighbour.height } : null;
+			new Image().src = thumbnailUrl(neighbour.id, 'preview', neighbour.thumbnail.version, windowPreviewPx(size));
 		}
 	});
 

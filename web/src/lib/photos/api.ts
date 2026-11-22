@@ -48,9 +48,13 @@ export const photoDetails = (id: string): Promise<Outcome<AssetDetails>> =>
 
 export const mediaStatus = (): Promise<Outcome<MediaStatus>> => call(api.GET('/api/media/status'));
 
-/** The thumbnail URL; `version` makes it a new, immutably cached URL whenever it is regenerated. */
-export function thumbnailUrl(id: string, size: ThumbnailSize, version: number): string {
-	return `/api/files/${encodeURIComponent(id)}/thumbnail?size=${size}&v=${version}`;
+/**
+ * The thumbnail URL; `version` makes it a new URL whenever it is regenerated. `px` (previews
+ * only, see `previewSize.ts`): the long side wanted, in device pixels; without it, 1440.
+ */
+export function thumbnailUrl(id: string, size: ThumbnailSize, version: number, px?: number): string {
+	const sized = px === undefined ? '' : `&px=${px}`;
+	return `/api/files/${encodeURIComponent(id)}/thumbnail?size=${size}&v=${version}${sized}`;
 }
 
 export const listAlbums = (): Promise<Outcome<Album[]>> => call(api.GET('/api/albums'));
