@@ -15,12 +15,14 @@ use squirrel_media::preview::{
 use squirrel_sandbox::exec::ExecError;
 use squirrel_sandbox::preview::PreviewJob;
 use squirrel_storage::{CacheKey, Variant, preview_cache};
+use std::sync::Arc;
 use uuid::Uuid;
 
 use super::thumbnails::{image_response, policy_headers};
 use crate::blocking::run_storage;
 use crate::content::{etag_matches, header_str};
 use crate::error::ApiError;
+use crate::previews::Outcome;
 use crate::state::AppState;
 
 /// Rendered previews may change with the renderer (`PREVIEW_VERSION`):
@@ -72,9 +74,24 @@ pub(super) async fn serve(
     if !state.previews.allow_render(request.user) {
         return Ok(retry_later(ApiError::RateLimited));
     }
-    // One render per key: whoever waited finds it cached.
-    let lock = state.previews.key_lock(&key);
-    let _rendering = lock.lock().await;
+    // One render per key: whoever waited answers with its outcome (bounded wait).
+    let Some(mut turn) = state.previews.turn(&key).await else {
+        return Ok(retry_later(ApiError::Busy));
+    };
+    match turn.clone() {
+        Some(Outcome::Preview(bytes, format)) => {
+            return Ok(image_response(
+                headers,
+                policy,
+                &etag,
+                format.content_type(),
+                bytes.to_vec(),
+            ));
+        }
+        Some(Outcome::Impossible) => return stored_fallback(state, &request, headers).await,
+        Some(Outcome::Busy) => return Ok(retry_later(ApiError::Busy)),
+        None => {}
+    }
     if let Some((bytes, format)) = cached(state, &key).await? {
         return Ok(image_response(
             headers,
@@ -86,9 +103,17 @@ pub(super) async fn serve(
     }
     let Some(_slot) = state.previews.slot().await else {
         tracing::warn!("no preview render slot available, answering busy");
+        *turn = Some(Outcome::Busy);
         return Ok(retry_later(ApiError::Busy));
     };
-    match render(state, &request, &key).await {
+    let rendered = render(state, &request, &key).await;
+    *turn = Some(match &rendered {
+        Ok(Rendered::Preview(bytes, format)) => Outcome::Preview(Arc::new(bytes.clone()), *format),
+        Ok(Rendered::Impossible(_)) => Outcome::Impossible,
+        Err(_) => Outcome::Busy,
+    });
+    drop(turn);
+    match rendered {
         Ok(Rendered::Preview(bytes, format)) => Ok(image_response(
             headers,
             policy,
