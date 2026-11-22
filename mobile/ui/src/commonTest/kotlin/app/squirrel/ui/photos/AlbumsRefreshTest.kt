@@ -44,6 +44,9 @@ class AlbumsRefreshTest {
     /** When set, the album's second page waits for it. */
     private var pageGate: CompletableDeferred<Unit>? = null
     private val askedPage = CompletableDeferred<Unit>()
+    /** When set, the album's first page waits for it (a refresh in flight). */
+    private var firstGate: CompletableDeferred<Unit>? = null
+    private val askedFirst = CompletableDeferred<Unit>()
 
     @BeforeTest
     fun setUp() = Dispatchers.setMain(Dispatchers.Unconfined)
@@ -71,6 +74,7 @@ class AlbumsRefreshTest {
                 "/api/albums/al/items" -> {
                     val from = request.url.parameters["cursor"]?.toInt() ?: 0
                     if (from > 0) pageGate?.let { askedPage.complete(Unit); it.await() }
+                    if (from == 0) firstGate?.let { askedFirst.complete(Unit); it.await() }
                     val page = photos.drop(from).take(PAGE)
                     val next = if (from + PAGE < photos.size) "\"${from + PAGE}\"" else "null"
                     respond("""{"items":[${page.joinToString(",") { asset(it) }}],"next_cursor":$next}""", headers = json)
@@ -124,8 +128,13 @@ class AlbumsRefreshTest {
         withTimeout(5_000) { askedPage.await() }
 
         photos = listOf("p0") + photos
+        // Hold the refreshed first page, so "refreshing" is checked while it is in flight
+        // (unheld, a slow runner could finish the refresh before the check).
+        firstGate = CompletableDeferred()
         vm.refresh()
+        withTimeout(5_000) { askedFirst.await() }
         assertTrue(vm.state.value.refreshing)
+        firstGate!!.complete(Unit)
         val refreshed = vm.settled()
         assertEquals(listOf("p0", "p1", "p2", "p3"), refreshed.items.map { it.id })
         pageGate!!.complete(Unit)
