@@ -37,8 +37,11 @@ class FakeRunner : BackupRunner {
 
     var reconcile: Boolean? = null
 
-    override suspend fun run(deadline: Long?, manual: Boolean, reconcile: Boolean): RunOutcome {
+    var waitForNetwork: Boolean? = null
+
+    override suspend fun run(deadline: Long?, manual: Boolean, reconcile: Boolean, waitForNetwork: Boolean): RunOutcome {
         this.reconcile = reconcile
+        this.waitForNetwork = waitForNetwork
         this.deadline = deadline
         this.manual = manual
         failure?.let { throw it }
@@ -85,6 +88,16 @@ class BackupWorkerTest {
         app.fake.pending = 3L to 1_000L
         run()
         assertNotNull(app.fake.deadline)
+        assertEquals(false, app.fake.waitForNetwork) // a deadline run ends on a network loss
+    }
+
+    @Test
+    fun aSystemStopContinuesUnlessTheAppCancelled() {
+        assertEquals(true, continuesAfterStop(androidx.work.WorkInfo.STOP_REASON_DEVICE_STATE))
+        assertEquals(true, continuesAfterStop(androidx.work.WorkInfo.STOP_REASON_FOREGROUND_SERVICE_TIMEOUT))
+        assertEquals(true, continuesAfterStop(androidx.work.WorkInfo.STOP_REASON_CONSTRAINT_CONNECTIVITY))
+        assertEquals(false, continuesAfterStop(androidx.work.WorkInfo.STOP_REASON_CANCELLED_BY_APP))
+        assertEquals(false, continuesAfterStop(androidx.work.WorkInfo.STOP_REASON_NOT_STOPPED))
     }
 
     @Test
@@ -92,6 +105,7 @@ class BackupWorkerTest {
         app.fake.pending = 500L to 1_000_000_000L
         run()
         assertNull(app.fake.deadline)
+        assertEquals(true, app.fake.waitForNetwork) // and waits out a network loss
     }
 
     @Test

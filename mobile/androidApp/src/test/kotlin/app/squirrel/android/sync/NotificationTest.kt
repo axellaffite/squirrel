@@ -23,5 +23,6 @@ class NotificationTest {
         assertEquals("Preparing 1 item", text(SyncState.Hashing(0, 1)))
         assertEquals("Preparing 40 items", text(SyncState.Hashing(0, 40)))
         assertEquals("Checking what is new", text(SyncState.Scanning))
+        assertEquals("Waiting for network…", text(SyncState.WaitingForNetwork))
     }
 }

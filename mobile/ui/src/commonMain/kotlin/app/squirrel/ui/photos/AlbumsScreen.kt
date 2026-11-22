@@ -12,6 +12,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.grid.GridCells
+import androidx.compose.foundation.lazy.grid.GridItemSpan
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.lazy.items
@@ -37,6 +38,9 @@ import app.squirrel.theme.Tokens
 import app.squirrel.theme.cardShadow
 import app.squirrel.theme.components.EmptyState
 import app.squirrel.theme.components.Loading
+import app.squirrel.theme.components.PullToRefresh
+import app.squirrel.ui.OnForeground
+import app.squirrel.ui.PullableColumn
 import app.squirrel.theme.tabular
 import app.squirrel.ui.images.Thumbnail
 
@@ -44,17 +48,28 @@ import app.squirrel.ui.images.Thumbnail
 @Composable
 fun AlbumsGrid(api: SquirrelApi, vm: AlbumsViewModel, onOpen: (AlbumDto) -> Unit) {
     val state by vm.state.collectAsStateWithLifecycle()
-    state.error?.let { return ErrorRetry(it, vm::load) }
-    val albums = state.albums ?: return Loading()
-    if (albums.isEmpty()) return EmptyState(SquirrelIcon.Library, "No albums yet", "Albums you make on the web appear here.")
-    LazyVerticalGrid(
-        columns = GridCells.Fixed(2),
-        modifier = Modifier.fillMaxSize(),
-        horizontalArrangement = Arrangement.spacedBy(Tokens.space3),
-        verticalArrangement = Arrangement.spacedBy(Tokens.space3),
-        contentPadding = PaddingValues(top = Tokens.space2, bottom = RailClearance),
-    ) {
-        items(albums, key = { it.id }) { album -> AlbumCard(api, album) { onOpen(album) } }
+    OnForeground(vm::resumed)
+    val albums = state.albums
+    when {
+        albums == null && state.error != null -> return PullableColumn(state.loading, vm::refresh) { ErrorRetry(state.error!!, vm::load) }
+        albums == null -> return Loading()
+        albums.isEmpty() -> return PullableColumn(state.refreshing, vm::refresh) {
+            state.error?.let { ErrorRetry(it, vm::load) }
+            EmptyState(SquirrelIcon.Library, "No albums yet", "Albums you make on the web appear here.")
+        }
+    }
+    PullToRefresh(state.refreshing, vm::refresh) {
+        LazyVerticalGrid(
+            columns = GridCells.Fixed(2),
+            modifier = Modifier.fillMaxSize(),
+            horizontalArrangement = Arrangement.spacedBy(Tokens.space3),
+            verticalArrangement = Arrangement.spacedBy(Tokens.space3),
+            contentPadding = PaddingValues(top = Tokens.space2, bottom = RailClearance),
+        ) {
+            // A failed refresh keeps the albums shown, with "Try again" above them.
+            state.error?.let { error -> item(key = "error", span = { GridItemSpan(maxLineSpan) }) { ErrorRetry(error, vm::load) } }
+            items(albums.orEmpty(), key = { it.id }) { album -> AlbumCard(api, album) { onOpen(album) } }
+        }
     }
 }
 
@@ -90,8 +105,19 @@ private fun AlbumCard(api: SquirrelApi, album: AlbumDto, onClick: () -> Unit) {
 @Composable
 fun AlbumPhotos(api: SquirrelApi, vm: AlbumViewModel, onOpen: (AssetSummary) -> Unit) {
     val state by vm.state.collectAsStateWithLifecycle()
-    if (state.complete && state.items.isEmpty()) return EmptyState(SquirrelIcon.Images, "This album is empty", "Add photos to it on the web.")
+    OnForeground(vm::resumed)
     if (!state.started && state.loading) return Loading()
+    if (state.items.isEmpty() && (state.complete || state.error != null)) {
+        return PullableColumn(state.refreshing, vm::refresh) {
+            state.error?.let { ErrorRetry(it, vm::retry) }
+            if (state.complete) EmptyState(SquirrelIcon.Images, "This album is empty", "Add photos to it on the web.")
+        }
+    }
+    PullToRefresh(state.refreshing, vm::refresh) { AlbumRows(api, vm, state, onOpen) }
+}
+
+@Composable
+private fun AlbumRows(api: SquirrelApi, vm: AlbumViewModel, state: AlbumState, onOpen: (AssetSummary) -> Unit) {
     BoxWithConstraints(Modifier.fillMaxSize()) {
         val width = maxWidth.value.toInt()
         val rowHeight = Tokens.photoRow.value.toInt()
@@ -110,7 +136,7 @@ fun AlbumPhotos(api: SquirrelApi, vm: AlbumViewModel, onOpen: (AssetSummary) -> 
                 if (n == rows.lastIndex) LaunchedEffect(state.items.size) { vm.more() }
                 PhotoRow(api, height, tiles, onOpen)
             }
-            state.error?.let { error -> item(key = "error") { ErrorRetry(error, vm::more) } }
+            state.error?.let { error -> item(key = "error") { ErrorRetry(error, vm::retry) } }
         }
     }
 }

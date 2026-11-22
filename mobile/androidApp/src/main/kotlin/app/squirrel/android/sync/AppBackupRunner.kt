@@ -29,17 +29,17 @@ class AppBackupRunner(
     @OptIn(ExperimentalCoroutinesApi::class)
     override val progress: Flow<SyncState> = graph.syncEngine.flatMapLatest { it?.state ?: flowOf(SyncState.Idle) }
 
-    override suspend fun run(deadline: Long?, manual: Boolean, reconcile: Boolean): RunOutcome {
+    override suspend fun run(deadline: Long?, manual: Boolean, reconcile: Boolean, waitForNetwork: Boolean): RunOutcome {
         graph.awaitReady()
         val engine = graph.syncEngine.value ?: return RunOutcome.NotSignedIn
         // A trigger or period that fired just before automatic backup was turned off.
         if (!manual && !withContext(Dispatchers.IO) { graph.settings.backup() }.autoBackup) return RunOutcome.Done
-        var summary = engine.runOnce(deadline, reconcile)
+        var summary = engine.runOnce(deadline, reconcile, waitForNetwork)
         if (summary.stoppedBy == StopCause.AlreadyRunning) {
             // Another run (periodic, trigger) holds the engine: let it finish, then do ours, so a
             // "Back up now" never ends as "done" while the other run may still be stopped.
             engine.awaitIdle()
-            summary = engine.runOnce(deadline, reconcile)
+            summary = engine.runOnce(deadline, reconcile, waitForNetwork)
         }
         val paused = engine.state.value as? SyncState.Paused
         return when {

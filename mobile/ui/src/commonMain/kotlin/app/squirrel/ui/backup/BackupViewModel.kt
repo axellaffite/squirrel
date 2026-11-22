@@ -21,12 +21,13 @@ class BackupViewModel(
     private val now: () -> Long,
     private val onBackUpNow: () -> Unit,
     private val failures: suspend () -> List<QueuedAsset>,
+    private val batteryRestricted: () -> Boolean = { false },
 ) : ViewModel() {
-    /** Bumped on resume: partial access can shrink or expire while the app is away. */
+    /** Bumped on resume: partial access, or the battery setting, can change while the app is away. */
     private val refresh = MutableStateFlow(0)
 
     val ui: StateFlow<BackupUi?> = combine(status, settings, refresh) { s, prefs, _ ->
-        backupUi(s.copy(access = access()), prefs, locationsIncluded(), now())
+        backupUi(s.copy(access = access()), prefs, locationsIncluded(), now(), batteryRestricted())
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(STOP_TIMEOUT), null)
 
     private val _failed = MutableStateFlow<List<QueuedAsset>?>(null)

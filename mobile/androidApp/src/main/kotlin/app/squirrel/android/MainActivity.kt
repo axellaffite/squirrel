@@ -1,5 +1,7 @@
 package app.squirrel.android
 
+import android.annotation.SuppressLint
+import android.content.ActivityNotFoundException
 import android.content.Intent
 import android.net.Uri
 import android.os.Build
@@ -33,6 +35,20 @@ class MainActivity : ComponentActivity() {
         override fun requestAccess() = permissions.launch(MediaPermissions.toRequest(Build.VERSION.SDK_INT).toTypedArray())
         override fun changeSelection() = requestAccess()
         override fun allowAll() = openAppSettings()
+        override fun openBatterySettings() = openBatterySettingsPage()
+    }
+
+    /**
+     * The system's one-tap "stop optimising" dialog for Squirrel (the app is installed directly,
+     * not from Play, whose policy limits this permission); some phones lack it: the app's page.
+     */
+    @SuppressLint("BatteryLife")
+    private fun openBatterySettingsPage() {
+        try {
+            startActivity(Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS, Uri.fromParts("package", packageName, null)))
+        } catch (_: ActivityNotFoundException) {
+            openAppSettings()
+        }
     }
 
     private fun shouldShowAnyRationale() =
