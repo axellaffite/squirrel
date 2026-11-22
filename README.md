@@ -136,6 +136,7 @@ by a backfill job queued at every worker start.
 | `SQUIRREL_WORKER_EXCLUDE_KINDS` | none | Comma-separated job kinds this worker leaves to others. Not with `SQUIRREL_WORKER_KINDS` |
 | `SQUIRREL_ML_CONCURRENCY` | `1` | Background ML jobs (`clip_embed`, `faces`, `label_bank`, `cluster_faces`) run at once, so another slot stays free for fresh uploads. Only `1` is accepted for now: one `ml-exec` child serves one request at a time |
 | `SQUIRREL_CLUSTER_DELAY_SECS` | `600` | How long new faces wait before they are grouped into people (at most one clustering run per user and delay while photos keep arriving) |
+| `SQUIRREL_DUPLICATES_DELAY_SECS` | `60` | How long new photos wait before they are grouped with their near-identical copies (at most one grouping run per user and delay while photos keep arriving) |
 | `SQUIRREL_MODELS_DIR` | `<data_dir>/models` | Pinned ML models (`scripts/fetch-models.sh`). Checked against their SHA-256 at start: a mismatch stops the worker. Without models, photo tags, search and faces are off |
 | `SQUIRREL_ORT_DYLIB` | unset | The pinned ONNX Runtime library (`scripts/fetch-onnxruntime.sh`), required once models are installed |
 | `SQUIRREL_ML_THREADS` | half the cores | Threads for one inference |
@@ -202,6 +203,17 @@ second (429 beyond); cached previews cost nothing.
 Installations from before on-demand previews still hold a stored 1440 px preview per photo
 (≈ 7–15 GB per 50 000 photos). Once the new release serves previews, delete them once with
 `squirrel admin media drop-previews` (a worker deletes them 500 photos at a time; PDFs keep theirs).
+
+**Duplicates** are near-identical photos of one user: different files that look the same
+(resized, re-compressed, lightly edited; byte-identical files are already stored once). Each
+photo gets a 64-bit perceptual hash of its thumbnail (DCT pHash); two photos are duplicates when
+their hashes differ by at most 6 bits and they were taken at most 24 hours apart. A group is
+anchored at its oldest photo and only photos close to that anchor join it, so a day of bursts
+never chains into one group. Groups never mix users and need no models. In Explore › Duplicates
+the user keeps one photo of a group: the others are hidden from every photo view (timeline,
+search, albums, people, places, Explore, the phone) but stay in Files, count in the quota and
+can be shown again from the Resolved tab. Nothing is hidden without that choice; a new copy that
+joins a resolved group reopens it. Trashing a photo takes it out of its group (and unhides it).
 
 **Document search** looks at file names, PDFs and text files: words of three letters or more
 match as prefixes, two-letter words only as whole words, one-letter words are ignored. Each
