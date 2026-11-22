@@ -39,6 +39,10 @@ class PhotosRefreshTest {
     private var failMonths = false
     private val monthRequests = mutableListOf<String>()
     private var monthCalls = 0
+
+    /** When set, the month list waits for it. */
+    private var monthsGate: CompletableDeferred<Unit>? = null
+    private val askedMonths = CompletableDeferred<Unit>()
     private var clock = Duration.ZERO
 
     /** When set, July's first page waits for it. */
@@ -66,6 +70,7 @@ class PhotosRefreshTest {
             when (request.url.encodedPath) {
                 "/api/photos/months" -> {
                     monthCalls++
+                    monthsGate?.let { askedMonths.complete(Unit); it.await() }
                     if (failMonths) return@MockEngine respondError(HttpStatusCode.BadGateway)
                     respond(library.entries.joinToString(",", "[", "]") { """{"month":"${it.key}","count":${it.value.size}}""" }, headers = json)
                 }
@@ -207,5 +212,20 @@ class PhotosRefreshTest {
         assertEquals(2, monthCalls)
         vm.resumed()
         assertEquals(2, monthCalls)
+    }
+
+    @Test
+    fun tryAgainDuringARefreshDoesNotLoadTheMonthsTwice() = run {
+        library = linkedMapOf()
+        val vm = vm()
+        vm.settled()
+        monthsGate = CompletableDeferred()
+        vm.refresh()
+        withTimeout(5_000) { askedMonths.await() }
+        vm.retry() // the empty timeline's "Try again" while the pull is still loading
+        assertEquals(false, vm.state.value.loadingMonths)
+        monthsGate!!.complete(Unit)
+        vm.settled()
+        assertEquals(2, monthCalls) // the first load and the refresh, nothing more
     }
 }
