@@ -16,7 +16,10 @@ import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.joinAll
 import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.Semaphore
+import kotlinx.coroutines.sync.withLock
+import kotlinx.io.IOException
 import kotlinx.datetime.TimeZone
 import kotlinx.datetime.toLocalDateTime
 import kotlin.random.Random
@@ -32,6 +35,8 @@ sealed interface UploadResult {
     /** Stopped between chunks because conditions or the deadline said so; the session is kept. */
     data object Interrupted : UploadResult
     data class RetryLater(val at: Long) : UploadResult
+    /** The server could not be reached at all (only with `reportOffline`): no attempt is spent. */
+    data object Offline : UploadResult
     /** Out of attempts; retried on the next "Back up now". */
     data object Failed : UploadResult
 }
@@ -48,6 +53,8 @@ private const val NOT_FOUND = 404
 private const val INSUFFICIENT_STORAGE = 507
 private const val CONFLICT = 409
 private const val PAYLOAD_TOO_LARGE = 413
+private const val TOO_MANY_REQUESTS = 429
+private const val SERVICE_UNAVAILABLE = 503
 private const val MILLIS_PER_SECOND = 1000L
 
 /** Refusals that will not change by retrying the same file. */
@@ -56,7 +63,9 @@ private val PERMANENT = setOf(400, 403, PAYLOAD_TOO_LARGE, 422)
 /**
  * Uploads one queued asset: the year folder, `POST /api/uploads`, the chunks the server lacks
  * ([parallelChunks] at a time), then complete. Resumes a recorded session. One instance per run
- * (it caches the year folders).
+ * (it caches the year folders), safe to share between assets uploading at the same time.
+ * [onServerBusy] hears a 429 or 503 with the time this asset waits until, so others can wait too;
+ * with [reportOffline], an unreachable server is [UploadResult.Offline] instead of an attempt.
  */
 @OptIn(ExperimentalAtomicApi::class)
 class Uploader(
@@ -70,8 +79,11 @@ class Uploader(
     private val timeZone: TimeZone = TimeZone.currentSystemDefault(),
     private val pollMillis: Long = 1_000,
     private val stopGraceMillis: Long = 10_000,
+    private val reportOffline: Boolean = false,
+    private val onServerBusy: (until: Long) -> Unit = {},
 ) {
     private val folders = mutableMapOf<Int, String>()
+    private val foldersLock = Mutex()
 
     private sealed interface Transfer {
         data object Done : Transfer
@@ -102,6 +114,8 @@ class Uploader(
                 throw e
             } catch (e: ApiError) {
                 handleApiError(asset, e)
+            } catch (e: IOException) {
+                if (reportOffline) UploadResult.Offline else retry(asset, e)
             } catch (e: Exception) {
                 retry(asset, e)
             }
@@ -248,8 +262,9 @@ class Uploader(
         ),
     )
 
-    private suspend fun folder(year: Int): String = folders[year]
-        ?: api.sync.syncFolder(SyncFolderRequest(year)).bodyOrThrow().folderId.also { folders[year] = it }
+    private suspend fun folder(year: Int): String = foldersLock.withLock {
+        folders[year] ?: api.sync.syncFolder(SyncFolderRequest(year)).bodyOrThrow().folderId.also { folders[year] = it }
+    }
 
     /** The capture year on the phone's clock: from `taken_at`, else the file's modification time. */
     private fun year(asset: QueuedAsset): Int =
@@ -268,7 +283,11 @@ class Uploader(
             queue.markFailed(asset.deviceAssetId, refusal(e))
             UploadResult.Failed
         }
-        else -> retry(asset, e, minDelay = e.retryAfterSeconds?.times(MILLIS_PER_SECOND))
+        else -> retry(asset, e, minDelay = e.retryAfterSeconds?.times(MILLIS_PER_SECOND)).also { result ->
+            if (result is UploadResult.RetryLater && (e.status == TOO_MANY_REQUESTS || e.status == SERVICE_UNAVAILABLE)) {
+                onServerBusy(result.at)
+            }
+        }
     }
 
     /** A message the Backup screen can show for a file the server will not take. */

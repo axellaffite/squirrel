@@ -60,6 +60,7 @@ class SyncEngineTest {
         now = { clock },
         random = { 0.5 },
         io = io,
+        sleep = { server.locked { clock += it } },
     )
 
     private fun hashOf(id: String): String {
@@ -145,10 +146,10 @@ class SyncEngineTest {
         val summary = engine.runOnce()
 
         assertEquals(SyncState.Paused(PauseReason.WifiRequired), engine.state.value)
-        // The chunks already in flight (two at a time) finish; no new one starts.
+        // The chunks already in flight (one per asset, both assets at once) finish; no new one starts.
         assertTrue(server.sent.size in 1..2)
         assertEquals(0, summary.uploaded)
-        assertEquals(1L, queue.counts()[QueueState.Uploading])
+        assertEquals(server.sent.map { it.first }.distinct().size.toLong(), queue.counts()[QueueState.Uploading])
     }
 
     @Test
@@ -247,7 +248,7 @@ class SyncEngineTest {
 
     @Test
     fun aBackoffExpiringMidRunDoesNotEndTheRun() = runApiTest {
-        repeat(3) { source.put("images:$it", size = 64L + it, modifiedAt = 10L - it) } // upload order 0, 1, 2
+        repeat(3) { source.put("images:$it", size = 64L + it, modifiedAt = 10L - it) }
         var refusals = 0
         server.onRequest = { request, _ ->
             // The first upload is refused once; the clock then passes its backoff during the next.
@@ -269,7 +270,8 @@ class SyncEngineTest {
 
         assertEquals(StopCause.Finished, summary.stoppedBy)
         assertEquals(2, summary.uploaded)
-        assertEquals(QueueState.Missing, queue.get("images:0")!!.state)
+        // Whichever started first was refused (three go up at once); it waits for the next run.
+        assertEquals(1L, queue.counts()[QueueState.Missing])
         assertEquals(clock.toString(), settings.value(LAST_RUN_KEY))
     }
 
