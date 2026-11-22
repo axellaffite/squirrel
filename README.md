@@ -56,6 +56,10 @@ These become configurable in Phase 7.
 
 ### Deployment model
 
+Production runs from one Docker image (`Dockerfile`) with Postgres, the server and the worker
+in `deploy/docker-compose.yml`; `deploy/README.md` is the install guide (a home server reached
+over Tailscale).
+
 Squirrel assumes **one server process per database and data directory**. Upload locks,
 upload admission and rate limits live in that process's memory; two servers sharing a
 database or a data directory would not see each other's locks.

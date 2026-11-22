@@ -6,3 +6,4 @@ web/.svelte-kit
 web/test-results
 web/playwright-report
 /.cache
+/deploy/.env
