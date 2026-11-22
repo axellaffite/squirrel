@@ -5,6 +5,7 @@ import app.squirrel.shared.sync.AssetSource
 import app.squirrel.shared.sync.ChunkTransport
 import app.squirrel.shared.sync.Conditions
 import app.squirrel.shared.api.SquirrelApi
+import app.squirrel.theme.SquirrelIcon
 
 /** What backup needs from the platform: the photo library, its conditions, its scheduler. */
 interface BackupPlatform {
@@ -14,7 +15,10 @@ interface BackupPlatform {
     /** Whether photo locations survive (Android: ACCESS_MEDIA_LOCATION granted). */
     fun locationsIncluded(): Boolean
 
-    /** Albums for the settings screen. */
+    /** What the phone groups photos in, and what the screens call them. */
+    val albumKind: AlbumKind get() = AlbumKind.Albums
+
+    /** The groups backup can be limited to (Android folders, iOS albums). */
     suspend fun albums(): List<AlbumChoice>
 
     /** Re-arms background backups for [settings] (cancels them when automatic backup is off). */
@@ -33,8 +37,17 @@ interface BackupPlatform {
     fun transport(api: SquirrelApi): ChunkTransport? = null
 }
 
-/** One album: [id] is what the filter stores (Android BUCKET_ID), [name] what is shown. */
-data class AlbumChoice(val id: String, val name: String, val count: Int)
+/**
+ * One album or folder: [id] is what the filter stores (Android BUCKET_ID, iOS local identifier),
+ * [name] what is shown, [path] where it lives when the platform has one ("DCIM/Camera").
+ */
+data class AlbumChoice(val id: String, val name: String, val count: Int, val path: String? = null)
+
+/** Android backs up folders (MediaStore buckets); iOS, PhotoKit albums. */
+enum class AlbumKind(val title: String, val one: String, val many: String, val icon: SquirrelIcon) {
+    Folders("Folders", "folder", "folders", SquirrelIcon.Folder),
+    Albums("Albums", "album", "albums", SquirrelIcon.Library),
+}
 
 /** Platform dialogs the backup screens open. */
 interface PhotoAccessActions {

@@ -17,25 +17,21 @@ import app.squirrel.ui.shell.SystemBack
 import app.squirrel.ui.shell.PageHeader
 import androidx.compose.ui.text.input.ImeAction
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import app.squirrel.shared.settings.AlbumFilter
-import app.squirrel.theme.SquirrelIcon
 import app.squirrel.theme.SquirrelTheme
 import app.squirrel.theme.Tokens
 import app.squirrel.theme.components.Button
 import app.squirrel.theme.components.ButtonSize
 import app.squirrel.theme.components.ButtonVariant
-import app.squirrel.theme.components.Icon
 import app.squirrel.theme.components.ListRow
-import app.squirrel.theme.components.Sheet
 import app.squirrel.theme.components.TextField
 import app.squirrel.theme.components.Toggle
 import app.squirrel.theme.components.Well
-import app.squirrel.theme.tabular
 
 /** Backup › Settings. */
 @Composable
-fun BackupSettingsScreen(vm: BackupSettingsViewModel, onBack: () -> Unit) {
+fun BackupSettingsScreen(vm: BackupSettingsViewModel, picker: AlbumPickerViewModel, onBack: () -> Unit) {
     val state by vm.state.collectAsStateWithLifecycle()
+    val albums by picker.state.collectAsStateWithLifecycle()
     val type = SquirrelTheme.type
     SystemBack(onBack = onBack)
     Column(
@@ -51,7 +47,7 @@ fun BackupSettingsScreen(vm: BackupSettingsViewModel, onBack: () -> Unit) {
             Toggle("Include videos", s.includeVideos, vm::setIncludeVideos)
         }
         Well {
-            ListRow("Albums", icon = SquirrelIcon.Library, meta = state.albumsLabel, onClick = vm::openAlbums)
+            ListRow(albums.kind.title, icon = albums.kind.icon, meta = albums.label, onClick = picker::open)
         }
         Well(verticalArrangement = Arrangement.spacedBy(Tokens.space2)) {
             BasicText("This phone", style = type.cardTitle)
@@ -72,25 +68,5 @@ fun BackupSettingsScreen(vm: BackupSettingsViewModel, onBack: () -> Unit) {
         }
         Spacer(Modifier.height(Tokens.railBarH))
     }
-    if (state.albumsOpen) {
-        Sheet("Albums", onDismiss = vm::closeAlbums) {
-            val filter = state.settings.albums
-            ListRow("All photos", icon = SquirrelIcon.Images, onClick = vm::selectAllAlbums, trailing = {
-                if (filter == AlbumFilter.All) Icon(SquirrelIcon.Check, contentDescription = "Selected", tint = SquirrelTheme.scheme.accent)
-            })
-            val albums = state.albums
-            if (albums == null) {
-                BasicText("Loading albums…", style = type.caption)
-            } else {
-                albums.forEach { album ->
-                    val selected = filter is AlbumFilter.Selected && album.id in filter.names
-                    ListRow(album.name, icon = SquirrelIcon.Folder, meta = album.count.toString(), onClick = { vm.toggleAlbum(album.id) }, trailing = {
-                        if (selected) Icon(SquirrelIcon.Check, contentDescription = "Selected", tint = SquirrelTheme.scheme.accent)
-                    })
-                }
-            }
-            BasicText("Changing albums checks your whole library again; nothing is deleted from your Squirrel.",
-                style = type.caption.tabular())
-        }
-    }
+    AlbumPickerSheet(picker)
 }

@@ -35,8 +35,9 @@ import kotlinx.coroutines.launch
 
 /** MASTER.md phone section: the Backup screen with its one graphite status card. */
 @Composable
-fun BackupScreen(vm: BackupViewModel, actions: PhotoAccessActions, onOpenSettings: () -> Unit) {
+fun BackupScreen(vm: BackupViewModel, picker: AlbumPickerViewModel, actions: PhotoAccessActions, onOpenSettings: () -> Unit) {
     val ui by vm.ui.collectAsStateWithLifecycle()
+    val albums by picker.state.collectAsStateWithLifecycle()
     val failed by vm.failed.collectAsStateWithLifecycle()
     val scope = rememberCoroutineScope()
     LifecycleResumeEffect(Unit) {
@@ -69,6 +70,10 @@ fun BackupScreen(vm: BackupViewModel, actions: PhotoAccessActions, onOpenSetting
             }
         }
         state.locationWarning?.let { Alert(it) }
+        Well {
+            // What is backed up, where people look for it (it is also in Backup › Settings).
+            ListRow(albums.kind.title, icon = albums.kind.icon, meta = albums.label, onClick = picker::open)
+        }
         Well(verticalArrangement = Arrangement.spacedBy(Tokens.space2)) {
             ListRow("Backed up", icon = SquirrelIcon.CheckCircle, meta = state.backedUp)
             ListRow("Waiting", icon = SquirrelIcon.Upload, meta = state.waiting)
@@ -83,6 +88,7 @@ fun BackupScreen(vm: BackupViewModel, actions: PhotoAccessActions, onOpenSetting
         Spacer(Modifier.height(Tokens.railBarH))
     }
     failed?.let { rows -> FailureSheet(rows, onRetry = vm::retryFailures, onDismiss = vm::hideFailures) }
+    AlbumPickerSheet(picker)
 }
 
 @Composable
