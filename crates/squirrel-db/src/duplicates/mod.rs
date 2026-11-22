@@ -205,7 +205,8 @@ async fn lock_live(
 }
 
 /// Adds `node` to `group`. A resolved group is reopened: the new photo stays
-/// visible until the user decides again (photos hidden before stay hidden). `false`: the photo was trashed
+/// visible until the user decides again (photos hidden before stay hidden,
+/// and no photo counts as kept any more). `false`: the photo was trashed
 /// meanwhile, or the group is gone.
 pub async fn join_group(
     conn: &mut PgConnection,
@@ -220,7 +221,7 @@ pub async fn join_group(
     // Locked before the member is added: a photo leaving the group at the
     // same time waits for this one before counting what is left.
     let reopened = sqlx::query(
-        "UPDATE duplicate_groups SET resolved_at = NULL, updated_at = now() \
+        "UPDATE duplicate_groups SET resolved_at = NULL, kept_node_id = NULL, updated_at = now() \
           WHERE id = $1 AND owner_id = $2",
     )
     .bind(group)
