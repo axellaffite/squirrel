@@ -44,6 +44,9 @@ const SESSION: &[&str] = &[
     "/api/people/{id}/merge",
     "/api/people/{id}/split",
     "/api/faces/{id}/person",
+    "/api/duplicates",
+    "/api/duplicates/{id}/keep",
+    "/api/duplicates/{id}/restore",
 ];
 
 /// Device bearer only.

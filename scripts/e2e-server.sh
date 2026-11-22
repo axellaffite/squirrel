@@ -90,6 +90,7 @@ if [[ -z "${SQUIRREL_ORT_DYLIB:-}" ]]; then
 fi
 # People appear a second after their faces, not ten minutes.
 export SQUIRREL_CLUSTER_DELAY_SECS=1
+export SQUIRREL_DUPLICATES_DELAY_SECS=1
 if [[ -z "${SQUIRREL_PDFIUM_DIR:-}" && -d "${PWD}/target/pdfium/lib" ]]; then
 	export SQUIRREL_PDFIUM_DIR="${PWD}/target/pdfium/lib"
 fi

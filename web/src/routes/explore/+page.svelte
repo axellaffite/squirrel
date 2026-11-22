@@ -9,6 +9,7 @@
 	import Alert from '#lib/components/ui/Alert.svelte';
 	import Button from '#lib/components/ui/Button.svelte';
 	import EmptyState from '#lib/components/ui/EmptyState.svelte';
+	import { openDuplicateCount } from '#lib/duplicates/api.ts';
 	import { listPeople, listPlaces, listTags, type Person, type PlaceGroup, type TagGroup } from '#lib/explore/api.ts';
 
 	/** Cards shown per section before "See all". */
@@ -19,16 +20,18 @@
 	let people: Person[] | null = $state(null);
 	let places: PlaceGroup[] | null = $state(null);
 	let tags: TagGroup[] | null = $state(null);
+	let duplicates = $state(0);
 	let error: string | null = $state(null);
 
 	const loaded = $derived(people !== null && places !== null && tags !== null);
-	const empty = $derived((people ?? []).length + (places ?? []).length + (tags ?? []).length === 0);
+	const empty = $derived((people ?? []).length + (places ?? []).length + (tags ?? []).length + duplicates === 0);
 
 	onMount(async () => {
-		const [p, pl, t] = await Promise.all([listPeople(), listPlaces('city'), listTags()]);
+		const [p, pl, t, d] = await Promise.all([listPeople(), listPlaces('city'), listTags(), openDuplicateCount()]);
 		people = p.ok ? p.data : [];
 		places = pl.ok ? pl.data : [];
 		tags = t.ok ? t.data : [];
+		duplicates = d.ok ? d.data : 0;
 		const failed = [p, pl, t].find((outcome) => !outcome.ok);
 		if (failed && !failed.ok) error = failed.error;
 	});
@@ -49,6 +52,18 @@
 			People, places and tags appear here as your photos are analysed.
 		</EmptyState>
 	{:else}
+		{#if duplicates > 0}
+			<section class="section" aria-labelledby="explore-duplicates">
+				<div class="head">
+					<h2 id="explore-duplicates">Duplicates</h2>
+					<Button variant="quiet" size="sm" href="/explore/duplicates">Review</Button>
+				</div>
+				<p class="muted">
+					{duplicates} group{duplicates === 1 ? '' : 's'} of near-identical photos to review.
+				</p>
+			</section>
+		{/if}
+
 		{#if people && people.length > 0}
 			<section class="section" aria-labelledby="explore-people">
 				<div class="head">
@@ -93,6 +108,11 @@
 	.section {
 		display: grid;
 		gap: var(--space-3);
+	}
+
+	.muted {
+		color: var(--ink-muted);
+		font-variant-numeric: tabular-nums;
 	}
 
 	.head {

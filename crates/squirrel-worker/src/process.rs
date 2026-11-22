@@ -60,6 +60,10 @@ pub async fn run(ctx: &MediaContext, job: JobContext) -> Result<(), JobError> {
                 .map_err(JobError::retry)?;
         }
     }
+    if kind == MediaKind::Image {
+        // A new copy of a photo already hashed and dated.
+        jobs::request_grouping_of_blob(&mut tx, &sha).await?;
+    }
     for follow_up in jobs::follow_ups(&media, payload.background) {
         squirrel_jobs::enqueue(&mut tx, &follow_up)
             .await

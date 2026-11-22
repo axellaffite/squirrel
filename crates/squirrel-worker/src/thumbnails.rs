@@ -3,6 +3,7 @@
 
 use squirrel_core::{ContentHash, MediaKind};
 use squirrel_db::blobs::{self, BlobRecord};
+use squirrel_db::duplicates;
 use squirrel_db::media::{self, MediaRecord, MediaState, Step};
 use squirrel_jobs::{JobContext, JobError};
 use squirrel_media::exec::{ExecRequest, ExecResponse, MAX_INPUT_BYTES};
@@ -68,7 +69,10 @@ pub async fn run(ctx: &MediaContext, job: JobContext) -> Result<(), JobError> {
             install_for(ctx, &hash, scratch, &rendered, Some(&job)).await
         }
         Ok(
-            ExecResponse::Pdf { .. } | ExecResponse::Preview { .. } | ExecResponse::Probe { .. },
+            ExecResponse::Pdf { .. }
+            | ExecResponse::Preview { .. }
+            | ExecResponse::Probe { .. }
+            | ExecResponse::VisualHash { .. },
         ) => {
             let reason = "unexpected sandbox response";
             mark(ctx, &sha256, MediaState::Failed, reason).await
@@ -158,6 +162,12 @@ async fn install_for(
     )
     .await
     .map_err(JobError::retry)?;
+    if recorded && let Some(phash) = rendered.phash {
+        duplicates::set_phash(&mut *tx, hash.as_str(), phash)
+            .await
+            .map_err(JobError::retry)?;
+        crate::jobs::request_grouping_of_blob(&mut tx, hash.as_str()).await?;
+    }
     if recorded && let Some(job) = job {
         queue_ml(&mut tx, hash.as_str(), job).await?;
     }

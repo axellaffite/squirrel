@@ -79,6 +79,13 @@ pub async fn restore(
             .await
             .map_err(DbError::from)?;
     }
+    // Photos leave their duplicates group in the trash: back, they are grouped again.
+    if squirrel_db::duplicates::needs_grouping(&mut tx, caller.user.id).await? {
+        let job = squirrel_jobs::kinds::group_duplicates(caller.user.id);
+        squirrel_jobs::request_debounced(&mut tx, &job)
+            .await
+            .map_err(DbError::from)?;
+    }
     tx.commit().await.map_err(DbError::from)?;
     Ok(Json((&restored.node).into()))
 }

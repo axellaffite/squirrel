@@ -123,7 +123,8 @@ async fn settle_failure(
             ExecResponse::Image { .. }
             | ExecResponse::Pdf { .. }
             | ExecResponse::Preview { .. }
-            | ExecResponse::Probe { .. },
+            | ExecResponse::Probe { .. }
+            | ExecResponse::VisualHash { .. },
         ) => (MediaState::Failed, "unexpected sandbox response".to_owned()),
         Err(err @ (ExecError::Crashed { .. } | ExecError::TimedOut(_)))
             if job.attempt >= MAX_SANDBOX_CRASHES =>

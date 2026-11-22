@@ -8,6 +8,7 @@ mod cursor;
 mod devices_dto;
 mod downloads;
 mod dto;
+mod duplicates_dto;
 mod error;
 mod explore_dto;
 mod extract;
@@ -69,7 +70,8 @@ const CHUNK_TIMEOUT: Duration = Duration::from_secs(5 * 60);
         (name = "system"), (name = "setup"), (name = "auth"), (name = "invitations"),
         (name = "admin"), (name = "files"), (name = "uploads"), (name = "trash"),
         (name = "storage"), (name = "jobs"), (name = "photos"), (name = "albums"),
-        (name = "search"), (name = "devices"), (name = "sync"), (name = "explore"), (name = "ml"), (name = "people")
+        (name = "search"), (name = "devices"), (name = "sync"), (name = "explore"), (name = "ml"), (name = "people"),
+        (name = "duplicates")
     ),
     // Schemas only referenced from query parameters are not collected from
     // the routes: list them here.
@@ -220,6 +222,9 @@ fn json_routes() -> OpenApiRouter<AppState> {
         .routes(routes!(routes::photos::photo_months))
         .routes(routes!(routes::photos::get_photo))
         .routes(routes!(routes::photos::media_status))
+        .routes(routes!(routes::duplicates::list_duplicates))
+        .routes(routes!(routes::duplicates::keep_duplicate))
+        .routes(routes!(routes::duplicates::restore_duplicates))
         .routes(routes!(routes::explore::list_tags))
         .routes(routes!(routes::explore::list_places))
         .routes(routes!(routes::explore::list_cameras))

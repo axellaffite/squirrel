@@ -17,10 +17,10 @@ use crate::{DbError, Page};
 /// Albums listed at most.
 pub const MAX_ALBUMS: i64 = 1000;
 
-/// Live items of album `al`, joined to their assets.
+/// Live, visible items of album `al`, joined to their assets.
 const LIVE_ITEMS: &str = "album_items i \
      JOIN assets a ON a.node_id = i.node_id AND a.owner_id = i.owner_id \
-     JOIN nodes n ON n.id = a.node_id AND n.deleted_at IS NULL \
+     JOIN nodes n ON n.id = a.node_id AND n.deleted_at IS NULL AND a.hidden_at IS NULL \
      WHERE i.album_id = al.id";
 
 #[derive(Debug, Clone, PartialEq, Eq, FromRow)]
