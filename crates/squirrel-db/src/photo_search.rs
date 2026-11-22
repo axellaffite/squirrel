@@ -9,7 +9,7 @@ use uuid::Uuid;
 
 use crate::documents::{SEARCH_TIMEOUT, timed_out_is_busy};
 use crate::photo_filter::PhotoFilter;
-use crate::timeline::{AssetSummaryRecord, FROM, SUMMARY_COLUMNS};
+use crate::timeline::{AssetSummaryRecord, FROM, SUMMARY_COLUMNS, TimelineCursor};
 use crate::{DbError, Page};
 
 #[derive(Debug, Clone, PartialEq, FromRow)]
@@ -40,6 +40,19 @@ pub struct PhotoQuery<'a> {
     pub filter: &'a PhotoFilter,
 }
 
+/// How a page of results is ordered and where it starts.
+#[derive(Debug, Clone, Copy)]
+enum Order<'c> {
+    /// Nearest first (distance, then node id), from `offset`.
+    Relevance { offset: u32 },
+    /// The `within` nearest results, newest capture first (`taken_at DESC,
+    /// node_id DESC`, the timeline's order), after `after`.
+    Date {
+        within: u32,
+        after: Option<&'c TimelineCursor>,
+    },
+}
+
 /// The distance is computed in a fenced subquery (`OFFSET 0`: never pulled
 /// up) over the caller's own joined rows, so the distance floor cannot be
 /// pushed down into a scan of every user's embeddings: only the caller's
@@ -47,12 +60,13 @@ pub struct PhotoQuery<'a> {
 /// `relative_cutoff` of the best one are kept (a window over the caller's
 /// rows). Every rival's distance is computed in the same pass; a photo
 /// closer to a rival than `rival_margin` allows is dropped. Ranked by
-/// distance, then node id.
+/// distance, then node id; [`Order::Date`] then keeps the `within` best and
+/// orders those by capture time, resuming after its keyset cursor.
 fn search_query<'a>(
     prefix: &str,
     owner_id: Uuid,
     query: &PhotoQuery<'_>,
-    offset: u32,
+    order: Order<'_>,
     limit: u32,
 ) -> QueryBuilder<'a, Postgres> {
     let mut sql = QueryBuilder::<Postgres>::new(format!(
@@ -87,15 +101,53 @@ fn search_query<'a>(
         .push_bind(query.rival_margin)
         .push(")")
         .push(
-            ") SELECT * FROM (SELECT ranked.*, min(distance) OVER () AS best FROM ranked) cut \
+            "), matched AS (SELECT * FROM (SELECT ranked.*, min(distance) OVER () AS best FROM ranked) cut \
                WHERE distance <= best + ",
         )
         .push_bind(query.relative_cutoff)
-        .push(" ORDER BY distance, node_id OFFSET ")
-        .push_bind(i64::from(offset))
-        .push(" LIMIT ")
-        .push_bind(i64::from(limit) + 1);
+        .push(") ");
+    match order {
+        Order::Relevance { offset } => {
+            sql.push("SELECT * FROM matched ORDER BY distance, node_id OFFSET ")
+                .push_bind(i64::from(offset));
+        }
+        Order::Date { within, after } => {
+            sql.push("SELECT * FROM (SELECT * FROM matched ORDER BY distance, node_id LIMIT ")
+                .push_bind(i64::from(within))
+                .push(") nearest");
+            if let Some(cursor) = after {
+                sql.push(" WHERE (taken_at, node_id) < (")
+                    .push_bind(cursor.taken_at)
+                    .push(", ")
+                    .push_bind(cursor.node_id)
+                    .push(")");
+            }
+            sql.push(" ORDER BY taken_at DESC, node_id DESC");
+        }
+    }
+    sql.push(" LIMIT ").push_bind(i64::from(limit) + 1);
     sql
+}
+
+/// Runs a search query under the search statement timeout.
+async fn run(
+    pool: &PgPool,
+    owner_id: Uuid,
+    query: &PhotoQuery<'_>,
+    order: Order<'_>,
+    limit: u32,
+) -> Result<Page<PhotoHit>, DbError> {
+    let mut tx = pool.begin().await?;
+    sqlx::query(&format!("SET LOCAL statement_timeout = '{SEARCH_TIMEOUT}'"))
+        .execute(&mut *tx)
+        .await?;
+    let rows = search_query("", owner_id, query, order, limit)
+        .build_query_as::<PhotoHit>()
+        .fetch_all(&mut *tx)
+        .await
+        .map_err(timed_out_is_busy)?;
+    tx.commit().await?;
+    Ok(Page::from_overfetch(rows, limit))
 }
 
 /// One page of `owner_id`'s live photos closest to the query, nearest first.
@@ -106,17 +158,21 @@ pub async fn search(
     offset: u32,
     limit: u32,
 ) -> Result<Page<PhotoHit>, DbError> {
-    let mut tx = pool.begin().await?;
-    sqlx::query(&format!("SET LOCAL statement_timeout = '{SEARCH_TIMEOUT}'"))
-        .execute(&mut *tx)
-        .await?;
-    let rows = search_query("", owner_id, query, offset, limit)
-        .build_query_as::<PhotoHit>()
-        .fetch_all(&mut *tx)
-        .await
-        .map_err(timed_out_is_busy)?;
-    tx.commit().await?;
-    Ok(Page::from_overfetch(rows, limit))
+    run(pool, owner_id, query, Order::Relevance { offset }, limit).await
+}
+
+/// One page of the `within` results [`search`] ranks first, newest capture
+/// first (`taken_at DESC, node_id DESC`, as the timeline), after `after`.
+/// The match set is [`search`]'s: only the order and the paging differ.
+pub async fn search_by_date(
+    pool: &PgPool,
+    owner_id: Uuid,
+    query: &PhotoQuery<'_>,
+    within: u32,
+    after: Option<&TimelineCursor>,
+    limit: u32,
+) -> Result<Page<PhotoHit>, DbError> {
+    run(pool, owner_id, query, Order::Date { within, after }, limit).await
 }
 
 /// The plan of [`search`]'s query (performance tests).
@@ -126,10 +182,16 @@ pub async fn explain(
     owner_id: Uuid,
     query: &PhotoQuery<'_>,
 ) -> Result<String, DbError> {
-    let lines: Vec<(String,)> = search_query("EXPLAIN ANALYZE ", owner_id, query, 0, 50)
-        .build_query_as()
-        .fetch_all(pool)
-        .await?;
+    let lines: Vec<(String,)> = search_query(
+        "EXPLAIN ANALYZE ",
+        owner_id,
+        query,
+        Order::Relevance { offset: 0 },
+        50,
+    )
+    .build_query_as()
+    .fetch_all(pool)
+    .await?;
     Ok(lines
         .into_iter()
         .map(|(line,)| line)

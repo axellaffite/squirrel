@@ -673,9 +673,12 @@ export interface paths {
          * @description A photo is a result when the model's match probability with the query is
          *     high enough and, for a query naming a label of the tag bank (`dog`,
          *     `chien`), when it beats that label's easily confused siblings (`cat`) on
-         *     that photo. Pagination is by offset, not by cursor: results are ranked, at most 200
-         *     can be reached (`offset + limit ≤ 200`), and `has_more` is false past
-         *     them. Only the caller's own live photos are searched.
+         *     that photo. At most the 200 best results can be reached. With
+         *     `order=relevance` (the default) they come best first, paged by offset
+         *     (`offset + limit ≤ 200`). With `order=date` the same results come newest
+         *     capture first (`taken_at DESC`, then node id, as the timeline: a photo
+         *     without a capture date sits at its upload time), paged by `cursor`. Only
+         *     the caller's own live photos are searched.
          */
         get: operations["search_photos"];
         put?: never;
@@ -1487,13 +1490,21 @@ export interface components {
          */
         PhotoKindFilter: "photo" | "screenshot";
         /**
-         * @description The caller's photos that look like the query, best match first. Pages are
-         *     offset-based and stop at 200 results.
+         * @description The caller's photos that look like the query, in the requested order, at
+         *     most 200 of them.
          */
         PhotoSearchResults: {
-            /** @description More results within the first 200: ask again with `offset + limit`. */
+            /**
+             * @description More results within the first 200: ask again with `offset + limit`
+             *     (`order=relevance`) or `cursor` (`order=date`).
+             */
             has_more: boolean;
             items: components["schemas"]["AssetSummary"][];
+            /**
+             * @description `order=date`: pass back as `cursor` for the next page; `null` on the
+             *     last page and for `order=relevance`.
+             */
+            next_cursor?: string | null;
         };
         /** @description Where a photo was taken, named from the offline GeoNames dataset. */
         PlaceDto: {
@@ -1537,6 +1548,11 @@ export interface components {
         };
         /** @enum {string} */
         Role: "admin" | "user";
+        /**
+         * @description How results are ordered.
+         * @enum {string}
+         */
+        SearchOrder: "relevance" | "date";
         /**
          * @description Creates the first administrator. `setup_token` is the setup code printed in
          *     the server log on first start (or `SQUIRREL_SETUP_TOKEN`).
@@ -3775,8 +3791,15 @@ export interface operations {
                  *     or `chien sur la plage`.
                  */
                 q?: string;
-                /** @description Results to skip; `offset + limit` is at most 200. */
+                /**
+                 * @description `relevance` (default): best match first. `date`: the same results,
+                 *     newest capture first.
+                 */
+                order?: components["schemas"]["SearchOrder"];
+                /** @description Results to skip; `offset + limit` is at most 200. `order=relevance` only. */
                 offset?: number;
+                /** @description `next_cursor` of the previous page. `order=date` only. */
+                cursor?: string;
                 /** @description Page size, 1–100, default 50. */
                 limit?: number;
                 /** @description A person (`GET /api/people`): photos with one of their faces. */
@@ -3812,7 +3835,16 @@ export interface operations {
                     "application/json": components["schemas"]["PhotoSearchResults"];
                 };
             };
-            /** @description Invalid q, offset, limit or filter */
+            /** @description Invalid cursor */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Invalid q, order, offset, cursor, limit or filter */
             422: {
                 headers: {
                     [name: string]: unknown;

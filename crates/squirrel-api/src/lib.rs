@@ -73,7 +73,7 @@ const CHUNK_TIMEOUT: Duration = Duration::from_secs(5 * 60);
     ),
     // Schemas only referenced from query parameters are not collected from
     // the routes: list them here.
-    components(schemas(filter_dto::PhotoKindFilter, explore_dto::PlaceLevel, people_dto::FaceAssignedBy)),
+    components(schemas(filter_dto::PhotoKindFilter, explore_dto::PlaceLevel, people_dto::FaceAssignedBy, routes::photo_search::SearchOrder)),
     modifiers(&SecuritySchemes)
 )]
 struct ApiDoc;
