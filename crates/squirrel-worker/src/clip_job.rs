@@ -1,22 +1,22 @@
-//! `clip_embed`: the CLIP image embedding of a blob's preview, then its
+//! `clip_embed`: the CLIP image embedding of a blob (a 1440 px frame rendered
+//! from the original), then its
 //! zero-shot tags against the label bank. Content-derived: one run per blob,
 //! whoever owns it.
 
 use std::time::Duration;
 
 use squirrel_core::{ContentHash, MediaKind};
-use squirrel_db::media::{self, MediaRecord, MediaState, Step};
+use squirrel_db::media::{self, MediaState, Step};
 use squirrel_db::tags::{self, TagSource};
 use squirrel_jobs::{JobContext, JobError};
 use squirrel_ml::CLIP_MODEL_ID;
 use squirrel_ml::clip::check_embedding;
 use squirrel_ml::clip::labels::{self, LABELS_VERSION, TOP_K};
 use squirrel_ml::protocol::{MlBody, MlOp, MlOutput};
-use squirrel_storage::Variant;
 
 use crate::context::{MediaContext, MlContext};
 use crate::jobs::ShaPayload;
-use crate::outcome;
+use crate::{ml_frame, outcome};
 
 /// Thumbnails still being made: look again later, without using an attempt.
 pub const WAIT_FOR_PREVIEW: Duration = Duration::from_secs(5 * 60);
@@ -58,7 +58,7 @@ pub async fn run(ctx: &MediaContext, ml: &MlContext, job: JobContext) -> Result<
         }
         // Embedded already (e.g. the label bank changed): only tag again.
         Some(stored) => stored.values,
-        None => match embed(ctx, ml, &job, &media, &hash).await? {
+        None => match embed(ctx, ml, &job, &hash).await? {
             Some(values) => values,
             None => return Ok(()),
         },
@@ -66,20 +66,19 @@ pub async fn run(ctx: &MediaContext, ml: &MlContext, job: JobContext) -> Result<
     tag(ctx, ml, &sha256, &embedding).await
 }
 
-/// Runs the image tower on the preview and stores the result. `None`: the
-/// step ended without an embedding (state recorded).
+/// Runs the image tower on a temporary 1440 px frame and stores the result.
+/// `None`: the step ended without an embedding (state recorded).
 async fn embed(
     ctx: &MediaContext,
     ml: &MlContext,
     job: &JobContext,
-    media: &MediaRecord,
     hash: &ContentHash,
 ) -> Result<Option<Vec<f32>>, JobError> {
     let sha256 = hash.as_str();
-    let input = ctx
-        .storage
-        .derived()
-        .variant_path(hash, Variant::Preview, media.thumbs_version);
+    let Some(frame) = ml_frame::for_step(ctx, job, hash, Step::Clip).await? else {
+        return Ok(None);
+    };
+    let input = frame.path().to_owned();
     let reason = match ml.client.request(MlOp::ClipImage { input }).await {
         Ok(MlBody::Ok(MlOutput::Embedding { embedding })) => match check_embedding(&embedding) {
             Err(why) => format!("the ML child answered an invalid embedding: {why}"),

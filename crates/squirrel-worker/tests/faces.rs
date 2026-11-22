@@ -261,6 +261,45 @@ async fn backfill_queues_faces_for_owners_without_a_scan(pool: PgPool) {
     assert_eq!(left, 0, "Alice is scanned and Bob has faces off");
 }
 
+/// The models get a 1440 px PNG frame rendered upright from the original, in
+/// a temporary directory removed once the job is done.
+#[sqlx::test(migrator = "squirrel_db::MIGRATOR")]
+async fn the_frame_is_rendered_from_the_original_then_removed(pool: PgPool) {
+    let seen = Arc::new(std::sync::Mutex::new(Vec::new()));
+    let record = seen.clone();
+    let client = MlClient::new(MlBackend::Fake(Arc::new(move |op: &MlOp| {
+        if let MlOp::Faces { input } = op {
+            let frame = image::open(input).unwrap();
+            assert_eq!((frame.width(), frame.height()), (300, 400), "upright");
+            record.lock().unwrap().push(input.clone());
+            return Ok(MlBody::Ok(MlOutput::Faces { faces: Vec::new() }));
+        }
+        Ok(MlBody::Ok(MlOutput::Pong {}))
+    })));
+    let ml = Arc::new(MlContext::new(client, false, true));
+    let fx = Fixture::with_ml(pool, ml.clone());
+    let alice = admin(fx.pool()).await;
+    let spec = ExifSpec {
+        orientation: Some(6),
+        ..ExifSpec::default()
+    };
+    let sha = copy(&fx, alice.id, &jpeg_sized_with_exif(400, 300, &spec)).await;
+    thumbnails::run(&fx.ctx, thumbs_job(&sha)).await.unwrap();
+    faces_job::run(&fx.ctx, &ml, faces_job_for(&sha))
+        .await
+        .unwrap();
+    let seen = seen.lock().unwrap();
+    assert_eq!(seen.len(), 1);
+    let frame = &seen[0];
+    assert_eq!(frame.extension().unwrap(), "png");
+    assert!(
+        frame.starts_with(std::env::temp_dir()),
+        "{}",
+        frame.display()
+    );
+    assert!(!frame.parent().unwrap().exists(), "frame directory removed");
+}
+
 /// With the real models: a portrait's single face, relative to its preview.
 #[sqlx::test(migrator = "squirrel_db::MIGRATOR")]
 async fn a_real_portrait_gets_one_face(pool: PgPool) {

@@ -28,6 +28,8 @@ pub struct MediaContext {
     pub geo: GeoCache,
     /// Model inference, when this worker has models (`None`: no ML kinds).
     pub ml: Option<std::sync::Arc<MlContext>>,
+    /// Renders the models' frames from originals (through `executor`'s sandbox).
+    pub previews: squirrel_sandbox::preview::PreviewRenderer,
 }
 
 impl MediaContext {

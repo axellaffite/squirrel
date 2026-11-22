@@ -7,6 +7,7 @@ pub mod cluster_job;
 pub mod context;
 /// The sandbox launcher (in `squirrel-sandbox`, shared with the server).
 pub use squirrel_sandbox::exec;
+pub use squirrel_sandbox::preview;
 pub mod face_backfill;
 pub mod faces_job;
 mod facts;
@@ -14,6 +15,7 @@ pub mod geocode;
 pub mod jobs;
 pub mod label_bank;
 pub mod metadata;
+pub mod ml_frame;
 /// The `ml-exec` supervisor (in `squirrel-ml`, shared with the server).
 pub use squirrel_ml::client as ml_client;
 mod outcome;
