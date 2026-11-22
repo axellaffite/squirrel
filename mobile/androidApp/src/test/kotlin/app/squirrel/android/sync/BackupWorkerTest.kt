@@ -94,8 +94,10 @@ class BackupWorkerTest {
     @Test
     fun aSystemStopContinuesUnlessTheAppCancelled() {
         assertEquals(true, continuesAfterStop(androidx.work.WorkInfo.STOP_REASON_DEVICE_STATE))
-        assertEquals(true, continuesAfterStop(androidx.work.WorkInfo.STOP_REASON_FOREGROUND_SERVICE_TIMEOUT))
         assertEquals(true, continuesAfterStop(androidx.work.WorkInfo.STOP_REASON_CONSTRAINT_CONNECTIVITY))
+        assertEquals(true, continuesAfterStop(androidx.work.WorkInfo.STOP_REASON_QUOTA))
+        assertEquals(false, continuesAfterStop(androidx.work.WorkInfo.STOP_REASON_USER)) // stopped from the notification
+        assertEquals(false, continuesAfterStop(androidx.work.WorkInfo.STOP_REASON_FOREGROUND_SERVICE_TIMEOUT)) // no loop into the limit
         assertEquals(false, continuesAfterStop(androidx.work.WorkInfo.STOP_REASON_CANCELLED_BY_APP))
         assertEquals(false, continuesAfterStop(androidx.work.WorkInfo.STOP_REASON_NOT_STOPPED))
     }
