@@ -6,7 +6,7 @@ use std::io::Cursor;
 use std::path::{Path, PathBuf};
 
 use image::{ImageBuffer, ImageFormat, Rgb};
-use squirrel_media::testutil::{ExifSpec, jpeg_sized_with_exif, pdf_with_text};
+use squirrel_media::testutil::{ExifSpec, jpeg_sized_with_exif, pdf_with_text, scene_jpeg};
 
 fn write(dir: &Path, name: &str, bytes: &[u8]) -> std::io::Result<()> {
     let path = dir.join(name);
@@ -127,6 +127,10 @@ fn main() -> std::io::Result<()> {
     for shape in ["red-circle", "blue-square", "green-triangle"] {
         write(&dir, &format!("{shape}.jpg"), &shape_jpeg(shape))?;
     }
+    // Two copies of one generated scene: different sizes and quality, near-identical to the eye
+    // (duplicates).
+    write(&dir, "meadow.jpg", &scene_jpeg(11, 1600, 1200, 92))?;
+    write(&dir, "meadow-copy.jpg", &scene_jpeg(11, 1024, 768, 70))?;
     std::fs::create_dir_all(dir.join("faces"))?;
     for name in ["koch-a", "koch-b", "glover-a", "glover-b"] {
         write(
