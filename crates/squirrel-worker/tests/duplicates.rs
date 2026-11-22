@@ -412,3 +412,23 @@ async fn deleting_a_user_deletes_their_groups(pool: PgPool) {
         vec![(sorted(vec![mine, mine2]), false)]
     );
 }
+
+#[sqlx::test(migrator = "squirrel_db::MIGRATOR")]
+async fn a_new_capture_time_puts_a_photo_through_grouping_again(pool: PgPool) {
+    let fx = Fixture::new(pool);
+    let alice = admin(fx.pool()).await;
+    let a = photo(&fx, alice.id, "a.jpg", &scene_jpeg(16, 1200, 900, 90)).await;
+    let b = photo(&fx, alice.id, "b.jpg", &scene_jpeg(16, 1000, 750, 70)).await;
+    group_owner(fx.pool(), alice.id, BUDGET).await.unwrap();
+    assert_eq!(groups(fx.pool(), alice.id).await.len(), 1);
+    sqlx::query("UPDATE assets SET taken_at = taken_at + interval '3 days' WHERE node_id = $1")
+        .bind(b)
+        .execute(fx.pool())
+        .await
+        .unwrap();
+    // Left alone, the group is gone; b is looked at again and stays apart.
+    assert_eq!(groups(fx.pool(), alice.id).await, vec![]);
+    let run = group_owner(fx.pool(), alice.id, BUDGET).await.unwrap();
+    assert_eq!((run.checked, run.groups_created), (1, 0));
+    let _ = a;
+}
