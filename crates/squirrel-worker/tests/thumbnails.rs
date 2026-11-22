@@ -35,7 +35,7 @@ async fn row(fx: &Fixture, sha: &str) -> MediaRecord {
 }
 
 #[sqlx::test(migrator = "squirrel_db::MIGRATOR")]
-async fn renders_installs_and_records_both_variants(pool: PgPool) {
+async fn renders_installs_and_records_the_thumbnail_only(pool: PgPool) {
     let fx = Fixture::new(pool);
     let sha = pending(
         &fx,
@@ -52,13 +52,17 @@ async fn renders_installs_and_records_both_variants(pool: PgPool) {
     assert!(media.blurhash.is_some());
     let hash = ContentHash::parse(&sha).unwrap();
     let derived = fx.ctx.storage.derived();
-    for variant in Variant::ALL {
-        assert!(
-            derived
-                .variant_path(&hash, variant, THUMBS_VERSION)
-                .is_file()
-        );
-    }
+    assert!(
+        derived
+            .variant_path(&hash, Variant::Thumb, THUMBS_VERSION)
+            .is_file()
+    );
+    // Photo previews are rendered on request.
+    assert!(
+        !derived
+            .variant_path(&hash, Variant::Preview, THUMBS_VERSION)
+            .exists()
+    );
 
     // Ready at the current version: nothing is redone.
     let path = derived.variant_path(&hash, Variant::Thumb, THUMBS_VERSION);
