@@ -3149,7 +3149,7 @@
           "search"
         ],
         "summary": "Search the caller's photos by text (any language).",
-        "description": "A photo is a result when the model's match probability with the query is\nhigh enough and, for a query naming a label of the tag bank (`dog`,\n`chien`), when it beats that label's easily confused siblings (`cat`) on\nthat photo. Pagination is by offset, not by cursor: results are ranked, at most 200\ncan be reached (`offset + limit ≤ 200`), and `has_more` is false past\nthem. Only the caller's own live photos are searched.",
+        "description": "A photo is a result when the model's match probability with the query is\nhigh enough and, for a query naming a label of the tag bank (`dog`,\n`chien`), when it beats that label's easily confused siblings (`cat`) on\nthat photo. At most the 200 best results can be reached. With\n`order=relevance` (the default) they come best first, paged by offset\n(`offset + limit ≤ 200`). With `order=date` the same results come newest\ncapture first (`taken_at DESC`, then node id, as the timeline: a photo\nwithout a capture date sits at its upload time), paged by `cursor`. Only\nthe caller's own live photos are searched.",
         "operationId": "search_photos",
         "parameters": [
           {
@@ -3162,15 +3162,33 @@
             }
           },
           {
+            "name": "order",
+            "in": "query",
+            "description": "`relevance` (default): best match first. `date`: the same results,\nnewest capture first.",
+            "required": false,
+            "schema": {
+              "$ref": "#/components/schemas/SearchOrder"
+            }
+          },
+          {
             "name": "offset",
             "in": "query",
-            "description": "Results to skip; `offset + limit` is at most 200.",
+            "description": "Results to skip; `offset + limit` is at most 200. `order=relevance` only.",
             "required": false,
             "schema": {
               "type": "integer",
               "format": "int32",
               "maximum": 199,
               "minimum": 0
+            }
+          },
+          {
+            "name": "cursor",
+            "in": "query",
+            "description": "`next_cursor` of the previous page. `order=date` only.",
+            "required": false,
+            "schema": {
+              "type": "string"
             }
           },
           {
@@ -3269,8 +3287,18 @@
               }
             }
           },
+          "400": {
+            "description": "Invalid cursor",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
           "422": {
-            "description": "Invalid q, offset, limit or filter",
+            "description": "Invalid q, order, offset, cursor, limit or filter",
             "content": {
               "application/json": {
                 "schema": {
@@ -5735,7 +5763,7 @@
       },
       "PhotoSearchResults": {
         "type": "object",
-        "description": "The caller's photos that look like the query, best match first. Pages are\noffset-based and stop at 200 results.",
+        "description": "The caller's photos that look like the query, in the requested order, at\nmost 200 of them.",
         "required": [
           "items",
           "has_more"
@@ -5743,13 +5771,20 @@
         "properties": {
           "has_more": {
             "type": "boolean",
-            "description": "More results within the first 200: ask again with `offset + limit`."
+            "description": "More results within the first 200: ask again with `offset + limit`\n(`order=relevance`) or `cursor` (`order=date`)."
           },
           "items": {
             "type": "array",
             "items": {
               "$ref": "#/components/schemas/AssetSummary"
             }
+          },
+          "next_cursor": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "`order=date`: pass back as `cursor` for the next page; `null` on the\nlast page and for `order=relevance`."
           }
         }
       },
@@ -5884,6 +5919,14 @@
         "enum": [
           "admin",
           "user"
+        ]
+      },
+      "SearchOrder": {
+        "type": "string",
+        "description": "How results are ordered.",
+        "enum": [
+          "relevance",
+          "date"
         ]
       },
       "SetupRequest": {

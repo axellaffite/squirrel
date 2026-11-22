@@ -31,7 +31,7 @@ test.afterAll(async () => {
 test('a text search finds the photo that shows it, best match first', async () => {
 	await requireModels(page, 'clip');
 	const circle = await photoId(page, 'red-circle.jpg');
-	await page.goto('/search?q=red%20circle');
+	await page.goto('/search?q=red%20circle&order=relevance');
 	await expect(tiles(page).first()).toBeVisible({ timeout: 60_000 });
 	await expect(tiles(page).first()).toHaveAttribute('data-id', circle);
 	await expect(page.getByText(/^\d+( or more)? photos?$/)).toBeAttached();
@@ -40,14 +40,43 @@ test('a text search finds the photo that shows it, best match first', async () =
 test('search is multilingual and a dog query leaves the cat out', async () => {
 	await requireModels(page, 'clip');
 	const circle = await photoId(page, 'red-circle.jpg');
-	await page.goto('/search?q=cercle%20rouge');
+	await page.goto('/search?q=cercle%20rouge&order=relevance');
 	await expect(tiles(page).first()).toHaveAttribute('data-id', circle, { timeout: 60_000 });
 	const dog = await photoId(page, 'dog-a.jpg');
 	const cat = await photoId(page, 'cat-a.jpg');
-	await page.goto('/search?q=chien');
+	await page.goto('/search?q=chien&order=relevance');
 	await expect(tiles(page).first()).toHaveAttribute('data-id', dog, { timeout: 60_000 });
 	await expect(page.getByText(/^\d+( or more)? photos?$/)).toBeAttached();
 	await expect(page.locator(`[data-tile][data-id="${cat}"]`)).toHaveCount(0);
+});
+
+test('results show as a timeline by default, and best match on request', async () => {
+	await requireModels(page, 'clip');
+	const circle = await photoId(page, 'red-circle.jpg');
+	await page.goto('/search?q=red%20circle');
+	const results = page.getByRole('region', { name: 'Search results' });
+	const order = page.getByRole('group', { name: 'Show results' });
+	await expect(order.getByRole('radio', { name: 'Timeline' })).toBeChecked();
+	// The Photos page's month and day headings.
+	await expect(results.getByRole('heading', { level: 2 }).first()).toHaveText(/^\p{L}+ \d{4}$/u, { timeout: 60_000 });
+	await expect(results.getByRole('heading', { level: 3 }).first()).toHaveText(/\d{4}$/);
+	await expect(page.locator(`[data-tile][data-id="${circle}"]`)).toBeVisible();
+	await expect(page.getByText(/^\d+( or more)? photos?$/)).toBeAttached();
+
+	await order.getByRole('radio', { name: 'Best match' }).click();
+	await expect(page).toHaveURL(/[?&]order=relevance/);
+	await expect(tiles(page).first()).toHaveAttribute('data-id', circle, { timeout: 60_000 });
+	await expect(results.getByRole('heading')).toHaveCount(0);
+	await page.reload();
+	await expect(page.getByRole('group', { name: 'Show results' }).getByRole('radio', { name: 'Best match' })).toBeChecked();
+
+	await page.getByRole('group', { name: 'Show results' }).getByRole('radio', { name: 'Timeline' }).click();
+	await expect(page).not.toHaveURL(/order=/);
+	await expect(results.getByRole('heading', { level: 2 }).first()).toBeVisible({ timeout: 60_000 });
+	// The lightbox steps through the photos in the order shown.
+	await tiles(page).first().click();
+	await expect(page.getByRole('dialog')).toBeVisible();
+	await page.keyboard.press('Escape');
 });
 
 test('a filter chip narrows the search', async () => {
