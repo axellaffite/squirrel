@@ -17,7 +17,15 @@ export type Face = components['schemas']['FaceDto'];
 /** The server's limits on a photo search. */
 export const MAX_PHOTO_QUERY = 200;
 export const PHOTO_PAGE = 50;
+/** Date-ordered pages are larger: two requests lay out the whole timeline. */
+export const PHOTO_DATE_PAGE = 100;
 export const MAX_PHOTO_RESULTS = 200;
+
+/** `date`: newest capture first (the timeline); `relevance`: best match first. */
+export type SearchOrder = components['schemas']['SearchOrder'];
+
+/** Which page of a search: relevance pages by offset, date by the previous page's cursor. */
+export type SearchPage = { order: 'relevance'; offset: number } | { order: 'date'; cursor: string | null };
 
 /** Calm wording for a search that could not run. */
 export const SEARCH_UNAVAILABLE = "Photo search isn't set up on this server.";
@@ -25,7 +33,7 @@ export const SEARCH_BUSY = 'Photo search is starting up or busy. Try again in a 
 export const SEARCH_TOO_FAST = 'Searching a little too fast. Trying again in a moment…';
 
 export type PhotoSearchOutcome =
-	| { ok: true; data: { items: AssetSummary[]; has_more: boolean } }
+	| { ok: true; data: { items: AssetSummary[]; has_more: boolean; next_cursor?: string | null } }
 	| { ok: false; error: string; status: number; unavailable?: boolean; retryAfterMs?: number }
 	| { ok: false; aborted: true };
 
@@ -35,18 +43,25 @@ function code(error: unknown): string | null {
 	return typeof value === 'string' ? value : null;
 }
 
-/** One page of photos matching `query` (any language) and `filter`, best first. */
+/** The query parameters of a page. */
+function pageQuery(page: SearchPage) {
+	if (page.order === 'date') {
+		return { order: 'date' as const, limit: PHOTO_DATE_PAGE, ...(page.cursor ? { cursor: page.cursor } : {}) };
+	}
+	return { offset: page.offset, limit: Math.max(1, Math.min(PHOTO_PAGE, MAX_PHOTO_RESULTS - page.offset)) };
+}
+
+/** One page of photos matching `query` (any language) and `filter`, in the page's order. */
 export async function searchPhotos(
 	query: string,
-	offset: number,
+	page: SearchPage,
 	filter: PhotoFilter,
 	signal: AbortSignal,
 	client: Client = api
 ): Promise<PhotoSearchOutcome> {
 	try {
-		const limit = Math.max(1, Math.min(PHOTO_PAGE, MAX_PHOTO_RESULTS - offset));
 		const { data, error, response } = await client.GET('/api/search/photos', {
-			params: { query: { q: query, offset, limit, ...filterQuery(filter) } },
+			params: { query: { q: query, ...pageQuery(page), ...filterQuery(filter) } },
 			signal
 		});
 		if (response.ok && data) return { ok: true, data };
