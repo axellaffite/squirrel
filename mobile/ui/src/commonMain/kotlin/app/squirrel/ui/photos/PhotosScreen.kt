@@ -34,6 +34,9 @@ import app.squirrel.theme.components.ButtonSize
 import app.squirrel.theme.components.ButtonVariant
 import app.squirrel.theme.components.EmptyState
 import app.squirrel.theme.components.Loading
+import app.squirrel.theme.components.PullToRefresh
+import app.squirrel.ui.OnForeground
+import app.squirrel.ui.PullableColumn
 
 /** Bottom space so the last row clears the floating rail. */
 val RailClearance = Tokens.railBarH + Tokens.frame * 2
@@ -42,17 +45,25 @@ val RailClearance = Tokens.railBarH + Tokens.frame * 2
 @Composable
 fun TimelineList(api: SquirrelApi, vm: PhotosViewModel, onOpen: (AssetSummary) -> Unit) {
     val state by vm.state.collectAsStateWithLifecycle()
+    OnForeground(vm::resumed)
     when {
         state.loadingMonths -> return Loading()
         state.months.isEmpty() && state.error != null -> {
-            ErrorRetry(state.error!!, vm::retry)
+            PullableColumn(state.refreshing, vm::refresh) { ErrorRetry(state.error!!, vm::retry) }
             return
         }
         state.empty -> {
-            EmptyState(SquirrelIcon.Images, "No photos yet", "Backed-up photos appear here.")
+            PullableColumn(state.refreshing, vm::refresh) {
+                EmptyState(SquirrelIcon.Images, "No photos yet", "Backed-up photos appear here.")
+            }
             return
         }
     }
+    PullToRefresh(state.refreshing, vm::refresh) { TimelineBlocks(api, vm, state, onOpen) }
+}
+
+@Composable
+private fun TimelineBlocks(api: SquirrelApi, vm: PhotosViewModel, state: PhotosState, onOpen: (AssetSummary) -> Unit) {
     BoxWithConstraints(Modifier.fillMaxSize()) {
         val width = maxWidth.value.toInt()
         val layout = remember { TimelineLayout() }
