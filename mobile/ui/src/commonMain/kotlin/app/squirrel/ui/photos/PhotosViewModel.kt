@@ -67,7 +67,11 @@ class PhotosViewModel(
             epoch = page.epoch
             state.copy(months = state.months.map { if (it.month == month) it.copy(loading = true) else it })
         }
-        if (!start) return
+        if (start) fetch(month, cursor, epoch)
+    }
+
+    /** One page of [month], already marked loading. */
+    private fun fetch(month: String, cursor: String?, epoch: Int) {
         viewModelScope.launch {
             var result: TimelinePage? = null
             try {
@@ -175,7 +179,7 @@ class PhotosViewModel(
     /** Swaps the refreshed months in; months whose count did not change keep their pages. */
     private fun apply(fresh: List<MonthPage>?) {
         refreshFailed = fresh == null
-        val again = mutableListOf<String>()
+        val again = mutableListOf<MonthPage>()
         _state.update { state ->
             again.clear() // `update` may run this more than once
             if (fresh == null) return@update state.copy(refreshing = false, error = UNREACHABLE)
@@ -186,13 +190,15 @@ class PhotosViewModel(
                     next.started -> next.copy(epoch = old.epoch + 1)
                     old.count == next.count -> if (old.failed) old.copy(failed = false) else old
                     else -> next.copy(epoch = old.epoch + 1)
-                }.also { kept ->
-                    // On screen before (asked for, or failed): its placeholders' effects will not run again.
-                    if ((old.loading || old.failed) && !kept.loading && !kept.complete) again += kept.month
+                }.let { kept ->
+                    // On screen before (asked for, or failed): its placeholders' effects will not run
+                    // again, so its next page starts here, in the same update (never seen idle).
+                    if ((old.loading || old.failed) && !kept.loading && !kept.complete) kept.copy(loading = true).also { again += it }
+                    else kept
                 }
             }
             state.copy(months = months, refreshing = false, error = null)
         }
-        again.forEach(::ensure)
+        again.forEach { fetch(it.month, it.nextCursor, it.epoch) }
     }
 }
