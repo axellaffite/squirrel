@@ -100,6 +100,14 @@ class SyncEngine(
         /** One worker probes while the others wait for its answer. */
         private val offline = Mutex()
 
+        /** Workers waiting for the server: while any is, the state stays [SyncState.WaitingForNetwork]. */
+        private val waiting = MutableStateFlow(0)
+
+        /** Shows [state] unless the run is waiting for the network. */
+        fun show(state: SyncState) {
+            if (waiting.value == 0) _state.value = state
+        }
+
         /** Throws [Stop] when the run must end here (after waiting out a network loss, when persistent). */
         suspend fun checkpoint() {
             if (!ready()) throw stop()
@@ -125,8 +133,13 @@ class SyncEngine(
             var attempt = 0
             while (conditions.check(backup) == PauseReason.NoNetwork || !reachable()) {
                 if (now() - since >= offlineGraceMillis) throw Stop(StopCause.Error, SyncState.Error(ErrorReason.Unreachable))
-                _state.value = SyncState.WaitingForNetwork
-                network.await(probeDelay(attempt++))
+                waiting.update { it + 1 }
+                try {
+                    _state.value = SyncState.WaitingForNetwork
+                    network.await(probeDelay(attempt++))
+                } finally {
+                    waiting.update { it - 1 }
+                }
             }
             attempt > 0
         }
@@ -230,7 +243,7 @@ class SyncEngine(
             if (batch.isEmpty()) return
             // Each batch is hashed in full (or stopped) before the next is read: never twice.
             inParallel(batch, hashConcurrency, run) { asset ->
-                _state.value = SyncState.Hashing(done.value, total)
+                run.show(SyncState.Hashing(done.value, total))
                 hashOne(asset, run)
                 done.update { it + 1 }
             }
@@ -322,8 +335,8 @@ class SyncEngine(
                     interrupted.value = true
                     return@inParallel
                 }
-                _state.value = SyncState.Uploading(asset.name, done.value, total)
-                val progress: (Float) -> Unit = { _state.value = SyncState.Uploading(asset.name, done.value, total, it) }
+                run.show(SyncState.Uploading(asset.name, done.value, total))
+                val progress: (Float) -> Unit = { run.show(SyncState.Uploading(asset.name, done.value, total, it)) }
                 val offline = run.persistent && offlineAllowed
                 when (uploader.upload(asset, shouldContinue = run::mayContinue, onProgress = progress, reportOffline = offline)) {
                     UploadResult.Uploaded -> run.count { it.copy(uploaded = it.uploaded + 1) }

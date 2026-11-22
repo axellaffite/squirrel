@@ -10,6 +10,8 @@ import app.squirrel.shared.testing.runApiTest
 import app.squirrel.shared.testing.testDriver
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 import kotlinx.io.IOException
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -42,7 +44,11 @@ class OfflineRunTest {
 
     private val sleeps = mutableListOf<Long>()
 
-    private suspend fun engine(source: AssetSource = this.source, transport: ChunkTransport = server.transport) = SyncEngine(
+    private suspend fun engine(
+        source: AssetSource = this.source,
+        transport: ChunkTransport = server.transport,
+        network: NetworkWaiter? = null,
+    ) = SyncEngine(
         source = source,
         api = server.api(),
         queue = queue,
@@ -54,7 +60,7 @@ class OfflineRunTest {
         random = { 0.5 },
         io = Dispatchers.Default,
         sleep = { server.locked { sleeps += it; clock += it } },
-        network = NetworkWaiter { millis ->
+        network = network ?: NetworkWaiter { millis ->
             server.locked {
                 waits += millis
                 clock += millis
@@ -219,5 +225,44 @@ class OfflineRunTest {
         assertEquals(StopCause.Error, summary.stoppedBy)
         assertEquals(SyncState.Error(ErrorReason.Unreachable), engine.state.value)
         assertEquals(2, server.requests.count { it.url.encodedPath == "/api/sync/check" })
+    }
+
+    @Test
+    fun theStateStaysWaitingWhileAnotherAssetKeepsUploading() = runApiTest {
+        put(2)
+        server.chunkCount = 4
+        var healthDown = true
+        server.onRequest = { request, _ ->
+            if (request.url.encodedPath == "/api/healthz" && healthDown) throw IOException("connection refused") else null
+        }
+        // The first session's route is down (with the health check); the other one's is fine and slow.
+        val transport = object : ChunkTransport {
+            override suspend fun put(session: UploadSession, index: Int, reader: AssetReader) {
+                if (session.uploadId == "up-0" && healthDown) throw IOException("connection reset")
+                delay(50)
+                server.transport.put(session, index, reader)
+            }
+        }
+        val states = mutableListOf<SyncState>()
+        var restoredAt = -1
+        val engine = engine(
+            transport = transport,
+            network = NetworkWaiter {
+                delay(300) // meanwhile the other asset sends its chunks
+                synchronized(states) { restoredAt = states.size }
+                healthDown = false
+            },
+        )
+        val collector = launch { engine.state.collect { synchronized(states) { states += it } } }
+
+        val summary = engine.runOnce(waitForNetwork = true)
+        collector.cancel()
+
+        assertEquals(2, summary.uploaded)
+        val seen = synchronized(states) { states.toList() }
+        val from = seen.indexOf(SyncState.WaitingForNetwork)
+        assertTrue(from >= 0 && restoredAt > from, "states: $seen")
+        // No flip back to "Uploading" (the notification) while a worker waits for the server.
+        assertTrue(seen.subList(from, restoredAt).none { it is SyncState.Uploading }, "states: $seen")
     }
 }
