@@ -271,20 +271,7 @@ impl PreviewCache {
             .into_iter()
             .find(|e| *e == extension)
             .ok_or_else(|| invalid(format!("unknown preview extension {extension}")))?;
-        let meta = fs::symlink_metadata(source)?;
-        if !meta.file_type().is_file() {
-            return Err(invalid(format!(
-                "{} is not a regular file",
-                source.display()
-            )));
-        }
-        if meta.len() > MAX_ENTRY_BYTES {
-            return Err(invalid(format!(
-                "{} is {} bytes",
-                source.display(),
-                meta.len()
-            )));
-        }
+        let meta = checked(source)?;
         if free_bytes < self.config.min_free_bytes.saturating_add(meta.len()) {
             return Ok(false);
         }
@@ -385,6 +372,33 @@ impl PreviewCache {
             max_bytes: self.config.max_bytes,
         }
     }
+}
+
+/// The metadata of a renderer's output, refused unless it is a regular file
+/// (never a symlink) of a sane size.
+fn checked(source: &Path) -> Result<fs::Metadata> {
+    let meta = fs::symlink_metadata(source)?;
+    if !meta.file_type().is_file() {
+        return Err(invalid(format!(
+            "{} is not a regular file",
+            source.display()
+        )));
+    }
+    if meta.len() > MAX_ENTRY_BYTES {
+        return Err(invalid(format!(
+            "{} is {} bytes",
+            source.display(),
+            meta.len()
+        )));
+    }
+    Ok(meta)
+}
+
+/// The bytes of a renderer's output (an exited sandbox child's), checked like
+/// [`PreviewCache::insert`] does.
+pub fn read_rendered(source: &Path) -> Result<Vec<u8>> {
+    checked(source)?;
+    Ok(fs::read(source)?)
 }
 
 fn invalid(message: String) -> StorageError {

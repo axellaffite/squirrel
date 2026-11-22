@@ -1427,7 +1427,7 @@
           {
             "name": "size",
             "in": "query",
-            "description": "`thumb` (grid, 360 px tall) or `preview` (lightbox, 1440 px).",
+            "description": "`thumb` (grid, 360 px tall) or `preview` (lightbox).",
             "required": true,
             "schema": {
               "type": "string",
@@ -1440,19 +1440,40 @@
           {
             "name": "v",
             "in": "query",
-            "description": "The `thumbnail.version` from the listing. Only a URL with the current\nversion is cached as immutable.",
+            "description": "The `thumbnail.version` from the listing. Only a thumbnail URL with\nthe current version is cached as immutable.",
             "required": false,
             "schema": {
               "type": "integer",
               "format": "int32"
             }
+          },
+          {
+            "name": "px",
+            "in": "query",
+            "description": "`preview` of a photo only: the long side wanted, in device pixels. Rounded\nup to 1440, 2160 or 3200 (capped), never above the original's size.\nWithout it: 1440. PDF previews are always 1440.",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "format": "int32",
+              "minimum": 1
+            }
           }
         ],
         "responses": {
           "200": {
-            "description": "",
+            "description": "WebP, or JPEG for an opaque photo preview",
             "content": {
               "image/webp": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "type": "integer",
+                    "format": "int32",
+                    "minimum": 0
+                  }
+                }
+              },
+              "image/jpeg": {
                 "schema": {
                   "type": "array",
                   "items": {
@@ -1479,6 +1500,26 @@
           },
           "404": {
             "description": "not_found, or not_ready while the worker has not produced it",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "rate_limited: too many previews rendered; retry after `Retry-After`",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "busy: every preview renderer is in use; retry after `Retry-After`",
             "content": {
               "application/json": {
                 "schema": {

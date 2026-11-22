@@ -8,8 +8,10 @@ use tokio::sync::Semaphore;
 
 use crate::client_ip::TrustedProxies;
 use crate::downloads::DownloadLimits;
+use crate::previews::{PreviewLimits, Previews};
 use crate::setup_token::SetupToken;
 use crate::upload_runtime::{Slots, UploadLimits, UploadRuntime, UserRate, UserRateLimiter};
+use squirrel_sandbox::exec::Executor;
 
 #[derive(Debug, Clone, Copy)]
 pub struct RateLimit {
@@ -71,6 +73,8 @@ pub struct ApiConfig {
     pub blob_gc_grace: Duration,
     /// Disk budget of previews rendered on demand (`<data_dir>/cache/previews`).
     pub preview_cache_bytes: u64,
+    /// Render concurrency, slot wait and per-user render rate of previews.
+    pub preview_limits: PreviewLimits,
 }
 
 /// Available cores clamped to 2..=4: enough for a few simultaneous logins,
@@ -125,6 +129,7 @@ impl Default for ApiConfig {
             trash_retention: Duration::days(30),
             blob_gc_grace: Duration::hours(24),
             preview_cache_bytes: 1536 * 1024 * 1024,
+            preview_limits: PreviewLimits::default(),
         }
     }
 }
@@ -171,6 +176,8 @@ pub struct AppState {
     /// Previews rendered on demand; `None` when the cache directory could not
     /// be opened (previews are then rendered for every request).
     pub preview_cache: Option<Arc<PreviewCache>>,
+    /// The preview renderer (in-process until [`AppState::with_preview_executor`]).
+    pub previews: Arc<Previews>,
 }
 
 /// What the server found in its models directory at start.
@@ -186,6 +193,7 @@ impl AppState {
         let preview_cache = open_preview_cache(&storage, &config);
         Self {
             preview_cache,
+            previews: Arc::new(Previews::new(Executor::InProcess, &config.preview_limits)),
             pool,
             storage,
             free_space: Arc::new(move || store.available_space()),
@@ -210,6 +218,14 @@ impl AppState {
         Self {
             text_encoder: text_encoder.map(Arc::new),
             models_installed,
+            ..self
+        }
+    }
+
+    /// This state, rendering previews with `executor` (the sandbox in production).
+    pub fn with_preview_executor(self, executor: Executor) -> Self {
+        Self {
+            previews: Arc::new(Previews::new(executor, &self.config.preview_limits)),
             ..self
         }
     }
