@@ -36,10 +36,23 @@ data class BackupUi(
     val noticeIsError: Boolean,
     val access: AccessUi,
     val locationWarning: String?,
+    /** Android with battery optimisation on: backups may stop with the screen off. */
+    val batteryNotice: String? = null,
 )
 
+const val BATTERY_NOTICE = "Backups can stop when the screen is off, because Android limits Squirrel's battery use. " +
+    "Allow Squirrel to run in the background. If you reach your Squirrel through a VPN app (Tailscale, for example), " +
+    "allow that app too."
+
+
 /** Pure mapping, tested string by string. */
-fun backupUi(status: BackupStatus, settings: BackupSettings, locationsIncluded: Boolean, now: Long): BackupUi {
+fun backupUi(
+    status: BackupStatus,
+    settings: BackupSettings,
+    locationsIncluded: Boolean,
+    now: Long,
+    batteryRestricted: Boolean = false,
+): BackupUi {
     val state = status.state
     val running = state is SyncState.Scanning || state is SyncState.Hashing || state is SyncState.Checking ||
         state is SyncState.Uploading || state is SyncState.WaitingForNetwork
@@ -84,6 +97,7 @@ fun backupUi(status: BackupStatus, settings: BackupSettings, locationsIncluded: 
                 else AccessUi.Full
         },
         locationWarning = if (status.access != MediaAccess.None && !locationsIncluded) "Photo locations won't be backed up" else null,
+        batteryNotice = if (batteryRestricted) BATTERY_NOTICE else null,
     )
 }
 

@@ -16,6 +16,9 @@ interface BackupPlatform {
     /** Whether photo locations survive (Android: ACCESS_MEDIA_LOCATION granted). */
     fun locationsIncluded(): Boolean
 
+    /** The system may stop backups while the screen is off (Android: battery optimisation is on for Squirrel). */
+    fun batteryRestricted(): Boolean = false
+
     /** What the phone groups photos in, and what the screens call them. */
     val albumKind: AlbumKind get() = AlbumKind.Albums
 
@@ -63,6 +66,9 @@ interface PhotoAccessActions {
 
     /** From partial access to all photos: the system settings page (a new request only re-opens the picker). */
     fun allowAll()
+
+    /** Android: the system's "allow background use" (battery optimisation) for Squirrel. */
+    fun openBatterySettings() = Unit
 
     /** No-op default for previews and tests. */
     object None : PhotoAccessActions {
