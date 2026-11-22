@@ -4,6 +4,7 @@ pub mod auth;
 pub mod content;
 pub mod device_auth;
 pub mod devices;
+pub mod duplicates;
 pub mod explore;
 pub mod faces;
 pub mod health;

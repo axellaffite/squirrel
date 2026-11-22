@@ -29,6 +29,10 @@ pub struct Rendered {
     pub width: u32,
     pub height: u32,
     pub blurhash: String,
+    /// The perceptual hash of a photo ([`crate::phash`]), from its thumbnail;
+    /// `None` for a PDF page.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub phash: Option<u64>,
 }
 
 /// Writes `thumb.webp` and `preview.webp` into `out_dir` (a PDF page).
@@ -39,7 +43,8 @@ pub fn render_variants(image: &DynamicImage, out_dir: &Path) -> Result<Rendered,
     write_variants(preview, width, height, out_dir, StorePreview::Yes)
 }
 
-/// Whether the 1440 px intermediate is stored as `preview.webp` too.
+/// Whether the 1440 px intermediate is stored as `preview.webp` too (a PDF
+/// page), or not (a photo, which gets a perceptual hash instead).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum StorePreview {
     Yes,
@@ -83,10 +88,16 @@ fn write_variants(
         )?;
     }
     fs::write(out_dir.join(THUMB_FILE), encode_webp(&thumb, THUMB_QUALITY))?;
+    // From the thumbnail, as the backfill hashes the stored one.
+    let phash = match store_preview {
+        StorePreview::No => Some(crate::phash::phash(&thumb)?),
+        StorePreview::Yes => None,
+    };
     Ok(Rendered {
         width,
         height,
         blurhash: blurhash_of(&thumb)?,
+        phash,
     })
 }
 
@@ -130,6 +141,7 @@ mod tests {
             "rendered on request"
         );
         assert!(!rendered.blurhash.is_empty());
+        assert!(rendered.phash.is_some(), "photos get a perceptual hash");
     }
 
     #[test]

@@ -292,6 +292,54 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/duplicates": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["list_duplicates"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/duplicates/{id}/keep": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["keep_duplicate"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/duplicates/{id}/restore": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["restore_duplicates"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/faces/{id}/person": {
         parameters: {
             query?: never;
@@ -1167,6 +1215,56 @@ export interface components {
             /** @description Name matches first, then by relevance. */
             items: components["schemas"]["DocumentHit"][];
         };
+        /** @description Near-identical photos of the caller, taken within a day of each other. */
+        DuplicateGroupDto: {
+            /** Format: uuid */
+            id: string;
+            /**
+             * Format: uuid
+             * @description The photo kept, while it is in the group.
+             */
+            kept_id?: string | null;
+            /** @description Oldest capture first. */
+            members: components["schemas"]["DuplicateMemberDto"][];
+            /** Format: date-time */
+            resolved_at?: string | null;
+            state: components["schemas"]["DuplicateGroupState"];
+            /** @description Capture time of the group's first photo, `2024-07-14T18:30:05`. */
+            taken_at: string;
+        };
+        /**
+         * @description Whether a group waits for the user's decision.
+         * @enum {string}
+         */
+        DuplicateGroupState: "open" | "resolved";
+        /** @description One photo of a group. */
+        DuplicateMemberDto: {
+            asset: components["schemas"]["AssetSummary"];
+            camera_make?: string | null;
+            camera_model?: string | null;
+            /**
+             * Format: int32
+             * @description Bits (of 64) between this photo's visual hash and the group's anchor.
+             */
+            distance: number;
+            /** @description Hidden everywhere (kept another photo of the group). */
+            hidden: boolean;
+            /**
+             * Format: int64
+             * @description File size in bytes.
+             */
+            size: number;
+        };
+        DuplicatesPage: {
+            /** @description Newest group first. */
+            items: components["schemas"]["DuplicateGroupDto"][];
+            next_cursor?: string | null;
+            /**
+             * Format: int64
+             * @description Groups waiting for a decision (all pages).
+             */
+            open_count: number;
+        };
         ErrorBody: {
             error: components["schemas"]["ErrorDetail"];
         };
@@ -1318,6 +1416,13 @@ export interface components {
         };
         JoinStatus: {
             valid: boolean;
+        };
+        KeepDuplicateRequest: {
+            /**
+             * Format: uuid
+             * @description The photo (file node id) to keep; the group's other photos are hidden.
+             */
+            asset: string;
         };
         LocationDto: {
             /**
@@ -1545,6 +1650,13 @@ export interface components {
         RenameDeviceRequest: {
             /** @description 1–64 characters. */
             name: string;
+        };
+        RestoreDuplicatesRequest: {
+            /**
+             * Format: uuid
+             * @description The hidden photo to show again; every hidden photo of the group when absent.
+             */
+            asset?: string | null;
         };
         /** @enum {string} */
         Role: "admin" | "user";
@@ -2581,6 +2693,143 @@ export interface operations {
                 };
             };
             404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    list_duplicates: {
+        parameters: {
+            query?: {
+                /** @description `open` (default) or `resolved`. */
+                state?: components["schemas"]["DuplicateGroupState"];
+                cursor?: string;
+                /** @description 1–100, default 20. */
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DuplicatesPage"];
+                };
+            };
+            /** @description Invalid cursor */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    keep_duplicate: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Group id */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["KeepDuplicateRequest"];
+            };
+        };
+        responses: {
+            /** @description Resolved: every other photo is hidden */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DuplicateGroupDto"];
+                };
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not a photo of this group */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    restore_duplicates: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Group id */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RestoreDuplicatesRequest"];
+            };
+        };
+        responses: {
+            /** @description Shown again; open again once nothing is hidden */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DuplicateGroupDto"];
+                };
+            };
+            /** @description Shown again; the group had one photo left and is gone */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not a photo of this group */
+            422: {
                 headers: {
                     [name: string]: unknown;
                 };

@@ -27,7 +27,8 @@ export default defineConfig({
 		// Machine learning (skipped without models, failing on CI where they are installed).
 		{ name: 'search', testMatch: 'search.spec.ts', dependencies: ['onboarding'], use: { ...desktop, ...dates } },
 		{ name: 'people', testMatch: 'people.spec.ts', dependencies: ['onboarding'], use: { ...desktop, ...dates } },
-		{ name: 'explore-phone', testMatch: 'explore-phone.spec.ts', dependencies: ['onboarding'], use: { ...phone, ...dates } }
+		{ name: 'explore-phone', testMatch: 'explore-phone.spec.ts', dependencies: ['onboarding'], use: { ...phone, ...dates } },
+		{ name: 'duplicates', testMatch: 'duplicates.spec.ts', dependencies: ['onboarding'], use: { ...desktop, ...dates } }
 	],
 	webServer: {
 		command: 'bash ../scripts/e2e-server.sh',

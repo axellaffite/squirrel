@@ -36,7 +36,7 @@ pub struct CoverColumns {
 }
 
 /// People of `$1` with their counts and covers, in one pass over the owner's
-/// grouped faces on live photos. `faces` and `people` narrow both sides (to
+/// grouped faces on live, visible photos. `faces` and `people` narrow both sides (to
 /// one person for [`find`]).
 fn person_select(faces: &str, people: &str) -> String {
     format!(
@@ -46,7 +46,8 @@ fn person_select(faces: &str, people: &str) -> String {
             WHERE f.owner_id = $1 AND f.person_id IS NOT NULL {faces} \
               AND EXISTS (SELECT 1 FROM assets a \
                             JOIN nodes n ON n.id = a.node_id AND n.deleted_at IS NULL \
-                           WHERE a.owner_id = $1 AND a.sha256 = f.sha256)), \
+                           WHERE a.owner_id = $1 AND a.sha256 = f.sha256 \
+                             AND a.hidden_at IS NULL)), \
          counts AS (SELECT person_id, count(*) AS n FROM live GROUP BY person_id), \
          covers AS ( \
            SELECT DISTINCT ON (l.person_id) l.person_id, l.id, l.sha256, \
@@ -66,7 +67,7 @@ fn person_select(faces: &str, people: &str) -> String {
            LEFT JOIN covers cv ON cv.person_id = p.id \
            LEFT JOIN LATERAL (SELECT a.node_id FROM assets a \
                   JOIN nodes n ON n.id = a.node_id AND n.deleted_at IS NULL \
-                 WHERE a.owner_id = $1 AND a.sha256 = cv.sha256 \
+                 WHERE a.owner_id = $1 AND a.sha256 = cv.sha256 AND a.hidden_at IS NULL \
                  ORDER BY a.taken_at DESC, a.node_id DESC LIMIT 1) ph ON true \
           WHERE p.owner_id = $1 {people}"
     )
@@ -299,16 +300,25 @@ pub struct FaceRow {
     pub thumbs_version: Option<i16>,
 }
 
-const FACE_SELECT: &str = "SELECT f.id, c.node_id AS photo_id, f.sha256, f.box_x, f.box_y, \
+/// Faces with the newest live copy of their photo; `photos` narrows the
+/// copies (a fixed fragment: `""` or [`VISIBLE`]).
+fn face_select(photos: &str) -> String {
+    format!(
+        "SELECT f.id, c.node_id AS photo_id, f.sha256, f.box_x, f.box_y, \
        f.box_w, f.box_h, f.score, f.person_id, p.name AS person_name, f.assigned_by, c.taken_at, \
        CASE WHEN m.thumbs_state = 'ready' THEN m.thumbs_version END AS thumbs_version \
   FROM faces f \
   JOIN media m ON m.sha256 = f.sha256 \
   CROSS JOIN LATERAL (SELECT a.node_id, a.taken_at FROM assets a \
        JOIN nodes n ON n.id = a.node_id AND n.deleted_at IS NULL \
-      WHERE a.owner_id = f.owner_id AND a.sha256 = f.sha256 \
+      WHERE a.owner_id = f.owner_id AND a.sha256 = f.sha256 {photos} \
       ORDER BY a.taken_at DESC, a.node_id DESC LIMIT 1) c \
-  LEFT JOIN people p ON p.id = f.person_id AND p.owner_id = f.owner_id";
+  LEFT JOIN people p ON p.id = f.person_id AND p.owner_id = f.owner_id"
+    )
+}
+
+/// Copies not hidden as duplicates.
+const VISIBLE: &str = "AND a.hidden_at IS NULL";
 
 /// Faces on the owner's photo `node` (any copy of its blob), left to right.
 /// `None` when the node is not one of the owner's live photos.
@@ -328,8 +338,11 @@ pub async fn faces_of_photo(
     let Some(sha) = sha else {
         return Ok(None);
     };
-    let sql =
-        format!("{FACE_SELECT} WHERE f.owner_id = $1 AND f.sha256 = $2 ORDER BY f.box_x, f.id");
+    // The photo was opened by id: its faces show even when it is hidden.
+    let sql = format!(
+        "{} WHERE f.owner_id = $1 AND f.sha256 = $2 ORDER BY f.box_x, f.id",
+        face_select("")
+    );
     let mut faces: Vec<FaceRow> = sqlx::query_as(&sql)
         .bind(owner)
         .bind(&sha)
@@ -345,7 +358,7 @@ pub async fn faces_of_photo(
 /// Keyset position in a person's faces: newest photo first.
 pub type FaceCursor = (PrimitiveDateTime, Uuid);
 
-/// A page of `person`'s faces on live photos, newest photo first.
+/// A page of `person`'s faces on live, visible photos, newest photo first.
 pub async fn faces_of_person(
     pool: &PgPool,
     owner: Uuid,
@@ -355,9 +368,10 @@ pub async fn faces_of_person(
 ) -> Result<Vec<FaceRow>, DbError> {
     let (at, id) = after.unzip();
     let sql = format!(
-        "{FACE_SELECT} WHERE f.owner_id = $1 AND f.person_id = $2 \
+        "{} WHERE f.owner_id = $1 AND f.person_id = $2 \
            AND ($3::timestamp IS NULL OR (c.taken_at, f.id) < ($3, $4)) \
-         ORDER BY c.taken_at DESC, f.id DESC LIMIT $5"
+         ORDER BY c.taken_at DESC, f.id DESC LIMIT $5",
+        face_select(VISIBLE)
     );
     Ok(sqlx::query_as(&sql)
         .bind(owner)

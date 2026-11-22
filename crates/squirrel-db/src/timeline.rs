@@ -16,8 +16,16 @@ use crate::{DbError, Page};
 /// Columns of [`AssetSummaryRecord`], shared by the timeline, albums and detail.
 pub(crate) const SUMMARY_COLUMNS: &str = "a.node_id, n.name, n.mime, n.size, a.kind, a.taken_at, \
      a.taken_offset_min, m.width, m.height, m.blurhash, m.thumbs_state, m.thumbs_version";
-/// Live nodes only; `n.owner_id = a.owner_id` is also guaranteed by the foreign key.
+/// Live, visible photos only: every photo listing reads through this, so a
+/// photo hidden as a duplicate (`a.hidden_at`) appears in none of them.
+/// `n.owner_id = a.owner_id` is also guaranteed by the foreign key.
 pub(crate) const FROM: &str = "FROM assets a \
+     JOIN nodes n ON n.id = a.node_id AND n.owner_id = a.owner_id AND n.deleted_at IS NULL \
+                 AND a.hidden_at IS NULL \
+     JOIN media m ON m.sha256 = a.sha256";
+/// [`FROM`] with hidden photos too: opening one photo by id (its owner may
+/// open a hidden duplicate).
+pub(crate) const FROM_ANY: &str = "FROM assets a \
      JOIN nodes n ON n.id = a.node_id AND n.owner_id = a.owner_id AND n.deleted_at IS NULL \
      JOIN media m ON m.sha256 = a.sha256";
 
@@ -230,8 +238,8 @@ pub struct AssetDetailRecord {
     pub place_country_code: Option<String>,
 }
 
-/// One of `owner_id`'s live photos; `None` for anything else (another
-/// user's node, a trashed file, a file that is not a photo).
+/// One of `owner_id`'s live photos, hidden or not; `None` for anything else
+/// (another user's node, a trashed file, a file that is not a photo).
 pub async fn detail(
     pool: &PgPool,
     owner_id: Uuid,
@@ -242,7 +250,7 @@ pub async fn detail(
                 m.camera_make, m.camera_model, m.lens_model, m.exposure_time, m.f_number, \
                 m.iso, m.focal_length_mm, m.place_name, m.place_admin1, m.place_country, \
                 m.place_country_code \
-         {FROM} WHERE a.owner_id = $1 AND a.node_id = $2"
+         {FROM_ANY} WHERE a.owner_id = $1 AND a.node_id = $2"
     );
     Ok(sqlx::query_as::<_, AssetDetailRecord>(&sql)
         .bind(owner_id)

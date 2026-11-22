@@ -11,6 +11,7 @@ pub mod geo_data;
 pub mod heic;
 pub mod metadata;
 pub mod pdf;
+pub mod phash;
 pub mod preview;
 pub mod render;
 #[cfg(any(test, feature = "test-util"))]

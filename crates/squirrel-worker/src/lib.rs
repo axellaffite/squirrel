@@ -6,6 +6,7 @@ pub mod clip_job;
 pub mod cluster_job;
 pub mod context;
 pub mod drop_previews;
+pub mod duplicates_job;
 /// The sandbox launcher (in `squirrel-sandbox`, shared with the server).
 pub use squirrel_sandbox::exec;
 pub use squirrel_sandbox::preview;
@@ -24,6 +25,7 @@ pub mod pdf_job;
 pub mod process;
 pub mod text;
 pub mod thumbnails;
+pub mod visual_hash_job;
 
 use std::future::Future;
 use std::sync::Arc;
@@ -53,6 +55,10 @@ const LABEL_BANK_TIMEOUT: Duration = Duration::from_secs(20 * 60);
 const CLUSTER_TIMEOUT: Duration = Duration::from_secs(5 * 60);
 /// PDF text runs in the sandbox too.
 const TEXT_TIMEOUT: Duration = Duration::from_secs(180);
+/// One stored thumbnail decoded in the sandbox.
+const VISUAL_HASH_TIMEOUT: Duration = Duration::from_secs(60);
+/// SQL only: runs hand over after `duplicates_job::RUN_BUDGET`.
+const DUPLICATES_TIMEOUT: Duration = Duration::from_secs(5 * 60);
 /// One page of file deletions.
 const DROP_PREVIEWS_TIMEOUT: Duration = Duration::from_secs(120);
 
@@ -121,6 +127,20 @@ pub fn register_all(registry: &mut Registry, ctx: Arc<MediaContext>) {
         jobs::DROP_PREVIEWS,
         DROP_PREVIEWS_TIMEOUT,
         |ctx, job| async move { drop_previews::run(&ctx, job).await },
+    );
+    register(
+        registry,
+        &ctx,
+        jobs::VISUAL_HASH,
+        VISUAL_HASH_TIMEOUT,
+        |ctx, job| async move { visual_hash_job::run(&ctx, job).await },
+    );
+    register(
+        registry,
+        &ctx,
+        jobs::GROUP_DUPLICATES,
+        DUPLICATES_TIMEOUT,
+        |ctx, job| async move { duplicates_job::run(&ctx, job).await },
     );
     register_ml(registry, &ctx);
 }

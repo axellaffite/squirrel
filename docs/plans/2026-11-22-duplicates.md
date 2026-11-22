@@ -1,5 +1,7 @@
 # Duplicates: group near-identical photos, keep one, hide the rest
 
+**As built (2026-11-22).** Shipped as planned (`ea3f681` pHash and schema · `33ba54d` grouping job · `0ef1d51` hidden filter · `cb11a2b` API · `4446d82` web · `b945f9e` E2E). pHash is taken from the in-memory thumbnail (the backfill hashes the stored one: same input, ≤ 2 bits apart). Grouping waits for the capture time (metadata step) and runs per owner after `SQUIRREL_DUPLICATES_DELAY_SECS` (60 s). Deviations: a group whose last remaining photo is hidden is kept (otherwise that photo could never be restored); trashing a photo takes it out of its group and unhides it; the sync check still counts hidden photos as backed up (no re-upload). The web page shows one large preview with a strip of the group's photos (user request), previous/next group and Undo. Threshold 6 bits still to calibrate on real photos (#9).
+
 **Goal:** group each user's near-identical photos automatically. In a group the user can pick one to keep; the others are hidden everywhere (not deleted, restorable). Doing nothing leaves the group as it is.
 
 **Approved by the user (2026-11-22):** near-identical shots (visual hash) taken **at most 1 day apart**; hidden photos disappear **everywhere** (timeline, search, albums, people, places, Explore, phone); review on the **web first** (phone only stops showing hidden photos). Byte-identical files are already stored once (sha256), so this targets different files that look the same.

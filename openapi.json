@@ -1181,6 +1181,220 @@
         ]
       }
     },
+    "/api/duplicates": {
+      "get": {
+        "tags": [
+          "duplicates"
+        ],
+        "operationId": "list_duplicates",
+        "parameters": [
+          {
+            "name": "state",
+            "in": "query",
+            "description": "`open` (default) or `resolved`.",
+            "required": false,
+            "schema": {
+              "$ref": "#/components/schemas/DuplicateGroupState"
+            }
+          },
+          {
+            "name": "cursor",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "description": "1–100, default 20.",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "format": "int32",
+              "minimum": 0
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DuplicatesPage"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid cursor",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "session_cookie": []
+          }
+        ]
+      }
+    },
+    "/api/duplicates/{id}/keep": {
+      "post": {
+        "tags": [
+          "duplicates"
+        ],
+        "operationId": "keep_duplicate",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "Group id",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/KeepDuplicateRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Resolved: every other photo is hidden",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DuplicateGroupDto"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Not a photo of this group",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "csrf_token": [],
+            "session_cookie": []
+          }
+        ]
+      }
+    },
+    "/api/duplicates/{id}/restore": {
+      "post": {
+        "tags": [
+          "duplicates"
+        ],
+        "operationId": "restore_duplicates",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "Group id",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RestoreDuplicatesRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Shown again; open again once nothing is hidden",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DuplicateGroupDto"
+                }
+              }
+            }
+          },
+          "204": {
+            "description": "Shown again; the group had one photo left and is gone"
+          },
+          "404": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Not a photo of this group",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "csrf_token": [],
+            "session_cookie": []
+          }
+        ]
+      }
+    },
     "/api/faces/{id}/person": {
       "put": {
         "tags": [
@@ -4956,6 +5170,128 @@
           }
         }
       },
+      "DuplicateGroupDto": {
+        "type": "object",
+        "description": "Near-identical photos of the caller, taken within a day of each other.",
+        "required": [
+          "id",
+          "state",
+          "taken_at",
+          "members"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "kept_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid",
+            "description": "The photo kept, while it is in the group."
+          },
+          "members": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/DuplicateMemberDto"
+            },
+            "description": "Oldest capture first."
+          },
+          "resolved_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "state": {
+            "$ref": "#/components/schemas/DuplicateGroupState"
+          },
+          "taken_at": {
+            "type": "string",
+            "description": "Capture time of the group's first photo, `2024-07-14T18:30:05`."
+          }
+        }
+      },
+      "DuplicateGroupState": {
+        "type": "string",
+        "description": "Whether a group waits for the user's decision.",
+        "enum": [
+          "open",
+          "resolved"
+        ]
+      },
+      "DuplicateMemberDto": {
+        "type": "object",
+        "description": "One photo of a group.",
+        "required": [
+          "asset",
+          "size",
+          "hidden",
+          "distance"
+        ],
+        "properties": {
+          "asset": {
+            "$ref": "#/components/schemas/AssetSummary"
+          },
+          "camera_make": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "camera_model": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "distance": {
+            "type": "integer",
+            "format": "int32",
+            "description": "Bits (of 64) between this photo's visual hash and the group's anchor.",
+            "minimum": 0
+          },
+          "hidden": {
+            "type": "boolean",
+            "description": "Hidden everywhere (kept another photo of the group)."
+          },
+          "size": {
+            "type": "integer",
+            "format": "int64",
+            "description": "File size in bytes."
+          }
+        }
+      },
+      "DuplicatesPage": {
+        "type": "object",
+        "required": [
+          "items",
+          "open_count"
+        ],
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/DuplicateGroupDto"
+            },
+            "description": "Newest group first."
+          },
+          "next_cursor": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "open_count": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Groups waiting for a decision (all pages)."
+          }
+        }
+      },
       "ErrorBody": {
         "type": "object",
         "required": [
@@ -5326,6 +5662,19 @@
         "properties": {
           "valid": {
             "type": "boolean"
+          }
+        }
+      },
+      "KeepDuplicateRequest": {
+        "type": "object",
+        "required": [
+          "asset"
+        ],
+        "properties": {
+          "asset": {
+            "type": "string",
+            "format": "uuid",
+            "description": "The photo (file node id) to keep; the group's other photos are hidden."
           }
         }
       },
@@ -5914,6 +6263,19 @@
           }
         }
       },
+      "RestoreDuplicatesRequest": {
+        "type": "object",
+        "properties": {
+          "asset": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid",
+            "description": "The hidden photo to show again; every hidden photo of the group when absent."
+          }
+        }
+      },
       "Role": {
         "type": "string",
         "enum": [
@@ -6476,6 +6838,9 @@
     },
     {
       "name": "people"
+    },
+    {
+      "name": "duplicates"
     }
   ]
 }
