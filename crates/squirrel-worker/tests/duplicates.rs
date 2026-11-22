@@ -271,3 +271,109 @@ async fn photos_hashed_before_get_a_hash_from_the_backfill(pool: PgPool) {
         "{jobs:?}"
     );
 }
+
+/// Trashes `node` in a transaction left open (the caller commits it).
+async fn trash_uncommitted(
+    pool: &PgPool,
+    node: Uuid,
+) -> sqlx::Transaction<'static, sqlx::Postgres> {
+    let mut tx = pool.begin().await.unwrap();
+    sqlx::query("UPDATE nodes SET deleted_at = now(), trash_root = id WHERE id = $1")
+        .bind(node)
+        .execute(&mut *tx)
+        .await
+        .unwrap();
+    tx
+}
+
+/// Waits until some session of this database waits for a lock (a request
+/// blocked behind an open transaction), so the race is exercised, not skipped.
+async fn until_blocked(pool: &PgPool) {
+    for _ in 0..600 {
+        let waiting: i64 = sqlx::query_scalar(
+            "SELECT count(*) FROM pg_stat_activity \
+              WHERE datname = current_database() AND wait_event_type = 'Lock'",
+        )
+        .fetch_one(pool)
+        .await
+        .unwrap();
+        if waiting > 0 {
+            return;
+        }
+        tokio::time::sleep(Duration::from_millis(50)).await;
+    }
+    panic!("nothing ever waited for the open transaction");
+}
+
+async fn only_group(pool: &PgPool, owner: Uuid) -> Uuid {
+    sqlx::query_scalar("SELECT id FROM duplicate_groups WHERE owner_id = $1")
+        .bind(owner)
+        .fetch_one(pool)
+        .await
+        .unwrap()
+}
+
+#[sqlx::test(migrator = "squirrel_db::MIGRATOR")]
+async fn keeping_while_a_photo_is_trashed_never_hides_the_trashed_photo(pool: PgPool) {
+    let fx = Fixture::new(pool);
+    let alice = admin(fx.pool()).await;
+    let a = photo(&fx, alice.id, "a.jpg", &scene_jpeg(12, 1200, 900, 90)).await;
+    let b = photo(&fx, alice.id, "b.jpg", &scene_jpeg(12, 1000, 750, 70)).await;
+    let c = photo(&fx, alice.id, "c.jpg", &scene_jpeg(12, 800, 600, 60)).await;
+    group_owner(fx.pool(), alice.id, BUDGET).await.unwrap();
+    let group = only_group(fx.pool(), alice.id).await;
+
+    let trash = trash_uncommitted(fx.pool(), b).await;
+    let pool = fx.pool().clone();
+    let keep = tokio::spawn(async move {
+        squirrel_db::duplicates::review::keep(&pool, alice.id, group, a).await
+    });
+    until_blocked(fx.pool()).await;
+    trash.commit().await.unwrap();
+    let kept = keep.await.unwrap().unwrap();
+    assert!(matches!(kept, squirrel_db::people::Edit::Done(_)));
+
+    assert!(
+        !hidden(fx.pool(), b).await,
+        "the trashed photo left the group first"
+    );
+    assert!(hidden(fx.pool(), c).await);
+    assert_eq!(
+        groups(fx.pool(), alice.id).await,
+        vec![(sorted(vec![a, c]), true)]
+    );
+}
+
+#[sqlx::test(migrator = "squirrel_db::MIGRATOR")]
+async fn a_photo_trashed_while_grouping_is_not_grouped(pool: PgPool) {
+    let fx = Fixture::new(pool);
+    let alice = admin(fx.pool()).await;
+    photo(&fx, alice.id, "a.jpg", &scene_jpeg(13, 1200, 900, 90)).await;
+    let b = photo(&fx, alice.id, "b.jpg", &scene_jpeg(13, 1000, 750, 70)).await;
+
+    let trash = trash_uncommitted(fx.pool(), b).await;
+    let pool = fx.pool().clone();
+    let run = tokio::spawn(async move { group_owner(&pool, alice.id, BUDGET).await });
+    until_blocked(fx.pool()).await;
+    trash.commit().await.unwrap();
+    run.await.unwrap().unwrap();
+    assert_eq!(groups(fx.pool(), alice.id).await, vec![]);
+    let members: i64 = sqlx::query_scalar("SELECT count(*) FROM duplicate_members")
+        .fetch_one(fx.pool())
+        .await
+        .unwrap();
+    assert_eq!(members, 0);
+}
+
+#[sqlx::test(migrator = "squirrel_db::MIGRATOR")]
+async fn a_hidden_photo_in_no_group_is_shown_again(pool: PgPool) {
+    let fx = Fixture::new(pool);
+    let alice = admin(fx.pool()).await;
+    let a = photo(&fx, alice.id, "a.jpg", &scene_jpeg(14, 1200, 900, 90)).await;
+    sqlx::query("UPDATE assets SET hidden_at = now(), hidden_reason = 'duplicate'")
+        .execute(fx.pool())
+        .await
+        .unwrap();
+    group_owner(fx.pool(), alice.id, BUDGET).await.unwrap();
+    assert!(!hidden(fx.pool(), a).await);
+}
