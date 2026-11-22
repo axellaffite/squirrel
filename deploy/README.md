@@ -13,8 +13,9 @@ What runs (`deploy/docker-compose.yml`):
 | `server` | `squirrel serve`: API, web UI, search | Migrates on start; published on `127.0.0.1:8080` |
 | `worker` | `squirrel worker`: thumbnails, metadata, text, ML | Waits for the server's migrations |
 
-The image (`Dockerfile`) holds the binary with the web UI, libheif, pdfium, ONNX Runtime, the
-SigLIP2 and face models, and the GeoNames snapshot, all pinned by SHA-256 at build time.
+The image (`Dockerfile`) holds the binary with the web UI, libheif, libvips (lightbox previews),
+pdfium, ONNX Runtime, the SigLIP2 and face models, and the GeoNames snapshot; downloads are
+pinned by SHA-256 at build time, and the build fails if libvips cannot load HEIF.
 Nothing is downloaded at run time. The service runs as uid 10001; models and libraries are
 root-owned and read-only.
 
@@ -79,5 +80,7 @@ the background: thumbnails first, then tags, search embeddings and faces.
   5 idle minutes) and up to two decoding children (2 GiB address space each). The first start
   also runs the label bank's text model (about 1.9 GB, once).
 - **Licences:** the image bundles third-party libraries under their own licences (pdfium BSD,
-  ONNX Runtime MIT, libheif LGPL, models: see `crates/squirrel-ml/MODELS.md`). It is built for
-  your own server, not for redistribution.
+  ONNX Runtime MIT, libheif and libvips LGPL, models: see `crates/squirrel-ml/MODELS.md`).
+  Debian's libvips also pulls in ImageMagick and poppler (GPL); Squirrel never lets libvips use
+  those loaders (only JPEG, PNG, WebP, TIFF, GIF and HEIF). The image is built for your own
+  server, not for redistribution.

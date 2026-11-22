@@ -6,8 +6,9 @@
 # ONNX Runtime and the ML models (scripts/fetch-*.sh check each SHA-256), and the GeoNames
 # snapshot from data/geodata. Nothing is downloaded at run time.
 
-# Cargo features of the `squirrel` binary. HEIC needs the system libheif (installed below).
-ARG FEATURES=squirrel/heic
+# Cargo features of the `squirrel` binary: HEIC through the system libheif, lightbox previews
+# through the system libvips (both installed below).
+ARG FEATURES=squirrel/heic,squirrel/vips
 
 # --- Web UI: embedded into the binary by rust-embed (crates/squirrel-api/src/spa.rs) ---
 FROM node:22-trixie-slim AS web
@@ -23,7 +24,7 @@ RUN pnpm build
 FROM rust:1.94-trixie AS rust
 ARG FEATURES
 RUN apt-get update \
- && apt-get install -y --no-install-recommends libheif-dev pkg-config \
+ && apt-get install -y --no-install-recommends libheif-dev libvips-dev pkg-config \
  && rm -rf /var/lib/apt/lists/*
 WORKDIR /src
 COPY . .
@@ -32,6 +33,13 @@ RUN --mount=type=cache,id=squirrel-cargo-registry,target=/usr/local/cargo/regist
     --mount=type=cache,id=squirrel-target,target=/src/target \
     cargo build --release --locked -p squirrel --features "${FEATURES}" \
  && install -D -m 0755 target/release/squirrel /out/squirrel
+# The GeoNames snapshot, decompressed and checked against the pin compiled into the binary
+# (here, where the binary's shared libraries are installed).
+RUN set -eu; \
+    line="$(/out/squirrel admin geodata pinned)"; hash="${line%%  *}"; name="${line#*  }"; \
+    mkdir -p /out/geo; \
+    gzip -dc "data/geodata/${name}.gz" > "/out/geo/${name}"; \
+    echo "${hash}  /out/geo/${name}" | sha256sum -c -
 
 # --- Pinned runtime assets (each script verifies its SHA-256 pins) ---
 FROM rust:1.94-trixie AS assets
@@ -44,20 +52,14 @@ RUN scripts/fetch-pdfium.sh /opt/squirrel/pdfium \
  && SQUIRREL_ORT_CACHE=/tmp/ort-cache scripts/fetch-onnxruntime.sh /opt/squirrel/onnxruntime \
  && scripts/fetch-models.sh /opt/squirrel/models \
  && rm -rf /tmp/ort-cache
-# The GeoNames snapshot, decompressed and checked against the pin compiled into the binary.
-COPY data/geodata/ data/geodata/
-COPY --from=rust /out/squirrel /usr/local/bin/squirrel
-RUN set -eu; \
-    line="$(squirrel admin geodata pinned)"; hash="${line%%  *}"; name="${line#*  }"; \
-    mkdir -p /opt/squirrel/geo; \
-    gzip -dc "data/geodata/${name}.gz" > "/opt/squirrel/geo/${name}"; \
-    echo "${hash}  /opt/squirrel/geo/${name}" | sha256sum -c -; \
-    chmod -R a=rX,u+w /opt/squirrel
+COPY --from=rust /out/geo /opt/squirrel/geo
+RUN chmod -R a=rX,u+w /opt/squirrel
 
 # --- Runtime ---
 FROM debian:trixie-slim
 RUN apt-get update \
  && apt-get install -y --no-install-recommends ca-certificates tini libheif1 libheif-plugin-libde265 \
+      libvips42t64 \
  && rm -rf /var/lib/apt/lists/* \
  && useradd --system --uid 10001 --home-dir /nonexistent --shell /usr/sbin/nologin squirrel \
  && install -d -o squirrel -g squirrel -m 0750 /data
@@ -66,6 +68,8 @@ RUN apt-get update \
 COPY --from=assets /opt/squirrel /opt/squirrel
 COPY --from=rust /out/squirrel /usr/local/bin/squirrel
 COPY --chmod=0755 deploy/entrypoint.sh /usr/local/bin/squirrel-entrypoint
+# The preview child must find libvips and its HEIF loader, or the image is not built.
+RUN squirrel media-exec --probe | tee /dev/stderr | grep -q '"heifload"'
 ENV SQUIRREL_DATA_DIR=/data \
     SQUIRREL_BIND=0.0.0.0:8080 \
     SQUIRREL_LOG_JSON=true \
