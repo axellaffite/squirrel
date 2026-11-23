@@ -19,8 +19,9 @@ import java.io.FileNotFoundException
  * The system's document picker (it also offers Photos and other apps' files), registered by the
  * activity before it starts. Picked files are read through their content URI, never copied.
  */
-class AndroidFilePicker(activity: ComponentActivity) : FilePicker {
-    private val resolver = activity.contentResolver
+class AndroidFilePicker(private val activity: ComponentActivity) : FilePicker {
+    // Read on use: the picker is built with the activity, before its context is attached.
+    private val resolver: ContentResolver get() = activity.contentResolver
     private var pending: CompletableDeferred<List<Uri>>? = null
     private val launcher = activity.registerForActivityResult(ActivityResultContracts.OpenMultipleDocuments()) { uris ->
         pending?.complete(uris)
