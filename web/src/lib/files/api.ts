@@ -59,3 +59,7 @@ export const deleteForever = (id: string) => call(api.DELETE('/api/trash/{id}', 
 export const emptyTrash = () => call(api.DELETE('/api/trash'));
 
 export const storageUsage = () => call(api.GET('/api/storage'));
+
+/** An empty text file; its extension (`.txt`, `.md`, …) sets its type. */
+export const createTextFile = (parentId: string, name: string) =>
+	call(api.POST('/api/files', { body: { parent_id: parentId, name } }));

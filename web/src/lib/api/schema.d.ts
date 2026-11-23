@@ -388,6 +388,59 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/files": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["create_text_file"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/files/{id}/collab": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["open_collab"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/files/{id}/collab/ws": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Upgrades to the co-editing WebSocket (y-websocket protocol). Refusals after
+         *     the upgrade are close codes: 4401 signed out, 4404 no access, 4409 stale
+         *     epoch, 4413 too large, 4429 busy.
+         */
+        get: operations["collab_socket"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/files/{id}/content": {
         parameters: {
             query?: never;
@@ -1184,6 +1237,21 @@ export interface components {
             make: string;
             model?: string | null;
         };
+        CollabSession: {
+            /** @description `false`: the document is shown live but cannot be changed. */
+            can_write: boolean;
+            /**
+             * Format: uuid
+             * @description Pass it when connecting; a connection with an older epoch is closed
+             *     with 4409 (the file changed outside the editor: open it again).
+             */
+            epoch: string;
+            /**
+             * Format: int64
+             * @description Largest text the document may hold, in bytes of UTF-8.
+             */
+            max_bytes: number;
+        };
         CommentDto: {
             author?: null | components["schemas"]["MemberDto"];
             body: string;
@@ -1229,6 +1297,15 @@ export interface components {
             permission: components["schemas"]["SharePermission"];
             /** @description The account to share with. */
             username: string;
+        };
+        /**
+         * @description A new, empty text file. The name's extension sets its type (`.txt`,
+         *     `.md`, …); a taken name gets a ` (n)` suffix.
+         */
+        CreateTextFileRequest: {
+            name: string;
+            /** Format: uuid */
+            parent_id: string;
         };
         CreateUploadRequest: {
             /**
@@ -3295,6 +3372,126 @@ export interface operations {
                 };
             };
             404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    create_text_file: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateTextFileRequest"];
+            };
+        };
+        responses: {
+            /** @description Empty file created; its name may carry a " (n)" suffix if the name was taken */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["NodeDto"];
+                };
+            };
+            /** @description Shared with you for reading only */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description not_editable: the name's extension is not a text type */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    open_collab: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description File id */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CollabSession"];
+                };
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description not_editable: not UTF-8 text, or too large */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    collab_socket: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description File id */
+                id: string;
+                epoch: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Switching to the co-editing WebSocket */
+            101: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description cross-site request (Origin does not match Host) */
+            403: {
                 headers: {
                     [name: string]: unknown;
                 };

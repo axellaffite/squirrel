@@ -46,5 +46,6 @@ Date: 2026-11-23. Status: built. Builds on sharing and comments.
 - The greeting is sent one message per frame: the y-websocket client decodes one message per frame (found by E2E).
 - Web: `/edit/[id]` (CodeMirror 6 + y-codemirror), "Edit"/"Open in editor" on text rows and in the preview; remote cursor colours are restricted to tokens on the client. Awareness names are client-asserted.
 - Review fixes: one save at a time per room; a room is retired (not joinable) before it leaves the registry, and never while unsaved; failed saves retry; a full quota closes with 4507; the epoch is checked before loading; a room on an older epoch is closed; `collab::start` writes only if the file still has that blob; access changes send 4409 (reopen with new rights); a peer announces only its own awareness clients (4 max); updates with missing dependencies are refused.
+- "New text file" (folder header): `POST /api/files {parent_id, name}` creates an empty file whose extension must be a text type (422 `not_editable` otherwise), then the editor opens it.
 - Known limits: names in awareness are client-asserted; revocation takes effect within 10 s.
 - Tests: DB `tests/collab.rs`, API `tests/collab.rs` (11 scenarios over a real socket), E2E `e2e/text-editor.spec.ts`.

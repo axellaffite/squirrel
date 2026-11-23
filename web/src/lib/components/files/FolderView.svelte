@@ -21,6 +21,7 @@
 	import EmptyState from '#lib/components/ui/EmptyState.svelte';
 	import {
 		createFolder,
+		createTextFile,
 		getNode,
 		listFolder,
 		moveNode,
@@ -40,6 +41,7 @@
 
 	type Dialog =
 		| { kind: 'new-folder' }
+		| { kind: 'new-text-file' }
 		| { kind: 'rename'; node: FileNode }
 		| { kind: 'move'; node: FileNode }
 		| { kind: 'preview'; node: FileNode }
@@ -168,6 +170,14 @@
 		input.value = '';
 	}
 
+	/** Creates the file, then opens it in the editor. */
+	async function createAndEdit(parent: string, name: string): Promise<string | null> {
+		const result = await createTextFile(parent, name);
+		if (!result.ok) return result.error;
+		void goto(`/edit/${result.data.id}`);
+		return null;
+	}
+
 	async function outcome(result: { ok: boolean; error?: string }): Promise<string | null> {
 		if (!result.ok) return result.error ?? 'Something went wrong.';
 		await load();
@@ -203,6 +213,9 @@
 		{#if canWrite}
 			<Button variant="secondary" onclick={() => (dialog = { kind: 'new-folder' })}>
 				<Icon name="folder-plus" />New folder
+			</Button>
+			<Button variant="secondary" onclick={() => (dialog = { kind: 'new-text-file' })}>
+				<Icon name="file-text" />New text file
 			</Button>
 			<Button onclick={() => uploadInput?.click()}><Icon name="upload" />Upload files</Button>
 			<input bind:this={uploadInput} type="file" multiple hidden onchange={chosen} />
@@ -245,6 +258,15 @@
 			title="New folder"
 			submitLabel="Create folder"
 			onSubmit={async (name) => outcome(await createFolder(parent, name))}
+			onClose={() => (dialog = null)}
+		/>
+	{:else if dialog?.kind === 'new-text-file' && folderId !== null}
+		{@const parent = folderId}
+		<NameDialog
+			title="New text file"
+			initial="Untitled.txt"
+			submitLabel="Create and edit"
+			onSubmit={async (name) => createAndEdit(parent, name)}
 			onClose={() => (dialog = null)}
 		/>
 	{:else if dialog?.kind === 'rename'}
