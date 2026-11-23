@@ -4,7 +4,9 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import app.squirrel.api.models.AccessLevel
 import app.squirrel.api.models.MemberDto
+import app.squirrel.api.models.CreateFolderRequest
 import app.squirrel.api.models.NodeDto
+import app.squirrel.api.models.UpdateNodeRequest
 import app.squirrel.api.models.NodeKind
 import app.squirrel.api.models.NodeListing
 import app.squirrel.api.models.PathSegmentDto
@@ -15,6 +17,8 @@ import app.squirrel.ui.ResumeThrottle
 import app.squirrel.ui.attempt
 import app.squirrel.ui.photos.UNREACHABLE
 import app.squirrel.ui.sharing.Abilities
+import app.squirrel.ui.sharing.Outcome
+import app.squirrel.ui.sharing.call
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -211,6 +215,24 @@ class FilesViewModel(
     }
 
     fun dismissConfirm() = _state.update { it.copy(confirm = null) }
+
+    /** "New folder" in the folder shown; an error message, or null once it is listed. */
+    suspend fun createFolder(name: String): String? {
+        val parent = _state.value.folderId ?: return "Open a folder to add one."
+        return edited { api.files.createFolder(CreateFolderRequest(name = name, parentId = parent)).bodyOrThrow() }
+    }
+
+    suspend fun rename(node: NodeDto, name: String): String? =
+        edited { api.files.updateNode(node.id, UpdateNodeRequest(name = name)).bodyOrThrow() }
+
+    suspend fun move(node: NodeDto, parentId: String): String? =
+        edited { api.files.updateNode(node.id, UpdateNodeRequest(parentId = parentId)).bodyOrThrow() }
+
+    /** Runs a change, then shows the folder again; the server's refusal is the message. */
+    private suspend fun edited(change: suspend () -> Unit): String? = when (val result = call { change() }) {
+        is Outcome.Ok -> null.also { refresh() }
+        is Outcome.Failed -> result.message
+    }
 
     private suspend fun page(gen: Int, folder: String?, cursor: String?) {
         val listing = attempt { api.files.listNodes(parentId = folder, cursor = cursor, limit = pageSize).bodyOrThrow() }

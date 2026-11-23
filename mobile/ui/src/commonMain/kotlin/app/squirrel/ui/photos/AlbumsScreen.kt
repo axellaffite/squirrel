@@ -50,7 +50,7 @@ fun AlbumsGrid(api: SquirrelApi, vm: AlbumsViewModel, onOpen: (AlbumDto) -> Unit
         albums == null -> return Loading()
         albums.isEmpty() -> return PullableColumn(state.refreshing, vm::refresh) {
             state.error?.let { ErrorRetry(it, vm::load) }
-            EmptyState(SquirrelIcon.Library, "No albums yet", "Albums you make on the web appear here.")
+            EmptyState(SquirrelIcon.Library, "No albums yet", "Make one with the + button, or select photos in the timeline and add them.")
         }
     }
     PullToRefresh(state.refreshing, vm::refresh) {

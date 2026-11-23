@@ -17,7 +17,9 @@ import app.squirrel.theme.components.ground
 import app.squirrel.ui.backup.BackupTab
 import app.squirrel.ui.images.LocalImageLoader
 import app.squirrel.ui.photos.PhotosTab
+import app.squirrel.ui.files.FilePicker
 import app.squirrel.ui.files.FilesTab
+import app.squirrel.ui.files.LocalFilePicker
 import app.squirrel.ui.sharing.SharedTab
 import app.squirrel.ui.backup.PhotoAccessActions
 import app.squirrel.ui.shell.Shell
@@ -25,11 +27,11 @@ import app.squirrel.ui.signin.SignInFlow
 
 /** The app's root composable, shared by Android and iOS. */
 @Composable
-fun App(graph: AppGraph, actions: PhotoAccessActions = PhotoAccessActions.None) {
+fun App(graph: AppGraph, actions: PhotoAccessActions = PhotoAccessActions.None, picker: FilePicker? = null) {
     SquirrelTheme {
         val state by graph.state.collectAsStateWithLifecycle()
         val images by graph.imageLoader.collectAsStateWithLifecycle()
-        CompositionLocalProvider(LocalImageLoader provides images) {
+        CompositionLocalProvider(LocalImageLoader provides images, LocalFilePicker provides picker) {
             Box(Modifier.fillMaxSize().ground()) {
                 when (val current = state) {
                     AppState.Loading -> Unit
