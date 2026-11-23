@@ -120,3 +120,26 @@ test('two people co-edit a text file live; a reader follows without typing', asy
 	await bob.context().close();
 	await carol.context().close();
 });
+
+test('a new text file opens in the editor and is saved into the folder', async ({ browser }) => {
+	const alice = await login(browser, 'alice');
+	await workspace(alice, 'New notes');
+	const name = `todo-${randomUUID().slice(0, 8)}.md`;
+
+	await alice.getByRole('button', { name: 'New text file' }).click();
+	const dialog = openDialog(alice);
+	await dialog.getByRole('textbox').fill(name);
+	await dialog.getByRole('button', { name: 'Create and edit' }).click();
+
+	await expect(alice.getByRole('heading', { level: 1, name })).toBeVisible();
+	await expect(status(alice)).toHaveText('Connected');
+	await expectText(alice, name, '');
+	await append(alice, name, '- acorns');
+	const id = alice.url().split('/').pop();
+	await expect
+		.poll(async () => (await alice.request.get(`/api/files/${id}/content`)).text(), { timeout: 15_000 })
+		.toBe('- acorns');
+
+	await alice.goBack();
+	await expect(row(alice, name)).toBeVisible();
+});
