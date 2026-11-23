@@ -1,11 +1,10 @@
 use std::fs::{self, File};
-use std::io;
 #[cfg(any(test, feature = "test-util"))]
-use std::io::{Read, Write};
+use std::io::Read;
+use std::io::{self, Write};
 use std::path::{Path, PathBuf};
 
 use squirrel_core::ContentHash;
-#[cfg(any(test, feature = "test-util"))]
 use uuid::Uuid;
 
 use crate::derived::DerivedStore;
@@ -125,6 +124,23 @@ impl BlobStore {
         Ok(Adopted::Stored)
     }
 
+    /// Stores `bytes` as blob `hash` (the caller computed it), durably.
+    /// Idempotent like [`BlobStore::adopt`], and the caller must hold the
+    /// per-blob lock for the same reason. For small in-memory content (text
+    /// saved by the editor); uploads stream through [`BlobStore::adopt_upload`].
+    pub fn put_bytes(&self, bytes: &[u8], hash: &ContentHash) -> Result<Adopted> {
+        let tmp = self.tmp.join(format!("put-{}", Uuid::now_v7()));
+        let result = (|| {
+            let mut file = File::create_new(&tmp)?;
+            file.write_all(bytes)?;
+            self.adopt_with(&tmp, hash, || file.sync_all(), sync_dir)
+        })();
+        if result.is_err() {
+            let _ = remove_if_exists(&tmp);
+        }
+        result
+    }
+
     /// Test helper: streams `reader` into a temporary file while hashing it,
     /// syncs it, then adopts it, without the per-blob lock and without a
     /// catalogue row (so the result looks like an orphan to maintenance).
@@ -194,6 +210,23 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let store = BlobStore::open(dir.path()).unwrap();
         (dir, store)
+    }
+
+    #[test]
+    fn put_bytes_stores_once_and_cleans_up() {
+        let (dir, store) = store();
+        let hash = ContentHash::parse(HELLO).unwrap();
+        assert_eq!(store.put_bytes(b"hello", &hash).unwrap(), Adopted::Stored);
+        assert_eq!(
+            store.put_bytes(b"hello", &hash).unwrap(),
+            Adopted::AlreadyPresent
+        );
+        assert_eq!(fs::read(store.blob_path(&hash)).unwrap(), b"hello");
+        let leftovers = fs::read_dir(dir.path().join("tmp"))
+            .unwrap()
+            .filter(|entry| entry.as_ref().unwrap().path().is_file())
+            .count();
+        assert_eq!(leftovers, 0);
     }
 
     #[test]
