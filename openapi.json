@@ -1104,6 +1104,9 @@
         },
         "security": [
           {
+            "device_bearer": []
+          },
+          {
             "session_cookie": []
           }
         ]
@@ -1157,6 +1160,9 @@
         },
         "security": [
           {
+            "device_bearer": []
+          },
+          {
             "csrf_token": [],
             "session_cookie": []
           }
@@ -1207,6 +1213,9 @@
           }
         },
         "security": [
+          {
+            "device_bearer": []
+          },
           {
             "csrf_token": [],
             "session_cookie": []
@@ -1283,6 +1292,9 @@
           }
         },
         "security": [
+          {
+            "device_bearer": []
+          },
           {
             "csrf_token": [],
             "session_cookie": []
@@ -4049,6 +4061,9 @@
         },
         "security": [
           {
+            "device_bearer": []
+          },
+          {
             "session_cookie": []
           }
         ]
@@ -4128,6 +4143,9 @@
         },
         "security": [
           {
+            "device_bearer": []
+          },
+          {
             "session_cookie": []
           }
         ]
@@ -4191,6 +4209,9 @@
         },
         "security": [
           {
+            "device_bearer": []
+          },
+          {
             "csrf_token": [],
             "session_cookie": []
           }
@@ -4231,6 +4252,9 @@
           }
         },
         "security": [
+          {
+            "device_bearer": []
+          },
           {
             "csrf_token": [],
             "session_cookie": []
