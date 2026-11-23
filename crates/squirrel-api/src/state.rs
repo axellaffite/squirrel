@@ -75,6 +75,8 @@ pub struct ApiConfig {
     pub preview_cache_bytes: u64,
     /// Render concurrency, slot wait and per-user render rate of previews.
     pub preview_limits: PreviewLimits,
+    /// Live co-editing of text files.
+    pub collab: crate::collab::CollabConfig,
 }
 
 /// Available cores clamped to 2..=4: enough for a few simultaneous logins,
@@ -130,6 +132,7 @@ impl Default for ApiConfig {
             blob_gc_grace: Duration::hours(24),
             preview_cache_bytes: 1536 * 1024 * 1024,
             preview_limits: PreviewLimits::default(),
+            collab: crate::collab::CollabConfig::default(),
         }
     }
 }
@@ -178,6 +181,8 @@ pub struct AppState {
     pub preview_cache: Option<Arc<PreviewCache>>,
     /// The preview renderer (in-process until [`AppState::with_preview_executor`]).
     pub previews: Arc<Previews>,
+    /// Files open in the text editor.
+    pub collab: Arc<crate::collab::Registry>,
 }
 
 /// What the server found in its models directory at start.
@@ -194,6 +199,7 @@ impl AppState {
         Self {
             preview_cache,
             previews: Arc::new(Previews::new(Executor::InProcess, &config.preview_limits)),
+            collab: Arc::default(),
             pool,
             storage,
             free_space: Arc::new(move || store.available_space()),

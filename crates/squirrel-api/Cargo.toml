@@ -37,6 +37,7 @@ tracing.workspace = true
 utoipa.workspace = true
 utoipa-axum.workspace = true
 uuid.workspace = true
+yrs.workspace = true
 
 [dev-dependencies]
 image.workspace = true
@@ -44,5 +45,5 @@ squirrel-media = { workspace = true, features = ["test-util"] }
 pgvector.workspace = true
 squirrel-ml = { workspace = true, features = ["test-util"] }
 squirrel-storage = { workspace = true, features = ["test-util"] }
-axum-test.workspace = true
+axum-test = { workspace = true, features = ["ws"] }
 tempfile.workspace = true

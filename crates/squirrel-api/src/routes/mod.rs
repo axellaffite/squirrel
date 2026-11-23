@@ -1,6 +1,7 @@
 pub mod admin;
 pub mod albums;
 pub mod auth;
+pub mod collab;
 pub mod comments;
 pub mod content;
 pub mod device_auth;
