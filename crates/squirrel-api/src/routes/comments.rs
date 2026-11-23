@@ -11,7 +11,7 @@ use uuid::Uuid;
 
 use crate::cursor;
 use crate::error::{ApiError, ErrorBody};
-use crate::extract::CurrentUser;
+use crate::extract::Caller;
 use crate::input::{ApiJson, ApiPath, ApiQuery};
 use crate::routes::shares::subject_access;
 use crate::sharing_dto::{
@@ -43,13 +43,13 @@ async fn visible_subject(state: &AppState, user: Uuid, id: Uuid) -> Result<Subje
     Ok(subject)
 }
 
-#[utoipa::path(get, path = "/api/comments", security(("session_cookie" = [])), tag = "comments",
+#[utoipa::path(get, path = "/api/comments", security(("device_bearer" = []), ("session_cookie" = [])), tag = "comments",
     params(CommentsQuery),
     responses((status = 200, body = CommentPage), (status = 400, body = ErrorBody),
               (status = 404, body = ErrorBody), (status = 422, body = ErrorBody)))]
 pub async fn list_comments(
     State(state): State<AppState>,
-    caller: CurrentUser,
+    caller: Caller,
     ApiQuery(query): ApiQuery<CommentsQuery>,
 ) -> Result<Json<CommentPage>, ApiError> {
     let subject = query.subject()?;
@@ -80,13 +80,13 @@ pub async fn list_comments(
     }))
 }
 
-#[utoipa::path(post, path = "/api/comments", security(("session_cookie" = [], "csrf_token" = [])), tag = "comments",
+#[utoipa::path(post, path = "/api/comments", security(("device_bearer" = []), ("session_cookie" = [], "csrf_token" = [])), tag = "comments",
     request_body = CreateCommentRequest,
     responses((status = 201, body = CommentDto), (status = 404, body = ErrorBody),
               (status = 422, body = ErrorBody)))]
 pub async fn create_comment(
     State(state): State<AppState>,
-    caller: CurrentUser,
+    caller: Caller,
     ApiJson(request): ApiJson<CreateCommentRequest>,
 ) -> Result<(StatusCode, Json<CommentDto>), ApiError> {
     let subject = request.subject.subject()?;
@@ -99,7 +99,7 @@ pub async fn create_comment(
     ))
 }
 
-#[utoipa::path(patch, path = "/api/comments/{id}", security(("session_cookie" = [], "csrf_token" = [])), tag = "comments",
+#[utoipa::path(patch, path = "/api/comments/{id}", security(("device_bearer" = []), ("session_cookie" = [], "csrf_token" = [])), tag = "comments",
     params(("id" = Uuid, Path, description = "Comment id")),
     request_body = EditCommentRequest,
     responses((status = 200, body = CommentDto),
@@ -107,7 +107,7 @@ pub async fn create_comment(
               (status = 404, body = ErrorBody), (status = 422, body = ErrorBody)))]
 pub async fn edit_comment(
     State(state): State<AppState>,
-    caller: CurrentUser,
+    caller: Caller,
     ApiPath(id): ApiPath<Uuid>,
     ApiJson(request): ApiJson<EditCommentRequest>,
 ) -> Result<Json<CommentDto>, ApiError> {
@@ -122,14 +122,14 @@ pub async fn edit_comment(
     Ok(Json(CommentDto::new(&record, caller.user.id)))
 }
 
-#[utoipa::path(delete, path = "/api/comments/{id}", security(("session_cookie" = [], "csrf_token" = [])), tag = "comments",
+#[utoipa::path(delete, path = "/api/comments/{id}", security(("device_bearer" = []), ("session_cookie" = [], "csrf_token" = [])), tag = "comments",
     params(("id" = Uuid, Path, description = "Comment id")),
     responses((status = 204, description = "Deleted"),
               (status = 403, body = ErrorBody, description = "Only its author or the owner of what it is about"),
               (status = 404, body = ErrorBody)))]
 pub async fn delete_comment(
     State(state): State<AppState>,
-    caller: CurrentUser,
+    caller: Caller,
     ApiPath(id): ApiPath<Uuid>,
 ) -> Result<StatusCode, ApiError> {
     visible_subject(&state, caller.user.id, id).await?;

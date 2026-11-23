@@ -14,7 +14,7 @@ use uuid::Uuid;
 
 use crate::access;
 use crate::error::{ApiError, ErrorBody};
-use crate::extract::CurrentUser;
+use crate::extract::Caller;
 use crate::files_dto::NodeDto;
 use crate::input::{ApiJson, ApiPath, ApiQuery};
 use crate::routes::albums::{Viewpoint, dtos};
@@ -45,7 +45,7 @@ async fn owned_subject(state: &AppState, user: Uuid, subject: Subject) -> Result
     access::require_owner(access)
 }
 
-#[utoipa::path(post, path = "/api/shares", security(("session_cookie" = [], "csrf_token" = [])), tag = "sharing",
+#[utoipa::path(post, path = "/api/shares", security(("device_bearer" = []), ("session_cookie" = [], "csrf_token" = [])), tag = "sharing",
     request_body = CreateShareRequest,
     responses(
         (status = 201, body = ShareDto, description = "Shared, or the existing share's permission changed. Lowering an album share to read removes the photos that person added"),
@@ -55,7 +55,7 @@ async fn owned_subject(state: &AppState, user: Uuid, subject: Subject) -> Result
     ))]
 pub async fn create_share(
     State(state): State<AppState>,
-    caller: CurrentUser,
+    caller: Caller,
     ApiJson(request): ApiJson<CreateShareRequest>,
 ) -> Result<(StatusCode, Json<ShareDto>), ApiError> {
     let subject = request.subject.subject()?;
@@ -86,7 +86,7 @@ pub async fn create_share(
     Ok((StatusCode::CREATED, Json(ShareDto::from(&share))))
 }
 
-#[utoipa::path(get, path = "/api/shares", security(("session_cookie" = [])), tag = "sharing",
+#[utoipa::path(get, path = "/api/shares", security(("device_bearer" = []), ("session_cookie" = [])), tag = "sharing",
     params(SubjectRef),
     responses(
         (status = 200, body = Vec<ShareDto>, description = "The people it is shared with, in sharing order"),
@@ -96,7 +96,7 @@ pub async fn create_share(
     ))]
 pub async fn list_shares(
     State(state): State<AppState>,
-    caller: CurrentUser,
+    caller: Caller,
     ApiQuery(subject): ApiQuery<SubjectRef>,
 ) -> Result<Json<Vec<ShareDto>>, ApiError> {
     let subject = subject.subject()?;
@@ -105,7 +105,7 @@ pub async fn list_shares(
     Ok(Json(list.iter().map(ShareDto::from).collect()))
 }
 
-#[utoipa::path(delete, path = "/api/shares/{id}", security(("session_cookie" = [], "csrf_token" = [])), tag = "sharing",
+#[utoipa::path(delete, path = "/api/shares/{id}", security(("device_bearer" = []), ("session_cookie" = [], "csrf_token" = [])), tag = "sharing",
     params(("id" = Uuid, Path, description = "Share id")),
     responses(
         (status = 204, description = "Stopped sharing (owner) or left (recipient). An album recipient's photos leave the album"),
@@ -113,7 +113,7 @@ pub async fn list_shares(
     ))]
 pub async fn delete_share(
     State(state): State<AppState>,
-    caller: CurrentUser,
+    caller: Caller,
     ApiPath(id): ApiPath<Uuid>,
 ) -> Result<StatusCode, ApiError> {
     if shares::delete(&state.pool, caller.user.id, id).await? {
@@ -124,11 +124,11 @@ pub async fn delete_share(
     }
 }
 
-#[utoipa::path(get, path = "/api/shared-with-me", security(("session_cookie" = [])), tag = "sharing",
+#[utoipa::path(get, path = "/api/shared-with-me", security(("device_bearer" = []), ("session_cookie" = [])), tag = "sharing",
     responses((status = 200, body = Vec<SharedItemDto>, description = "Newest first, at most 1000")))]
 pub async fn shared_with_me(
     State(state): State<AppState>,
-    caller: CurrentUser,
+    caller: Caller,
 ) -> Result<Json<Vec<SharedItemDto>>, ApiError> {
     let list = shares::shared_with(&state.pool, caller.user.id).await?;
     let mut nodes = node_dtos(&state, &list).await?;

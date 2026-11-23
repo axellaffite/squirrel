@@ -47,11 +47,6 @@ const SESSION: &[&str] = &[
     "/api/duplicates",
     "/api/duplicates/{id}/keep",
     "/api/duplicates/{id}/restore",
-    "/api/shares",
-    "/api/shares/{id}",
-    "/api/shared-with-me",
-    "/api/comments",
-    "/api/comments/{id}",
 ];
 
 /// Device bearer only.
@@ -88,6 +83,11 @@ const DATA: &[&str] = &[
     "/api/albums/{id}",
     "/api/albums/{id}/items",
     "/api/albums/{id}/items/remove",
+    "/api/shares",
+    "/api/shares/{id}",
+    "/api/shared-with-me",
+    "/api/comments",
+    "/api/comments/{id}",
     "/api/search/documents",
     "/api/search/photos",
     "/api/search/warmup",
