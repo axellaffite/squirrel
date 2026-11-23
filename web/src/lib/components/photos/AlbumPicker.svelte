@@ -6,8 +6,10 @@
 	import Alert from '#lib/components/ui/Alert.svelte';
 	import Dialog from '#lib/components/ui/Dialog.svelte';
 	import { AlbumAdder } from '#lib/photos/albumAdd.ts';
-	import { albumNameProblem, photoCount, sortByName } from '#lib/photos/albums.ts';
+	import { albumNameProblem, photoCount } from '#lib/photos/albums.ts';
 	import { listAlbums, type Album } from '#lib/photos/api.ts';
+	import { sharedWithMe } from '#lib/sharing/api.ts';
+	import { memberName, writableAlbums } from '#lib/sharing/logic.ts';
 
 	interface Props {
 		/** The photos to add. */
@@ -31,10 +33,11 @@
 	// Kept across retries: a retried "New album…" fills the album already created.
 	const adder = new AlbumAdder(untrack(() => ids));
 
+	// One's own albums, and those shared for writing (a failed "shared" list only hides those).
 	onMount(async () => {
-		const result = await listAlbums();
-		if (result.ok) albums = sortByName(result.data);
-		else error = result.error;
+		const [own, shared] = await Promise.all([listAlbums(), sharedWithMe()]);
+		if (own.ok) albums = writableAlbums(own.data, shared.ok ? shared.data : []);
+		else error = own.error;
 	});
 
 	async function add(album: Album) {
@@ -88,7 +91,9 @@
 						<span class="well"><AlbumCover cover={album.cover ?? null} size="thumb" /></span>
 						<span class="text">
 							<span class="name">{album.name}</span>
-							<span class="count tabular">{photoCount(album.item_count)}</span>
+							<span class="count tabular">
+								{photoCount(album.item_count)}{#if album.shared_by}<span aria-hidden="true"> · </span>{memberName(album.shared_by)}{/if}
+							</span>
 						</span>
 					</button>
 				</li>

@@ -15,9 +15,13 @@
 		onDelete: (node: FileNode) => void;
 		/** Runs once the sheet closed, however it closed. */
 		onClose: () => void;
+		/** Rename, move and trash are offered (false in a folder shared read-only). */
+		canEdit?: boolean;
+		/** Offers "Share" (owners only). */
+		onShare?: (node: FileNode) => void;
 	}
 
-	let { node, onOpen, onRename, onMove, onDelete, onClose }: Props = $props();
+	let { node, onOpen, onRename, onMove, onDelete, onClose, canEdit = true, onShare }: Props = $props();
 
 	let dialog: Dialog | undefined = $state();
 	let open = $state(true);
@@ -35,7 +39,8 @@
 
 	const actions: Action[] = $derived([
 		{ label: node.kind === 'folder' ? 'Open' : 'Preview', icon: node.kind === 'folder' ? 'folder' : 'external-link', run: onOpen },
-		...(node.is_root
+		...(onShare ? [{ label: 'Share', icon: 'share' as const, run: onShare }] : []),
+		...(node.is_root || !canEdit
 			? []
 			: [
 					{ label: 'Rename', icon: 'pencil' as const, run: onRename },

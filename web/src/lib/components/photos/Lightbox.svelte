@@ -10,6 +10,8 @@
 	import PhotoInfo from '#lib/components/photos/PhotoInfo.svelte';
 	import StageButton from '#lib/components/photos/StageButton.svelte';
 	import ConfirmDialog from '#lib/components/ConfirmDialog.svelte';
+	import Comments from '#lib/components/sharing/Comments.svelte';
+	import ShareDialog from '#lib/components/sharing/ShareDialog.svelte';
 	import { contentUrl } from '#lib/files/format.ts';
 	import { latestOnly } from '#lib/files/latest.ts';
 	import { photoDetails, thumbnailUrl, type AssetDetails, type AssetSummary } from '#lib/photos/api.ts';
@@ -47,7 +49,9 @@
 	let { asset, items, onNavigate, onClose, onDelete, onAddToAlbum, current, panel, panelLabel, onStep }: Props = $props();
 
 	let dialog: HTMLDialogElement | undefined = $state();
-	let infoOpen = $state(false);
+	/** The side sheet: the photo's details or its comments. */
+	let side: 'info' | 'comments' | null = $state(null);
+	let sharing = $state(false);
 	let details: AssetDetails | null = $state(null);
 	let detailsError: string | null = $state(null);
 	let confirming = $state(false);
@@ -74,7 +78,8 @@
 		faces = [];
 		facesError = null;
 		faceNotice = null;
-		if (showFaces) void loadFaces(id);
+		// Faces and people are the owner's only: never asked for someone else's photo.
+		if (showFaces && details?.access === 'owner') void loadFaces(id);
 	});
 
 	async function assignPicked(choice: PersonChoice) {
@@ -95,6 +100,9 @@
 	const previous = $derived(index > 0 ? items[index - 1] : null);
 	const next = $derived(index >= 0 && index < items.length - 1 ? items[index + 1] : null);
 	const when = $derived(tileDateTime(asset.taken_at));
+	/** Owner-only tools show until the details say the photo is someone else's. */
+	const isOwned = (found: AssetDetails | null) => found === null || found.access === 'owner';
+	const owned = $derived(isOwned(details));
 
 	$effect(() => {
 		const id = asset.id;
@@ -156,7 +164,7 @@
 
 <svelte:window onkeydown={keydown} />
 
-<dialog bind:this={dialog} class="lightbox" class:with-info={infoOpen} class:with-panel={!!panel} aria-label={`Photo taken ${when}`} onclose={onClose}>
+<dialog bind:this={dialog} class="lightbox" class:with-info={side !== null} class:with-panel={!!panel} aria-label={`Photo taken ${when}`} onclose={onClose}>
 	<div class="stage" data-testid="lightbox-stage" onpointerdown={pointerdown} onpointerup={pointerup} role="presentation">
 		<LightboxPhoto {asset}>
 			{#snippet overlay()}
@@ -171,6 +179,7 @@
 		<div class="bar">
 			<StageButton icon="x" label="Close the photo viewer" tooltip="Close" onclick={() => dialog?.close()} />
 			<div class="tools">
+				{#if owned}
 				<StageButton
 					icon="scan-face"
 					label={showFaces ? `Hide the faces in the photo taken ${when}` : `Show the faces in the photo taken ${when}`}
@@ -178,19 +187,33 @@
 					aria-pressed={showFaces}
 					onclick={() => (showFaces = !showFaces)}
 				/>
+				{/if}
 				<StageButton
 					icon="info"
 					label={`Details of the photo taken ${when}`}
 					tooltip="Details"
-					aria-expanded={infoOpen}
+					aria-expanded={side === 'info'}
 					aria-controls="photo-info"
-					onclick={() => (infoOpen = !infoOpen)}
+					onclick={() => (side = side === 'info' ? null : 'info')}
 				/>
-				{#if onAddToAlbum}
+				<StageButton
+					icon="message-circle"
+					label={`Comments on the photo taken ${when}`}
+					tooltip="Comments"
+					aria-expanded={side === 'comments'}
+					aria-controls="photo-comments"
+					onclick={() => (side = side === 'comments' ? null : 'comments')}
+				/>
+				{#if owned}
+					<StageButton icon="share" label={`Share the photo taken ${when}`} tooltip="Share" onclick={() => (sharing = true)} />
+				{/if}
+				{#if onAddToAlbum && owned}
 					<StageButton icon="library" label={`Add the photo taken ${when} to an album`} tooltip="Add to album" onclick={() => onAddToAlbum(asset)} />
 				{/if}
 				<StageButton icon="download" label={`Download the photo taken ${when}`} tooltip="Download" href={contentUrl(asset.id, true)} download />
-				<StageButton icon="trash" label={`Move the photo taken ${when} to the trash`} tooltip="Move to trash" onclick={() => (confirming = true)} />
+				{#if owned}
+					<StageButton icon="trash" label={`Move the photo taken ${when} to the trash`} tooltip="Move to trash" onclick={() => (confirming = true)} />
+				{/if}
 			</div>
 		</div>
 		<!-- Always rendered (aria-disabled at the ends), so a focused arrow never vanishes under focus. -->
@@ -214,10 +237,18 @@
 	{#if panel}
 		<aside class="panel" aria-label={panelLabel}>{@render panel()}</aside>
 	{/if}
-	{#if infoOpen}
+	{#if side === 'info'}
 		<aside class="sheet" id="photo-info" aria-label="Photo details">
 			<PhotoInfo {asset} {details} error={detailsError} />
 		</aside>
+	{:else if side === 'comments'}
+		<aside class="sheet" id="photo-comments" aria-label="Photo comments">
+			{#key asset.id}<Comments subject={{ node_id: asset.id }} name={`the photo taken ${when}`} />{/key}
+		</aside>
+	{/if}
+
+	{#if sharing}
+		<ShareDialog subject={{ node_id: asset.id }} name={asset.name} onClose={() => (sharing = false)} />
 	{/if}
 
 	{#if menuFace}
