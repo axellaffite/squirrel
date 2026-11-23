@@ -8,6 +8,7 @@ import android.os.Build
 import android.os.Bundle
 import android.provider.Settings
 import androidx.activity.result.contract.ActivityResultContracts
+import app.squirrel.android.files.AndroidFilePicker
 import app.squirrel.android.media.MediaPermissions
 import app.squirrel.ui.backup.PhotoAccessActions
 import androidx.activity.ComponentActivity
@@ -22,6 +23,9 @@ import kotlinx.coroutines.launch
 
 class MainActivity : ComponentActivity() {
     private val scope = MainScope()
+
+    /** Registered with the activity, before it starts (as every activity result must be). */
+    private val picker = AndroidFilePicker(this)
     private lateinit var observer: MediaObserver
     private val permissions = registerForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) { granted ->
         val app = application as SquirrelApp
@@ -68,7 +72,7 @@ class MainActivity : ComponentActivity() {
         observer = MediaObserver(this) {
             scope.launch(Dispatchers.IO) { app.backup.scheduler.onNewMedia(app.graph.settings.backup()) }
         }
-        setContent { App(app.graph, photoActions) }
+        setContent { App(app.graph, photoActions, picker) }
     }
 
     override fun onStart() {

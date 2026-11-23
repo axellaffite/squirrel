@@ -126,7 +126,7 @@ class AssetExporter(private val dir: String = defaultDir()) {
     }
 
     /** Chunks are read in parallel: seek and read on the one handle must not interleave. */
-    private class FileReader(private val handle: NSFileHandle, override val size: Long, override val modifiedAt: Long) : AssetReader {
+    internal class FileReader(private val handle: NSFileHandle, override val size: Long, override val modifiedAt: Long) : AssetReader {
         private val lock = Mutex()
 
         override suspend fun read(position: Long, into: ByteArray, offset: Int, length: Int): Int = withContext(Dispatchers.IO) {
@@ -158,3 +158,11 @@ class AssetExporter(private val dir: String = defaultDir()) {
 }
 
 class ExportFailed(message: String) : Exception(message)
+
+@OptIn(kotlinx.cinterop.ExperimentalForeignApi::class)
+/** Positional reads on a file at [path] (a file the user picked, say); null when it cannot be opened. */
+fun fileAssetReader(path: String): AssetReader? {
+    val size = (NSFileManager.defaultManager.attributesOfItemAtPath(path, null)?.get(NSFileSize) as? NSNumber)?.longLongValue ?: return null
+    val handle = NSFileHandle.fileHandleForReadingAtPath(path) ?: return null
+    return AssetExporter.FileReader(handle, size, modifiedAt = 0L)
+}

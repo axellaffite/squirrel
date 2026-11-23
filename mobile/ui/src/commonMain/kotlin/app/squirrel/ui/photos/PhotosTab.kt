@@ -1,6 +1,16 @@
 package app.squirrel.ui.photos
 
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.ui.Alignment
+import app.squirrel.theme.components.Alert
+import app.squirrel.theme.components.AlertTone
+import app.squirrel.theme.components.Button
+import app.squirrel.theme.components.ButtonSize
+import app.squirrel.ui.files.albumNameProblem
+import app.squirrel.ui.sharing.Outcome
+import app.squirrel.ui.shell.NameSheet
+import app.squirrel.ui.shell.SystemBack
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
@@ -73,21 +83,57 @@ private fun PhotosHome(graph: AppGraph, nav: Navigator<PhotosRoute>) {
     val api = graph.api ?: return
     var mode by rememberSaveable { mutableStateOf(0) }
     var viewing by remember { mutableStateOf<String?>(null) }
-    Column(Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(Tokens.space2)) {
-        PageHeader("Photos", actions = {
-            IconButton(SquirrelIcon.Search, label = "Search photos", onClick = { nav.push(PhotosRoute.Search) })
-        })
-        SegmentedControl(MODES, mode, onSelect = { mode = it })
-        when (mode) {
-            0 -> TimelineList(api, viewModel(key = "timeline") { PhotosViewModel(api) }, TileActions.open { viewing = it.id })
-            1 -> AlbumsGrid(api, viewModel(key = "albums") { AlbumsViewModel(api) }) { nav.push(PhotosRoute.Album(it.id, it.name)) }
-            else -> ExploreOverview(api, explore(api), onSeeAll = { nav.push(PhotosRoute.Section(it)) }, onOpen = filtered(nav))
+    var selected by remember { mutableStateOf(emptySet<String>()) }
+    var picking by remember { mutableStateOf<List<String>?>(null) }
+    var naming by remember { mutableStateOf(false) }
+    var notice by remember { mutableStateOf<String?>(null) }
+    val timeline = viewModel(key = "timeline") { PhotosViewModel(api) }
+    val albums = viewModel(key = "albums") { AlbumsViewModel(api) }
+    SystemBack(enabled = selected.isNotEmpty()) { selected = emptySet() }
+    Box(Modifier.fillMaxSize()) {
+        Column(Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(Tokens.space2)) {
+            PageHeader("Photos", actions = {
+                if (mode == 1) IconButton(SquirrelIcon.Plus, label = "New album", onClick = { naming = true })
+                IconButton(SquirrelIcon.Search, label = "Search photos", onClick = { nav.push(PhotosRoute.Search) })
+            })
+            SegmentedControl(MODES, mode, onSelect = {
+                mode = it
+                selected = emptySet()
+            })
+            notice?.let { Alert(it, tone = AlertTone.Success) }
+            when (mode) {
+                0 -> TimelineList(api, timeline, TileActions({ viewing = it.id }, selected) { selected = selected.toggled(it.id) })
+                1 -> AlbumsGrid(api, albums) { nav.push(PhotosRoute.Album(it.id, it.name)) }
+                else -> ExploreOverview(api, explore(api), onSeeAll = { nav.push(PhotosRoute.Section(it)) }, onOpen = filtered(nav))
+            }
+        }
+        if (selected.isNotEmpty()) {
+            SelectionBar(selected.size, onClear = { selected = emptySet() }, modifier = Modifier.align(Alignment.BottomCenter)) {
+                Button("Add to album", onClick = { picking = selected.toList() }, size = ButtonSize.Sm, icon = SquirrelIcon.Library)
+            }
         }
     }
+    picking?.let { ids ->
+        AlbumPickerSheet(api, ids, onDone = { message ->
+            notice = message
+            selected = emptySet()
+            albums.refresh()
+        }, onClose = { picking = null })
+    }
+    if (naming) {
+        NameSheet("New album", "Create album", validate = ::albumNameProblem, onSubmit = { name ->
+            when (val result = createAlbum(api, name)) {
+                is Outcome.Ok -> null.also {
+                    albums.refresh()
+                    nav.push(PhotosRoute.Album(result.value.id, result.value.name))
+                }
+                is Outcome.Failed -> result.message
+            }
+        }, onClose = { naming = false })
+    }
     viewing?.let { id ->
-        val vm = viewModel(key = "timeline") { PhotosViewModel(api) }
-        val state by vm.state.collectAsStateWithLifecycle()
+        val state by timeline.state.collectAsStateWithLifecycle()
         val items = remember(state.months) { state.loaded() }
-        ViewerHost(graph, ViewerRequest(items, id, vm::near), onClose = { viewing = null })
+        ViewerHost(graph, ViewerRequest(items, id, timeline::near), onClose = { viewing = null }, onAddToAlbum = { picking = listOf(it.id) })
     }
 }
