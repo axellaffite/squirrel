@@ -4,6 +4,7 @@
 	import IconButton from '#lib/components/ui/IconButton.svelte';
 	import ListRow from '#lib/components/ui/ListRow.svelte';
 	import type { FileNode } from '#lib/files/api.ts';
+	import { editorUrl, isEditable } from '#lib/files/editable.ts';
 	import { contentUrl, formatBytes, formatDate } from '#lib/files/format.ts';
 
 	interface Props {
@@ -49,6 +50,14 @@
 			{/snippet}
 			{#snippet actions()}
 				<span class="inline">
+					{#if isEditable(node)}
+						<IconButton
+							icon="file-text"
+							label={canEdit ? `Edit ${node.name}` : `Open ${node.name} in editor`}
+							tooltip={canEdit ? 'Edit' : 'Open in editor'}
+							href={editorUrl(node.id)}
+						/>
+					{/if}
 					{#if node.kind === 'file'}
 						<IconButton icon="download" label={`Download ${node.name}`} tooltip="Download" href={contentUrl(node.id, true)} download />
 					{/if}

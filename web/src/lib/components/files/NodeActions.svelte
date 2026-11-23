@@ -1,9 +1,11 @@
 <script lang="ts">
+	import { goto } from '$app/navigation';
 	import { untrack } from 'svelte';
 	import Icon from '#lib/components/icons/Icon.svelte';
 	import type { IconName } from '#lib/components/icons/paths.ts';
 	import Dialog from '#lib/components/ui/Dialog.svelte';
 	import type { FileNode } from '#lib/files/api.ts';
+	import { editorUrl, isEditable } from '#lib/files/editable.ts';
 	import { contentUrl } from '#lib/files/format.ts';
 
 	interface Props {
@@ -37,8 +39,13 @@
 		danger?: boolean;
 	}
 
+	const openEditor = (subject: FileNode) => void goto(editorUrl(subject.id));
+
 	const actions: Action[] = $derived([
 		{ label: node.kind === 'folder' ? 'Open' : 'Preview', icon: node.kind === 'folder' ? 'folder' : 'external-link', run: onOpen },
+		...(isEditable(node)
+			? [{ label: canEdit ? 'Edit' : 'Open in editor', icon: 'file-text' as const, run: openEditor }]
+			: []),
 		...(onShare ? [{ label: 'Share', icon: 'share' as const, run: onShare }] : []),
 		...(node.is_root || !canEdit
 			? []

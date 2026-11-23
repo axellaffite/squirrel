@@ -265,7 +265,7 @@
 			onClose={() => (dialog = null)}
 		/>
 	{:else if dialog?.kind === 'preview'}
-		<Preview node={dialog.node} onClose={() => (dialog = null)} />
+		<Preview node={dialog.node} canEdit={can.edit} onClose={() => (dialog = null)} />
 	{:else if dialog?.kind === 'share'}
 		<ShareDialog subject={{ node_id: dialog.node.id }} name={dialog.node.name} onClose={() => (dialog = null)} />
 	{:else if dialog?.kind === 'comments'}
