@@ -1,16 +1,14 @@
 /** Duplicates: the caller's groups of near-identical photos, keeping one, restoring hidden ones. */
 import { api, errorMessage } from '#lib/api/client.ts';
 import type { components } from '#lib/api/schema.d.ts';
-import { collectPages, type Outcome } from '#lib/files/pages.ts';
+import type { Outcome } from '#lib/files/pages.ts';
 
 type Client = typeof api;
 
 export type DuplicateGroup = components['schemas']['DuplicateGroupDto'];
 export type DuplicateMember = components['schemas']['DuplicateMemberDto'];
 export type GroupState = components['schemas']['DuplicateGroupState'];
-
-/** Groups fetched per request (the server's largest page). */
-const GROUP_PAGE = 100;
+export type DuplicatesPage = components['schemas']['DuplicatesPage'];
 
 async function call<T>(request: Promise<{ data?: T; error?: unknown; response: Response }>): Promise<Outcome<T>> {
 	try {
@@ -22,16 +20,16 @@ async function call<T>(request: Promise<{ data?: T; error?: unknown; response: R
 	}
 }
 
-/** Every group in `state`, newest first. */
-export function listDuplicates(state: GroupState, client: Client = api): Promise<Outcome<DuplicateGroup[]>> {
-	return collectPages((cursor) =>
-		call(
-			client.GET('/api/duplicates', {
-				params: { query: { state, limit: GROUP_PAGE, cursor: cursor ?? undefined } }
-			})
-		)
-	);
-}
+/** Groups fetched per page (a few screens of tiles). */
+export const GROUP_PAGE = 60;
+
+/** One page of the groups in `state`, newest first, after `cursor`. */
+export const listDuplicates = (
+	state: GroupState,
+	cursor: string | null = null,
+	client: Client = api
+): Promise<Outcome<DuplicatesPage>> =>
+	call(client.GET('/api/duplicates', { params: { query: { state, limit: GROUP_PAGE, cursor: cursor ?? undefined } } }));
 
 /** How many groups wait for the user's decision. */
 export async function openDuplicateCount(client: Client = api): Promise<Outcome<number>> {

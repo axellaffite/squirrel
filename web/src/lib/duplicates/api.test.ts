@@ -14,14 +14,12 @@ function answering(answer: (request: Request) => Response) {
 }
 
 describe('duplicates api', () => {
-	it('collects every page of a state', async () => {
-		const { fetch, client } = answering((request) => {
-			const cursor = new URL(request.url).searchParams.get('cursor');
-			return reply(200, { items: [{ id: cursor ?? 'first' }], open_count: 2, next_cursor: cursor ? null : 'next' });
-		});
-		const result = await listDuplicates('resolved', client);
-		expect(result).toEqual({ ok: true, data: [{ id: 'first' }, { id: 'next' }] });
-		expect(new URL(fetch.mock.calls[0][0].url).searchParams.get('state')).toBe('resolved');
+	it('asks for one page of a state, after a cursor', async () => {
+		const { fetch, client } = answering(() => reply(200, { items: [{ id: 'g' }], open_count: 2, next_cursor: null }));
+		const result = await listDuplicates('resolved', 'abc', client);
+		expect(result).toEqual({ ok: true, data: { items: [{ id: 'g' }], open_count: 2, next_cursor: null } });
+		const query = new URL(fetch.mock.calls[0][0].url).searchParams;
+		expect([query.get('state'), query.get('cursor'), query.get('limit')]).toEqual(['resolved', 'abc', '60']);
 	});
 
 	it('reads the open count from a one-group page', async () => {

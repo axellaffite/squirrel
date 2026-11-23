@@ -20,5 +20,5 @@ them with the command above when the generator changes.
 | `notes.txt` | "Quarterly squirrel budget: acorns, hazelnuts and winter storage." |
 | `invoice.pdf` | one page reading "Invoice 2026 for acorn storage" |
 | `red-circle.jpg`, `blue-square.jpg`, `green-triangle.jpg` | 640 × 480 plain shapes on white, no EXIF: photo search ("red circle") and tags |
-| `meadow.jpg`, `meadow-copy.jpg` | one generated scene, 1600 × 1200 at quality 92 and 1024 × 768 at quality 70, no EXIF: near-identical, grouped as duplicates |
+| `meadow.jpg`, `meadow-copy.jpg`, `pond.jpg`, `pond-copy.jpg` | one generated scene per pair, 1600 × 1200 at quality 92 and 1024 × 768 at quality 70, no EXIF: near-identical, grouped as duplicates |
 | `faces/<name>-mirrored.jpg` | the four portraits mirrored: with the originals (read from `crates/squirrel-ml/tests/fixtures/faces`), four photos of each person, enough for clustering |
