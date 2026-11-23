@@ -1,5 +1,6 @@
 package app.squirrel.shared.api
 
+import app.squirrel.api.models.AccessLevel
 import app.squirrel.api.models.AssetDetails
 import app.squirrel.api.models.SyncCheckRequest
 import kotlin.test.Test
@@ -29,6 +30,13 @@ class ServerVersionCompatibilityTest {
         assertEquals(10L, details.propertySize)
         assertTrue(details.tags.isEmpty())
         assertTrue(details.people.isEmpty())
+    }
+
+    @Test
+    fun accessAnOlderServerDoesNotSendIsOwner() {
+        // Before sharing: everything a server returns is the caller's own.
+        val details = ApiJson.decodeFromString<AssetDetails>("""{"asset":$summary,"size":10,"albums":[]}""")
+        assertEquals(AccessLevel.owner, details.access)
     }
 
     @Test
