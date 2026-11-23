@@ -1,4 +1,7 @@
-//! Albums of the caller's photos. Another user's album is exactly `not_found`.
+//! Albums of the caller's photos, and albums shared with them. An album that
+//! is neither is exactly `not_found`; renaming, choosing the cover and deleting
+//! stay with the owner; people it is shared with for writing add and remove
+//! their own photos.
 
 use std::collections::HashMap;
 
@@ -6,10 +9,12 @@ use axum::Json;
 use axum::extract::State;
 use axum::http::StatusCode;
 use squirrel_core::AlbumName;
-use squirrel_db::albums::{self, AlbumRecord, AlbumUpdate, CoverChange, UpdateOutcome};
-use squirrel_db::timeline;
+use squirrel_db::access::Access;
+use squirrel_db::albums::{self, AlbumRecord, AlbumUpdate, CoverChange, Remover, UpdateOutcome};
+use squirrel_db::{timeline, users};
 use uuid::Uuid;
 
+use crate::access;
 use crate::albums_dto::{
     AlbumDto, AlbumItemsQuery, AlbumItemsRequest, CreateAlbumRequest, ItemsChanged, MAX_NODE_IDS,
     UpdateAlbumRequest,
@@ -20,6 +25,7 @@ use crate::extract::Caller;
 use crate::input::{ApiJson, ApiPath, ApiQuery};
 use crate::photos_dto::{AssetSummary, TimelinePage};
 use crate::routes::photos::{photo_page_size, timeline_page};
+use crate::sharing_dto::PersonDto;
 use crate::state::AppState;
 
 fn check_count(node_ids: &[Uuid], min: usize) -> Result<(), ApiError> {
@@ -31,38 +37,71 @@ fn check_count(node_ids: &[Uuid], min: usize) -> Result<(), ApiError> {
     Ok(())
 }
 
-/// The albums, with their covers' summaries looked up in one query.
-async fn dtos(
+/// How the caller sees an album: their access and, for a shared one, its owner.
+pub(crate) struct Viewpoint {
+    pub access: Access,
+    pub shared_by: Option<PersonDto>,
+}
+
+impl Viewpoint {
+    pub const OWNER: Self = Self {
+        access: Access::Owner,
+        shared_by: None,
+    };
+}
+
+/// The albums, with their covers' summaries looked up in one query. Covers are
+/// live items of albums the caller may see (any contributor's photo).
+pub(crate) async fn dtos(
     state: &AppState,
-    owner: Uuid,
-    records: &[AlbumRecord],
+    records: &[(AlbumRecord, Viewpoint)],
 ) -> Result<Vec<AlbumDto>, ApiError> {
-    let ids: Vec<Uuid> = records.iter().filter_map(|a| a.cover_id).collect();
-    let mut covers: HashMap<Uuid, AssetSummary> = timeline::summaries(&state.pool, owner, &ids)
+    let ids: Vec<Uuid> = records.iter().filter_map(|(a, _)| a.cover_id).collect();
+    let mut covers: HashMap<Uuid, AssetSummary> = timeline::summaries_any(&state.pool, &ids)
         .await?
         .iter()
         .map(|record| (record.node_id, AssetSummary::from(record)))
         .collect();
     Ok(records
         .iter()
-        .map(|album| AlbumDto {
+        .map(|(album, viewpoint)| AlbumDto {
             id: album.id,
             name: album.name.clone(),
             item_count: album.item_count,
             cover: album.cover_id.and_then(|id| covers.remove(&id)),
             updated_at: album.updated_at,
+            access: viewpoint.access.into(),
+            shared_by: viewpoint.shared_by.clone(),
         })
         .collect())
 }
 
-async fn album(state: &AppState, owner: Uuid, id: Uuid) -> Result<AlbumDto, ApiError> {
-    let record = albums::find(&state.pool, owner, id)
+async fn album(state: &AppState, user: Uuid, id: Uuid) -> Result<AlbumDto, ApiError> {
+    let found = access::album(state, user, id).await?;
+    let record = albums::find_any(&state.pool, id)
         .await?
         .ok_or(ApiError::NotFound)?;
-    dtos(state, owner, std::slice::from_ref(&record))
+    let shared_by = if found.access.is_owner() {
+        None
+    } else {
+        users::find_by_id(&state.pool, found.owner_id)
+            .await?
+            .as_ref()
+            .map(PersonDto::from)
+    };
+    let viewpoint = Viewpoint {
+        access: found.access,
+        shared_by,
+    };
+    dtos(state, &[(record, viewpoint)])
         .await?
         .pop()
         .ok_or(ApiError::NotFound)
+}
+
+/// Renaming, choosing the cover and deleting: the owner only.
+async fn owned(state: &AppState, user: Uuid, id: Uuid) -> Result<(), ApiError> {
+    access::require_owner(access::album(state, user, id).await?.access)
 }
 
 #[utoipa::path(get, path = "/api/albums", security(("device_bearer" = []), ("session_cookie" = [])), tag = "albums",
@@ -71,8 +110,12 @@ pub async fn list_albums(
     State(state): State<AppState>,
     caller: Caller,
 ) -> Result<Json<Vec<AlbumDto>>, ApiError> {
-    let records = albums::list(&state.pool, caller.user.id).await?;
-    Ok(Json(dtos(&state, caller.user.id, &records).await?))
+    let records: Vec<_> = albums::list(&state.pool, caller.user.id)
+        .await?
+        .into_iter()
+        .map(|record| (record, Viewpoint::OWNER))
+        .collect();
+    Ok(Json(dtos(&state, &records).await?))
 }
 
 #[utoipa::path(post, path = "/api/albums", security(("device_bearer" = []), ("session_cookie" = [], "csrf_token" = [])), tag = "albums", request_body = CreateAlbumRequest,
@@ -103,7 +146,7 @@ pub async fn get_album(
 #[utoipa::path(patch, path = "/api/albums/{id}", security(("device_bearer" = []), ("session_cookie" = [], "csrf_token" = [])), tag = "albums",
     params(("id" = Uuid, Path, description = "Album id")),
     request_body = UpdateAlbumRequest,
-    responses((status = 200, body = AlbumDto), (status = 404, body = ErrorBody),
+    responses((status = 200, body = AlbumDto), (status = 403, body = ErrorBody, description = "Shared with you for reading only"), (status = 404, body = ErrorBody),
               (status = 422, body = ErrorBody)))]
 pub async fn update_album(
     State(state): State<AppState>,
@@ -125,6 +168,7 @@ pub async fn update_album(
         },
     };
     let owner = caller.user.id;
+    owned(&state, owner, id).await?;
     match albums::update(&state.pool, id, owner, &changes).await? {
         UpdateOutcome::Updated => Ok(Json(album(&state, owner, id).await?)),
         UpdateOutcome::NotFound => Err(ApiError::NotFound),
@@ -136,12 +180,13 @@ pub async fn update_album(
 
 #[utoipa::path(delete, path = "/api/albums/{id}", security(("device_bearer" = []), ("session_cookie" = [], "csrf_token" = [])), tag = "albums",
     params(("id" = Uuid, Path, description = "Album id")),
-    responses((status = 204, description = "Deleted; its photos stay"), (status = 404, body = ErrorBody)))]
+    responses((status = 204, description = "Deleted; its photos stay"), (status = 403, body = ErrorBody, description = "Shared with you for reading only"), (status = 404, body = ErrorBody)))]
 pub async fn delete_album(
     State(state): State<AppState>,
     caller: Caller,
     ApiPath(id): ApiPath<Uuid>,
 ) -> Result<StatusCode, ApiError> {
+    owned(&state, caller.user.id, id).await?;
     if albums::delete(&state.pool, id, caller.user.id).await? {
         Ok(StatusCode::NO_CONTENT)
     } else {
@@ -159,10 +204,7 @@ pub async fn list_album_items(
     ApiPath(id): ApiPath<Uuid>,
     ApiQuery(query): ApiQuery<AlbumItemsQuery>,
 ) -> Result<Json<TimelinePage>, ApiError> {
-    let owner = caller.user.id;
-    if !albums::exists(&state.pool, owner, id).await? {
-        return Err(ApiError::NotFound);
-    }
+    access::album(&state, caller.user.id, id).await?;
     let after = query
         .cursor
         .as_deref()
@@ -170,7 +212,6 @@ pub async fn list_album_items(
         .transpose()?;
     let page = albums::items(
         &state.pool,
-        owner,
         id,
         after.as_ref(),
         photo_page_size(query.limit),
@@ -182,7 +223,7 @@ pub async fn list_album_items(
 #[utoipa::path(post, path = "/api/albums/{id}/items", security(("device_bearer" = []), ("session_cookie" = [], "csrf_token" = [])), tag = "albums",
     params(("id" = Uuid, Path, description = "Album id")),
     request_body = AlbumItemsRequest,
-    responses((status = 200, body = ItemsChanged), (status = 404, body = ErrorBody),
+    responses((status = 200, body = ItemsChanged), (status = 403, body = ErrorBody, description = "Shared with you for reading only"), (status = 404, body = ErrorBody),
               (status = 422, body = ErrorBody)))]
 pub async fn add_album_items(
     State(state): State<AppState>,
@@ -191,6 +232,8 @@ pub async fn add_album_items(
     ApiJson(request): ApiJson<AlbumItemsRequest>,
 ) -> Result<Json<ItemsChanged>, ApiError> {
     check_count(&request.node_ids, 1)?;
+    let found = access::album(&state, caller.user.id, id).await?;
+    access::require(found.access.can_write())?;
     let changed = albums::add_items(&state.pool, id, caller.user.id, &request.node_ids).await?;
     Ok(Json(ItemsChanged { changed }))
 }
@@ -198,7 +241,7 @@ pub async fn add_album_items(
 #[utoipa::path(post, path = "/api/albums/{id}/items/remove", security(("device_bearer" = []), ("session_cookie" = [], "csrf_token" = [])), tag = "albums",
     params(("id" = Uuid, Path, description = "Album id")),
     request_body = AlbumItemsRequest,
-    responses((status = 200, body = ItemsChanged), (status = 404, body = ErrorBody),
+    responses((status = 200, body = ItemsChanged), (status = 403, body = ErrorBody, description = "Shared with you for reading only"), (status = 404, body = ErrorBody),
               (status = 422, body = ErrorBody)))]
 pub async fn remove_album_items(
     State(state): State<AppState>,
@@ -207,6 +250,12 @@ pub async fn remove_album_items(
     ApiJson(request): ApiJson<AlbumItemsRequest>,
 ) -> Result<Json<ItemsChanged>, ApiError> {
     check_count(&request.node_ids, 1)?;
-    let changed = albums::remove_items(&state.pool, id, caller.user.id, &request.node_ids).await?;
+    let found = access::album(&state, caller.user.id, id).await?;
+    let remover = match found.access {
+        Access::Owner => Remover::AlbumOwner,
+        Access::Write => Remover::Contributor(caller.user.id),
+        Access::Read => return Err(ApiError::Forbidden),
+    };
+    let changed = albums::remove_items(&state.pool, id, remover, &request.node_ids).await?;
     Ok(Json(ItemsChanged { changed }))
 }

@@ -101,20 +101,31 @@ pub(crate) async fn record_device_asset(
     device_assets::record(conn, device, asset, sha256, Some(node.id)).await
 }
 
-/// Dedup within the caller's own library: if one of their nodes already
+/// Where an upload goes and who sends it: the same person, or the owner of a
+/// folder shared for writing and the person it is shared with.
+#[derive(Debug, Clone, Copy)]
+pub struct Target {
+    /// Whose tree and quota the file goes to.
+    pub owner_id: Uuid,
+    /// Who uploads it.
+    pub uploader: Uuid,
+}
+
+/// Dedup within the uploader's own library: if one of their nodes already
 /// references this content, link a new node to it. `None` otherwise — even when
-/// another user has the content (never revealed). Idempotent: when the
-/// destination already holds this content under this exact name (a completion
-/// whose response was lost, or a cancel that came too late), that node is
-/// returned instead of a "name (1)" copy.
+/// another user (the shared folder's owner included) has the content: never
+/// revealed. Idempotent: when the destination already holds this content under
+/// this exact name (a completion whose response was lost, or a cancel that came
+/// too late), that node is returned instead of a "name (1)" copy.
 pub async fn link_existing(
     state: &AppState,
-    owner_id: Uuid,
+    target: Target,
     input: &UploadInput,
 ) -> Result<Option<NodeRecord>, ApiError> {
+    let owner_id = target.owner_id;
     let mut tx = state.pool.begin().await.map_err(DbError::from)?;
     let quota_bytes = quota::lock_owner(&mut tx, owner_id).await?;
-    let Some(blob) = blobs::find_owned(&mut tx, owner_id, &input.hash).await? else {
+    let Some(blob) = blobs::find_owned(&mut tx, target.uploader, &input.hash).await? else {
         return Ok(None);
     };
     if blob.size != input.db_size() {
@@ -161,16 +172,18 @@ pub async fn link_existing(
     Ok(Some(node))
 }
 
-/// Resumes the caller's session for this exact file, or opens a new one (after
-/// checking disk space, quota and the open-session cap) with its sparse file.
+/// Resumes the uploader's session for this exact file, or opens a new one
+/// (after checking disk space, the owner's quota and the open-session cap)
+/// with its sparse file.
 pub async fn open_session(
     state: &AppState,
-    owner_id: Uuid,
+    target: Target,
     input: &UploadInput,
 ) -> Result<UploadRecord, ApiError> {
+    let owner_id = target.owner_id;
     let resumable = uploads::find_resumable(
         &state.pool,
-        owner_id,
+        target.uploader,
         input.parent_id,
         &input.name,
         &input.hash,
@@ -184,7 +197,7 @@ pub async fn open_session(
     // same free space.
     let _admission = state.uploads.admission.lock().await;
     ensure_disk_space(state, owner_id, input.size).await?;
-    let record = create_session(state, owner_id, input).await?;
+    let record = create_session(state, target, input).await?;
     let (store, id, size) = (state.storage.clone(), record.id, input.size);
     if let Err(err) = run_storage(move || store.create_upload(id, size)).await {
         uploads::delete(&state.pool, record.id).await?;
@@ -196,7 +209,7 @@ pub async fn open_session(
 
 async fn create_session(
     state: &AppState,
-    owner_id: Uuid,
+    target: Target,
     input: &UploadInput,
 ) -> Result<UploadRecord, ApiError> {
     let plan = UploadPlan::new(input.size, state.config.upload_chunk_size)
@@ -206,7 +219,8 @@ async fn create_session(
     let chunk_size = i64::try_from(plan.chunk_size())
         .map_err(|_| ApiError::Internal(anyhow::anyhow!("upload_chunk_size is too large")))?;
     let new = NewUpload {
-        owner_id,
+        owner_id: target.owner_id,
+        created_by: target.uploader,
         parent_id: input.parent_id,
         name: &input.name,
         sha256: &input.hash,
@@ -239,7 +253,7 @@ async fn resume(
         .chunk(existing.id, state.config.upload_limits.lock_wait)
         .await
         .ok_or(DbError::UploadBusy)?;
-    let current = uploads::find(&state.pool, existing.owner_id, existing.id)
+    let current = uploads::find(&state.pool, existing.created_by, existing.id)
         .await?
         .ok_or(ApiError::NotFound)?;
     if !current.is_open() {

@@ -15,6 +15,7 @@ use squirrel_db::nodes::NodeRecord;
 use squirrel_db::{DbError, uploads};
 use uuid::Uuid;
 
+use crate::access;
 use crate::blocking::run_storage;
 use crate::error::{ApiError, ErrorBody};
 use crate::extract::{Caller, UploadCaller};
@@ -39,6 +40,7 @@ pub(crate) async fn enqueue_media(
     responses(
         (status = 200, body = DeduplicatedUpload, description = "Content already in your library: linked, nothing to upload"),
         (status = 201, body = UploadSessionDto, description = "Session opened or resumed: send the missing chunks. A device also gets a new `upload_token` (the previous one stops working)"),
+        (status = 403, body = ErrorBody, description = "Shared with you for reading only"),
         (status = 404, body = ErrorBody, description = "Destination folder not found"),
         (status = 422, body = ErrorBody),
         (status = 429, body = ErrorBody, description = "rate_limited, or too_many_uploads: too many open sessions, or they would reserve more than half the free space"),
@@ -57,14 +59,20 @@ pub async fn create_upload(
         return Err(ApiError::RateLimited);
     }
     let input = create::UploadInput::parse(request, caller.device().map(|device| device.id))?;
-    if let Some(node) = create::link_existing(&state, owner_id, &input).await? {
+    // Into the caller's folder, or a folder shared with them for writing.
+    let folder = access::writable_folder(&state, owner_id, input.parent_id).await?;
+    let target = create::Target {
+        owner_id: folder.node.owner_id,
+        uploader: owner_id,
+    };
+    if let Some(node) = create::link_existing(&state, target, &input).await? {
         let body = DeduplicatedUpload {
             deduplicated: true,
             node: (&node).into(),
         };
         return Ok((StatusCode::OK, Json(body)).into_response());
     }
-    let session = create::open_session(&state, owner_id, &input).await?;
+    let session = create::open_session(&state, target, &input).await?;
     let received = uploads::received_chunks(&state.pool, session.id).await?;
     let mut body = UploadSessionDto::new(&session, &received);
     if let Some(device) = caller.device() {

@@ -98,7 +98,8 @@ async fn complete_claimed(
             Ok(node)
         }
         Err(Failure::Retry(err)) => {
-            if let Err(release) = uploads::release(&state.pool, owner_id, id, expires_at).await {
+            let uploader = session.created_by;
+            if let Err(release) = uploads::release(&state.pool, uploader, id, expires_at).await {
                 // The claim lease lets a later complete take the session again.
                 tracing::error!(upload_id = %id, error = %release,
                     "could not release an upload session after a failed completion");

@@ -4,6 +4,7 @@
 use base64::Engine;
 use base64::engine::general_purpose::URL_SAFE_NO_PAD;
 use squirrel_core::NodeKind;
+use squirrel_db::comments::CommentCursor;
 use squirrel_db::nodes::ListCursor;
 use squirrel_db::timeline::TimelineCursor;
 use squirrel_db::trash::TrashCursor;
@@ -82,6 +83,21 @@ pub fn decode_trash(raw: &str) -> Result<TrashCursor, ApiError> {
     let (nanos, id) = decode(raw)?;
     Ok(TrashCursor {
         deleted_at: cursor_time(&nanos)?,
+        id: id.parse::<Uuid>().map_err(|_| invalid())?,
+    })
+}
+
+pub fn encode_comment(cursor: &CommentCursor) -> String {
+    encode(
+        &cursor.created_at.unix_timestamp_nanos().to_string(),
+        &cursor.id.to_string(),
+    )
+}
+
+pub fn decode_comment(raw: &str) -> Result<CommentCursor, ApiError> {
+    let (nanos, id) = decode(raw)?;
+    Ok(CommentCursor {
+        created_at: cursor_time(&nanos)?,
         id: id.parse::<Uuid>().map_err(|_| invalid())?,
     })
 }

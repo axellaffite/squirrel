@@ -7,6 +7,8 @@ use squirrel_core::NodeKind;
 use squirrel_db::media::ThumbRef;
 use squirrel_db::nodes::NodeRecord;
 use squirrel_db::uploads::UploadRecord;
+
+use crate::sharing_dto::{AccessLevel, PersonDto};
 use time::OffsetDateTime;
 use utoipa::{IntoParams, ToSchema};
 use uuid::Uuid;
@@ -178,7 +180,13 @@ pub struct PathSegmentDto {
 pub struct NodeDetails {
     pub node: NodeDto,
     /// Ancestors from the top-level folder down, excluding the node itself.
+    /// For a node shared with the caller: from the shared folder down (empty
+    /// when the node itself is what was shared).
     pub path: Vec<PathSegmentDto>,
+    /// What the caller may do with it.
+    pub access: AccessLevel,
+    /// Who shared it with the caller; `null` for the caller's own node.
+    pub shared_by: Option<PersonDto>,
 }
 
 #[derive(Debug, Deserialize, ToSchema)]
