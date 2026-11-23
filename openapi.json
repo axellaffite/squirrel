@@ -1837,6 +1837,75 @@
         ]
       }
     },
+    "/api/files": {
+      "post": {
+        "tags": [
+          "files"
+        ],
+        "operationId": "create_text_file",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateTextFileRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "Empty file created; its name may carry a \" (n)\" suffix if the name was taken",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NodeDto"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Shared with you for reading only",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "not_editable: the name's extension is not a text type",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "device_bearer": []
+          },
+          {
+            "csrf_token": [],
+            "session_cookie": []
+          }
+        ]
+      }
+    },
     "/api/files/{id}/collab": {
       "post": {
         "tags": [
@@ -5761,6 +5830,23 @@
             }
           }
         ]
+      },
+      "CreateTextFileRequest": {
+        "type": "object",
+        "description": "A new, empty text file. The name's extension sets its type (`.txt`,\n`.md`, …); a taken name gets a ` (n)` suffix.",
+        "required": [
+          "parent_id",
+          "name"
+        ],
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "parent_id": {
+            "type": "string",
+            "format": "uuid"
+          }
+        }
       },
       "CreateUploadRequest": {
         "type": "object",

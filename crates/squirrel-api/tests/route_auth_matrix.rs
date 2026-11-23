@@ -69,6 +69,7 @@ const DATA: &[&str] = &[
     "/api/nodes",
     "/api/nodes/{id}",
     "/api/folders",
+    "/api/files",
     "/api/files/{id}/content",
     "/api/files/{id}/thumbnail",
     "/api/trash",

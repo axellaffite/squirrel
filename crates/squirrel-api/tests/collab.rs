@@ -502,3 +502,92 @@ async fn a_downgraded_writer_is_sent_to_reopen(pool: PgPool) {
     let reopened: Value = open(&bob, &bob_me, file).await.json();
     assert_eq!(reopened["can_write"], json!(false));
 }
+
+async fn new_text_file(
+    browser: &TestServer,
+    me: &Value,
+    parent: Uuid,
+    name: &str,
+) -> axum_test::TestResponse {
+    browser
+        .post("/api/files")
+        .add_header(CSRF, csrf(me))
+        .json(&json!({ "parent_id": parent, "name": name }))
+        .await
+}
+
+#[sqlx::test(migrator = "squirrel_db::MIGRATOR")]
+async fn a_new_text_file_starts_empty_and_opens_in_the_editor(pool: PgPool) {
+    let Scene {
+        alice: (alice, alice_me),
+        ..
+    } = scene(pool).await;
+    let files = root_id_of(&alice).await;
+    let created = new_text_file(&alice, &alice_me, files, "todo.md").await;
+    created.assert_status(StatusCode::CREATED);
+    let node: Value = created.json();
+    assert_eq!(node["name"], json!("todo.md"));
+    assert_eq!(node["size"], json!(0));
+    assert_eq!(node["mime"], json!("text/markdown"));
+    let again: Value = new_text_file(&alice, &alice_me, files, "todo.md")
+        .await
+        .json();
+    assert_eq!(again["name"], json!("todo (1).md"));
+
+    let file: Uuid = node["id"].as_str().unwrap().parse().unwrap();
+    assert_eq!(content(&alice, file).await, "");
+    let epoch = epoch(&alice, &alice_me, file).await;
+    let mut a = Client::connect(&alice, file, &epoch).await;
+    a.insert(0, "- milk").await;
+    wait_for_content(&alice, file, "- milk").await;
+
+    let refused = new_text_file(&alice, &alice_me, files, "photo.png").await;
+    refused.assert_status(StatusCode::UNPROCESSABLE_ENTITY);
+    assert_eq!(code(&refused), "not_editable");
+}
+
+#[sqlx::test(migrator = "squirrel_db::MIGRATOR")]
+async fn writers_of_a_shared_folder_create_text_files_and_readers_cannot(pool: PgPool) {
+    let Scene {
+        alice: (alice, alice_me),
+        bob: (bob, bob_me),
+        ..
+    } = scene(pool).await;
+    let files = root_id_of(&alice).await;
+    let folder: Value = alice
+        .post("/api/folders")
+        .add_header(CSRF, csrf(&alice_me))
+        .json(&json!({ "parent_id": files, "name": "Shared notes" }))
+        .await
+        .json();
+    let folder: Uuid = folder["id"].as_str().unwrap().parse().unwrap();
+
+    share(&alice, &alice_me, folder, "read").await;
+    new_text_file(&bob, &bob_me, folder, "bob.txt")
+        .await
+        .assert_status(StatusCode::FORBIDDEN);
+    new_text_file(&bob, &bob_me, files, "bob.txt")
+        .await
+        .assert_status(StatusCode::NOT_FOUND);
+
+    share(&alice, &alice_me, folder, "write").await;
+    let created = new_text_file(&bob, &bob_me, folder, "bob.txt").await;
+    created.assert_status(StatusCode::CREATED);
+    let listed: Value = alice
+        .get(&format!("/api/nodes?parent_id={folder}"))
+        .await
+        .json();
+    assert_eq!(listed["items"][0]["name"], json!("bob.txt"));
+}
+
+/// Alice's top-level "Files" folder.
+async fn root_id_of(browser: &TestServer) -> Uuid {
+    let listed: Value = browser.get("/api/nodes").await.json();
+    let files = listed["items"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|node| node["name"] == json!("Files"))
+        .expect("a Files folder");
+    files["id"].as_str().unwrap().parse().unwrap()
+}
