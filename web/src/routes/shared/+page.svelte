@@ -18,6 +18,8 @@
 	let previewing: FileNode | null = $state(null);
 
 	const groups = $derived(splitShared(items ?? []));
+	/** Files shared for writing (directly or through a folder above) open in the editor as "Edit". */
+	const canEditShared = (node: FileNode) => items?.find((item) => item.node?.id === node.id)?.permission === 'write';
 	const subjectName = (item: SharedItem) => item.node?.name ?? item.album?.name ?? '';
 
 	async function load() {
@@ -91,7 +93,7 @@
 {/if}
 
 {#if previewing}
-	<Preview node={previewing} onClose={() => (previewing = null)} />
+	<Preview node={previewing} canEdit={canEditShared(previewing)} onClose={() => (previewing = null)} />
 {/if}
 
 <style>

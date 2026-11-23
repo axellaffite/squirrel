@@ -34,7 +34,13 @@
 		"vitest": "^5.1.0"
 	},
 	"dependencies": {
+		"@codemirror/commands": "6.11.1",
+		"@codemirror/state": "6.7.6",
+		"@codemirror/view": "6.43.15",
 		"hash-wasm": "^4.13.0",
-		"openapi-fetch": "^0.17.0"
+		"openapi-fetch": "^0.17.0",
+		"y-codemirror.next": "0.3.6",
+		"y-websocket": "3.1.0",
+		"yjs": "13.6.33"
 	}
 }

@@ -21,6 +21,11 @@ export function setCsrfToken(token: string | null): void {
 	csrfToken = token;
 }
 
+/** For the few calls made outside the typed client (e.g. endpoints not in the schema yet). */
+export function currentCsrfToken(): string | null {
+	return csrfToken;
+}
+
 /** Called when an authenticated request answers 401: the session ended server-side. */
 export function onUnauthorized(handler: Handler | null): void {
 	unauthorizedHandler = handler;

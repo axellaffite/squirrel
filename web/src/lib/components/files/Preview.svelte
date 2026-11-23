@@ -7,6 +7,7 @@
 	import EmptyState from '#lib/components/ui/EmptyState.svelte';
 	import Comments from '#lib/components/sharing/Comments.svelte';
 	import type { FileNode } from '#lib/files/api.ts';
+	import { editorUrl, isEditable } from '#lib/files/editable.ts';
 	import { contentUrl, formatBytes, formatDate, previewKind } from '#lib/files/format.ts';
 	import { fetchTextPreview, TEXT_PREVIEW_BYTES } from '#lib/files/textPreview.ts';
 	import { thumbnailUrl } from '#lib/photos/api.ts';
@@ -16,9 +17,12 @@
 		node: FileNode;
 		/** Runs once the dialog closed, however it closed. */
 		onClose: () => void;
+		/** The viewer may change the file: its editor button says "Edit" rather than "Open in editor". */
+		canEdit?: boolean;
 	}
 
-	let { node, onClose }: Props = $props();
+	let { node, onClose, canEdit = true }: Props = $props();
+	const editable = $derived(isEditable(node));
 
 	let open = $state(true);
 	let showComments = $state(false);
@@ -50,6 +54,15 @@
 
 <Dialog bind:open title={node.name} size="wide" onclose={onClose}>
 	{#snippet tools()}
+		{#if editable}
+			<IconButton
+				icon="file-text"
+				label={canEdit ? `Edit ${node.name}` : `Open ${node.name} in editor`}
+				tooltip={canEdit ? 'Edit' : 'Open in editor'}
+				fill="tint"
+				href={editorUrl(node.id)}
+			/>
+		{/if}
 		<IconButton icon="external-link" label={`Open ${node.name} in new tab`} tooltip="Open in new tab" fill="tint" href={url} newTab />
 		<IconButton icon="download" label={`Download ${node.name}`} tooltip="Download" fill="tint" href={contentUrl(node.id, true)} download />
 		<IconButton
