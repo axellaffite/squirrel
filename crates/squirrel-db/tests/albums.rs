@@ -3,8 +3,8 @@ mod common;
 use common::{admin, invited, photo, raw_restore, raw_trash, root};
 use sqlx::PgPool;
 use squirrel_core::AlbumName;
-use squirrel_db::DbError;
-use squirrel_db::albums::{self, AlbumUpdate, CoverChange, UpdateOutcome};
+use squirrel_db::access;
+use squirrel_db::albums::{self, AlbumUpdate, CoverChange, Remover, UpdateOutcome};
 use time::macros::datetime;
 use uuid::Uuid;
 
@@ -12,8 +12,8 @@ fn name(raw: &str) -> AlbumName {
     AlbumName::parse(raw).unwrap()
 }
 
-async fn item_names(pool: &PgPool, owner: Uuid, album: Uuid) -> Vec<String> {
-    albums::items(pool, owner, album, None, 100)
+async fn item_names(pool: &PgPool, _owner: Uuid, album: Uuid) -> Vec<String> {
+    albums::items(pool, album, None, 100)
         .await
         .unwrap()
         .items
@@ -152,28 +152,23 @@ async fn adding_is_idempotent_and_skips_what_is_not_the_owners_live_photo(pool: 
     assert!(after.updated_at > before.updated_at);
 
     assert_eq!(
-        albums::remove_items(&pool, album, alice.id, &[a, bobs])
+        albums::remove_items(&pool, album, Remover::AlbumOwner, &[a, bobs])
             .await
             .unwrap(),
         1
     );
     assert_eq!(item_names(&pool, alice.id, album).await, ["b.jpg"]);
 
-    // Bob cannot touch Alice's album, nor put his photo in it.
-    for result in [
-        albums::add_items(&pool, album, bob.id, &[bobs]).await,
-        albums::remove_items(&pool, album, bob.id, &[b]).await,
-    ] {
-        assert!(matches!(result, Err(DbError::NotFound)), "{result:?}");
-    }
-    assert!(albums::find(&pool, bob.id, album).await.unwrap().is_none());
-    assert!(
-        albums::items(&pool, bob.id, album, None, 10)
+    // Without a share Bob has no access (the API answers not_found), and as
+    // a contributor he could only remove his own photos.
+    assert!(access::album(&pool, bob.id, album).await.unwrap().is_none());
+    assert_eq!(
+        albums::remove_items(&pool, album, Remover::Contributor(bob.id), &[b])
             .await
-            .unwrap()
-            .items
-            .is_empty()
+            .unwrap(),
+        0
     );
+    assert!(albums::find(&pool, bob.id, album).await.unwrap().is_none());
     assert!(!albums::delete(&pool, album, bob.id).await.unwrap());
     assert_eq!(
         albums::update(&pool, album, bob.id, &AlbumUpdate::default())
@@ -184,7 +179,7 @@ async fn adding_is_idempotent_and_skips_what_is_not_the_owners_live_photo(pool: 
 }
 
 #[sqlx::test(migrator = "squirrel_db::MIGRATOR")]
-async fn the_database_refuses_another_users_photo_in_an_album(pool: PgPool) {
+async fn an_album_item_names_its_photos_real_owner(pool: PgPool) {
     let alice = admin(&pool).await;
     let bob = invited(&pool, &alice, "bob").await;
     let bob_photos = root(&pool, bob.id, "Photos").await.id;
@@ -199,27 +194,21 @@ async fn the_database_refuses_another_users_photo_in_an_album(pool: PgPool) {
     let album = albums::create(&pool, alice.id, &name("A"), &[])
         .await
         .unwrap();
-    for owner in [alice.id, bob.id] {
-        let err = sqlx::query(
-            "INSERT INTO album_items (album_id, node_id, owner_id) VALUES ($1, $2, $3)",
-        )
-        .bind(album)
-        .bind(bobs)
-        .bind(owner)
-        .execute(&pool)
-        .await
-        .unwrap_err();
-        let constraint = match &err {
-            sqlx::Error::Database(db) => db.constraint().map(str::to_owned),
-            _ => None,
-        };
-        let expected = if owner == alice.id {
-            "album_items_asset_fkey"
-        } else {
-            "album_items_album_fkey"
-        };
-        assert_eq!(constraint.as_deref(), Some(expected));
-    }
+    let insert = |owner: Uuid| {
+        sqlx::query("INSERT INTO album_items (album_id, node_id, owner_id) VALUES ($1, $2, $3)")
+            .bind(album)
+            .bind(bobs)
+            .bind(owner)
+            .execute(&pool)
+    };
+    // Shared albums hold several people's photos, but never under a false owner.
+    let err = insert(alice.id).await.unwrap_err();
+    let constraint = match &err {
+        sqlx::Error::Database(db) => db.constraint().map(str::to_owned),
+        _ => None,
+    };
+    assert_eq!(constraint.as_deref(), Some("album_items_asset_fkey"));
+    insert(bob.id).await.unwrap();
 }
 
 #[sqlx::test(migrator = "squirrel_db::MIGRATOR")]
@@ -336,7 +325,7 @@ async fn covers_follow_choices_trash_and_deletion(pool: PgPool) {
     albums::update(&pool, album, alice.id, &cover(new))
         .await
         .unwrap();
-    albums::remove_items(&pool, album, alice.id, &[new])
+    albums::remove_items(&pool, album, Remover::AlbumOwner, &[new])
         .await
         .unwrap();
     let found = albums::find(&pool, alice.id, album).await.unwrap().unwrap();
@@ -364,14 +353,12 @@ async fn items_page_like_the_timeline_and_memberships_are_listed(pool: PgPool) {
     let other = albums::create(&pool, alice.id, &name("A"), &ids[..1])
         .await
         .unwrap();
-    let first = albums::items(&pool, alice.id, album, None, 2)
-        .await
-        .unwrap();
+    let first = albums::items(&pool, album, None, 2).await.unwrap();
     assert!(first.has_more);
     let names: Vec<&str> = first.items.iter().map(|a| a.name.as_str()).collect();
     assert_eq!(names, ["d5.jpg", "d4.jpg"]);
     let cursor = first.items.last().unwrap().cursor();
-    let rest = albums::items(&pool, alice.id, album, Some(&cursor), 10)
+    let rest = albums::items(&pool, album, Some(&cursor), 10)
         .await
         .unwrap();
     assert!(!rest.has_more);

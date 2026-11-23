@@ -216,6 +216,22 @@ pub async fn summaries(
         .await?)
 }
 
+/// Summaries of `node_ids` whoever owns them: only for ids the caller already
+/// may see (album items and covers checked through [`crate::access`]).
+pub async fn summaries_any(
+    pool: &PgPool,
+    node_ids: &[Uuid],
+) -> Result<Vec<AssetSummaryRecord>, DbError> {
+    if node_ids.is_empty() {
+        return Ok(Vec::new());
+    }
+    let sql = format!("SELECT {SUMMARY_COLUMNS} {FROM} WHERE a.node_id = ANY($1)");
+    Ok(sqlx::query_as::<_, AssetSummaryRecord>(&sql)
+        .bind(node_ids)
+        .fetch_all(pool)
+        .await?)
+}
+
 /// Everything the photo viewer shows about one photo.
 #[derive(Debug, Clone, PartialEq, FromRow)]
 pub struct AssetDetailRecord {

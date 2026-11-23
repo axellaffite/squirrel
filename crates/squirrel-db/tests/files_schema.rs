@@ -210,8 +210,10 @@ async fn insert_session(
 ) -> Result<(), sqlx::Error> {
     sqlx::query(
         "INSERT INTO upload_sessions \
-           (id, owner_id, parent_id, name, sha256, size, chunk_size, chunk_count, expires_at) \
-         VALUES (gen_random_uuid(), $1, $2, 'f', repeat('a', 64), $3, $4, $5, now() + interval '1 hour')",
+           (id, owner_id, created_by, parent_id, name, sha256, size, chunk_size, chunk_count, \
+            expires_at) \
+         VALUES (gen_random_uuid(), $1, $1, $2, 'f', repeat('a', 64), $3, $4, $5, \
+                 now() + interval '1 hour')",
     )
     .bind(owner)
     .bind(parent)

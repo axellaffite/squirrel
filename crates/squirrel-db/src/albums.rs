@@ -1,10 +1,11 @@
-//! Albums: per-user collections of timeline photos.
+//! Albums: collections of timeline photos.
 //!
-//! `album_items` references both `albums (id, owner_id)` and
-//! `assets (node_id, owner_id)` with the same `owner_id`, so the database
-//! itself refuses an album holding another user's photo. Every function also
-//! filters on the caller's `owner_id`. Trashed photos are hidden from albums
-//! (joins on live nodes) and come back on restore.
+//! `album_items.owner_id` is the photo's owner: an album shared for writing
+//! holds photos of several people (each can remove only theirs; the album's
+//! owner can remove any). Functions taking the album's `owner_id` filter on it;
+//! the others expect the caller to have checked access ([`crate::access`]).
+//! Trashed photos are hidden from albums (joins on live nodes) and come back
+//! on restore.
 
 use sqlx::{FromRow, PgConnection, PgPool, Postgres, QueryBuilder};
 use squirrel_core::AlbumName;
@@ -73,6 +74,24 @@ pub async fn find(pool: &PgPool, owner_id: Uuid, id: Uuid) -> Result<Option<Albu
         .await?)
 }
 
+/// Album `id` whoever owns it: the caller checked access.
+pub async fn find_any(pool: &PgPool, id: Uuid) -> Result<Option<AlbumRecord>, DbError> {
+    let sql = format!("{} WHERE al.id = $1", album_select());
+    Ok(sqlx::query_as::<_, AlbumRecord>(&sql)
+        .bind(id)
+        .fetch_optional(pool)
+        .await?)
+}
+
+/// Albums `ids` whoever owns them (the caller checked access), in no order.
+pub async fn find_many(pool: &PgPool, ids: &[Uuid]) -> Result<Vec<AlbumRecord>, DbError> {
+    let sql = format!("{} WHERE al.id = ANY($1)", album_select());
+    Ok(sqlx::query_as::<_, AlbumRecord>(&sql)
+        .bind(ids)
+        .fetch_all(pool)
+        .await?)
+}
+
 /// Whether `id` is one of `owner_id`'s albums (cheaper than [`find`]).
 pub async fn exists(pool: &PgPool, owner_id: Uuid, id: Uuid) -> Result<bool, DbError> {
     Ok(
@@ -117,6 +136,16 @@ async fn lock(conn: &mut PgConnection, id: Uuid, owner_id: Uuid) -> Result<(), D
     .ok_or(DbError::NotFound)
 }
 
+/// Locks album `id` whoever owns it; `NotFound` if it does not exist.
+async fn lock_any(conn: &mut PgConnection, id: Uuid) -> Result<(), DbError> {
+    sqlx::query_scalar::<_, Uuid>("SELECT id FROM albums WHERE id = $1 FOR UPDATE")
+        .bind(id)
+        .fetch_optional(conn)
+        .await?
+        .map(|_| ())
+        .ok_or(DbError::NotFound)
+}
+
 async fn insert_items(
     conn: &mut PgConnection,
     album_id: Uuid,
@@ -149,17 +178,18 @@ async fn touch(conn: &mut PgConnection, id: Uuid) -> Result<(), DbError> {
     Ok(())
 }
 
-/// Adds those of `node_ids` that are the owner's live photos and not in the
-/// album yet; returns how many were added. `NotFound` for another user's album.
+/// Adds those of `node_ids` that are `adder_id`'s live photos and not in the
+/// album yet; returns how many were added. The caller checked that `adder_id`
+/// owns the album or may write to it.
 pub async fn add_items(
     pool: &PgPool,
     album_id: Uuid,
-    owner_id: Uuid,
+    adder_id: Uuid,
     node_ids: &[Uuid],
 ) -> Result<u64, DbError> {
     let mut tx = pool.begin().await?;
-    lock(&mut tx, album_id, owner_id).await?;
-    let added = insert_items(&mut tx, album_id, owner_id, node_ids).await?;
+    lock_any(&mut tx, album_id).await?;
+    let added = insert_items(&mut tx, album_id, adder_id, node_ids).await?;
     if added > 0 {
         touch(&mut tx, album_id).await?;
     }
@@ -167,21 +197,36 @@ pub async fn add_items(
     Ok(added)
 }
 
+/// Who removes photos from an album.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Remover {
+    /// The album's owner: any photo.
+    AlbumOwner,
+    /// Someone it is shared with for writing: only the photos they own.
+    Contributor(Uuid),
+}
+
 /// Removes `node_ids` from the album (the photos stay); returns how many were
-/// removed. A removed chosen cover falls back to the newest item.
+/// removed. A removed chosen cover falls back to the newest item. The caller
+/// checked access.
 pub async fn remove_items(
     pool: &PgPool,
     album_id: Uuid,
-    owner_id: Uuid,
+    remover: Remover,
     node_ids: &[Uuid],
 ) -> Result<u64, DbError> {
     let mut tx = pool.begin().await?;
-    lock(&mut tx, album_id, owner_id).await?;
+    lock_any(&mut tx, album_id).await?;
+    let only_owner = match remover {
+        Remover::AlbumOwner => None,
+        Remover::Contributor(id) => Some(id),
+    };
     let removed = sqlx::query(
-        "DELETE FROM album_items WHERE album_id = $1 AND owner_id = $2 AND node_id = ANY($3)",
+        "DELETE FROM album_items WHERE album_id = $1 AND node_id = ANY($3) \
+            AND ($2::uuid IS NULL OR owner_id = $2)",
     )
     .bind(album_id)
-    .bind(owner_id)
+    .bind(only_owner)
     .bind(node_ids)
     .execute(&mut *tx)
     .await?
@@ -285,11 +330,10 @@ pub async fn delete(pool: &PgPool, album_id: Uuid, owner_id: Uuid) -> Result<boo
     Ok(deleted.rows_affected() == 1)
 }
 
-/// A page of the album's live photos, newest capture first. Callers check
-/// the album is the owner's first ([`exists`]); another user's album is empty.
+/// A page of the album's live photos (of every contributor), newest capture
+/// first. Callers check access to the album first ([`crate::access::album`]).
 pub async fn items(
     pool: &PgPool,
-    owner_id: Uuid,
     album_id: Uuid,
     after: Option<&TimelineCursor>,
     limit: u32,
@@ -297,10 +341,9 @@ pub async fn items(
     let mut query = QueryBuilder::<Postgres>::new(format!(
         "SELECT {SUMMARY_COLUMNS} {FROM} \
            JOIN album_items i ON i.node_id = a.node_id AND i.owner_id = a.owner_id \
-          WHERE a.owner_id = "
+          WHERE i.album_id = "
     ));
-    query.push_bind(owner_id);
-    query.push(" AND i.album_id = ").push_bind(album_id);
+    query.push_bind(album_id);
     if let Some(cursor) = after {
         query
             .push(" AND (a.taken_at, a.node_id) < (")
