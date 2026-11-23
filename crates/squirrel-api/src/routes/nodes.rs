@@ -3,22 +3,26 @@
 use axum::Json;
 use axum::extract::State;
 use axum::http::StatusCode;
-use squirrel_core::NodeName;
+use sha2::{Digest, Sha256};
+use squirrel_core::{ContentHash, NodeName};
+use squirrel_storage::mime;
 use std::collections::HashMap;
 
 use squirrel_db::access::NodeAccess;
 use squirrel_db::media::{self, ThumbRef};
-use squirrel_db::nodes::{self, ListCursor, NodeChange, NodeRecord, PathSegment};
-use squirrel_db::users;
+use squirrel_db::nodes::{self, ListCursor, NewFile, NodeChange, NodeRecord, PathSegment};
+use squirrel_db::{DbError, blobs, quota, users};
 use uuid::Uuid;
 
 use crate::access;
+use crate::blocking::run_storage;
+use crate::collab;
 use crate::cursor;
 use crate::error::{ApiError, ErrorBody};
 use crate::extract::{Caller, CurrentUser};
 use crate::files_dto::{
-    CreateFolderRequest, ListNodesQuery, NodeDetails, NodeDto, NodeListing, PathSegmentDto,
-    UpdateNodeRequest,
+    CreateFolderRequest, CreateTextFileRequest, ListNodesQuery, NodeDetails, NodeDto, NodeListing,
+    PathSegmentDto, UpdateNodeRequest,
 };
 use crate::input::{ApiJson, ApiPath, ApiQuery};
 use crate::sharing_dto::MemberDto;
@@ -154,6 +158,52 @@ pub async fn create_folder(
     let parent = access::writable_folder(&state, caller.user.id, request.parent_id).await?;
     let node =
         nodes::create_folder(&state.pool, parent.node.owner_id, request.parent_id, &name).await?;
+    Ok((StatusCode::CREATED, Json((&node).into())))
+}
+
+#[utoipa::path(post, path = "/api/files", security(("device_bearer" = []), ("session_cookie" = [], "csrf_token" = [])), tag = "files", request_body = CreateTextFileRequest,
+    responses((status = 201, body = NodeDto, description = "Empty file created; its name may carry a \" (n)\" suffix if the name was taken"),
+              (status = 403, body = ErrorBody, description = "Shared with you for reading only"), (status = 404, body = ErrorBody),
+              (status = 422, body = ErrorBody, description = "not_editable: the name's extension is not a text type")))]
+pub async fn create_text_file(
+    State(state): State<AppState>,
+    caller: Caller,
+    ApiJson(request): ApiJson<CreateTextFileRequest>,
+) -> Result<(StatusCode, Json<NodeDto>), ApiError> {
+    let name = NodeName::parse(&request.name)?;
+    let mime = mime::detect(&[], name.as_str());
+    if !collab::is_text_mime(&mime) {
+        return Err(ApiError::NotEditable(
+            "give the file a text extension, such as .txt or .md",
+        ));
+    }
+    let parent = access::writable_folder(&state, caller.user.id, request.parent_id).await?;
+    let owner_id = parent.node.owner_id;
+    let hash = ContentHash::from_digest(Sha256::digest(b"").into());
+    let mut tx = state.pool.begin().await.map_err(DbError::from)?;
+    // The owner lock serialises the free-name lookup with other inserts.
+    quota::lock_owner(&mut tx, owner_id).await?;
+    nodes::find_live_folder(&mut *tx, owner_id, request.parent_id)
+        .await?
+        .ok_or(ApiError::NotFound)?;
+    blobs::lock(&mut tx, &hash).await?;
+    let (store, blob) = (state.storage.clone(), hash.clone());
+    run_storage(move || store.put_bytes(b"", &blob)).await?;
+    // The node keeps its own text type even if empty content was catalogued
+    // under another one: the editor goes by the node.
+    blobs::insert_if_absent(&mut tx, &hash, 0, &mime).await?;
+    let file = NewFile {
+        owner_id,
+        parent_id: request.parent_id,
+        name: &name,
+        blob: &hash,
+        size: 0,
+        mime: &mime,
+        client_taken: None,
+    };
+    let node = nodes::insert_file(&mut tx, &file).await?;
+    tx.commit().await.map_err(DbError::from)?;
+    tracing::info!(user_id = %caller.user.id, node_id = %node.id, "text file created");
     Ok((StatusCode::CREATED, Json((&node).into())))
 }
 

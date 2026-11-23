@@ -17,7 +17,7 @@ use squirrel_db::collab::CollabDoc;
 use squirrel_db::nodes::NodeRecord;
 use uuid::Uuid;
 
-pub use persist::{EditableError, open_doc};
+pub use persist::{EditableError, is_text_mime, open_doc};
 pub use room::{CloseReason, JoinError, Room};
 
 use crate::error::ApiError;

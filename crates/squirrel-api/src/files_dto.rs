@@ -230,3 +230,11 @@ pub struct TrashListing {
     /// Pass back as `cursor` for the next page; `null` on the last page.
     pub next_cursor: Option<String>,
 }
+
+/// A new, empty text file. The name's extension sets its type (`.txt`,
+/// `.md`, …); a taken name gets a ` (n)` suffix.
+#[derive(Debug, Deserialize, ToSchema)]
+pub struct CreateTextFileRequest {
+    pub parent_id: Uuid,
+    pub name: String,
+}

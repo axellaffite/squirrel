@@ -214,6 +214,7 @@ fn json_routes() -> OpenApiRouter<AppState> {
             routes::nodes::trash_node
         ))
         .routes(routes!(routes::nodes::create_folder))
+        .routes(routes!(routes::nodes::create_text_file))
         .routes(routes!(routes::thumbnails::thumbnail))
         .routes(routes!(
             routes::trash::list_trash,
