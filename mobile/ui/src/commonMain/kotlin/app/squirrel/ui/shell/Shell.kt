@@ -6,6 +6,8 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.ime
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
@@ -102,7 +104,8 @@ fun Shell(
                 EmptyState(current.icon, current.title, current.line)
             }
         }
-        BottomRail(
+        // While the keyboard is up, the rail would ride above it and cover the field being typed in.
+        if (WindowInsets.ime.getBottom(LocalDensity.current) == 0) BottomRail(
             items = Tab.entries.map { RailItem(it.name, it.label, it.icon) },
             selected = tab,
             onSelect = { tab = it },

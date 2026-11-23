@@ -4,6 +4,7 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -127,8 +128,8 @@ private fun SharedAlbumCard(api: SquirrelApi, item: SharedItemDto, modifier: Mod
     CoverCard(api, album.cover, album.name, photoCount(album.itemCount), onClick = onOpen, modifier = modifier, extra = {
         BasicText(memberName(item.owner), style = SquirrelTheme.type.caption, maxLines = 1, overflow = TextOverflow.Ellipsis)
         Row(verticalAlignment = Alignment.CenterVertically) {
-            Badge(permissionLabel(item.permission), modifier = Modifier.weight(1f, fill = false))
-            Row(Modifier.weight(1f)) {}
+            Badge(permissionLabel(item.permission))
+            Spacer(Modifier.weight(1f))
             IconButton(SquirrelIcon.More, label = "Actions for ${album.name}", onClick = onActions)
         }
     })

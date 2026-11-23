@@ -15,6 +15,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import app.squirrel.theme.Shapes
@@ -62,6 +63,7 @@ private fun ActionRow(action: SheetAction, onClick: () -> Unit) {
         Box(Modifier.size(Tokens.wellSm).background(scheme.tint, Shapes.circle), contentAlignment = Alignment.Center) {
             Icon(action.icon, contentDescription = null, tint = ink)
         }
-        BasicText(action.text, style = SquirrelTheme.type.label.copy(color = ink))
+        // The row's name ([SheetAction.label]) already says it: the text is not read twice.
+        BasicText(action.text, style = SquirrelTheme.type.label.copy(color = ink), modifier = Modifier.clearAndSetSemantics {})
     }
 }
