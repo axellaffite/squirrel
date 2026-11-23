@@ -43,6 +43,7 @@ import app.squirrel.ui.AccountInfo
 private enum class Tab(val label: String, val icon: SquirrelIcon, val title: String, val line: String) {
     Photos("Photos", SquirrelIcon.Images, "Photos are not in the app yet", "Your timeline arrives in a later version of the app."),
     Files("Files", SquirrelIcon.Folder, "Files are not in the app yet", "Browsing your folders arrives in a later version."),
+    Shared("Shared", SquirrelIcon.Users, "Nothing shared yet", "Folders, files and albums shared with you appear here."),
     Backup("Backup", SquirrelIcon.Upload, "", ""),
 }
 
@@ -55,6 +56,7 @@ fun Shell(
     backup: @Composable () -> Unit = {},
     photos: (@Composable () -> Unit)? = null,
     files: (@Composable () -> Unit)? = null,
+    shared: (@Composable () -> Unit)? = null,
 ) {
     var tab by rememberSaveable { mutableStateOf(Tab.Photos.name) }
     var menuOpen by rememberSaveable { mutableStateOf(false) }
@@ -91,6 +93,7 @@ fun Shell(
                 Tab.Backup -> backup
                 Tab.Photos -> photos
                 Tab.Files -> files
+                Tab.Shared -> shared
             }
             if (content != null) {
                 content()

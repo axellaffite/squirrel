@@ -18,6 +18,7 @@ import app.squirrel.ui.backup.BackupTab
 import app.squirrel.ui.images.LocalImageLoader
 import app.squirrel.ui.photos.PhotosTab
 import app.squirrel.ui.files.FilesTab
+import app.squirrel.ui.sharing.SharedTab
 import app.squirrel.ui.backup.PhotoAccessActions
 import app.squirrel.ui.shell.Shell
 import app.squirrel.ui.signin.SignInFlow
@@ -50,6 +51,7 @@ fun App(graph: AppGraph, actions: PhotoAccessActions = PhotoAccessActions.None) 
                                     backup = { BackupTab(graph, actions) },
                                     photos = { PhotosTab(graph) },
                                     files = { FilesTab(graph) },
+                                    shared = { SharedTab(graph) },
                                 )
                             }
                             overlay.Layer()

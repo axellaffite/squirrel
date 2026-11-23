@@ -2,6 +2,7 @@ package app.squirrel.ui.photos
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import app.squirrel.api.models.AccessLevel
 import app.squirrel.api.models.AlbumDto
 import app.squirrel.api.models.AssetSummary
 import app.squirrel.shared.api.SquirrelApi
@@ -9,6 +10,7 @@ import app.squirrel.shared.api.bodyOrThrow
 import app.squirrel.api.models.TimelinePage
 import app.squirrel.ui.ResumeThrottle
 import app.squirrel.ui.attempt
+import app.squirrel.ui.sharing.Abilities
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -55,6 +57,8 @@ class AlbumsViewModel(private val api: SquirrelApi, private val throttle: Resume
 }
 
 data class AlbumState(
+    /** The album itself (name, count, access), once it arrived. */
+    val album: AlbumDto? = null,
     val items: List<AssetSummary> = emptyList(),
     val nextCursor: String? = null,
     val started: Boolean = false,
@@ -64,6 +68,9 @@ data class AlbumState(
     val error: String? = null,
 ) {
     val complete: Boolean get() = started && nextCursor == null
+
+    /** Until the album says otherwise, nothing beyond looking is offered. */
+    val can: Abilities get() = Abilities.of(album?.access ?: AccessLevel.read)
 }
 
 /** One album's photos, page by page (`GET /api/albums/{id}/items`). */
@@ -87,6 +94,14 @@ class AlbumViewModel(
 
     init {
         more()
+        details()
+    }
+
+    /** The album's name, count, cover and access. */
+    fun details() {
+        viewModelScope.launch {
+            attempt { api.albums.getAlbum(albumId).bodyOrThrow() }?.let { album -> _state.update { it.copy(album = album) } }
+        }
     }
 
     /** The next page, when the end of the loaded rows comes into view. */
@@ -123,6 +138,7 @@ class AlbumViewModel(
         loadJob?.cancel()
         val gen = ++generation
         throttle.loaded()
+        details()
         _state.update { it.copy(loading = true, refreshing = true, error = null) }
         loadJob = viewModelScope.launch {
             var page: TimelinePage? = null
