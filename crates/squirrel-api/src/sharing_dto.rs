@@ -63,12 +63,12 @@ impl From<Permission> for SharePermission {
 
 /// Another account, as shown next to a share or a comment.
 #[derive(Debug, Clone, Serialize, ToSchema)]
-pub struct PersonDto {
+pub struct MemberDto {
     pub username: String,
     pub display_name: String,
 }
 
-impl From<&UserRecord> for PersonDto {
+impl From<&UserRecord> for MemberDto {
     fn from(user: &UserRecord) -> Self {
         Self {
             username: user.username.clone(),
@@ -111,7 +111,7 @@ pub struct CreateShareRequest {
 pub struct ShareDto {
     pub id: Uuid,
     /// The person it is shared with.
-    pub person: PersonDto,
+    pub person: MemberDto,
     pub permission: SharePermission,
     #[serde(with = "time::serde::rfc3339")]
     #[schema(value_type = String, format = DateTime)]
@@ -122,7 +122,7 @@ impl From<&ShareRecord> for ShareDto {
     fn from(share: &ShareRecord) -> Self {
         Self {
             id: share.id,
-            person: PersonDto {
+            person: MemberDto {
                 username: share.person_username.clone(),
                 display_name: share.person_display_name.clone(),
             },
@@ -138,7 +138,7 @@ pub struct SharedItemDto {
     /// The share (pass it to `DELETE /api/shares/{id}` to leave it).
     pub share_id: Uuid,
     /// Who shared it.
-    pub owner: PersonDto,
+    pub owner: MemberDto,
     pub permission: SharePermission,
     #[serde(with = "time::serde::rfc3339")]
     #[schema(value_type = String, format = DateTime)]
@@ -188,7 +188,7 @@ impl CommentsQuery {
 pub struct CommentDto {
     pub id: Uuid,
     /// `null` once the author's account was deleted.
-    pub author: Option<PersonDto>,
+    pub author: Option<MemberDto>,
     pub body: String,
     #[serde(with = "time::serde::rfc3339")]
     #[schema(value_type = String, format = DateTime)]
@@ -208,7 +208,7 @@ impl CommentDto {
             .author_username
             .clone()
             .zip(record.author_display_name.clone())
-            .map(|(username, display_name)| PersonDto {
+            .map(|(username, display_name)| MemberDto {
                 username,
                 display_name,
             });

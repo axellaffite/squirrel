@@ -35,6 +35,36 @@ pub(crate) async fn enqueue_media(
     Ok(())
 }
 
+/// A session writing into someone else's folder stays usable only while its
+/// uploader may still write there: a revoked or downgraded share, or a folder
+/// moved out of the share or trashed, ends it (`not_found`).
+pub(crate) async fn ensure_still_writable(
+    state: &AppState,
+    session: &uploads::UploadRecord,
+) -> Result<(), ApiError> {
+    if session.owner_id == session.created_by {
+        return Ok(());
+    }
+    let writable = squirrel_db::access::node(&state.pool, session.created_by, session.parent_id)
+        .await?
+        .is_some_and(|found| found.node.owner_id == session.owner_id && found.access.can_write());
+    if writable {
+        Ok(())
+    } else {
+        Err(ApiError::NotFound)
+    }
+}
+
+/// The phone asset to mark as backed up: only when the file lands in the
+/// uploader's own library (a copy in someone else's folder is not a backup).
+pub(crate) fn own_device_asset(
+    owner_id: Uuid,
+    uploader: Uuid,
+    asset: Option<(Uuid, &str)>,
+) -> Option<(Uuid, &str)> {
+    asset.filter(|_| owner_id == uploader)
+}
+
 #[utoipa::path(post, path = "/api/uploads", security(("device_bearer" = []), ("session_cookie" = [], "csrf_token" = [])), tag = "uploads",
     request_body = CreateUploadRequest,
     responses(

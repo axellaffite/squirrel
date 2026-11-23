@@ -1,6 +1,7 @@
 //! Response bodies of the photo timeline.
 
 use crate::people_dto::PersonRef;
+use crate::sharing_dto::AccessLevel;
 use serde::{Deserialize, Serialize};
 use squirrel_db::explore::MlCounts;
 use squirrel_db::media::MediaState;
@@ -198,9 +199,18 @@ pub struct AssetDetails {
     pub tags: Vec<String>,
     /// People on this photo (not hidden ones), named first.
     pub people: Vec<PersonRef>,
+    /// What the caller may do with it: `read` or `write` for someone else's
+    /// photo reached through a share or an album (albums, tags, people and
+    /// `parent_id` are then empty).
+    pub access: AccessLevel,
 }
 
 impl AssetDetails {
+    /// The same details as seen by someone with `access`.
+    pub fn seen_with(self, access: AccessLevel) -> Self {
+        Self { access, ..self }
+    }
+
     pub fn new(
         record: &AssetDetailRecord,
         albums: Vec<AlbumRef>,
@@ -231,6 +241,7 @@ impl AssetDetails {
             focal_length_mm: record.focal_length_mm,
         };
         Self {
+            access: AccessLevel::Owner,
             asset: AssetSummary::from(&record.summary),
             size: record.summary.size,
             parent_id: record.parent_id,

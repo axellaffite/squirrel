@@ -91,6 +91,11 @@ async fn complete_claimed(
     expires_at: OffsetDateTime,
 ) -> Result<NodeRecord, ApiError> {
     let (owner_id, id) = (session.owner_id, session.id);
+    if let Err(err) = super::ensure_still_writable(state, session).await {
+        tracing::info!(upload_id = %id, "upload into a folder no longer writable: discarded");
+        discard_session(state, id).await;
+        return Err(err);
+    }
     match finish(state, session).await {
         Ok(node) => {
             tracing::info!(user_id = %owner_id, upload_id = %id, node_id = %node.id,
@@ -207,7 +212,9 @@ async fn store_and_link(
         client_taken: session.client_taken(),
     };
     let node = nodes::insert_file(&mut tx, &file).await.map_err(discard)?;
-    super::create::record_device_asset(&mut tx, session.device_asset(), &node)
+    let device_asset =
+        super::own_device_asset(session.owner_id, session.created_by, session.device_asset());
+    super::create::record_device_asset(&mut tx, device_asset, &node)
         .await
         .map_err(discard)?;
     super::enqueue_media(&mut tx, &node)

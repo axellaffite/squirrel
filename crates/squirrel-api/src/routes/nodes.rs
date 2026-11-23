@@ -21,7 +21,7 @@ use crate::files_dto::{
     UpdateNodeRequest,
 };
 use crate::input::{ApiJson, ApiPath, ApiQuery};
-use crate::sharing_dto::PersonDto;
+use crate::sharing_dto::MemberDto;
 use crate::state::AppState;
 
 #[utoipa::path(get, path = "/api/nodes", security(("device_bearer" = []), ("session_cookie" = [])), tag = "files", params(ListNodesQuery),
@@ -93,11 +93,16 @@ pub async fn get_node(
         users::find_by_id(&state.pool, node.owner_id)
             .await?
             .as_ref()
-            .map(PersonDto::from)
+            .map(MemberDto::from)
     };
     let thumbnails = thumbnails_of(&state, std::slice::from_ref(node)).await?;
+    let mut dto = NodeDto::with_thumbnails(node, &thumbnails);
+    // The owner's folder above what is shared stays private.
+    if !found.access.is_owner() && found.share_root.is_none_or(|root| root == id) {
+        dto.parent_id = None;
+    }
     Ok(Json(NodeDetails {
-        node: NodeDto::with_thumbnails(node, &thumbnails),
+        node: dto,
         path: path
             .into_iter()
             .map(|s| PathSegmentDto {
@@ -180,7 +185,10 @@ pub async fn update_node(
     {
         // Moves stay inside the owner's tree, into a folder the caller may write to.
         let target = access::writable_folder(&state, caller.user.id, target).await?;
-        if target.node.owner_id != owner_id {
+        // Within one share: nodes never travel between two shares of the owner.
+        if target.node.owner_id != owner_id
+            || (!found.access.is_owner() && target.share_root != found.share_root)
+        {
             return Err(ApiError::NotFound);
         }
     }

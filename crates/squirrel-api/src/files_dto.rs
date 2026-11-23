@@ -8,7 +8,7 @@ use squirrel_db::media::ThumbRef;
 use squirrel_db::nodes::NodeRecord;
 use squirrel_db::uploads::UploadRecord;
 
-use crate::sharing_dto::{AccessLevel, PersonDto};
+use crate::sharing_dto::{AccessLevel, MemberDto};
 use time::OffsetDateTime;
 use utoipa::{IntoParams, ToSchema};
 use uuid::Uuid;
@@ -186,7 +186,7 @@ pub struct NodeDetails {
     /// What the caller may do with it.
     pub access: AccessLevel,
     /// Who shared it with the caller; `null` for the caller's own node.
-    pub shared_by: Option<PersonDto>,
+    pub shared_by: Option<MemberDto>,
 }
 
 #[derive(Debug, Deserialize, ToSchema)]

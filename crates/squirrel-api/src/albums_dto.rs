@@ -6,7 +6,7 @@ use utoipa::{IntoParams, ToSchema};
 use uuid::Uuid;
 
 use crate::photos_dto::AssetSummary;
-use crate::sharing_dto::{AccessLevel, PersonDto};
+use crate::sharing_dto::{AccessLevel, MemberDto};
 
 /// Photos per add/remove request (and at creation), at most.
 pub const MAX_NODE_IDS: usize = 500;
@@ -25,7 +25,7 @@ pub struct AlbumDto {
     /// What the caller may do with it.
     pub access: AccessLevel,
     /// Who shared it with the caller; `null` for the caller's own album.
-    pub shared_by: Option<PersonDto>,
+    pub shared_by: Option<MemberDto>,
 }
 
 #[derive(Debug, Deserialize, ToSchema)]
