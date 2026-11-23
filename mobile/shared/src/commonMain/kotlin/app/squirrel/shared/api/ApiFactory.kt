@@ -3,8 +3,13 @@ package app.squirrel.shared.api
 import app.squirrel.api.models.SyncCheckItem
 import app.squirrel.api.models.SyncCheckRequest
 import app.squirrel.api.apis.AlbumsApi
+import app.squirrel.api.apis.CommentsApi
 import app.squirrel.api.apis.DevicesApi
+import app.squirrel.api.apis.ExploreApi
 import app.squirrel.api.apis.FilesApi
+import app.squirrel.api.apis.PeopleApi
+import app.squirrel.api.apis.SearchApi
+import app.squirrel.api.apis.SharingApi
 import app.squirrel.api.apis.PhotosApi
 import app.squirrel.api.apis.SetupApi
 import app.squirrel.api.apis.StorageApi
@@ -105,6 +110,13 @@ class SquirrelApi(
     val files = FilesApi(baseUrl, authed)
     val albums = AlbumsApi(baseUrl, authed)
     val storage = StorageApi(baseUrl, authed)
+    val search = SearchApi(baseUrl, authed)
+    val explore = ExploreApi(baseUrl, authed)
+
+    /** Read-only on the phone: names and avatars for filters (naming and merging stay on the web). */
+    val people = PeopleApi(baseUrl, authed)
+    val sharing = SharingApi(baseUrl, authed)
+    val comments = CommentsApi(baseUrl, authed)
     val uploads = UploadsFacade(baseUrl, authed)
     val chunks = ChunkUploader(baseUrl, authed, public)
 

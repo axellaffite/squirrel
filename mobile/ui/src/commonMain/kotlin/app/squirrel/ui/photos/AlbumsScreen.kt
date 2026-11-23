@@ -3,14 +3,12 @@ package app.squirrel.ui.photos
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.GridItemSpan
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
@@ -18,16 +16,13 @@ import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.text.BasicText
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import app.squirrel.api.models.AlbumDto
-import app.squirrel.api.models.AssetSummary
 import app.squirrel.api.models.ThumbnailStatus
 import app.squirrel.shared.api.SquirrelApi
 import app.squirrel.shared.sync.formatCount
@@ -103,41 +98,19 @@ private fun AlbumCard(api: SquirrelApi, album: AlbumDto, onClick: () -> Unit) {
 
 /** One album's photos in justified rows. */
 @Composable
-fun AlbumPhotos(api: SquirrelApi, vm: AlbumViewModel, onOpen: (AssetSummary) -> Unit) {
+fun AlbumPhotos(api: SquirrelApi, vm: AlbumViewModel, actions: TileActions, emptyLine: String) {
     val state by vm.state.collectAsStateWithLifecycle()
     OnForeground(vm::resumed)
     if (!state.started && state.loading) return Loading()
     if (state.items.isEmpty() && (state.complete || state.error != null)) {
         return PullableColumn(state.refreshing, vm::refresh) {
             state.error?.let { ErrorRetry(it, vm::retry) }
-            if (state.complete) EmptyState(SquirrelIcon.Images, "This album is empty", "Add photos to it on the web.")
+            if (state.complete) EmptyState(SquirrelIcon.Images, "This album is empty", emptyLine)
         }
     }
-    PullToRefresh(state.refreshing, vm::refresh) { AlbumRows(api, vm, state, onOpen) }
-}
-
-@Composable
-private fun AlbumRows(api: SquirrelApi, vm: AlbumViewModel, state: AlbumState, onOpen: (AssetSummary) -> Unit) {
-    BoxWithConstraints(Modifier.fillMaxSize()) {
-        val width = maxWidth.value.toInt()
-        val rowHeight = Tokens.photoRow.value.toInt()
-        val gap = Tokens.space1.value.toInt()
-        val rows = remember(state.items, width) {
-            val layout = justify(state.items.map { a -> (a.width ?: 1).toDouble() / (a.height ?: 1).coerceAtLeast(1) }, width, rowHeight, gap)
-            layout.rows.map { row -> row.height to row.tiles.map { TileSlot(state.items[it.index], it.left, it.width) } }
-        }
-        LazyColumn(
-            modifier = Modifier.fillMaxSize(),
-            verticalArrangement = Arrangement.spacedBy(Tokens.space1),
-            contentPadding = PaddingValues(bottom = RailClearance),
-        ) {
-            items(rows.size, key = { "row:$it" }) { n ->
-                val (height, tiles) = rows[n]
-                if (n == rows.lastIndex) LaunchedEffect(state.items.size) { vm.more() }
-                PhotoRow(api, height, tiles, onOpen)
-            }
+    PullToRefresh(state.refreshing, vm::refresh) {
+        JustifiedPhotos(api, state.items, actions, onNearEnd = vm::more, footer = {
             state.error?.let { error -> item(key = "error") { ErrorRetry(error, vm::retry) } }
-        }
+        })
     }
 }
-

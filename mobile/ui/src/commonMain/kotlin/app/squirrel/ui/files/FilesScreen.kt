@@ -13,8 +13,8 @@ import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.BasicText
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -45,22 +45,42 @@ import app.squirrel.ui.PullableColumn
 import app.squirrel.ui.images.Thumbnail
 import app.squirrel.ui.photos.ErrorRetry
 import app.squirrel.ui.photos.RailClearance
-import app.squirrel.ui.photos.monthLabel
 import app.squirrel.ui.shell.PageHeader
 import app.squirrel.ui.shell.SystemBack
-import kotlinx.datetime.TimeZone
-import kotlinx.datetime.toLocalDateTime
+import app.squirrel.ui.shell.Navigator
+import app.squirrel.ui.search.SearchKind
+import app.squirrel.ui.search.SearchScreen
+import app.squirrel.theme.components.IconButton
 
-/** Files: folders with breadcrumbs, row cards, open a file with another app. Read-only. */
+/** The pages of the Files tab. */
+sealed interface FilesRoute {
+    data object Browse : FilesRoute
+    data object Search : FilesRoute
+}
+
+/** Files: the folder browser, and search. */
 @Composable
 fun FilesTab(graph: AppGraph) {
+    val nav = viewModel(key = "nav-files") { Navigator<FilesRoute>(FilesRoute.Browse) }
+    val stack by nav.stack.collectAsStateWithLifecycle()
+    when (stack.last()) {
+        FilesRoute.Browse -> FilesBrowser(graph, onSearch = { nav.push(FilesRoute.Search) })
+        FilesRoute.Search -> SearchScreen(graph, SearchKind.Files, onBack = { nav.pop() })
+    }
+}
+
+/** Folders with breadcrumbs, row cards, open a file with another app. */
+@Composable
+private fun FilesBrowser(graph: AppGraph, onSearch: () -> Unit) {
     val api = graph.api ?: return
     val vm = viewModel(key = "files") { FilesViewModel(api, graph.files) }
     val state by vm.state.collectAsStateWithLifecycle()
     OnForeground(vm::resumed)
     SystemBack(enabled = state.folderId != null) { vm.up() }
     Column(Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(Tokens.space2)) {
-        PageHeader(state.title, onBack = if (state.folderId != null) ({ vm.up() }) else null, backLabel = "Up one folder")
+        PageHeader(state.title, onBack = if (state.folderId != null) ({ vm.up() }) else null, backLabel = "Up one folder", actions = {
+            IconButton(SquirrelIcon.Search, label = "Search files", onClick = onSearch)
+        })
         if (state.path.isNotEmpty()) Breadcrumbs(state.path.map { it.id to it.name }, vm::enter)
         state.message?.let { Alert(it) }
         when {
@@ -140,16 +160,4 @@ private fun NodeRow(api: SquirrelApi, node: NodeDto, progress: Float?, onClick: 
     )
 }
 
-private fun fileIcon(mime: String?): SquirrelIcon = when {
-    mime == null -> SquirrelIcon.File
-    mime.startsWith("image/") -> SquirrelIcon.Image
-    mime.startsWith("video/") -> SquirrelIcon.Film
-    mime.startsWith("audio/") -> SquirrelIcon.Music
-    mime == "application/pdf" || mime.startsWith("text/") -> SquirrelIcon.FileText
-    else -> SquirrelIcon.File
-}
-
-private fun dateLabel(node: NodeDto): String {
-    val date = node.modifiedAt.toLocalDateTime(TimeZone.currentSystemDefault()).date
-    return "${date.day} ${monthLabel("${date.year}-${date.month.ordinal + 1}")}"
-}
+private fun dateLabel(node: NodeDto): String = shortDate(node.modifiedAt)
