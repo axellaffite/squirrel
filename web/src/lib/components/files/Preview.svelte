@@ -5,6 +5,7 @@
 	import Dialog from '#lib/components/ui/Dialog.svelte';
 	import IconButton from '#lib/components/ui/IconButton.svelte';
 	import EmptyState from '#lib/components/ui/EmptyState.svelte';
+	import Comments from '#lib/components/sharing/Comments.svelte';
 	import type { FileNode } from '#lib/files/api.ts';
 	import { contentUrl, formatBytes, formatDate, previewKind } from '#lib/files/format.ts';
 	import { fetchTextPreview, TEXT_PREVIEW_BYTES } from '#lib/files/textPreview.ts';
@@ -20,6 +21,7 @@
 	let { node, onClose }: Props = $props();
 
 	let open = $state(true);
+	let showComments = $state(false);
 	const kind = $derived(previewKind(node.mime));
 	const url = $derived(contentUrl(node.id));
 	/** Images show a screen-sized preview once one can be made; "Open in new tab" keeps the original. */
@@ -50,6 +52,14 @@
 	{#snippet tools()}
 		<IconButton icon="external-link" label={`Open ${node.name} in new tab`} tooltip="Open in new tab" fill="tint" href={url} newTab />
 		<IconButton icon="download" label={`Download ${node.name}`} tooltip="Download" fill="tint" href={contentUrl(node.id, true)} download />
+		<IconButton
+			icon="message-circle"
+			label={`Comments on ${node.name}`}
+			tooltip="Comments"
+			fill="tint"
+			aria-expanded={showComments}
+			onclick={() => (showComments = !showComments)}
+		/>
 	{/snippet}
 	<div class="body">
 		<p class="meta tabular">{formatBytes(node.size)} <span aria-hidden="true">·</span> {formatDate(node.modified_at)}</p>
@@ -85,6 +95,9 @@
 			<div class="download">
 				<Button href={contentUrl(node.id, true)} download><Icon name="download" />Download</Button>
 			</div>
+		{/if}
+		{#if showComments}
+			{#key node.id}<Comments subject={{ node_id: node.id }} name={node.name} />{/key}
 		{/if}
 	</div>
 </Dialog>

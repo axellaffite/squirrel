@@ -16,9 +16,15 @@
 		onDelete: (node: FileNode) => void;
 		/** Phones: one button per row opens an actions sheet. */
 		onActions: (node: FileNode) => void;
+		/** Rename, move and trash are offered (false in a folder shared read-only). */
+		canEdit?: boolean;
+		/** Offers "Share" (owners only). */
+		onShare?: (node: FileNode) => void;
 	}
 
-	let { items, selectedId = null, onOpen, onRename, onMove, onDelete, onActions }: Props = $props();
+	let { items, selectedId = null, onOpen, onRename, onMove, onDelete, onActions, canEdit = true, onShare }: Props =
+		$props();
+	const editable = (node: FileNode) => canEdit && !node.is_root;
 
 	// Rows present when the view loads arrive once; rows added later just appear.
 	const arriving = new Set(untrack(() => items.slice(0, 8).map((node) => node.id)));
@@ -46,13 +52,16 @@
 					{#if node.kind === 'file'}
 						<IconButton icon="download" label={`Download ${node.name}`} tooltip="Download" href={contentUrl(node.id, true)} download />
 					{/if}
-					{#if !node.is_root}
+					{#if onShare}
+						<IconButton icon="share" label={`Share ${node.name}`} tooltip="Share" onclick={() => onShare(node)} />
+					{/if}
+					{#if editable(node)}
 						<IconButton icon="pencil" label={`Rename ${node.name}`} tooltip="Rename" onclick={() => onRename(node)} />
 						<IconButton icon="folder-input" label={`Move ${node.name}`} tooltip="Move" onclick={() => onMove(node)} />
 						<IconButton icon="trash" tone="danger" label={`Delete ${node.name}`} tooltip="Delete" onclick={() => onDelete(node)} />
 					{/if}
 				</span>
-				{#if node.kind === 'file' || !node.is_root}
+				{#if node.kind === 'file' || editable(node) || onShare}
 					<span class="more">
 						<IconButton icon="more" label={`Actions for ${node.name}`} tooltip="Actions" onclick={() => onActions(node)} />
 					</span>

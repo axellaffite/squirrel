@@ -12,6 +12,9 @@
 	import PhotoGrid from '#lib/components/photos/PhotoGrid.svelte';
 	import SelectionBar from '#lib/components/photos/SelectionBar.svelte';
 	import Page from '#lib/components/shell/Page.svelte';
+	import CommentsDialog from '#lib/components/sharing/CommentsDialog.svelte';
+	import ShareDialog from '#lib/components/sharing/ShareDialog.svelte';
+	import IconButton from '#lib/components/ui/IconButton.svelte';
 	import Alert from '#lib/components/ui/Alert.svelte';
 	import Button from '#lib/components/ui/Button.svelte';
 	import EmptyState from '#lib/components/ui/EmptyState.svelte';
@@ -26,6 +29,7 @@
 	} from '#lib/photos/api.ts';
 	import { photoInAddress, withPhoto } from '#lib/photos/address.ts';
 	import { Selection } from '#lib/photos/selection.svelte.ts';
+	import { abilities, memberName } from '#lib/sharing/logic.ts';
 	import { neighbourAfterRemoval, trashPhotos } from '#lib/photos/trash.ts';
 
 	let { albumId }: { albumId: string } = $props();
@@ -39,11 +43,15 @@
 	let confirmingDelete = $state(false);
 	let viewing: AssetSummary | null = $state(null);
 	let picking: readonly string[] | null = $state(null);
+	let sharing = $state(false);
+	let commenting = $state(false);
 	let grid: PhotoGrid | undefined = $state();
 	const selection = new Selection();
 
 	const album = $derived(data.album);
 	const items = $derived(data.items);
+	/** Others' albums: writers add and remove their own photos; the rest stays with the owner. */
+	const can = $derived(abilities(album?.access ?? 'read'));
 
 	async function reload() {
 		await data.reload();
@@ -125,7 +133,7 @@
 	/** Escape clears the selection, unless something else (a dialog, a menu) handles it. */
 	function keydown(event: KeyboardEvent) {
 		if (event.key !== 'Escape' || event.defaultPrevented || !selection.active) return;
-		if (viewing || picking || confirmingDelete || renaming) return;
+		if (viewing || picking || confirmingDelete || renaming || sharing || commenting) return;
 		const target = event.target as Element;
 		if (target === document.body || target.closest('.album-grid, [role=toolbar]')) selection.clear();
 	}
@@ -156,11 +164,25 @@
 <svelte:window onkeydown={keydown} />
 
 <Page title={album?.name ?? 'Album'}>
-	{#snippet above()}<Breadcrumbs path={[]} current={album?.name ?? null} rootLabel="Albums" rootHref="/photos/albums" />{/snippet}
-	{#snippet description()}{#if album}<span class="tabular">{photoCount(album.item_count)}</span>{/if}{/snippet}
+	{#snippet above()}
+		{#if album && !can.owner}<Breadcrumbs path={[]} current={album.name} rootLabel="Shared" rootHref="/shared" />
+		{:else}<Breadcrumbs path={[]} current={album?.name ?? null} rootLabel="Albums" rootHref="/photos/albums" />{/if}
+	{/snippet}
+	{#snippet description()}
+		{#if album}<span class="tabular">{photoCount(album.item_count)}</span>{/if}
+		{#if album?.shared_by}<span aria-hidden="true"> · </span>Shared by {memberName(album.shared_by)}{/if}
+	{/snippet}
 	{#snippet actions()}
 		{#if album}
-			<AlbumActions name={album.name} onRename={() => (renaming = true)} onDelete={() => (confirmingDelete = true)} />
+			<span class="subject-tools">
+				{#if can.owner}
+					<IconButton icon="share" label={`Share ${album.name}`} tooltip="Share" fill="tint" onclick={() => (sharing = true)} />
+				{/if}
+				<IconButton icon="message-circle" label={`Comments on ${album.name}`} tooltip="Comments" fill="tint" onclick={() => (commenting = true)} />
+			</span>
+			{#if can.owner}
+				<AlbumActions name={album.name} onRename={() => (renaming = true)} onDelete={() => (confirmingDelete = true)} />
+			{/if}
 		{/if}
 	{/snippet}
 
@@ -171,7 +193,9 @@
 	{#if error ?? data.pageError}<Alert>{error ?? data.pageError}</Alert>{/if}
 
 	{#if album && album.item_count === 0 && items.length === 0}
-		<EmptyState icon="library" title="This album is empty">Select photos in the timeline, then choose Add to album.</EmptyState>
+		<EmptyState icon="library" title="This album is empty">
+			{#if can.edit}Select photos in the timeline, then choose Add to album.{:else}Photos added to it will show up here.{/if}
+		</EmptyState>
 	{:else if items.length > 0}
 		<section class="album-grid" aria-label="Photos in the album">
 			<PhotoGrid
@@ -189,9 +213,9 @@
 	{/if}
 </Page>
 
-{#if selection.active}
+{#if selection.active && can.edit}
 	<SelectionBar count={selection.size} onClear={() => selection.clear()}>
-		{#if selection.size === 1}
+		{#if selection.size === 1 && can.owner}
 			<Button variant="secondary" size="sm" disabled={busy} onclick={makeCover}>
 				<Icon name="images" /><span class="label">Set as cover</span>
 			</Button>
@@ -223,9 +247,22 @@
 	/>
 {/if}
 
+{#if sharing && album}
+	<ShareDialog subject={{ album_id: album.id }} name={album.name} onClose={() => (sharing = false)} />
+{/if}
+
+{#if commenting && album}
+	<CommentsDialog subject={{ album_id: album.id }} name={album.name} onClose={() => (commenting = false)} />
+{/if}
+
 {#if picking}
 	<AlbumPicker ids={picking} onDone={(message) => (notice = message)} onClose={() => (picking = null)} />
 {/if}
 
 <style>
+	.subject-tools {
+		display: flex;
+		align-items: center;
+		gap: var(--space-2);
+	}
 </style>

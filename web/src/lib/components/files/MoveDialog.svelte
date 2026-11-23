@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { onMount } from 'svelte';
+	import { onMount, untrack } from 'svelte';
 	import Icon from '#lib/components/icons/Icon.svelte';
 	import Alert from '#lib/components/ui/Alert.svelte';
 	import Button from '#lib/components/ui/Button.svelte';
@@ -13,13 +13,21 @@
 		onMove: (parentId: string) => Promise<string | null>;
 		/** Runs once the dialog closed, however it closed. */
 		onClose: () => void;
+		/** Browsing starts (and stays) inside this folder: a share, for people who do not own it. */
+		root?: Place | null;
 	}
 
-	let { node, onMove, onClose }: Props = $props();
+	interface Place {
+		id: string;
+		name: string;
+	}
+
+	let { node, onMove, onClose, root = null }: Props = $props();
 
 	let dialog: Dialog | undefined = $state();
 	let open = $state(true);
-	let trail: FileNode[] = $state([]);
+	const start: Place[] = untrack(() => (root ? [root] : []));
+	let trail: Place[] = $state([]);
 	let folders: FileNode[] = $state([]);
 	let loading = $state(true);
 	let error: string | null = $state(null);
@@ -28,7 +36,7 @@
 	// Clicking quickly through folders must not let an older listing win.
 	const track = latestOnly();
 
-	async function browse(next: FileNode[]) {
+	async function browse(next: Place[]) {
 		loading = true;
 		const result = await track(listFolder(next.at(-1)?.id ?? null));
 		if (result.stale) return;
@@ -53,13 +61,13 @@
 		}
 	}
 
-	onMount(() => void browse([]));
+	onMount(() => void browse(start));
 </script>
 
 <Dialog bind:this={dialog} bind:open title={`Move “${node.name}”`} onclose={onClose}>
 	<div class="body">
 		<div class="where">
-			{#if trail.length > 0}
+			{#if trail.length > start.length}
 				<Button variant="quiet" size="sm" onclick={() => browse(trail.slice(0, -1))}>
 					<Icon name="chevron-left" />Up
 				</Button>
