@@ -190,7 +190,9 @@ export const ICONS = {
 		'M22 5h-4',
 		'M4 17v2',
 		'M5 18H3'
-	]
+	],
+	share: [circle(18, 5, 3), circle(6, 12, 3), circle(18, 19, 3), 'M8.59 13.51l6.83 3.98', 'M15.41 6.51l-6.82 3.98'],
+	'message-circle': ['M7.9 20A9 9 0 1 0 4 16.1L2 22Z']
 } as const satisfies Record<string, readonly string[]>;
 
 export type IconName = keyof typeof ICONS;

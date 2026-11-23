@@ -244,6 +244,38 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/comments": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["list_comments"];
+        put?: never;
+        post: operations["create_comment"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/comments/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete: operations["delete_comment"];
+        options?: never;
+        head?: never;
+        patch: operations["edit_comment"];
+        trace?: never;
+    };
     "/api/devices": {
         parameters: {
             query?: never;
@@ -785,6 +817,54 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/shared-with-me": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["shared_with_me"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/shares": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["list_shares"];
+        put?: never;
+        post: operations["create_share"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/shares/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete: operations["delete_share"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/storage": {
         parameters: {
             query?: never;
@@ -969,6 +1049,11 @@ export interface paths {
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
+        /**
+         * @description What the caller may do with a folder, file or album.
+         * @enum {string}
+         */
+        AccessLevel: "owner" | "write" | "read";
         /** @description The signed-in user, as a device sees it. */
         AccountDto: {
             display_name: string;
@@ -983,6 +1068,8 @@ export interface components {
             username: string;
         };
         AlbumDto: {
+            /** @description What the caller may do with it. */
+            access: components["schemas"]["AccessLevel"];
             cover?: null | components["schemas"]["AssetSummary"];
             /** Format: uuid */
             id: string;
@@ -992,11 +1079,16 @@ export interface components {
              */
             item_count: number;
             name: string;
+            shared_by?: null | components["schemas"]["MemberDto"];
             /** Format: date-time */
             updated_at: string;
         };
         AlbumItemsRequest: {
-            /** @description 1–500 photo (file node) ids; ids that are not the caller's photos are skipped. */
+            /**
+             * @description 1–500 photo (file node) ids. Adding: ids that are not the caller's
+             *     photos are skipped. Removing: the album's owner removes any photo,
+             *     someone it is shared with only their own.
+             */
             node_ids: string[];
         };
         /** @description An album a photo belongs to. */
@@ -1007,6 +1099,12 @@ export interface components {
         };
         /** @description Everything the photo viewer shows about one photo. */
         AssetDetails: {
+            /**
+             * @description What the caller may do with it: `read` or `write` for someone else's
+             *     photo reached through a share or an album (albums, tags, people and
+             *     `parent_id` are then empty).
+             */
+            access: components["schemas"]["AccessLevel"];
             /** @description Albums of the caller holding this photo, by name. */
             albums: components["schemas"]["AlbumRef"][];
             asset: components["schemas"]["AssetSummary"];
@@ -1086,6 +1184,25 @@ export interface components {
             make: string;
             model?: string | null;
         };
+        CommentDto: {
+            author?: null | components["schemas"]["MemberDto"];
+            body: string;
+            /** @description Whether the caller may delete it (its author, or the subject's owner). */
+            can_delete: boolean;
+            /** Format: date-time */
+            created_at: string;
+            /** Format: date-time */
+            edited_at?: string | null;
+            /** Format: uuid */
+            id: string;
+            /** @description Whether the caller wrote it (and so may edit it). */
+            mine: boolean;
+        };
+        CommentPage: {
+            /** @description Oldest first. */
+            items: components["schemas"]["CommentDto"][];
+            next_cursor?: string | null;
+        };
         CreateAlbumRequest: {
             /** @description 1–100 characters. */
             name: string;
@@ -1095,6 +1212,10 @@ export interface components {
              */
             node_ids?: string[];
         };
+        CreateCommentRequest: components["schemas"]["SubjectRef"] & {
+            /** @description 1–4000 characters. */
+            body: string;
+        };
         CreateFolderRequest: {
             name: string;
             /** Format: uuid */
@@ -1103,6 +1224,11 @@ export interface components {
         CreateInvitationRequest: {
             /** @description Optional reminder of who the invitation is for. Not used to send email. */
             email_hint?: string | null;
+        };
+        CreateShareRequest: components["schemas"]["SubjectRef"] & {
+            permission: components["schemas"]["SharePermission"];
+            /** @description The account to share with. */
+            username: string;
         };
         CreateUploadRequest: {
             /**
@@ -1264,6 +1390,10 @@ export interface components {
              * @description Groups waiting for a decision (all pages).
              */
             open_count: number;
+        };
+        EditCommentRequest: {
+            /** @description 1–4000 characters. */
+            body: string;
         };
         ErrorBody: {
             error: components["schemas"]["ErrorDetail"];
@@ -1470,6 +1600,11 @@ export interface components {
              */
             queued: number;
         };
+        /** @description Another account, as shown next to a share or a comment. */
+        MemberDto: {
+            display_name: string;
+            username: string;
+        };
         MergePeopleRequest: {
             /** @description People (1–50) whose faces move to this one; they are deleted. */
             from: string[];
@@ -1527,9 +1662,16 @@ export interface components {
             name?: string | null;
         };
         NodeDetails: {
+            /** @description What the caller may do with it. */
+            access: components["schemas"]["AccessLevel"];
             node: components["schemas"]["NodeDto"];
-            /** @description Ancestors from the top-level folder down, excluding the node itself. */
+            /**
+             * @description Ancestors from the top-level folder down, excluding the node itself.
+             *     For a node shared with the caller: from the shared folder down (empty
+             *     when the node itself is what was shared).
+             */
             path: components["schemas"]["PathSegmentDto"][];
+            shared_by?: null | components["schemas"]["MemberDto"];
         };
         NodeDto: {
             /** Format: date-time */
@@ -1679,6 +1821,32 @@ export interface components {
         SetupStatus: {
             needs_setup: boolean;
         };
+        ShareDto: {
+            /** Format: date-time */
+            created_at: string;
+            /** Format: uuid */
+            id: string;
+            permission: components["schemas"]["SharePermission"];
+            /** @description The person it is shared with. */
+            person: components["schemas"]["MemberDto"];
+        };
+        /** @enum {string} */
+        SharePermission: "read" | "write";
+        /** @description Something shared with the caller: a folder, a file or an album. */
+        SharedItemDto: {
+            album?: null | components["schemas"]["AlbumDto"];
+            node?: null | components["schemas"]["NodeDto"];
+            /** @description Who shared it. */
+            owner: components["schemas"]["MemberDto"];
+            permission: components["schemas"]["SharePermission"];
+            /**
+             * Format: uuid
+             * @description The share (pass it to `DELETE /api/shares/{id}` to leave it).
+             */
+            share_id: string;
+            /** Format: date-time */
+            shared_at: string;
+        };
         /** @description A piece of a snippet; `highlight` marks a matched word. */
         SnippetPart: {
             highlight: boolean;
@@ -1705,6 +1873,16 @@ export interface components {
              * @description Logical bytes of live files: what the quota limits.
              */
             used_bytes: number;
+        };
+        /** @description Exactly one of `node_id` and `album_id`. */
+        SubjectRef: {
+            /** Format: uuid */
+            album_id?: string | null;
+            /**
+             * Format: uuid
+             * @description A folder or file.
+             */
+            node_id?: string | null;
         };
         SyncCheckItem: {
             /** @description The phone's stable id for the asset, 1–256 bytes. */
@@ -2091,6 +2269,15 @@ export interface operations {
                 };
                 content?: never;
             };
+            /** @description Shared with you for reading only */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
             404: {
                 headers: {
                     [name: string]: unknown;
@@ -2123,6 +2310,15 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["AlbumDto"];
+                };
+            };
+            /** @description Shared with you for reading only */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
                 };
             };
             404: {
@@ -2210,6 +2406,15 @@ export interface operations {
                     "application/json": components["schemas"]["ItemsChanged"];
                 };
             };
+            /** @description Shared with you for reading only */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
             404: {
                 headers: {
                     [name: string]: unknown;
@@ -2250,6 +2455,15 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ItemsChanged"];
+                };
+            };
+            /** @description Shared with you for reading only */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
                 };
             };
             404: {
@@ -2542,6 +2756,184 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["CameraGroupDto"][];
+                };
+            };
+        };
+    };
+    list_comments: {
+        parameters: {
+            query?: {
+                node_id?: string;
+                album_id?: string;
+                /** @description `next_cursor` of the previous page. */
+                cursor?: string;
+                /** @description Default 100, at most 200. */
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CommentPage"];
+                };
+            };
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    create_comment: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateCommentRequest"];
+            };
+        };
+        responses: {
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CommentDto"];
+                };
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    delete_comment: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Comment id */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Deleted */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Only its author or the owner of what it is about */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    edit_comment: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Comment id */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["EditCommentRequest"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CommentDto"];
+                };
+            };
+            /** @description Only its author edits a comment */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
                 };
             };
         };
@@ -3088,6 +3480,15 @@ export interface operations {
                     "application/json": components["schemas"]["NodeDto"];
                 };
             };
+            /** @description Shared with you for reading only */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
             404: {
                 headers: {
                     [name: string]: unknown;
@@ -3491,6 +3892,15 @@ export interface operations {
                 };
                 content?: never;
             };
+            /** @description Shared with you for reading only */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
             404: {
                 headers: {
                     [name: string]: unknown;
@@ -3531,6 +3941,15 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["NodeDto"];
+                };
+            };
+            /** @description Shared with you for reading only */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
                 };
             };
             404: {
@@ -4227,6 +4646,154 @@ export interface operations {
             };
         };
     };
+    shared_with_me: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Newest first, at most 1000 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SharedItemDto"][];
+                };
+            };
+        };
+    };
+    list_shares: {
+        parameters: {
+            query?: {
+                /** @description A folder or file. */
+                node_id?: string;
+                album_id?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The people it is shared with, in sharing order */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ShareDto"][];
+                };
+            };
+            /** @description Only the owner sees who it is shared with */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    create_share: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateShareRequest"];
+            };
+        };
+        responses: {
+            /** @description Shared, or the existing share's permission changed. Lowering an album share to read removes the photos that person added */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ShareDto"];
+                };
+            };
+            /** @description Only the owner shares */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description No such account, or yourself */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    delete_share: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Share id */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Stopped sharing (owner) or left (recipient). An album recipient's photos leave the album */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
     storage_usage: {
         parameters: {
             query?: never;
@@ -4528,6 +5095,15 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["UploadSessionDto"];
+                };
+            };
+            /** @description Shared with you for reading only */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
                 };
             };
             /** @description Destination folder not found */

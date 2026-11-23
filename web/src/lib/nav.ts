@@ -6,7 +6,7 @@ export interface NavItem {
 	icon: IconName;
 	/**
 	 * Sidebar only (from 1024 px). The phone bar keeps at most five items: there, Search is a
-	 * round button in the top row and Explore a tab of Photos.
+	 * round button in the top row, Explore a tab of Photos and Invitations in the account menu.
 	 */
 	sidebarOnly?: boolean;
 }
@@ -19,8 +19,11 @@ export function navItems(canInvite: boolean): NavItem[] {
 		{ href: '/search', label: 'Search', icon: 'search', sidebarOnly: true },
 		{ href: '/explore', label: 'Explore', icon: 'sparkles', sidebarOnly: true },
 		{ href: '/files', label: 'Files', icon: 'folder' },
+		{ href: '/shared', label: 'Shared', icon: 'users' },
 		{ href: '/trash', label: 'Trash', icon: 'trash' },
-		...(canInvite ? [{ href: '/settings/invitations', label: 'Invitations', icon: 'user-plus' as const }] : [])
+		...(canInvite
+			? [{ href: '/settings/invitations', label: 'Invitations', icon: 'user-plus' as const, sidebarOnly: true }]
+			: [])
 	];
 }
 

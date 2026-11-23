@@ -123,6 +123,7 @@
 					{theme}
 					onthemechange={changeTheme}
 					onlogout={handleLogout}
+					canInvite={session.me.can_invite}
 					/>
 				</span>
 			</header>

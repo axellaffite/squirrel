@@ -11,9 +11,11 @@
 		onlogout: () => void;
 		/** `rail`: full-width trigger on the graphite rail, opening upwards. */
 		tone?: 'panel' | 'rail';
+		/** Below 1024 px Invitations is not on the rail: the menu links to it instead. */
+		canInvite?: boolean;
 	}
 
-	let { displayName, username, theme, onthemechange, onlogout, tone = 'panel' }: Props = $props();
+	let { displayName, username, theme, onthemechange, onlogout, tone = 'panel', canInvite = false }: Props = $props();
 
 	let open = $state(false);
 	let root: HTMLDivElement | undefined = $state();
@@ -73,6 +75,12 @@
 				<Icon name="scan-face" />
 				<span>Faces</span>
 			</a>
+			{#if canInvite}
+				<a class="item phone-only" href="/settings/invitations" onclick={() => close(false)}>
+					<Icon name="user-plus" />
+					<span>Invitations</span>
+				</a>
+			{/if}
 			<!-- On ≥ 1024 px "Log out" sits in the top bar instead, so only one is ever visible. -->
 			<button type="button" class="logout" onclick={onlogout}>
 				<Icon name="log-out" />
@@ -253,7 +261,8 @@
 	}
 
 	@media (min-width: 64rem) {
-		.logout {
+		.logout,
+		.phone-only {
 			display: none;
 		}
 	}
