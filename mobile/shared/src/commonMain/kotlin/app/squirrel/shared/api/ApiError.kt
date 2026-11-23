@@ -76,3 +76,8 @@ suspend fun HttpResponse.throwUnlessSuccess(): HttpResponse {
     if (!status.isSuccess()) throw apiError()
     return this
 }
+
+/** Throws the [ApiError] of a failed generated call whose success has no body (204). */
+suspend fun GeneratedResponse<*>.okOrThrow() {
+    if (!success) throw response.apiError()
+}

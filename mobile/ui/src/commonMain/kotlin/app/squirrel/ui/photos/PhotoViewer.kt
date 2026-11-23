@@ -100,6 +100,8 @@ fun PhotoViewer(
     startId: String,
     onNear: (String) -> Unit,
     onClose: () -> Unit,
+    /** More stage buttons for the photo on screen (comments, share…), before "Details". */
+    tools: @Composable (AssetSummary) -> Unit = {},
 ) {
     if (items.isEmpty()) {
         LaunchedEffect(Unit) { onClose() }
@@ -164,6 +166,7 @@ fun PhotoViewer(
                 if (original != null) {
                     StageButton(SquirrelIcon.ExternalLink, "Open ${current.name} in another app") { original.request(current) }
                 }
+                tools(current)
                 StageButton(SquirrelIcon.Info, "Details of ${current.name}") { info = current }
             }
             Box(Modifier.align(Alignment.BottomCenter).fillMaxWidth().windowInsetsPadding(WindowInsets.safeDrawing).padding(Tokens.gutter)) {
@@ -190,7 +193,7 @@ private suspend fun PointerInputScope.blockTouches() {
 }
 
 @Composable
-private fun StageButton(icon: SquirrelIcon, label: String, onClick: () -> Unit) {
+internal fun StageButton(icon: SquirrelIcon, label: String, onClick: () -> Unit) {
     val scheme = SquirrelTheme.scheme
     Box(
         modifier = Modifier

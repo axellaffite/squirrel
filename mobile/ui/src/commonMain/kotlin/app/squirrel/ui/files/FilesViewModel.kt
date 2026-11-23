@@ -2,6 +2,8 @@ package app.squirrel.ui.files
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import app.squirrel.api.models.AccessLevel
+import app.squirrel.api.models.MemberDto
 import app.squirrel.api.models.NodeDto
 import app.squirrel.api.models.NodeKind
 import app.squirrel.api.models.NodeListing
@@ -12,6 +14,7 @@ import app.squirrel.shared.sync.formatBytes
 import app.squirrel.ui.ResumeThrottle
 import app.squirrel.ui.attempt
 import app.squirrel.ui.photos.UNREACHABLE
+import app.squirrel.ui.sharing.Abilities
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -25,6 +28,12 @@ const val CONFIRM_BYTES = 200L * 1000 * 1000
 data class FilesState(
     /** Null: the root ("Files"). */
     val folderId: String? = null,
+    /** The folder itself, once its details arrived (null at the root). */
+    val folder: NodeDto? = null,
+    /** What the caller may do here: the top level is always theirs. */
+    val access: AccessLevel = AccessLevel.owner,
+    /** Who shared it with the caller; null for their own. */
+    val sharedBy: MemberDto? = null,
     /** Breadcrumbs from the root to the current folder. */
     val path: List<PathSegmentDto> = emptyList(),
     val items: List<NodeDto> = emptyList(),
@@ -46,14 +55,23 @@ data class FilesState(
 
     /** The folder's first page has not arrived yet: the screen shows its loading rows. */
     val firstLoad: Boolean get() = loading && !started
+
+    val can: Abilities get() = Abilities.of(access)
+
+    /** Files only live inside a folder: the top level is fixed. */
+    val canAdd: Boolean get() = folderId != null && folder != null && can.edit
 }
 
-/** The read-only file browser: folders, breadcrumbs, keyset paging, open with another app. */
+/**
+ * The file browser: folders, breadcrumbs, keyset paging, open with another app. It starts at
+ * [root] (null: the top level; a shared folder in Shared) and never goes up past it.
+ */
 class FilesViewModel(
     private val api: SquirrelApi,
     private val handoff: FileHandoff?,
     private val pageSize: Int = 100,
     private val throttle: ResumeThrottle = ResumeThrottle(),
+    private val root: String? = null,
 ) : ViewModel() {
     private val _state = MutableStateFlow(FilesState())
     val state: StateFlow<FilesState> = _state.asStateFlow()
@@ -68,7 +86,7 @@ class FilesViewModel(
     private var refreshFailed = false
 
     init {
-        enter(null)
+        enter(root)
     }
 
     /** Opens a folder ([id] null: the root). */
@@ -80,13 +98,13 @@ class FilesViewModel(
         _state.update { FilesState(folderId = id, loading = true, downloads = it.downloads) }
         loadJob = viewModelScope.launch {
             try {
+                val details = if (id == null) null else attempt { api.files.getNode(id).bodyOrThrow() }
+                if (id != null && details == null) return@launch update(gen) { it.copy(error = UNREACHABLE) }
                 // The node's path lists its ancestors only: the folder itself ends the breadcrumbs.
-                val path = if (id == null) emptyList() else attempt {
-                    val details = api.files.getNode(id).bodyOrThrow()
-                    details.path + PathSegmentDto(details.node.id, details.node.name)
+                val path = details?.let { it.path + PathSegmentDto(it.node.id, it.node.name) }.orEmpty()
+                update(gen) {
+                    it.copy(path = path, folder = details?.node, access = details?.access ?: AccessLevel.owner, sharedBy = details?.sharedBy)
                 }
-                if (path == null) return@launch update(gen) { it.copy(error = UNREACHABLE) }
-                update(gen) { it.copy(path = path) }
                 page(gen, id, cursor = null)
             } finally {
                 update(gen) { it.copy(loading = false) }
@@ -94,11 +112,14 @@ class FilesViewModel(
         }
     }
 
+    /** Whether this is where the browser started (no "up" from here). */
+    val atRoot: Boolean get() = _state.value.folderId == root
+
     /** One level up; false at the root (the caller leaves the tab's back handling alone). */
     fun up(): Boolean {
         val current = _state.value
-        if (current.folderId == null) return false
-        enter(current.path.dropLast(1).lastOrNull()?.id)
+        if (current.folderId == root) return false
+        enter(current.path.dropLast(1).lastOrNull()?.id ?: root)
         return true
     }
 
