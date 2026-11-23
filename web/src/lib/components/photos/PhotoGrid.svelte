@@ -18,9 +18,11 @@
 		onNearEnd?: () => void;
 		/** `false`: keep the given order, without day headings (search results, best first). */
 		days?: boolean;
+		/** A tile's count badge and its spoken form (see `PhotoTile`). */
+		badge?: (asset: AssetSummary) => { text: string; label: string } | null;
 	}
 
-	let { items, selected, selecting, onOpen, onToggle, onNearEnd, days = true }: Props = $props();
+	let { items, selected, selecting, onOpen, onToggle, onNearEnd, days = true, badge }: Props = $props();
 
 	let root: HTMLDivElement | undefined = $state();
 	let width = $state(0);
@@ -99,7 +101,7 @@
 
 <!-- svelte-ignore a11y_no_static_element_interactions -->
 <div class="grid" bind:this={root} style:height="{layout.height}px" onkeydown={keydown}>
-	<GridBlocks blocks={shown} {selected} {selecting} {onOpen} {onToggle} />
+	<GridBlocks blocks={shown} {selected} {selecting} {onOpen} {onToggle} {badge} />
 </div>
 
 <style>
