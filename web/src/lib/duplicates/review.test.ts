@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
-import type { DuplicateGroup, DuplicateMember } from '#lib/duplicates/api.ts';
-import { groupCaption, memberFacts, reviewOrder, stepFor, suggestedKeeper } from '#lib/duplicates/model.ts';
+import type { DuplicateGroup, DuplicateMember, DuplicatesPage } from '#lib/duplicates/api.ts';
+import { groupCaption, reviewOrder, suggestedKeeper } from '#lib/duplicates/model.ts';
 import { DuplicatesReview, type ReviewActions } from '#lib/duplicates/review.svelte.ts';
 
 function member(
@@ -46,6 +46,10 @@ function actions(): ReviewActions & { keep: ReturnType<typeof vi.fn>; restore: R
 	};
 }
 
+function page(items: DuplicateGroup[], next: string | null = null, open = items.length): DuplicatesPage {
+	return { items, next_cursor: next, open_count: open };
+}
+
 describe('suggestedKeeper', () => {
 	it('prefers the largest resolution, then the largest file, then the oldest', () => {
 		expect(suggestedKeeper([small, big, twin])?.asset.id).toBe('big');
@@ -54,82 +58,87 @@ describe('suggestedKeeper', () => {
 		expect(suggestedKeeper([])).toBeNull();
 	});
 
-	it('shows the suggested keeper first, then the others by capture time', () => {
+	it('lists the suggested keeper first, then the others by capture time', () => {
 		expect(reviewOrder([small, big, twin]).map((m) => m.asset.id)).toEqual(['big', 'twin', 'small']);
-	});
-});
-
-describe('wording', () => {
-	it('lists the known facts of a photo', () => {
-		const facts = memberFacts(big, 'en-GB').map((fact) => fact.label);
-		expect(facts).toEqual(['Resolution', 'File size', 'Taken', 'Camera', 'File name']);
-		expect(memberFacts(big, 'en-GB')[0].value).toBe('1600 × 1200');
 	});
 
 	it('counts photos and hidden ones', () => {
 		expect(groupCaption([big, small])).toBe('2 photos');
 		expect(groupCaption([big, { ...small, hidden: true }])).toBe('2 photos, 1 hidden');
 	});
-
-	it('maps arrows, Home and End to moves', () => {
-		expect([stepFor('ArrowDown'), stepFor('ArrowRight'), stepFor('ArrowUp'), stepFor('ArrowLeft')]).toEqual([1, 1, -1, -1]);
-		expect([stepFor('Home'), stepFor('End'), stepFor('a')]).toEqual(['first', 'last', null]);
-	});
 });
 
 describe('DuplicatesReview', () => {
-	it('starts on the suggested keeper and moves through the strip by click and keys', () => {
+	it('shows one tile per group, its suggested keeper, with the group size', () => {
 		const review = new DuplicatesReview(actions());
-		review.load([group('g1', [small, big, twin])]);
+		review.load(page([group('g1', [small, big, twin]), group('g2', [member('x'), member('y', { size: 2000 })])], 'next', 7));
+		expect(review.tiles.map((t) => t.id)).toEqual(['big', 'y']);
+		expect(review.countFor('big')).toBe(3);
+		expect(review.countFor('small')).toBeNull();
+		expect([review.openCount, review.cursor]).toEqual([7, 'next']);
+		review.append(page([group('g2', [member('x'), member('y', { size: 2000 })]), group('g3', [member('p'), member('q')])], null, 7));
+		expect(review.groups.map((g) => g.id)).toEqual(['g1', 'g2', 'g3']);
+		expect(review.cursor).toBeNull();
+	});
+
+	it('opens a tile on its keeper; the panel and up/down move within the group only', () => {
+		const review = new DuplicatesReview(actions());
+		review.load(page([group('g1', [small, big, twin]), group('g2', [member('x'), member('y')])]));
+		expect(review.shown).toBeNull();
+		review.open('big');
 		expect(review.shown?.asset.id).toBe('big');
 		review.select('small');
 		expect(review.shown?.asset.id).toBe('small');
-		expect(review.handleKey('ArrowUp')).toBe(true);
+		expect(review.tile?.id, 'the viewer still steps from the group tile').toBe('big');
+		review.step(-1);
 		expect(review.shown?.asset.id).toBe('twin');
-		review.handleKey('Home');
-		expect(review.shown?.asset.id).toBe('big');
-		review.handleKey('ArrowLeft');
+		review.step(-5);
 		expect(review.shown?.asset.id, 'stays at the first photo').toBe('big');
-		review.handleKey('End');
-		expect(review.shown?.asset.id).toBe('small');
-		expect(review.handleKey('x')).toBe(false);
+		review.step(9);
+		expect(review.shown?.asset.id, 'stays in the group').toBe('small');
+		review.open(review.tiles[1].id);
+		expect(review.group?.id, 'left/right go to the neighbouring tile, a group').toBe('g2');
+		expect(review.photoIndex).toBe(0);
+		review.close();
+		expect(review.shown).toBeNull();
 	});
 
 	it('keeps the photo shown, not the suggested one, and moves on to the next group', async () => {
 		const requests = actions();
 		const review = new DuplicatesReview(requests);
-		review.load([group('g1', [small, big]), group('g2', [twin, member('other')])]);
+		review.load(page([group('g1', [small, big]), group('g2', [twin, member('other')])]));
+		review.open('big');
 		review.select('small');
 		const kept = await review.keepShown();
 		expect(requests.keep).toHaveBeenCalledWith('g1', 'small');
 		expect(kept?.kept_id).toBe('small');
 		expect(review.groups.map((g) => g.id)).toEqual(['g2']);
 		expect(review.group?.id).toBe('g2');
-		expect(review.photoIndex).toBe(0);
+		expect(review.openCount).toBe(1);
+		await review.keepShown();
+		expect(review.group, 'none left: the viewer closes').toBeNull();
 	});
 
 	it('keeps the group and the error when keeping fails', async () => {
 		const requests = actions();
 		requests.keep.mockResolvedValueOnce({ ok: false, error: 'Not found', status: 404 });
 		const review = new DuplicatesReview(requests);
-		review.load([group('g1', [small, big])]);
+		review.load(page([group('g1', [small, big])]));
+		review.open('big');
 		expect(await review.keepShown()).toBeNull();
 		expect(review.error).toBe('Not found');
 		expect(review.groups).toHaveLength(1);
 		expect(review.busy).toBe(false);
 	});
 
-	it('pages through groups and puts an undone group back first', () => {
+	it('puts an undone group back first, closed', () => {
 		const review = new DuplicatesReview(actions());
 		const first = group('g1', [small, big]);
-		review.load([first, group('g2', [twin, member('other')])]);
-		review.moveGroup(1);
-		expect(review.group?.id).toBe('g2');
-		review.moveGroup(1);
-		expect(review.group?.id, 'no group after the last').toBe('g2');
+		review.load(page([group('g2', [twin, member('other')])], null, 1));
 		review.restoreToQueue(first);
-		expect(review.group?.id).toBe('g1');
-		expect(review.groups).toHaveLength(2);
+		expect(review.groups.map((g) => g.id)).toEqual(['g1', 'g2']);
+		expect(review.openCount).toBe(2);
+		expect(review.shown).toBeNull();
 	});
 
 	it('restores the photo shown or all hidden photos of a resolved group', async () => {
@@ -139,7 +148,8 @@ describe('DuplicatesReview', () => {
 		const resolved = group('g1', [big, hiddenSmall, hiddenTwin], 'resolved');
 		requests.restore.mockResolvedValueOnce({ ok: true, data: group('g1', [big, small, hiddenTwin], 'resolved') });
 		const review = new DuplicatesReview(requests, { keepsResolved: true });
-		review.load([resolved]);
+		review.load(page([resolved]));
+		review.open('big');
 		review.select('small');
 		expect(await review.restore('shown')).toBe(true);
 		expect(requests.restore).toHaveBeenLastCalledWith('g1', 'small');
@@ -149,5 +159,6 @@ describe('DuplicatesReview', () => {
 		await review.restore('all');
 		expect(requests.restore).toHaveBeenLastCalledWith('g1', null);
 		expect(review.groups, 'open again: it leaves the resolved list').toEqual([]);
+		expect(review.shown).toBeNull();
 	});
 });

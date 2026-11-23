@@ -131,6 +131,8 @@ fn main() -> std::io::Result<()> {
     // (duplicates).
     write(&dir, "meadow.jpg", &scene_jpeg(11, 1600, 1200, 92))?;
     write(&dir, "meadow-copy.jpg", &scene_jpeg(11, 1024, 768, 70))?;
+    write(&dir, "pond.jpg", &scene_jpeg(21, 1600, 1200, 92))?;
+    write(&dir, "pond-copy.jpg", &scene_jpeg(21, 1024, 768, 70))?;
     std::fs::create_dir_all(dir.join("faces"))?;
     for name in ["koch-a", "koch-b", "glover-a", "glover-b"] {
         write(

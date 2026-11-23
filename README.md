@@ -209,8 +209,9 @@ Installations from before on-demand previews still hold a stored 1440 px preview
 photo gets a 64-bit perceptual hash of its thumbnail (DCT pHash); two photos are duplicates when
 their hashes differ by at most 6 bits and they were taken at most 24 hours apart. A group is
 anchored at its oldest photo and only photos close to that anchor join it, so a day of bursts
-never chains into one group. Groups never mix users and need no models. In Explore › Duplicates
-the user keeps one photo of a group: the others are hidden from every photo view (timeline,
+never chains into one group. Groups never mix users and need no models. In Explore › Duplicates (a
+grid of groups; a group opens in the photo viewer with its photos beside it) the user keeps
+one photo of a group: the others are hidden from every photo view (timeline,
 search, albums, people, places, Explore, the phone) but stay in Files, count in the quota and
 can be shown again from the Resolved tab. Nothing is hidden without that choice; a new copy that
 joins a resolved group reopens it. Trashing a photo takes it out of its group (and unhides it).
