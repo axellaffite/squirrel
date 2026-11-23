@@ -11,7 +11,9 @@ import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -147,27 +149,28 @@ fun PhotoViewer(
                 ZoomablePhoto(api, items[page], stage, onZoom = { if (page == pager.currentPage) zoomed = it })
             }
             val current = items.getOrNull(pager.currentPage) ?: items.last()
-            Row(
-                modifier = Modifier.fillMaxWidth().windowInsetsPadding(WindowInsets.safeDrawing).padding(Tokens.space3),
-                horizontalArrangement = Arrangement.spacedBy(Tokens.space2),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                StageButton(SquirrelIcon.X, "Close", onClose)
+            // The buttons first, then the date on its own line: the tools leave it no room beside them.
+            Column(Modifier.fillMaxWidth().windowInsetsPadding(WindowInsets.safeDrawing).padding(Tokens.space3)) {
+                Row(horizontalArrangement = Arrangement.spacedBy(Tokens.space1), verticalAlignment = Alignment.CenterVertically) {
+                    StageButton(SquirrelIcon.X, "Close", onClose)
+                    Spacer(Modifier.weight(1f))
+                    if (original != null) {
+                        StageButton(SquirrelIcon.ExternalLink, "Open ${current.name} in another app") { original.request(current) }
+                    }
+                    tools(current)
+                    StageButton(SquirrelIcon.Info, "Details of ${current.name}") { info = current }
+                }
                 val position = "${pager.currentPage.coerceAtMost(items.lastIndex) + 1} of ${items.size}"
                 BasicText(
                     dayLabel(current.takenAt),
                     style = SquirrelTheme.type.label.copy(color = scheme.railInk).tabular(),
-                    modifier = Modifier.weight(1f).semantics {
+                    maxLines = 1,
+                    modifier = Modifier.padding(start = Tokens.space3).semantics {
                         // Read on every page turn: "Photo, 12 October 2026, 19:59, 3 of 120".
                         contentDescription = "${photoLabel(current)}, $position"
                         liveRegion = LiveRegionMode.Polite
                     },
                 )
-                if (original != null) {
-                    StageButton(SquirrelIcon.ExternalLink, "Open ${current.name} in another app") { original.request(current) }
-                }
-                tools(current)
-                StageButton(SquirrelIcon.Info, "Details of ${current.name}") { info = current }
             }
             Box(Modifier.align(Alignment.BottomCenter).fillMaxWidth().windowInsetsPadding(WindowInsets.safeDrawing).padding(Tokens.gutter)) {
                 originalState.progress?.let { Progress(it, label = "Downloading the original") }

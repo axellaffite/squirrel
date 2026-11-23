@@ -99,6 +99,7 @@ private fun PhotosHome(graph: AppGraph, nav: Navigator<PhotosRoute>) {
             SegmentedControl(MODES, mode, onSelect = {
                 mode = it
                 selected = emptySet()
+                notice = null
             })
             notice?.let { Alert(it, tone = AlertTone.Success) }
             when (mode) {
