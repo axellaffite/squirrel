@@ -1837,6 +1837,114 @@
         ]
       }
     },
+    "/api/files/{id}/collab": {
+      "post": {
+        "tags": [
+          "collab"
+        ],
+        "operationId": "open_collab",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "File id",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CollabSession"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "not_editable: not UTF-8 text, or too large",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "csrf_token": [],
+            "session_cookie": []
+          }
+        ]
+      }
+    },
+    "/api/files/{id}/collab/ws": {
+      "get": {
+        "tags": [
+          "collab"
+        ],
+        "summary": "Upgrades to the co-editing WebSocket (y-websocket protocol). Refusals after\nthe upgrade are close codes: 4401 signed out, 4404 no access, 4409 stale\nepoch, 4413 too large, 4429 busy.",
+        "operationId": "collab_socket",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "File id",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "epoch",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "101": {
+            "description": "Switching to the co-editing WebSocket"
+          },
+          "403": {
+            "description": "cross-site request (Origin does not match Host)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "session_cookie": []
+          }
+        ]
+      }
+    },
     "/api/files/{id}/content": {
       "get": {
         "tags": [
@@ -5466,6 +5574,31 @@
               "string",
               "null"
             ]
+          }
+        }
+      },
+      "CollabSession": {
+        "type": "object",
+        "required": [
+          "epoch",
+          "can_write",
+          "max_bytes"
+        ],
+        "properties": {
+          "can_write": {
+            "type": "boolean",
+            "description": "`false`: the document is shown live but cannot be changed."
+          },
+          "epoch": {
+            "type": "string",
+            "format": "uuid",
+            "description": "Pass it when connecting; a connection with an older epoch is closed\nwith 4409 (the file changed outside the editor: open it again)."
+          },
+          "max_bytes": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Largest text the document may hold, in bytes of UTF-8.",
+            "minimum": 0
           }
         }
       },

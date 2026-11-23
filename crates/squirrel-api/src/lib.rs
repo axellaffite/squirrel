@@ -4,6 +4,7 @@ mod access;
 mod albums_dto;
 mod blocking;
 mod client_ip;
+pub mod collab;
 mod content;
 mod cursor;
 mod devices_dto;
@@ -276,6 +277,7 @@ fn json_routes() -> OpenApiRouter<AppState> {
             routes::comments::delete_comment
         ))
         .routes(routes!(routes::storage::storage_usage))
+        .routes(routes!(routes::collab::open_collab))
         .routes(routes!(routes::uploads::create_upload))
         .routes(routes!(
             routes::uploads::upload_status,
@@ -363,6 +365,8 @@ fn transfer_routes(config: &ApiConfig) -> OpenApiRouter<AppState> {
         ));
     let long_running = OpenApiRouter::new()
         .routes(routes!(routes::uploads::complete::complete_upload))
+        // A WebSocket lives as long as the editor is open: no request timeout.
+        .routes(routes!(routes::collab::collab_socket))
         .routes(routes!(routes::content::file_content))
         .layer(DefaultBodyLimit::max(API_BODY_LIMIT));
     chunks.merge(long_running)

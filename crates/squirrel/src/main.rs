@@ -291,6 +291,7 @@ async fn serve(args: ServeArgs) -> anyhow::Result<()> {
         previews.renderer.probe().await;
     });
     let app = squirrel_api::router(state.clone()).layer(TraceLayer::new_for_http());
+    let shutdown_state = state.clone();
 
     // Precompute the timing-equalizer hash so the first unknown-user login isn't slower.
     tokio::task::spawn_blocking(squirrel_auth::warm_up)
@@ -320,6 +321,7 @@ async fn serve(args: ServeArgs) -> anyhow::Result<()> {
     .with_graceful_shutdown(async move {
         shutdown_signal().await;
         let _ = stopping_tx.send(true);
+        squirrel_api::collab::shutdown(&shutdown_state).await;
     });
     let deadline = async move {
         // Errors only if the sender is gone, i.e. the server already stopped.

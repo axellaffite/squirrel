@@ -47,7 +47,14 @@ const SESSION: &[&str] = &[
     "/api/duplicates",
     "/api/duplicates/{id}/keep",
     "/api/duplicates/{id}/restore",
+    "/api/files/{id}/collab",
+    "/api/files/{id}/collab/ws",
 ];
+
+/// WebSocket upgrades: a plain request is refused by the upgrade itself (400)
+/// before credentials are read, so the per-caller sweep cannot reach them.
+/// Their callers are tested in `tests/collab.rs`.
+const UPGRADES: &[&str] = &["/api/files/{id}/collab/ws"];
 
 /// Device bearer only.
 const DEVICE: &[&str] = &[
@@ -264,6 +271,9 @@ async fn every_route_accepts_exactly_its_callers(pool: PgPool) {
     let mut creds = credentials(&instance).await;
     for (method, path) in operations() {
         let access = access_of(&method, &path);
+        if UPGRADES.contains(&path.as_str()) {
+            continue;
+        }
         let url = concrete(&path);
         if path.contains("logout") {
             creds = credentials(&instance).await;

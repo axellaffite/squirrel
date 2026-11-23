@@ -27,6 +27,9 @@ pub enum ApiError {
     CsrfInvalid,
     #[error("not found")]
     NotFound,
+    /// The file cannot be opened in the text editor.
+    #[error("{0}")]
+    NotEditable(&'static str),
     /// A derived file (thumbnail) the worker has not produced yet.
     #[error("this preview is still being prepared")]
     NotReady,
@@ -88,6 +91,7 @@ impl ApiError {
             ApiError::Forbidden => (StatusCode::FORBIDDEN, "forbidden"),
             ApiError::CsrfInvalid => (StatusCode::FORBIDDEN, "csrf_invalid"),
             ApiError::NotFound => (StatusCode::NOT_FOUND, "not_found"),
+            ApiError::NotEditable(_) => (StatusCode::UNPROCESSABLE_ENTITY, "not_editable"),
             ApiError::NotReady => (StatusCode::NOT_FOUND, "not_ready"),
             ApiError::MethodNotAllowed => (StatusCode::METHOD_NOT_ALLOWED, "method_not_allowed"),
             ApiError::PayloadTooLarge => (StatusCode::PAYLOAD_TOO_LARGE, "payload_too_large"),
