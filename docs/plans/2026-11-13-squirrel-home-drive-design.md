@@ -71,7 +71,7 @@ docs/                design and plans
 - **Web sessions**: opaque random session id in `HttpOnly; Secure; SameSite=Lax` cookie, stored hashed, 30-day sliding expiry, CSRF double-submit header. Server-side sessions so "log out everywhere" is immediate.
 - **Mobile**: login returns a device-bound refresh token (`devices` table) and 15-minute access tokens. Devices listed and revocable in the web UI.
 - **Hardening**: Argon2id (19 MiB, 2 iterations), min password length 10, rate limiting per IP and per username with backoff, generic login errors.
-- **Authorization**: every query scoped by `owner_id`. Cross-user sharing is out of scope for v1.
+- **Authorization**: every query scoped by `owner_id`, except access through a share (`squirrel_db::access`, added 2026-11-23).
 
 **Phase 1 as built** (corrects the bullets above; the code is the source of truth):
 - Bootstrap is `POST /api/setup/admin`, which requires a setup code (`SQUIRREL_SETUP_TOKEN`, or one logged on first start). Invited people join with `POST /api/join/{token}`. There is no `/api/auth/register`.
@@ -183,4 +183,4 @@ added in Phase 4, whose backfill also queues the ML jobs for videos.
 
 ## Out of scope for v1
 
-Cross-user sharing, public links, live transcoding, OCR, email delivery of invitations, WebDAV.
+Public links (cross-user sharing and comments landed on 2026-11-23, see `docs/plans/2026-11-23-sharing.md`), live transcoding, OCR, email delivery of invitations, WebDAV.
