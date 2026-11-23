@@ -11,7 +11,7 @@ use crate::DbError;
 use crate::nodes::{ClientTaken, find_live_folder};
 use crate::quota::{self, Pending};
 
-const UPLOAD_COLUMNS: &str = "id, owner_id, parent_id, name, sha256, size, chunk_size, \
+const UPLOAD_COLUMNS: &str = "id, owner_id, created_by, parent_id, name, sha256, size, chunk_size, \
      chunk_count, status, created_at, expires_at, client_taken_at, client_taken_offset_min, \
      device_id, device_asset_id";
 const STATUS_OPEN: &str = "open";
@@ -29,7 +29,10 @@ const CLAIM_LEASE: &str = "10 minutes";
 #[derive(Debug, Clone, FromRow)]
 pub struct UploadRecord {
     pub id: Uuid,
+    /// Whose tree (and quota) the file goes to.
     pub owner_id: Uuid,
+    /// Who uploads it: the owner, or someone the folder is shared with for writing.
+    pub created_by: Uuid,
     pub parent_id: Uuid,
     pub name: String,
     pub sha256: String,
@@ -69,7 +72,10 @@ impl UploadRecord {
 
 #[derive(Debug, Clone)]
 pub struct NewUpload<'a> {
+    /// Whose tree and quota the file goes to.
     pub owner_id: Uuid,
+    /// Who uploads it (the owner, or a writer of a shared folder).
+    pub created_by: Uuid,
     pub parent_id: Uuid,
     pub name: &'a NodeName,
     pub sha256: &'a ContentHash,
@@ -77,7 +83,7 @@ pub struct NewUpload<'a> {
     pub chunk_size: i64,
     pub chunk_count: i32,
     pub expires_at: OffsetDateTime,
-    /// The owner may have at most this many unexpired sessions.
+    /// The uploader may have at most this many unexpired sessions.
     pub max_open: i64,
     pub client_taken: Option<ClientTaken>,
     /// The uploading phone and its id for the asset.
@@ -104,9 +110,9 @@ pub async fn create(pool: &PgPool, new: &NewUpload<'_>) -> Result<UploadRecord, 
         .ok_or(DbError::NotFound)?;
     // Serialized per owner by `lock_owner`.
     let open: i64 = sqlx::query_scalar(
-        "SELECT count(*) FROM upload_sessions WHERE owner_id = $1 AND expires_at > now()",
+        "SELECT count(*) FROM upload_sessions WHERE created_by = $1 AND expires_at > now()",
     )
-    .bind(new.owner_id)
+    .bind(new.created_by)
     .fetch_one(&mut *tx)
     .await?;
     if open >= new.max_open {
@@ -123,8 +129,9 @@ pub async fn create(pool: &PgPool, new: &NewUpload<'_>) -> Result<UploadRecord, 
     let sql = format!(
         "INSERT INTO upload_sessions \
            (id, owner_id, parent_id, name, sha256, size, chunk_size, chunk_count, expires_at, \
-            client_taken_at, client_taken_offset_min, device_id, device_asset_id) \
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13) RETURNING {UPLOAD_COLUMNS}"
+            client_taken_at, client_taken_offset_min, device_id, device_asset_id, created_by) \
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14) \
+         RETURNING {UPLOAD_COLUMNS}"
     );
     let record = sqlx::query_as::<_, UploadRecord>(&sql)
         .bind(Uuid::now_v7())
@@ -140,18 +147,19 @@ pub async fn create(pool: &PgPool, new: &NewUpload<'_>) -> Result<UploadRecord, 
         .bind(new.client_taken.and_then(|taken| taken.offset_min))
         .bind(new.device_asset.map(|(device, _)| device))
         .bind(new.device_asset.map(|(_, asset)| asset))
+        .bind(new.created_by)
         .fetch_one(&mut *tx)
         .await?;
     tx.commit().await?;
     Ok(record)
 }
 
-/// The owner's newest unexpired session for exactly this file and destination,
+/// The uploader's newest unexpired session for exactly this file and destination,
 /// open or being completed (a client resuming after a dropped completion gets
 /// the session back and may complete it again).
 pub async fn find_resumable(
     pool: &PgPool,
-    owner_id: Uuid,
+    created_by: Uuid,
     parent_id: Uuid,
     name: &NodeName,
     sha256: &ContentHash,
@@ -159,12 +167,12 @@ pub async fn find_resumable(
 ) -> Result<Option<UploadRecord>, DbError> {
     let sql = format!(
         "SELECT {UPLOAD_COLUMNS} FROM upload_sessions \
-         WHERE owner_id = $1 AND parent_id = $2 AND name = $3 AND sha256 = $4 AND size = $5 \
+         WHERE created_by = $1 AND parent_id = $2 AND name = $3 AND sha256 = $4 AND size = $5 \
            AND expires_at > now() \
          ORDER BY created_at DESC LIMIT 1"
     );
     Ok(sqlx::query_as::<_, UploadRecord>(&sql)
-        .bind(owner_id)
+        .bind(created_by)
         .bind(parent_id)
         .bind(name.as_str())
         .bind(sha256.as_str())
@@ -176,16 +184,16 @@ pub async fn find_resumable(
 /// An unexpired session of the owner, in any state.
 pub async fn find(
     pool: &PgPool,
-    owner_id: Uuid,
+    uploader: Uuid,
     id: Uuid,
 ) -> Result<Option<UploadRecord>, DbError> {
     let sql = format!(
         "SELECT {UPLOAD_COLUMNS} FROM upload_sessions \
-         WHERE id = $1 AND owner_id = $2 AND expires_at > now()"
+         WHERE id = $1 AND created_by = $2 AND expires_at > now()"
     );
     Ok(sqlx::query_as::<_, UploadRecord>(&sql)
         .bind(id)
-        .bind(owner_id)
+        .bind(uploader)
         .fetch_optional(pool)
         .await?)
 }
@@ -204,7 +212,7 @@ pub async fn received_chunks(pool: &PgPool, upload_id: Uuid) -> Result<Vec<i32>,
 /// missing or expired; `InvalidInput` when `index` is outside `0..chunk_count`.
 pub async fn record_chunk(
     pool: &PgPool,
-    owner_id: Uuid,
+    uploader: Uuid,
     id: Uuid,
     index: i32,
     expires_at: OffsetDateTime,
@@ -212,17 +220,17 @@ pub async fn record_chunk(
     let mut tx = pool.begin().await?;
     let chunk_count: Option<i32> = sqlx::query_scalar(
         "UPDATE upload_sessions SET expires_at = $3 \
-         WHERE id = $1 AND owner_id = $2 AND status = 'open' AND expires_at > now() \
+         WHERE id = $1 AND created_by = $2 AND status = 'open' AND expires_at > now() \
          RETURNING chunk_count",
     )
     .bind(id)
-    .bind(owner_id)
+    .bind(uploader)
     .bind(expires_at)
     .fetch_optional(&mut *tx)
     .await?;
     let Some(chunk_count) = chunk_count else {
         drop(tx);
-        return Ok(match find(pool, owner_id, id).await? {
+        return Ok(match find(pool, uploader, id).await? {
             Some(_) => ChunkWrite::Busy,
             None => ChunkWrite::Gone,
         });
@@ -283,20 +291,20 @@ async fn pending_bytes_where(pool: &PgPool, owner_id: Option<Uuid>) -> Result<i6
 /// `NotFound` or `UploadBusy` otherwise.
 pub async fn claim(
     pool: &PgPool,
-    owner_id: Uuid,
+    uploader: Uuid,
     id: Uuid,
     expires_at: OffsetDateTime,
 ) -> Result<UploadRecord, DbError> {
     let sql = format!(
         "UPDATE upload_sessions SET status = 'completing', claimed_at = now(), \
            expires_at = GREATEST($3, now() + $4::interval) \
-         WHERE id = $1 AND owner_id = $2 AND expires_at > now() \
+         WHERE id = $1 AND created_by = $2 AND expires_at > now() \
            AND (status = 'open' OR claimed_at IS NULL OR claimed_at <= now() - $5::interval) \
          RETURNING {UPLOAD_COLUMNS}"
     );
     let claimed = sqlx::query_as::<_, UploadRecord>(&sql)
         .bind(id)
-        .bind(owner_id)
+        .bind(uploader)
         .bind(expires_at)
         .bind(CLAIM_MIN_TTL)
         .bind(CLAIM_LEASE)
@@ -304,7 +312,7 @@ pub async fn claim(
         .await?;
     match claimed {
         Some(record) => Ok(record),
-        None if find(pool, owner_id, id).await?.is_some() => Err(DbError::UploadBusy),
+        None if find(pool, uploader, id).await?.is_some() => Err(DbError::UploadBusy),
         None => Err(DbError::NotFound),
     }
 }
@@ -313,16 +321,16 @@ pub async fn claim(
 /// and retry) and sets its expiry. `false` if there was nothing to release.
 pub async fn release(
     pool: &PgPool,
-    owner_id: Uuid,
+    uploader: Uuid,
     id: Uuid,
     expires_at: OffsetDateTime,
 ) -> Result<bool, DbError> {
     let result = sqlx::query(
         "UPDATE upload_sessions SET status = 'open', claimed_at = NULL, expires_at = $3 \
-         WHERE id = $1 AND owner_id = $2 AND status = 'completing'",
+         WHERE id = $1 AND created_by = $2 AND status = 'completing'",
     )
     .bind(id)
-    .bind(owner_id)
+    .bind(uploader)
     .bind(expires_at)
     .execute(pool)
     .await?;
@@ -339,17 +347,17 @@ pub async fn delete<'e>(executor: impl PgExecutor<'e>, id: Uuid) -> Result<bool,
 }
 
 /// Aborts an open session of the owner; `UploadBusy` while it is completing.
-pub async fn abort(pool: &PgPool, owner_id: Uuid, id: Uuid) -> Result<(), DbError> {
+pub async fn abort(pool: &PgPool, uploader: Uuid, id: Uuid) -> Result<(), DbError> {
     let deleted: Option<Uuid> = sqlx::query_scalar(
-        "DELETE FROM upload_sessions WHERE id = $1 AND owner_id = $2 AND status = 'open' RETURNING id",
+        "DELETE FROM upload_sessions WHERE id = $1 AND created_by = $2 AND status = 'open' RETURNING id",
     )
     .bind(id)
-    .bind(owner_id)
+    .bind(uploader)
     .fetch_optional(pool)
     .await?;
     match deleted {
         Some(_) => Ok(()),
-        None if find(pool, owner_id, id).await?.is_some() => Err(DbError::UploadBusy),
+        None if find(pool, uploader, id).await?.is_some() => Err(DbError::UploadBusy),
         None => Err(DbError::NotFound),
     }
 }
@@ -395,7 +403,7 @@ pub struct UploadTokenGrant {
 /// is no such unexpired session.
 pub async fn set_upload_token(
     pool: &PgPool,
-    owner_id: Uuid,
+    uploader: Uuid,
     id: Uuid,
     device_id: Uuid,
     token_hash: &[u8],
@@ -405,10 +413,10 @@ pub async fn set_upload_token(
             SET previous_upload_token_hash = upload_token_hash, \
                 previous_upload_token_device_id = upload_token_device_id, \
                 upload_token_hash = $4, upload_token_device_id = $3 \
-          WHERE id = $1 AND owner_id = $2 AND expires_at > now()",
+          WHERE id = $1 AND created_by = $2 AND expires_at > now()",
     )
     .bind(id)
-    .bind(owner_id)
+    .bind(uploader)
     .bind(device_id)
     .bind(token_hash)
     .execute(pool)
@@ -424,12 +432,12 @@ pub async fn find_by_upload_token(
     token_hash: &[u8],
 ) -> Result<Option<UploadTokenGrant>, DbError> {
     Ok(sqlx::query_as::<_, UploadTokenGrant>(
-        "SELECT s.id AS upload_id, s.owner_id, d.id AS device_id \
+        "SELECT s.id AS upload_id, s.created_by AS owner_id, d.id AS device_id \
            FROM upload_sessions s \
-           JOIN devices d ON d.owner_id = s.owner_id \
+           JOIN devices d ON d.owner_id = s.created_by \
             AND d.id = CASE WHEN s.upload_token_hash = $1 THEN s.upload_token_device_id \
                             ELSE s.previous_upload_token_device_id END \
-           JOIN users u ON u.id = s.owner_id \
+           JOIN users u ON u.id = s.created_by \
           WHERE (s.upload_token_hash = $1 OR s.previous_upload_token_hash = $1) \
             AND s.expires_at > now() \
             AND d.revoked_at IS NULL AND d.refresh_expires_at > now() \

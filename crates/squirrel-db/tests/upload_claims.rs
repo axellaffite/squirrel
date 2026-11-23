@@ -27,6 +27,7 @@ async fn open_named(
         pool,
         &NewUpload {
             owner_id: owner,
+            created_by: owner,
             parent_id: parent,
             name: &name,
             sha256: &sha,

@@ -39,6 +39,19 @@ pub async fn find_live<'e>(
         .await?)
 }
 
+/// Live nodes `ids` whoever owns them, in no order: only for ids the caller
+/// may see (the subjects of shares made to them).
+pub async fn find_live_many(pool: &PgPool, ids: &[Uuid]) -> Result<Vec<NodeRecord>, DbError> {
+    if ids.is_empty() {
+        return Ok(Vec::new());
+    }
+    let sql = format!("SELECT {NODE_COLUMNS} FROM nodes WHERE id = ANY($1) AND deleted_at IS NULL");
+    Ok(sqlx::query_as::<_, NodeRecord>(&sql)
+        .bind(ids)
+        .fetch_all(pool)
+        .await?)
+}
+
 /// Internal (worker only): the node whatever its owner, live or trashed.
 /// Never answer a user request with it; use [`find_live`].
 #[doc(hidden)]

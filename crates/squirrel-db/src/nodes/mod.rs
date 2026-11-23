@@ -7,8 +7,8 @@ mod tree;
 
 pub use insert::{ClientTaken, NewFile, free_name, insert_file};
 pub use read::{
-    ListCursor, PathSegment, find_any, find_live, find_live_file, find_live_folder, list_children,
-    path_to,
+    ListCursor, PathSegment, find_any, find_live, find_live_file, find_live_folder, find_live_many,
+    list_children, path_to,
 };
 pub use tree::{NodeChange, create_folder, update};
 

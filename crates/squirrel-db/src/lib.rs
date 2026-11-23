@@ -1,11 +1,13 @@
 //! Postgres repositories and migrations.
 
+pub mod access;
 pub mod albums;
 pub mod assets;
 pub mod blobs;
 mod bounded;
 pub mod clip;
 pub mod clustering;
+pub mod comments;
 pub mod device_assets;
 pub mod devices;
 pub mod documents;
@@ -27,6 +29,7 @@ pub mod quota;
 mod retry;
 pub mod sessions;
 pub mod settings;
+pub mod shares;
 pub mod sync_folders;
 pub mod tags;
 pub mod timeline;

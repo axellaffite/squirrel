@@ -93,6 +93,7 @@ async fn parallel_upload_sessions_never_exceed_the_quota(pool: PgPool) {
             let sha = common::hash('f');
             let new = NewUpload {
                 owner_id: owner,
+                created_by: owner,
                 parent_id: parent,
                 name: &name,
                 sha256: &sha,
