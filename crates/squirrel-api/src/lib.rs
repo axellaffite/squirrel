@@ -1,5 +1,6 @@
 //! HTTP API for Squirrel.
 
+mod access;
 mod albums_dto;
 mod blocking;
 mod client_ip;
@@ -26,6 +27,7 @@ mod search_dto;
 mod security_headers;
 mod session;
 mod setup_token;
+mod sharing_dto;
 mod spa;
 mod state;
 mod sync_dto;
@@ -71,7 +73,7 @@ const CHUNK_TIMEOUT: Duration = Duration::from_secs(5 * 60);
         (name = "admin"), (name = "files"), (name = "uploads"), (name = "trash"),
         (name = "storage"), (name = "jobs"), (name = "photos"), (name = "albums"),
         (name = "search"), (name = "devices"), (name = "sync"), (name = "explore"), (name = "ml"), (name = "people"),
-        (name = "duplicates")
+        (name = "duplicates"), (name = "sharing"), (name = "comments")
     ),
     // Schemas only referenced from query parameters are not collected from
     // the routes: list them here.
@@ -259,6 +261,20 @@ fn json_routes() -> OpenApiRouter<AppState> {
             routes::albums::add_album_items
         ))
         .routes(routes!(routes::albums::remove_album_items))
+        .routes(routes!(
+            routes::shares::list_shares,
+            routes::shares::create_share
+        ))
+        .routes(routes!(routes::shares::delete_share))
+        .routes(routes!(routes::shares::shared_with_me))
+        .routes(routes!(
+            routes::comments::list_comments,
+            routes::comments::create_comment
+        ))
+        .routes(routes!(
+            routes::comments::edit_comment,
+            routes::comments::delete_comment
+        ))
         .routes(routes!(routes::storage::storage_usage))
         .routes(routes!(routes::uploads::create_upload))
         .routes(routes!(

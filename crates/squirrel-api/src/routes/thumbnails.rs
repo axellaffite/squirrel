@@ -10,14 +10,14 @@ use axum::http::header::{
 use axum::http::{HeaderMap, HeaderName, HeaderValue, StatusCode};
 use axum::response::{IntoResponse, Response};
 use serde::Deserialize;
-use squirrel_core::{ContentHash, MediaKind, NodeKind};
+use squirrel_core::{ContentHash, MediaKind};
 use squirrel_db::media::{self, MediaRecord, MediaState};
-use squirrel_db::nodes;
 use squirrel_storage::Variant;
 use utoipa::{IntoParams, ToSchema};
 use uuid::Uuid;
 
 use super::preview_render;
+use crate::access;
 use crate::blocking::run_storage;
 use crate::content::{
     CROSS_ORIGIN_RESOURCE_POLICY, SANDBOX_CSP, blob_hash, etag_matches, header_str, to_header_map,
@@ -124,12 +124,9 @@ pub async fn thumbnail(
     if query.px == Some(0) {
         return Err(ApiError::BadRequest("px must be at least 1".into()));
     }
-    // Owner-scoped first: another user's node is exactly `not_found`, even when
-    // the same bytes (and so the same derived files) exist.
-    let node = nodes::find_live(&state.pool, caller.user.id, id)
-        .await?
-        .filter(|node| node.kind() == NodeKind::File)
-        .ok_or(ApiError::NotFound)?;
+    // Access first: a node the caller may not see is exactly `not_found`, even
+    // when the same bytes (and so the same derived files) exist.
+    let node = access::file(&state, caller.user.id, id).await?.node;
     let hash = blob_hash(&node)?;
     let media = media::find(&state.pool, hash.as_str())
         .await?

@@ -12,13 +12,12 @@ use axum::http::header::{
 use axum::http::{HeaderMap, StatusCode};
 use axum::response::{IntoResponse, Response};
 use serde::Deserialize;
-use squirrel_core::NodeKind;
-use squirrel_db::nodes;
 use tokio::io::{AsyncReadExt, AsyncSeekExt};
 use tokio_util::io::ReaderStream;
 use utoipa::IntoParams;
 use uuid::Uuid;
 
+use crate::access;
 use crate::blocking::run_storage;
 use crate::content::{
     CROSS_ORIGIN_RESOURCE_POLICY, ContentPolicy, RangeRequest, blob_hash, content_disposition,
@@ -69,11 +68,9 @@ pub async fn file_content(
     ApiQuery(query): ApiQuery<ContentQuery>,
     headers: HeaderMap,
 ) -> Result<Response, ApiError> {
+    // Download slots are counted per caller, whoever owns the file.
     let owner_id = caller.user.id;
-    let node = nodes::find_live(&state.pool, owner_id, id)
-        .await?
-        .filter(|node| node.kind() == NodeKind::File)
-        .ok_or(ApiError::NotFound)?;
+    let node = access::file(&state, owner_id, id).await?.node;
     let hash = blob_hash(&node)?;
     let policy = ContentPolicy::for_mime(node.mime.as_deref(), query.download);
     let disposition = content_disposition(policy.inline, &node.name);

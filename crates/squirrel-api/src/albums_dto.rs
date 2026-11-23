@@ -6,6 +6,7 @@ use utoipa::{IntoParams, ToSchema};
 use uuid::Uuid;
 
 use crate::photos_dto::AssetSummary;
+use crate::sharing_dto::{AccessLevel, PersonDto};
 
 /// Photos per add/remove request (and at creation), at most.
 pub const MAX_NODE_IDS: usize = 500;
@@ -21,6 +22,10 @@ pub struct AlbumDto {
     #[serde(with = "time::serde::rfc3339")]
     #[schema(value_type = String, format = DateTime)]
     pub updated_at: OffsetDateTime,
+    /// What the caller may do with it.
+    pub access: AccessLevel,
+    /// Who shared it with the caller; `null` for the caller's own album.
+    pub shared_by: Option<PersonDto>,
 }
 
 #[derive(Debug, Deserialize, ToSchema)]
@@ -57,7 +62,9 @@ where
 
 #[derive(Debug, Deserialize, ToSchema)]
 pub struct AlbumItemsRequest {
-    /// 1–500 photo (file node) ids; ids that are not the caller's photos are skipped.
+    /// 1–500 photo (file node) ids. Adding: ids that are not the caller's
+    /// photos are skipped. Removing: the album's owner removes any photo,
+    /// someone it is shared with only their own.
     pub node_ids: Vec<Uuid>,
 }
 

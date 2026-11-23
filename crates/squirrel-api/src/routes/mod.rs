@@ -1,6 +1,7 @@
 pub mod admin;
 pub mod albums;
 pub mod auth;
+pub mod comments;
 pub mod content;
 pub mod device_auth;
 pub mod devices;
@@ -19,6 +20,7 @@ pub mod photos;
 mod preview_render;
 pub mod search;
 pub mod setup;
+pub mod shares;
 pub mod storage;
 pub mod sync;
 pub mod thumbnails;

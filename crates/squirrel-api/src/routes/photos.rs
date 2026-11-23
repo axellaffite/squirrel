@@ -6,6 +6,7 @@ use squirrel_db::albums;
 use squirrel_db::timeline::{self, Filter, month_bounds};
 use uuid::Uuid;
 
+use crate::access;
 use crate::cursor;
 use crate::error::{ApiError, ErrorBody};
 use crate::extract::Caller;
@@ -118,9 +119,21 @@ pub async fn get_photo(
     caller: Caller,
     ApiPath(id): ApiPath<Uuid>,
 ) -> Result<Json<AssetDetails>, ApiError> {
-    let record = timeline::detail(&state.pool, caller.user.id, id)
+    let found = access::file(&state, caller.user.id, id).await?;
+    let mut record = timeline::detail(&state.pool, found.node.owner_id, id)
         .await?
         .ok_or(ApiError::NotFound)?;
+    if !found.access.is_owner() {
+        // Someone else's photo: its own facts only. The owner's albums, tags,
+        // people and folders stay private.
+        record.parent_id = None;
+        return Ok(Json(AssetDetails::new(
+            &record,
+            Vec::new(),
+            Vec::new(),
+            Vec::new(),
+        )));
+    }
     let albums = albums::albums_for_node(&state.pool, caller.user.id, id)
         .await?
         .into_iter()
