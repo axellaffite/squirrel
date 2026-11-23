@@ -58,6 +58,19 @@ tasks.named("openApiGenerate") {
     }
 }
 
+// Before sharing, a server sends no `access`: everything it returns is the caller's own.
+tasks.named("openApiGenerate") {
+    val models = generatedApiDir.map { it.dir("src/commonMain/kotlin/app/squirrel/api/models") }
+    doLast {
+        val requiredAccess = "@Required val access: AccessLevel,"
+        models.get().asFile.listFiles().orEmpty().filter { it.extension == "kt" }.forEach { file ->
+            val text = file.readText()
+            val patched = text.replace(requiredAccess, "val access: AccessLevel = AccessLevel.owner,")
+            if (patched != text) file.writeText(patched)
+        }
+    }
+}
+
 // Models that carry passwords or tokens print as "<redacted>": a stray log line or crash report
 // must never contain a secret. Patched into the generated sources (no template fork needed).
 tasks.named("openApiGenerate") {
