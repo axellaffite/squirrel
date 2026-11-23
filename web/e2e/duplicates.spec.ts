@@ -1,9 +1,10 @@
 import { expect, test, type Page } from '@playwright/test';
 import { csrfToken } from './helpers/files.ts';
-import { fixture, newUser, photoId, uploadPhotos, waitForTimeline, WORKER_TIMEOUT } from './helpers/photos.ts';
+import { fixture, lightbox, newUser, photoId, tiles, uploadPhotos, waitForTimeline, WORKER_TIMEOUT } from './helpers/photos.ts';
 import { ML_TIMEOUT, requireModels, waitForMl } from './helpers/ml.ts';
 
-// One fresh user with two copies of one scene (different size and quality) and an unrelated photo.
+// One fresh user with two copies of one scene (different size and quality) and an unrelated
+// photo; a second pair arrives later for stepping between groups.
 test.describe.configure({ mode: 'serial' });
 
 let page: Page;
@@ -43,12 +44,22 @@ async function searchNames(p: Page, order: 'relevance' | 'date'): Promise<string
 	return items.map((item) => item.name).sort();
 }
 
-function mainPreview(p: Page) {
-	return p.locator('[data-shown]');
+/** The photo the standard viewer shows (its preview's alt is the file name). */
+function shownPhoto(p: Page) {
+	return lightbox(p).getByTestId('lightbox-stage').locator('img');
 }
 
-function strip(p: Page) {
-	return p.getByRole('list', { name: 'Photos in this group' });
+function panel(p: Page) {
+	return lightbox(p).getByRole('complementary', { name: 'Near-identical photos' });
+}
+
+function groupPhotos(p: Page) {
+	return panel(p).getByRole('list', { name: 'Photos in this group' }).getByRole('button');
+}
+
+async function openReview(p: Page) {
+	await p.goto('/explore/duplicates');
+	await expect(p.getByRole('heading', { level: 1, name: 'Duplicates' })).toBeVisible();
 }
 
 test('the two copies are grouped, the other photo is not', async () => {
@@ -60,32 +71,43 @@ test('the two copies are grouped, the other photo is not', async () => {
 	expect(await timelineNames(page)).toEqual(['meadow-copy.jpg', 'meadow.jpg', 'paris-2024.jpg']);
 });
 
-test('the review shows the suggested keeper first and the strip and arrows move through the group', async () => {
+test('a grid tile opens the standard viewer, whose panel lists the group and switches the photo', async () => {
 	await page.goto('/explore');
 	await page.getByRole('link', { name: 'Review' }).click();
 	await expect(page).toHaveURL(/\/explore\/duplicates$/);
-	await expect(page.getByRole('heading', { level: 1, name: 'Duplicates' })).toBeVisible();
-	// The larger copy is suggested and shown first, with its facts.
-	await expect(mainPreview(page)).toHaveAttribute('alt', 'meadow.jpg');
-	await expect(page.getByText('Suggested')).toBeVisible();
-	await expect(page.getByText('1600 × 1200')).toBeVisible();
-	await expect(strip(page).getByRole('button')).toHaveCount(2);
+	await expect(page.getByRole('radio', { name: 'To review (1)' })).toBeChecked();
+	// One tile per group: the suggested keeper (the larger copy), with the group's size.
+	await expect(tiles(page)).toHaveCount(1);
+	await expect(tiles(page).first()).toHaveAccessibleName(/one of 2 near-identical photos$/);
+	await expect(tiles(page).first()).toContainText('×2');
+	await tiles(page).first().click();
 
-	await strip(page).getByRole('button', { name: 'Show meadow-copy.jpg' }).click();
-	await expect(mainPreview(page)).toHaveAttribute('alt', 'meadow-copy.jpg');
-	await expect(page.getByText('1024 × 768')).toBeVisible();
+	await expect(lightbox(page)).toBeVisible();
+	await expect(shownPhoto(page)).toHaveAttribute('alt', 'meadow.jpg');
+	// The viewer's own tools are there (details, faces, download).
+	await expect(lightbox(page).getByRole('button', { name: /^Details of the photo/ })).toBeVisible();
+	await expect(groupPhotos(page)).toHaveCount(2);
+	await expect(panel(page).getByRole('button', { name: 'Show meadow.jpg (suggested)' })).toHaveAttribute('aria-current', 'true');
+
+	await panel(page).getByRole('button', { name: 'Show meadow-copy.jpg' }).click();
+	await expect(shownPhoto(page)).toHaveAttribute('alt', 'meadow-copy.jpg');
+	await expect(panel(page).getByRole('button', { name: 'Show meadow-copy.jpg' })).toHaveAttribute('aria-current', 'true');
 	await page.keyboard.press('ArrowUp');
-	await expect(mainPreview(page)).toHaveAttribute('alt', 'meadow.jpg');
+	await expect(shownPhoto(page)).toHaveAttribute('alt', 'meadow.jpg');
 	await page.keyboard.press('ArrowDown');
-	await expect(mainPreview(page)).toHaveAttribute('alt', 'meadow-copy.jpg');
+	await expect(shownPhoto(page)).toHaveAttribute('alt', 'meadow-copy.jpg');
+	await page.keyboard.press('Escape');
+	await expect(lightbox(page)).toHaveCount(0);
 });
 
-test('on a phone the strip sits under the main preview', async () => {
+test('on a phone the group is a strip under the photo', async () => {
 	await page.setViewportSize({ width: 390, height: 844 });
-	await page.goto('/explore/duplicates');
-	const preview = await mainPreview(page).boundingBox();
-	const row = await strip(page).boundingBox();
-	expect(preview && row && row.y > preview.y + preview.height - 1).toBe(true);
+	await openReview(page);
+	await tiles(page).first().click();
+	const stage = await lightbox(page).getByTestId('lightbox-stage').boundingBox();
+	const strip = await panel(page).boundingBox();
+	expect(stage && strip && strip.y >= stage.y + stage.height - 1).toBe(true);
+	await page.keyboard.press('Escape');
 	await page.setViewportSize({ width: 1280, height: 800 });
 });
 
@@ -101,15 +123,17 @@ test('search finds both copies before a decision', async () => {
 });
 
 test('keeping the photo shown hides the other from the timeline and search', async () => {
-	await page.goto('/explore/duplicates');
-	await strip(page).getByRole('button', { name: 'Show meadow-copy.jpg' }).click();
-	await page.getByRole('button', { name: 'Keep this' }).click();
+	await openReview(page);
+	await tiles(page).first().click();
+	await panel(page).getByRole('button', { name: 'Show meadow-copy.jpg' }).click();
+	await panel(page).getByRole('button', { name: 'Keep this' }).click();
+	// No group left: the viewer closes.
+	await expect(lightbox(page)).toHaveCount(0);
 	await expect(page.getByText('Kept meadow-copy.jpg; the other photos are hidden.')).toBeVisible();
 	await expect(page.getByText('No duplicates to review')).toBeVisible();
 	expect(await timelineNames(page)).toEqual(['meadow-copy.jpg', 'paris-2024.jpg']);
-	// The hidden copy still opens by id.
-	const hidden = await (await page.request.get(`/api/duplicates?state=resolved`)).json();
-	expect(hidden.items[0].kept_id).toBe(await photoId(page, 'meadow-copy.jpg'));
+	const resolved = await (await page.request.get('/api/duplicates?state=resolved')).json();
+	expect(resolved.items[0].kept_id).toBe(await photoId(page, 'meadow-copy.jpg'));
 	const status = await (await page.request.get('/api/media/status')).json();
 	if (status.ml.models_installed.clip && status.ml.state === 'ready') {
 		for (const order of ['relevance', 'date'] as const) {
@@ -120,16 +144,40 @@ test('keeping the photo shown hides the other from the timeline and search', asy
 	}
 });
 
-test('restoring brings the hidden copy back', async () => {
-	await page.goto('/explore/duplicates');
+test('the resolved tab shows a hidden copy again', async () => {
+	await openReview(page);
 	await page.getByRole('radio', { name: 'Resolved' }).check();
-	await strip(page).getByRole('button', { name: 'Show meadow.jpg (hidden)' }).click();
-	await expect(page.getByText('Hidden', { exact: true })).toBeVisible();
-	await page.getByRole('button', { name: 'Show again' }).click();
+	await tiles(page).first().click();
+	await panel(page).getByRole('button', { name: 'Show meadow.jpg (hidden)' }).click();
+	await expect(shownPhoto(page)).toHaveAttribute('alt', 'meadow.jpg');
+	await panel(page).getByRole('button', { name: 'Show again' }).click();
+	await expect(lightbox(page)).toHaveCount(0);
 	await expect(page.getByText('Nothing hidden')).toBeVisible();
 	expect(await timelineNames(page)).toEqual(['meadow-copy.jpg', 'meadow.jpg', 'paris-2024.jpg']);
 	// Open again: the user decides anew.
 	expect((await openGroups(page)).map((g) => g.id)).toEqual([group]);
+});
+
+test('left and right step between groups; keeping one moves on to the next group', async () => {
+	await uploadPhotos(page, fixture('pond.jpg'), fixture('pond-copy.jpg'));
+	await waitForTimeline(page, 5);
+	await expect.poll(async () => (await openGroups(page)).length, { timeout: WORKER_TIMEOUT }).toBe(2);
+	await openReview(page);
+	await expect(tiles(page)).toHaveCount(2);
+	await tiles(page).first().click();
+	const first = (await shownPhoto(page).getAttribute('alt')) ?? '';
+	const other = first.startsWith('pond') ? 'meadow.jpg' : 'pond.jpg';
+	await page.keyboard.press('ArrowRight');
+	await expect(shownPhoto(page)).toHaveAttribute('alt', other);
+	await page.keyboard.press('ArrowLeft');
+	await expect(shownPhoto(page)).toHaveAttribute('alt', first);
+	// Keep the shown photo of the first group: the viewer goes on to the other group.
+	await panel(page).getByRole('button', { name: 'Keep this' }).click();
+	await expect(shownPhoto(page)).toHaveAttribute('alt', other);
+	await expect(groupPhotos(page)).toHaveCount(2);
+	await page.keyboard.press('Escape');
+	await expect(tiles(page)).toHaveCount(1);
+	await expect(page.getByRole('radio', { name: 'To review (1)' })).toBeChecked();
 });
 
 test('another user sees none of it and cannot decide for her', async ({ browser }) => {
