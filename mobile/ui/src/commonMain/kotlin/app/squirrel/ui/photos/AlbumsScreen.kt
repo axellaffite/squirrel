@@ -70,30 +70,8 @@ fun AlbumsGrid(api: SquirrelApi, vm: AlbumsViewModel, onOpen: (AlbumDto) -> Unit
 
 @Composable
 private fun AlbumCard(api: SquirrelApi, album: AlbumDto, onClick: () -> Unit) {
-    val scheme = SquirrelTheme.scheme
-    val cover = album.cover
-    Column(
-        modifier = Modifier
-            .fillMaxWidth()
-            .cardShadow(Shapes.card)
-            .clip(Shapes.card)
-            .background(scheme.card)
-            .clickable(role = Role.Button, onClick = onClick)
-            .padding(Tokens.space2),
-        verticalArrangement = Arrangement.spacedBy(Tokens.space1),
-    ) {
-        Thumbnail(
-            url = cover?.takeIf { it.thumbnail.state == ThumbnailStatus.ready }?.let { api.thumbnailUrl(it.id, it.thumbnail.version) },
-            blurhash = cover?.blurhash,
-            contentDescription = null,
-            modifier = Modifier.fillMaxWidth().aspectRatio(Tokens.albumRatio).clip(Shapes.tile),
-        )
-        BasicText(album.name, style = SquirrelTheme.type.label, maxLines = 1, overflow = TextOverflow.Ellipsis)
-        BasicText(
-            "${formatCount(album.itemCount)} ${if (album.itemCount == 1L) "photo" else "photos"}",
-            style = SquirrelTheme.type.caption.tabular(),
-        )
-    }
+    val count = "${formatCount(album.itemCount)} ${if (album.itemCount == 1L) "photo" else "photos"}"
+    CoverCard(api, album.cover, album.name, count, onClick = onClick)
 }
 
 /** One album's photos in justified rows. */

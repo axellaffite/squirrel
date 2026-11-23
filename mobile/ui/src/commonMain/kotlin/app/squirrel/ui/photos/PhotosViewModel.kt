@@ -8,6 +8,7 @@ import app.squirrel.shared.api.SquirrelApi
 import app.squirrel.shared.api.bodyOrThrow
 import app.squirrel.ui.ResumeThrottle
 import app.squirrel.ui.attempt
+import app.squirrel.ui.explore.PhotoFilter
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
@@ -27,7 +28,10 @@ class PhotosViewModel(
     private val api: SquirrelApi,
     private val pageSize: Int = 120,
     private val throttle: ResumeThrottle = ResumeThrottle(),
+    /** Only these photos (Explore's people, places, tags, cameras); empty: the whole timeline. */
+    filter: PhotoFilter = PhotoFilter(),
 ) : ViewModel() {
+    private val filter = filter.normalized()
     private val _state = MutableStateFlow(PhotosState())
     val state: StateFlow<PhotosState> = _state.asStateFlow()
 
@@ -43,7 +47,7 @@ class PhotosViewModel(
         _state.update { it.copy(loadingMonths = true, error = null) }
         viewModelScope.launch {
             try {
-                val result = attempt { api.photos.photoMonths().bodyOrThrow() }
+                val result = attempt { months().bodyOrThrow() }
                 _state.update { state ->
                     if (result == null) state.copy(error = UNREACHABLE)
                     else state.copy(months = result.map { MonthPage(it.month, it.count) })
@@ -52,6 +56,14 @@ class PhotosViewModel(
                 _state.update { it.copy(loadingMonths = false) }
             }
         }
+    }
+
+    private suspend fun months() = with(filter) {
+        api.photos.photoMonths(person, tag, country, region, city, cameraMake, cameraModel, kind)
+    }
+
+    private suspend fun page(month: String, cursor: String?) = with(filter) {
+        api.photos.listPhotos(month, cursor, pageSize, person, tag, country, region, city, cameraMake, cameraModel, kind)
     }
 
     /** The month scrolled into view: its next page, unless loading, complete or failed. */
@@ -75,7 +87,7 @@ class PhotosViewModel(
         viewModelScope.launch {
             var result: TimelinePage? = null
             try {
-                result = attempt { api.photos.listPhotos(month = month, cursor = cursor, limit = pageSize).bodyOrThrow() }
+                result = attempt { page(month, cursor).bodyOrThrow() }
             } finally {
                 settle(month, epoch, result)
             }
@@ -164,11 +176,11 @@ class PhotosViewModel(
 
     /** The new months, with first pages for the changed ones that were showing photos; null: failed. */
     private suspend fun reloaded(): List<MonthPage>? {
-        val months = attempt { api.photos.photoMonths().bodyOrThrow() } ?: return null
+        val months = attempt { months().bodyOrThrow() } ?: return null
         val before = _state.value.months.associateBy { it.month }
         val stale = months.filter { m -> before[m.month]?.let { it.started && it.count != m.count } == true }
         val firsts = coroutineScope {
-            stale.map { m -> async { m.month to attempt { api.photos.listPhotos(month = m.month, cursor = null, limit = pageSize).bodyOrThrow() } } }.awaitAll()
+            stale.map { m -> async { m.month to attempt { page(m.month, null).bodyOrThrow() } } }.awaitAll()
         }.toMap()
         if (firsts.values.any { it == null }) return null
         return months.map { m -> fresh(m, firsts[m.month]) }

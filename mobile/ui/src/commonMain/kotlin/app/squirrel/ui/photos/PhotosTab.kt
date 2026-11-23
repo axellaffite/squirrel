@@ -16,7 +16,14 @@ import app.squirrel.theme.SquirrelIcon
 import app.squirrel.theme.Tokens
 import app.squirrel.theme.components.IconButton
 import app.squirrel.theme.components.SegmentedControl
+import app.squirrel.shared.api.SquirrelApi
 import app.squirrel.ui.AppGraph
+import app.squirrel.ui.explore.ExploreOverview
+import app.squirrel.ui.explore.ExploreSection
+import app.squirrel.ui.explore.ExploreSectionPage
+import app.squirrel.ui.explore.ExploreViewModel
+import app.squirrel.ui.explore.OpenFilter
+import app.squirrel.ui.explore.PhotoFilter
 import app.squirrel.ui.search.SearchKind
 import app.squirrel.ui.search.SearchScreen
 import app.squirrel.ui.shell.Navigator
@@ -29,11 +36,13 @@ sealed interface PhotosRoute {
     data object Home : PhotosRoute
     data class Album(val id: String, val name: String) : PhotosRoute
     data object Search : PhotosRoute
+    data class Section(val section: ExploreSection) : PhotosRoute
+    data class Filtered(val filter: PhotoFilter, val title: String) : PhotosRoute
 }
 
-private val MODES = listOf("Timeline", "Albums")
+private val MODES = listOf("Timeline", "Albums", "Explore")
 
-/** Photos: "Timeline | Albums", an album's page, search, and the viewer over them. */
+/** Photos: "Timeline | Albums | Explore", albums, Explore's pages, search, and the viewer. */
 @Composable
 fun PhotosTab(graph: AppGraph) {
     val api = graph.api ?: return
@@ -43,8 +52,21 @@ fun PhotosTab(graph: AppGraph) {
         PhotosRoute.Home -> PhotosHome(graph, nav)
         is PhotosRoute.Album -> AlbumPage(graph, route.id, route.name, rootLabel = "Albums", onBack = { nav.pop() })
         PhotosRoute.Search -> SearchScreen(graph, SearchKind.Photos, onBack = { nav.pop() })
+        is PhotosRoute.Section -> ExploreSectionPage(api, explore(api), route.section, onBack = { nav.pop() }, onOpen = filtered(nav))
+        is PhotosRoute.Filtered -> FilteredTimeline(
+            graph,
+            route.filter,
+            route.title,
+            onChange = { next -> if (next.isEmpty) nav.pop() else nav.replace(route.copy(filter = next)) },
+            onBack = { nav.pop() },
+        )
     }
 }
+
+@Composable
+private fun explore(api: SquirrelApi) = viewModel(key = "explore") { ExploreViewModel(api) }
+
+private fun filtered(nav: Navigator<PhotosRoute>): OpenFilter = { filter, title -> nav.push(PhotosRoute.Filtered(filter, title)) }
 
 @Composable
 private fun PhotosHome(graph: AppGraph, nav: Navigator<PhotosRoute>) {
@@ -58,7 +80,8 @@ private fun PhotosHome(graph: AppGraph, nav: Navigator<PhotosRoute>) {
         SegmentedControl(MODES, mode, onSelect = { mode = it })
         when (mode) {
             0 -> TimelineList(api, viewModel(key = "timeline") { PhotosViewModel(api) }, TileActions.open { viewing = it.id })
-            else -> AlbumsGrid(api, viewModel(key = "albums") { AlbumsViewModel(api) }) { nav.push(PhotosRoute.Album(it.id, it.name)) }
+            1 -> AlbumsGrid(api, viewModel(key = "albums") { AlbumsViewModel(api) }) { nav.push(PhotosRoute.Album(it.id, it.name)) }
+            else -> ExploreOverview(api, explore(api), onSeeAll = { nav.push(PhotosRoute.Section(it)) }, onOpen = filtered(nav))
         }
     }
     viewing?.let { id ->
