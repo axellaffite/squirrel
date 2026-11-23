@@ -11,9 +11,11 @@
 		selecting: boolean;
 		onOpen: (asset: AssetSummary) => void;
 		onToggle: (asset: AssetSummary, range: boolean) => void;
+		/** A tile's count badge and its spoken form (see `PhotoTile`). */
+		badge?: (asset: AssetSummary) => { text: string; label: string } | null;
 	}
 
-	let { blocks, selected, selecting, onOpen, onToggle }: Props = $props();
+	let { blocks, selected, selecting, onOpen, onToggle, badge }: Props = $props();
 </script>
 
 {#each blocks as block (block.key)}
@@ -22,8 +24,11 @@
 	{:else}
 		<div class="row" style:transform="translateY({block.top}px)" style:height="{block.height}px">
 			{#each block.items as cell (cell.item.asset.id)}
+				{@const tag = badge?.(cell.item.asset) ?? null}
 				<PhotoTile
 					asset={cell.item.asset}
+					badge={tag?.text}
+					badgeLabel={tag?.label}
 					left={cell.left}
 					width={cell.width}
 					height={block.height}

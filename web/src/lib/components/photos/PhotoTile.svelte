@@ -21,9 +21,14 @@
 		selecting: boolean;
 		onOpen: (asset: AssetSummary) => void;
 		onToggle: (asset: AssetSummary, range: boolean) => void;
+		/** A short count shown on the tile, e.g. "×3" (it stands for that many photos). */
+		badge?: string | null;
+		/** Spoken after the tile's name, e.g. "one of 3 near-identical photos". */
+		badgeLabel?: string | null;
 	}
 
-	let { asset, left, width, height, selected, selecting, onOpen, onToggle }: Props = $props();
+	let { asset, left, width, height, selected, selecting, onOpen, onToggle, badge = null, badgeLabel = null }: Props =
+		$props();
 
 	/** The thumbnail version whose image failed to load; a new version gets a new chance. */
 	let brokenVersion: number | null = $state(null);
@@ -43,7 +48,7 @@
 	const label = $derived(
 		selecting
 			? `Select ${asset.name}`
-			: `Open photo taken ${when}${thumbState === 'pending' ? ', preview being prepared' : ''}`
+			: `Open photo taken ${when}${thumbState === 'pending' ? ', preview being prepared' : ''}${badgeLabel ? `, ${badgeLabel}` : ''}`
 	);
 
 	// The average colour shows at once; the blurred image is decoded when the browser is idle.
@@ -147,6 +152,7 @@
 		/>
 	{/if}
 	<span class="check" aria-hidden="true">{#if selected}<Icon name="check" />{/if}</span>
+	{#if badge}<span class="badge" aria-hidden="true">{badge}</span>{/if}
 </button>
 
 <style>
@@ -201,6 +207,20 @@
 		transition:
 			opacity var(--dur-fast) var(--ease),
 			background-color var(--dur-fast) var(--ease);
+	}
+
+	.badge {
+		position: absolute;
+		right: var(--space-2);
+		bottom: var(--space-2);
+		padding: 0 var(--space-2);
+		border-radius: var(--radius-full);
+		background: var(--rail);
+		color: var(--rail-ink);
+		font-size: var(--text-xs);
+		line-height: var(--text-xs-lh);
+		font-weight: var(--weight-label);
+		font-variant-numeric: tabular-nums;
 	}
 
 	.check :global(.icon) {

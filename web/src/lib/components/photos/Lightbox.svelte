@@ -5,7 +5,7 @@
 	import { photoFaces, type Face } from '#lib/explore/api.ts';
 	import { personLabel } from '#lib/explore/faces.ts';
 	import { assignFace } from '#lib/explore/people.ts';
-	import { onMount } from 'svelte';
+	import { onMount, type Snippet } from 'svelte';
 	import LightboxPhoto from '#lib/components/photos/LightboxPhoto.svelte';
 	import PhotoInfo from '#lib/components/photos/PhotoInfo.svelte';
 	import StageButton from '#lib/components/photos/StageButton.svelte';
@@ -29,9 +29,22 @@
 		onDelete: (asset: AssetSummary) => Promise<string | null>;
 		/** Offers "Add to album" when given. */
 		onAddToAlbum?: (asset: AssetSummary) => void;
+		/**
+		 * The entry of `items` the arrows step from, when the photo shown is not one of them
+		 * (a page whose items stand for groups of photos). Defaults to `asset.id`.
+		 */
+		current?: string;
+		/**
+		 * An extra panel next to the photo (below it on phones), e.g. the other photos of a
+		 * group. Its accessible name is `panelLabel`.
+		 */
+		panel?: Snippet;
+		panelLabel?: string;
+		/** ↑/↓ (-1/+1) while the lightbox has the keyboard; only used with a panel. */
+		onStep?: (delta: number) => void;
 	}
 
-	let { asset, items, onNavigate, onClose, onDelete, onAddToAlbum }: Props = $props();
+	let { asset, items, onNavigate, onClose, onDelete, onAddToAlbum, current, panel, panelLabel, onStep }: Props = $props();
 
 	let dialog: HTMLDialogElement | undefined = $state();
 	let infoOpen = $state(false);
@@ -78,7 +91,7 @@
 	let swipe: { x: number; y: number } | null = null;
 	const track = latestOnly();
 
-	const index = $derived(items.findIndex((item) => item.id === asset.id));
+	const index = $derived(items.findIndex((item) => item.id === (current ?? asset.id)));
 	const previous = $derived(index > 0 ? items[index - 1] : null);
 	const next = $derived(index >= 0 && index < items.length - 1 ? items[index + 1] : null);
 	const when = $derived(tileDateTime(asset.taken_at));
@@ -118,6 +131,7 @@
 		if ((owner && owner !== dialog) || target?.closest?.('input, textarea, select')) return;
 		if (event.key === 'ArrowLeft') go(previous);
 		else if (event.key === 'ArrowRight') go(next);
+		else if (onStep && (event.key === 'ArrowUp' || event.key === 'ArrowDown')) onStep(event.key === 'ArrowUp' ? -1 : 1);
 		else return;
 		event.preventDefault();
 	}
@@ -142,7 +156,7 @@
 
 <svelte:window onkeydown={keydown} />
 
-<dialog bind:this={dialog} class="lightbox" class:with-info={infoOpen} aria-label={`Photo taken ${when}`} onclose={onClose}>
+<dialog bind:this={dialog} class="lightbox" class:with-info={infoOpen} class:with-panel={!!panel} aria-label={`Photo taken ${when}`} onclose={onClose}>
 	<div class="stage" data-testid="lightbox-stage" onpointerdown={pointerdown} onpointerup={pointerup} role="presentation">
 		<LightboxPhoto {asset}>
 			{#snippet overlay()}
@@ -197,6 +211,9 @@
 			onclick={() => go(next)}
 		/>
 	</div>
+	{#if panel}
+		<aside class="panel" aria-label={panelLabel}>{@render panel()}</aside>
+	{/if}
 	{#if infoOpen}
 		<aside class="sheet" id="photo-info" aria-label="Photo details">
 			<PhotoInfo {asset} {details} error={detailsError} />
@@ -280,6 +297,26 @@
 		grid-template-rows: minmax(0, 1fr) minmax(0, 1fr);
 	}
 
+	/* Phones: the panel is a strip under the photo. */
+	.with-panel {
+		grid-template-rows: minmax(0, 1fr) auto;
+	}
+
+	.with-panel.with-info {
+		grid-template-rows: minmax(0, 1fr) auto minmax(0, 1fr);
+	}
+
+	.panel {
+		min-width: 0;
+		min-height: 0;
+		overflow: auto;
+		padding: var(--space-3) var(--space-4) calc(var(--space-3) + env(safe-area-inset-bottom));
+		background: var(--card);
+		box-shadow: var(--shadow-pop);
+		color: var(--ink);
+		overscroll-behavior: contain;
+	}
+
 	.stage {
 		position: relative;
 		display: grid;
@@ -351,11 +388,29 @@
 			margin: var(--space-3);
 			border-radius: var(--radius-panel);
 		}
+
+		/* The panel is a column on the right of the photo (then the details, when open). */
+		.with-panel {
+			grid-template-rows: minmax(0, 1fr);
+			grid-template-columns: minmax(0, 1fr) var(--info-w);
+		}
+
+		.with-panel.with-info {
+			grid-template-rows: minmax(0, 1fr);
+			grid-template-columns: minmax(0, 1fr) var(--info-w) var(--info-w);
+		}
+
+		.panel {
+			margin: var(--space-3);
+			padding: var(--space-4);
+			border-radius: var(--radius-panel);
+		}
 	}
 
 	@media (forced-colors: active) {
 		.lightbox,
-		.sheet {
+		.sheet,
+		.panel {
 			border: 1px solid CanvasText;
 		}
 	}
