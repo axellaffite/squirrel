@@ -34,6 +34,9 @@ import app.squirrel.theme.SquirrelIcon
 import app.squirrel.theme.SquirrelTheme
 import app.squirrel.theme.Tokens
 
+/** Lines a multi-line field shows before it grows. */
+private const val MULTILINE_MIN = 3
+
 /**
  * MASTER.md "Text field": a pill on `--card` with a 1 px `--edge`; invalid shows a `--danger`
  * edge plus an icon and the [error] message (never colour alone).
@@ -51,6 +54,11 @@ fun TextField(
     keyboardActions: KeyboardActions = KeyboardActions.Default,
     /** What the field holds, for password managers and the system's credential autofill. */
     autofill: ContentType? = null,
+    /** Several lines (a comment): the web's TextArea, a `--radius-card` box instead of a pill. */
+    multiline: Boolean = false,
+    /** Hides the label above the field (still read by assistive tech). */
+    hideLabel: Boolean = false,
+    placeholder: String? = null,
 ) {
     val scheme = SquirrelTheme.scheme
     val type = SquirrelTheme.type
@@ -58,12 +66,14 @@ fun TextField(
     val focused by interaction.collectIsFocusedAsState()
     val edge = if (error != null) scheme.danger else scheme.edge
     Column(modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(Tokens.space1)) {
-        BasicText(label, style = type.fieldLabel, modifier = Modifier.padding(start = Tokens.space2))
+        if (!hideLabel) BasicText(label, style = type.fieldLabel, modifier = Modifier.padding(start = Tokens.space2))
+        val shape = if (multiline) Shapes.card else Shapes.pill
         BasicTextField(
             value = value,
             onValueChange = onValueChange,
             enabled = enabled,
-            singleLine = true,
+            singleLine = !multiline,
+            minLines = if (multiline) MULTILINE_MIN else 1,
             textStyle = type.body,
             cursorBrush = SolidColor(scheme.accent),
             visualTransformation = if (password) PasswordVisualTransformation() else VisualTransformation.None,
@@ -82,12 +92,15 @@ fun TextField(
                     modifier = Modifier
                         .fillMaxWidth()
                         .heightIn(min = MinTouchTarget)
-                        .focusRing(focused, Shapes.pill, scheme.accent)
-                        .background(scheme.card, Shapes.pill)
-                        .border(1.dp, edge, Shapes.pill)
+                        .focusRing(focused, shape, scheme.accent)
+                        .background(scheme.card, shape)
+                        .border(1.dp, edge, shape)
                         .padding(horizontal = Tokens.space4, vertical = Tokens.space2),
                     contentAlignment = Alignment.CenterStart,
-                ) { inner() }
+                ) {
+                    if (placeholder != null && value.isEmpty()) BasicText(placeholder, style = type.body.copy(color = scheme.inkMuted))
+                    inner()
+                }
             },
         )
         if (error != null) {

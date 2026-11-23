@@ -13,16 +13,14 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.text.BasicText
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.semantics
-import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import app.squirrel.api.models.AssetSummary
 import app.squirrel.shared.api.SquirrelApi
 import app.squirrel.theme.SquirrelIcon
 import app.squirrel.theme.SquirrelTheme
@@ -43,7 +41,7 @@ val RailClearance = Tokens.railBarH + Tokens.frame * 2
 
 /** The timeline: month headings, justified rows, placeholder rows until each month loads. */
 @Composable
-fun TimelineList(api: SquirrelApi, vm: PhotosViewModel, onOpen: (AssetSummary) -> Unit) {
+fun TimelineList(api: SquirrelApi, vm: PhotosViewModel, actions: TileActions) {
     val state by vm.state.collectAsStateWithLifecycle()
     OnForeground(vm::resumed)
     when {
@@ -59,11 +57,11 @@ fun TimelineList(api: SquirrelApi, vm: PhotosViewModel, onOpen: (AssetSummary) -
             return
         }
     }
-    PullToRefresh(state.refreshing, vm::refresh) { TimelineBlocks(api, vm, state, onOpen) }
+    PullToRefresh(state.refreshing, vm::refresh) { TimelineBlocks(api, vm, state, actions) }
 }
 
 @Composable
-private fun TimelineBlocks(api: SquirrelApi, vm: PhotosViewModel, state: PhotosState, onOpen: (AssetSummary) -> Unit) {
+private fun TimelineBlocks(api: SquirrelApi, vm: PhotosViewModel, state: PhotosState, actions: TileActions) {
     BoxWithConstraints(Modifier.fillMaxSize()) {
         val width = maxWidth.value.toInt()
         val layout = remember { TimelineLayout() }
@@ -88,7 +86,7 @@ private fun TimelineBlocks(api: SquirrelApi, vm: PhotosViewModel, state: PhotosS
                                 .semantics { heading() },
                         )
                     }
-                    is TimelineBlock.Row -> PhotoRow(api, block.height, block.tiles, onOpen)
+                    is TimelineBlock.Row -> PhotoRow(api, block.height, block.tiles, actions)
                     is TimelineBlock.Placeholder -> {
                         LaunchedEffect(block.month) { vm.ensure(block.month) }
                         PlaceholderRow(block.height)
