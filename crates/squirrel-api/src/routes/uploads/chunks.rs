@@ -92,6 +92,7 @@ async fn open_session(
     if !session.is_open() {
         return Err(DbError::UploadBusy.into());
     }
+    super::ensure_still_writable(state, &session).await?;
     Ok(session)
 }
 

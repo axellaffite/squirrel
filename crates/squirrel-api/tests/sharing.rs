@@ -4,7 +4,7 @@ mod common;
 
 use axum::http::StatusCode;
 use axum_test::{TestResponse, TestServer};
-use common::files::{code, root_id, start_upload, upload, user_id};
+use common::files::{code, complete, put_chunk, root_id, start_upload, upload, user_id};
 use common::photos::photo;
 use common::{CSRF, Instance, account, csrf, two_users};
 use serde_json::{Value, json};
@@ -500,4 +500,96 @@ async fn everyone_who_sees_something_discusses_it(pool: PgPool) {
         .await
         .json();
     assert_eq!(thread["items"].as_array().unwrap().len(), 1);
+}
+
+#[sqlx::test(migrator = "squirrel_db::MIGRATOR")]
+async fn a_revoked_writer_cannot_finish_an_upload(pool: PgPool) {
+    let instance = Instance::new(pool);
+    let ((alice, alice_me), (bob, bob_me)) = two_users(&instance).await;
+    let files = root_id(&instance, &alice_me, "Files").await;
+    let trip = folder(&alice, &alice_me, files, "Trip").await;
+    let shared = share(
+        &alice,
+        &alice_me,
+        json!({ "node_id": trip }),
+        "bob",
+        "write",
+    )
+    .await;
+
+    let started = start_upload(&bob, &bob_me, trip, "late.txt", b"late bytes").await;
+    started.assert_status(StatusCode::CREATED);
+    let upload_id = started.json::<Value>()["upload_id"]
+        .as_str()
+        .unwrap()
+        .to_owned();
+    let share_id = shared["id"].as_str().unwrap();
+    delete(&alice, &alice_me, &format!("/api/shares/{share_id}"))
+        .await
+        .assert_status(StatusCode::NO_CONTENT);
+
+    put_chunk(&bob, &bob_me, &upload_id, 0, b"late bytes")
+        .await
+        .assert_status(StatusCode::NOT_FOUND);
+    complete(&bob, &bob_me, &upload_id)
+        .await
+        .assert_status(StatusCode::NOT_FOUND);
+    let listing: Value = alice
+        .get(&format!("/api/nodes?parent_id={trip}"))
+        .await
+        .json();
+    assert!(names(&listing).is_empty());
+}
+
+#[sqlx::test(migrator = "squirrel_db::MIGRATOR")]
+async fn the_owners_folders_stay_private_and_shares_stay_apart(pool: PgPool) {
+    let instance = Instance::new(pool.clone());
+    let ((alice, alice_me), (bob, bob_me)) = two_users(&instance).await;
+    let files = root_id(&instance, &alice_me, "Files").await;
+    let one = folder(&alice, &alice_me, files, "One").await;
+    let two = folder(&alice, &alice_me, files, "Two").await;
+    share(&alice, &alice_me, json!({ "node_id": one }), "bob", "write").await;
+    share(&alice, &alice_me, json!({ "node_id": two }), "bob", "write").await;
+    let inside = folder(&bob, &bob_me, one, "Inside").await;
+
+    // The shared folder's parent (Alice's "Files") is not revealed.
+    let details: Value = bob.get(&format!("/api/nodes/{one}")).await.json();
+    assert_eq!(details["node"]["parent_id"], Value::Null);
+    let shared: Value = bob.get("/api/shared-with-me").await.json();
+    assert!(
+        shared
+            .as_array()
+            .unwrap()
+            .iter()
+            .all(|item| item["node"]["parent_id"].is_null())
+    );
+    let details: Value = bob.get(&format!("/api/nodes/{inside}")).await.json();
+    assert_eq!(details["node"]["parent_id"], one.to_string());
+
+    // Moving between two shares is refused.
+    patch(
+        &bob,
+        &bob_me,
+        &format!("/api/nodes/{inside}"),
+        json!({ "parent_id": two }),
+    )
+    .await
+    .assert_status(StatusCode::NOT_FOUND);
+
+    // A shared photo says what the viewer may do with it.
+    let photos = root_id(&instance, &alice_me, "Photos").await;
+    let pic = photo(
+        &pool,
+        &alice_me,
+        photos,
+        "p.jpg",
+        datetime!(2024-07-01 10:00),
+    )
+    .await;
+    share(&alice, &alice_me, json!({ "node_id": pic }), "bob", "read").await;
+    let seen: Value = bob.get(&format!("/api/photos/{pic}")).await.json();
+    assert_eq!(seen["access"], "read");
+    assert_eq!(seen["parent_id"], Value::Null);
+    let own: Value = alice.get(&format!("/api/photos/{pic}")).await.json();
+    assert_eq!(own["access"], "owner");
 }

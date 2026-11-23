@@ -18,7 +18,7 @@ use crate::extract::CurrentUser;
 use crate::files_dto::NodeDto;
 use crate::input::{ApiJson, ApiPath, ApiQuery};
 use crate::routes::albums::{Viewpoint, dtos};
-use crate::sharing_dto::{CreateShareRequest, PersonDto, ShareDto, SharedItemDto, SubjectRef};
+use crate::sharing_dto::{CreateShareRequest, MemberDto, ShareDto, SharedItemDto, SubjectRef};
 use crate::state::AppState;
 
 /// The subject's owner and the caller's access to it (`not_found` without any).
@@ -152,8 +152,8 @@ pub async fn shared_with_me(
     Ok(Json(items))
 }
 
-fn owner_of(share: &ShareRecord) -> PersonDto {
-    PersonDto {
+fn owner_of(share: &ShareRecord) -> MemberDto {
+    MemberDto {
         username: share.person_username.clone(),
         display_name: share.person_display_name.clone(),
     }
@@ -172,7 +172,14 @@ async fn node_dtos(
     let thumbnails = media::thumbnails_for(&state.pool, &hashes).await?;
     Ok(records
         .iter()
-        .map(|node| (node.id, NodeDto::with_thumbnails(node, &thumbnails)))
+        .map(|node| {
+            // The owner's folder holding a shared item stays private.
+            let dto = NodeDto {
+                parent_id: None,
+                ..NodeDto::with_thumbnails(node, &thumbnails)
+            };
+            (node.id, dto)
+        })
         .collect())
 }
 

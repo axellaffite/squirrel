@@ -127,12 +127,8 @@ pub async fn get_photo(
         // Someone else's photo: its own facts only. The owner's albums, tags,
         // people and folders stay private.
         record.parent_id = None;
-        return Ok(Json(AssetDetails::new(
-            &record,
-            Vec::new(),
-            Vec::new(),
-            Vec::new(),
-        )));
+        let details = AssetDetails::new(&record, Vec::new(), Vec::new(), Vec::new());
+        return Ok(Json(details.seen_with(found.access.into())));
     }
     let albums = albums::albums_for_node(&state.pool, caller.user.id, id)
         .await?

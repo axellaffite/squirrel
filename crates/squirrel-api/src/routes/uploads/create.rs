@@ -123,6 +123,7 @@ pub async fn link_existing(
     input: &UploadInput,
 ) -> Result<Option<NodeRecord>, ApiError> {
     let owner_id = target.owner_id;
+    let own_asset = super::own_device_asset(owner_id, target.uploader, input.device_asset());
     let mut tx = state.pool.begin().await.map_err(DbError::from)?;
     let quota_bytes = quota::lock_owner(&mut tx, owner_id).await?;
     let Some(blob) = blobs::find_owned(&mut tx, target.uploader, &input.hash).await? else {
@@ -145,7 +146,7 @@ pub async fn link_existing(
     )
     .await?
     {
-        record_device_asset(&mut tx, input.device_asset(), &node).await?;
+        record_device_asset(&mut tx, own_asset, &node).await?;
         tx.commit().await.map_err(DbError::from)?;
         tracing::info!(user_id = %owner_id, node_id = %node.id, "upload already present");
         return Ok(Some(node));
@@ -165,7 +166,7 @@ pub async fn link_existing(
         },
     )
     .await?;
-    record_device_asset(&mut tx, input.device_asset(), &node).await?;
+    record_device_asset(&mut tx, own_asset, &node).await?;
     super::enqueue_media(&mut tx, &node).await?;
     tx.commit().await.map_err(DbError::from)?;
     tracing::info!(user_id = %owner_id, node_id = %node.id, "upload deduplicated");

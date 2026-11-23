@@ -5144,7 +5144,7 @@
                 "type": "null"
               },
               {
-                "$ref": "#/components/schemas/PersonDto",
+                "$ref": "#/components/schemas/MemberDto",
                 "description": "Who shared it with the caller; `null` for the caller's own album."
               }
             ]
@@ -5196,9 +5196,14 @@
           "size",
           "albums",
           "tags",
-          "people"
+          "people",
+          "access"
         ],
         "properties": {
+          "access": {
+            "$ref": "#/components/schemas/AccessLevel",
+            "description": "What the caller may do with it: `read` or `write` for someone else's\nphoto reached through a share or an album (albums, tags, people and\n`parent_id` are then empty)."
+          },
           "albums": {
             "type": "array",
             "items": {
@@ -5456,7 +5461,7 @@
                 "type": "null"
               },
               {
-                "$ref": "#/components/schemas/PersonDto",
+                "$ref": "#/components/schemas/MemberDto",
                 "description": "`null` once the author's account was deleted."
               }
             ]
@@ -6500,6 +6505,22 @@
           }
         }
       },
+      "MemberDto": {
+        "type": "object",
+        "description": "Another account, as shown next to a share or a comment.",
+        "required": [
+          "username",
+          "display_name"
+        ],
+        "properties": {
+          "display_name": {
+            "type": "string"
+          },
+          "username": {
+            "type": "string"
+          }
+        }
+      },
       "MergePeopleRequest": {
         "type": "object",
         "required": [
@@ -6656,7 +6677,7 @@
                 "type": "null"
               },
               {
-                "$ref": "#/components/schemas/PersonDto",
+                "$ref": "#/components/schemas/MemberDto",
                 "description": "Who shared it with the caller; `null` for the caller's own node."
               }
             ]
@@ -6777,17 +6798,42 @@
       },
       "PersonDto": {
         "type": "object",
-        "description": "Another account, as shown next to a share or a comment.",
+        "description": "A group of the caller's faces, named or not.",
         "required": [
-          "username",
-          "display_name"
+          "id",
+          "hidden",
+          "face_count"
         ],
         "properties": {
-          "display_name": {
-            "type": "string"
+          "cover": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/FaceCrop",
+                "description": "The face to show for this person: the one chosen with `cover_face_id`,\nelse the best-scoring face on a photo with a ready thumbnail. `null`\nfor a person without a face on a live photo."
+              }
+            ]
           },
-          "username": {
-            "type": "string"
+          "face_count": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Faces on photos outside the trash."
+          },
+          "hidden": {
+            "type": "boolean",
+            "description": "Left out of lists unless asked for; still clustered."
+          },
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "name": {
+            "type": [
+              "string",
+              "null"
+            ]
           }
         }
       },
@@ -7056,7 +7102,7 @@
             "$ref": "#/components/schemas/SharePermission"
           },
           "person": {
-            "$ref": "#/components/schemas/PersonDto",
+            "$ref": "#/components/schemas/MemberDto",
             "description": "The person it is shared with."
           }
         }
@@ -7101,7 +7147,7 @@
             ]
           },
           "owner": {
-            "$ref": "#/components/schemas/PersonDto",
+            "$ref": "#/components/schemas/MemberDto",
             "description": "Who shared it."
           },
           "permission": {

@@ -25,7 +25,7 @@ use crate::extract::Caller;
 use crate::input::{ApiJson, ApiPath, ApiQuery};
 use crate::photos_dto::{AssetSummary, TimelinePage};
 use crate::routes::photos::{photo_page_size, timeline_page};
-use crate::sharing_dto::PersonDto;
+use crate::sharing_dto::MemberDto;
 use crate::state::AppState;
 
 fn check_count(node_ids: &[Uuid], min: usize) -> Result<(), ApiError> {
@@ -40,7 +40,7 @@ fn check_count(node_ids: &[Uuid], min: usize) -> Result<(), ApiError> {
 /// How the caller sees an album: their access and, for a shared one, its owner.
 pub(crate) struct Viewpoint {
     pub access: Access,
-    pub shared_by: Option<PersonDto>,
+    pub shared_by: Option<MemberDto>,
 }
 
 impl Viewpoint {
@@ -87,7 +87,7 @@ async fn album(state: &AppState, user: Uuid, id: Uuid) -> Result<AlbumDto, ApiEr
         users::find_by_id(&state.pool, found.owner_id)
             .await?
             .as_ref()
-            .map(PersonDto::from)
+            .map(MemberDto::from)
     };
     let viewpoint = Viewpoint {
         access: found.access,
