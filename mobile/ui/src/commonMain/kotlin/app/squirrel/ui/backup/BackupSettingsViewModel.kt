@@ -10,8 +10,11 @@ import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.IO
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -42,6 +45,11 @@ class BackupSettingsViewModel(
 ) : ViewModel() {
     private val _state = MutableStateFlow(BackupSettingsState(deviceName = deviceName, savedName = deviceName))
     val state: StateFlow<BackupSettingsState> = _state.asStateFlow()
+
+    /** What an agent reads (LS-DO); started on first read, as [BackupViewModel.view]. */
+    internal val view: StateFlow<BackupSettingsView> by lazy {
+        state.map(::settingsView).stateIn(viewModelScope, SharingStarted.Eagerly, settingsView(state.value))
+    }
 
     init {
         viewModelScope.launch {
