@@ -4,6 +4,7 @@ import app.squirrel.lsdo.LsDo
 import app.squirrel.lsdo.runtime.LSDO_PORT
 import app.squirrel.lsdo.runtime.LsDoRegistry
 import app.squirrel.lsdo.runtime.startLsDoServer
+import app.squirrel.ui.LsDoScreens
 import kotlinx.coroutines.Dispatchers
 import platform.Foundation.NSLog
 
@@ -12,7 +13,7 @@ import platform.Foundation.NSLog
  * the device's loopback. The simulator shares the Mac's: `LSDO_URL=http://127.0.0.1:8765 scripts/lsdo ls`.
  */
 internal fun startLsDo() {
-    val registry = LsDoRegistry(context = Dispatchers.Main.immediate, capture = UiKitCapture::capture)
+    val registry = LsDoRegistry(context = Dispatchers.Main.immediate, capture = UiKitCapture::capture, catalog = LsDoScreens)
     LsDo.install(registry)
     runCatching { startLsDoServer(registry) }
         .onSuccess { NSLog("LS-DO listening on 127.0.0.1:$LSDO_PORT") }

@@ -11,34 +11,34 @@ sealed interface FilesIntent {
     @Serializable @SerialName("enter") @Doc("Open a folder by id; no id: where this browser started")
     data class Enter(val id: String? = null) : FilesIntent
 
-    @Serializable @SerialName("up") @Doc("One folder up")
+    @Serializable @SerialName("up") @Doc("One folder up. Not at the top")
     data object Up : FilesIntent
 
-    @Serializable @SerialName("top") @Doc("Back to where this browser starts: the top level of Files (in Shared: the shared folder)")
+    @Serializable @SerialName("top") @Doc("Back to where this browser starts: the top level of Files (in Shared: the shared folder). Not at the top")
     data object Top : FilesIntent
 
-    @Serializable @SerialName("more") @Doc("Load the next page of rows")
+    @Serializable @SerialName("more") @Doc("Load the next page of rows, when the folder has more (nextCursor set)")
     data object More : FilesIntent
 
     @Serializable @SerialName("refresh") @Doc("Reload the folder from its first page")
     data object Refresh : FilesIntent
 
-    @Serializable @SerialName("retry") @Doc("Try the failed load again")
+    @Serializable @SerialName("retry") @Doc("Try the failed load again, after an error")
     data object Retry : FilesIntent
 
-    @Serializable @SerialName("open") @Doc("Open a row: a folder is entered, a file opens in another app")
+    @Serializable @SerialName("open") @Doc("Open a row of the folder shown (by its id in items): a folder is entered, a file opens in another app")
     data class Open(val id: String, @Doc("Skip the large-download question") val confirmed: Boolean = false) : FilesIntent
 
-    @Serializable @SerialName("dismiss_confirm") @Doc("Answer no to the large-download question")
+    @Serializable @SerialName("dismiss_confirm") @Doc("Answer no to the large-download question. Only while it is asked (confirm set)")
     data object DismissConfirm : FilesIntent
 
-    @Serializable @SerialName("create_folder") @Doc("New folder in the folder shown")
+    @Serializable @SerialName("create_folder") @Doc("New folder in the folder shown. Only inside a folder you can add to (canAdd), never at the top")
     data class CreateFolder(val name: String) : FilesIntent
 
-    @Serializable @SerialName("rename") @Doc("Rename a row of the folder shown")
+    @Serializable @SerialName("rename") @Doc("Rename a row of the folder shown. Needs edit access")
     data class Rename(val id: String, val name: String) : FilesIntent
 
-    @Serializable @SerialName("move") @Doc("Move a row of the folder shown into another folder")
+    @Serializable @SerialName("move") @Doc("Move a row of the folder shown into another folder. Needs edit access")
     data class Move(val id: String, val parentId: String) : FilesIntent
 }
 

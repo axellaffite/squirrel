@@ -80,3 +80,22 @@ tasks.withType<org.jetbrains.kotlin.gradle.tasks.KotlinNativeLink>()
             check(!leaked) { "LS-DO runtime linked into the release binary ${file.name}." }
         }
     }
+
+// The LS-DO catalog, generated from LsDoScreens for planning without a device (see LsDoCatalogFileTest).
+val lsdoCatalogFile = rootProject.file("lsdo-catalog.json")
+tasks.named<Test>("jvmTest") {
+    systemProperty("lsdo.catalog", lsdoCatalogFile.absolutePath)
+    inputs.files(lsdoCatalogFile).withPropertyName("lsdoCatalog")
+}
+tasks.register<Test>("lsdoCatalog") {
+    group = "lsdo"
+    description = "Writes mobile/lsdo-catalog.json from the app's LS-DO screens."
+    val jvmTest = tasks.named<Test>("jvmTest").get()
+    testClassesDirs = jvmTest.testClassesDirs
+    classpath = jvmTest.classpath
+    filter { includeTestsMatching("app.squirrel.ui.LsDoCatalogFileTest") }
+    systemProperty("lsdo.catalog", lsdoCatalogFile.absolutePath)
+    systemProperty("lsdo.catalog.write", "true")
+    outputs.file(lsdoCatalogFile)
+    outputs.upToDateWhen { false }
+}

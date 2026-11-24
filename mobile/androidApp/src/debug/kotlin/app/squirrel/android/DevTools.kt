@@ -5,6 +5,7 @@ import app.squirrel.lsdo.LsDo
 import app.squirrel.lsdo.runtime.LSDO_PORT
 import app.squirrel.lsdo.runtime.LsDoRegistry
 import app.squirrel.lsdo.runtime.startLsDoServer
+import app.squirrel.ui.LsDoScreens
 import kotlinx.coroutines.Dispatchers
 
 /**
@@ -14,7 +15,7 @@ import kotlinx.coroutines.Dispatchers
 internal object DevTools {
     fun start() {
         ComposeUiCapture.install()
-        val registry = LsDoRegistry(context = Dispatchers.Main.immediate, capture = ComposeUiCapture::capture)
+        val registry = LsDoRegistry(context = Dispatchers.Main.immediate, capture = ComposeUiCapture::capture, catalog = LsDoScreens)
         LsDo.install(registry)
         runCatching { startLsDoServer(registry) }
             .onSuccess { Log.i("LsDo", "LS-DO listening on 127.0.0.1:$LSDO_PORT") }
