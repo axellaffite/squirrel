@@ -48,6 +48,17 @@ fun Application.lsdoRoutes(registry: LsDoRegistry) {
             if (screen == null) call.json(error("No screen \"$id\". Screens: ${registry.ids.joinToString().ifEmpty { "none" }}."), HttpStatusCode.NotFound)
             else call.json(screen)
         }
+        // Every kind of screen, shown or not: an index, then one screen in full.
+        get("/catalog") {
+            if (call.allowed()) call.json(catalogIndex(registry.catalog, registry.shownNames))
+        }
+        get("/catalog/{screen}") {
+            if (!call.allowed()) return@get
+            val name = call.parameters["screen"].orEmpty()
+            val entry = registry.catalog.firstOrNull { it.name == name }
+                ?: return@get call.json(error("No screen \"$name\" in the catalog. Screens: ${registry.catalog.joinToString { it.name }.ifEmpty { "none" }}."), HttpStatusCode.NotFound)
+            call.json(catalogScreen(entry))
+        }
         // What is rendered: compact text by default, ?format=json for the tree, ?bounds=1 for positions.
         get("/ui") {
             if (!call.allowed()) return@get

@@ -1,6 +1,7 @@
 package app.squirrel.lsdo.runtime
 
 import app.squirrel.lsdo.LsDo
+import app.squirrel.lsdo.LsDoEntry
 import app.squirrel.lsdo.LsDoScreen
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.delay
@@ -54,8 +55,10 @@ class LsDoRegistry(
     private val timeout: Duration = 10.seconds,
     /** Reads what is rendered, one tree per window (null: this build cannot). Runs in [context]. */
     private val capture: (suspend () -> List<UiNode>)? = null,
+    /** Every kind of screen the app has, shown or not (GET /catalog). */
+    val catalog: List<LsDoEntry> = emptyList(),
 ) : LsDo.Sink {
-    private class Entry(val id: String, val screen: LsDoScreen<Any, Any>)
+    private class Entry(val id: String, val name: String, val screen: LsDoScreen<Any, Any>)
 
     private val entries = MutableStateFlow<List<Entry>>(emptyList())
 
@@ -65,12 +68,15 @@ class LsDoRegistry(
         entries.update { current ->
             val taken = current.map { it.id }.toSet()
             val id = generateSequence(1) { it + 1 }.map { if (it == 1) name else "$name-$it" }.first { it !in taken }
-            Entry(id, screen as LsDoScreen<Any, Any>).also { added = it }.let { current + it }
+            Entry(id, name, screen as LsDoScreen<Any, Any>).also { added = it }.let { current + it }
         }
         return { entries.update { current -> current.filterNot { it === added } } }
     }
 
     val ids: List<String> get() = entries.value.map { it.id }
+
+    /** The names of the kinds of screen on show now. */
+    val shownNames: Set<String> get() = entries.value.map { it.name }.toSet()
 
     /** Every screen on show: its state and the actions available in it. */
     fun ls(): JsonObject = buildJsonObject {

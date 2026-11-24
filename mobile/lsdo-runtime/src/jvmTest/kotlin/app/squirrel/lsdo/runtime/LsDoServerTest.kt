@@ -1,5 +1,7 @@
 package app.squirrel.lsdo.runtime
 
+import app.squirrel.lsdo.LsDoEntry
+import app.squirrel.lsdo.lsdoSpec
 import io.ktor.client.plugins.defaultRequest
 import io.ktor.client.request.get
 import io.ktor.client.request.post
@@ -61,6 +63,18 @@ class LsDoServerTest {
         val client = createClient { defaultRequest { headers.append(LSDO_HEADER, "1") } }
 
         assertEquals(HttpStatusCode.NotFound, client.get("/ui").status)
+    }
+
+    @Test
+    fun `the catalog lists screens not on show and one screen in full`() = testApplication {
+        val registry = LsDoRegistry(catalog = listOf(LsDoEntry("counter", "A counter.", lsdoSpec<CounterState, CounterIntent>())))
+        application { lsdoRoutes(registry) }
+        val client = createClient { defaultRequest { headers.append(LSDO_HEADER, "1") } }
+
+        val index = LsDoJson.parseToJsonElement(client.get("/catalog").bodyAsText()).jsonObject
+        assertEquals("counter", index["screens"]?.jsonArray?.single()?.jsonObject?.get("name")?.jsonPrimitive?.content)
+        assertEquals(HttpStatusCode.OK, client.get("/catalog/counter").status)
+        assertEquals(HttpStatusCode.NotFound, client.get("/catalog/nope").status)
     }
 
     @Test

@@ -58,6 +58,12 @@ positions, `ui json` the tree. It is Compose's semantics tree on Android (every 
 popups too) and the UIKit accessibility elements Compose builds on iOS (positions in points). It
 shows no colors, images, truncation or overlap: those need a screenshot.
 
+`scripts/lsdo catalog` lists every LS-DO screen, shown or not (name, what it is and how to reach
+it, its actions); `catalog <screen>` gives one in full (each action's meaning, when it applies, its
+parameters, and the state's shape). The same, without a device: `mobile/lsdo-catalog.json`,
+generated from `ui/.../LsDoScreens.kt` by `./gradlew :ui:lsdoCatalog`; `jvmTest` fails when it is
+stale. A screen added to LS-DO is added to `LsDoScreens`.
+
 With `LSDO_TRACE=<dir>`, each do also saves `step-N.json` (intent, answer, the UI after it) and
 `step-N.png`. The `lsdo-verifier` agent (`.claude/agents/`) reads such a trace and reports, step by
 step, whether the UI matches the state and the action, and which steps need a screenshot (it opens

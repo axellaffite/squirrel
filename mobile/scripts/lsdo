@@ -3,6 +3,7 @@
 #   scripts/lsdo ls [screen]                  every screen on show, or one
 #   scripts/lsdo do <screen> <action> [json]  run an action: scripts/lsdo do files enter '{"id":"x"}'
 #   scripts/lsdo ui [bounds|json]             the rendered UI (semantics) as compact text
+#   scripts/lsdo catalog [screen]             every screen, shown or not (offline: mobile/lsdo-catalog.json)
 # LSDO_URL: address (iOS simulator: http://127.0.0.1:8765); otherwise adb forwards (ANDROID_SERIAL).
 # LSDO_TRACE=<dir>: each do also saves step-N.json (intent, answer, UI after) and step-N.png.
 set -euo pipefail
@@ -13,9 +14,9 @@ TIMEOUT="${LSDO_TIMEOUT:-30}"
 URL="${LSDO_URL:-}"
 PLATFORM=ios
 
-usage() { sed -n '2,7p' "$0" | sed 's/^# \{0,1\}//'; exit 2; }
+usage() { sed -n '2,8p' "$0" | sed 's/^# \{0,1\}//'; exit 2; }
 
-[[ "${1:-}" == ls || "${1:-}" == do || "${1:-}" == ui ]] || usage
+[[ "${1:-}" == ls || "${1:-}" == do || "${1:-}" == ui || "${1:-}" == catalog ]] || usage
 
 if [[ -z "$URL" ]]; then
   command -v adb >/dev/null || { echo "adb not found (or set LSDO_URL)" >&2; exit 1; }
@@ -46,6 +47,8 @@ trace() { # <screen> <body> <answer>
 case "$1" in
   ls)
     curl -fsS -m "$TIMEOUT" -H 'X-LsDo: 1' "$URL/ls${2:+/$(enc "$2")}" | pretty ;;
+  catalog)
+    curl -fsS -m "$TIMEOUT" -H 'X-LsDo: 1' "$URL/catalog${2:+/$(enc "$2")}" | pretty ;;
   ui)
     case "${2:-}" in
       json) curl -fsS -m "$TIMEOUT" -H 'X-LsDo: 1' "$URL/ui?format=json" | pretty ;;
