@@ -13,6 +13,7 @@ use crate::cursor;
 use crate::error::{ApiError, ErrorBody};
 use crate::extract::Caller;
 use crate::input::{ApiJson, ApiPath, ApiQuery};
+use crate::routes::notifications::announce_comment;
 use crate::routes::shares::subject_access;
 use crate::sharing_dto::{
     CommentDto, CommentPage, CommentsQuery, CreateCommentRequest, EditCommentRequest,
@@ -93,6 +94,7 @@ pub async fn create_comment(
     let text = body(&request.body)?;
     let (owner_id, _) = subject_access(&state, caller.user.id, subject).await?;
     let record = comments::create(&state.pool, owner_id, subject, caller.user.id, text).await?;
+    announce_comment(&state, record.id).await;
     Ok((
         StatusCode::CREATED,
         Json(CommentDto::new(&record, caller.user.id)),

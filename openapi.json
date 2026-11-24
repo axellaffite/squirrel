@@ -3015,6 +3015,143 @@
         ]
       }
     },
+    "/api/notifications": {
+      "get": {
+        "tags": [
+          "notifications"
+        ],
+        "operationId": "list_notifications",
+        "parameters": [
+          {
+            "name": "cursor",
+            "in": "query",
+            "description": "`next_cursor` of the previous page.",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "description": "Default 30, at most 100.",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "format": "int32",
+              "minimum": 0
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NotificationPage"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "device_bearer": []
+          },
+          {
+            "session_cookie": []
+          }
+        ]
+      }
+    },
+    "/api/notifications/read": {
+      "post": {
+        "tags": [
+          "notifications"
+        ],
+        "operationId": "mark_read",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MarkReadRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Marked read; the unread count left",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UnreadCountDto"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "device_bearer": []
+          },
+          {
+            "csrf_token": [],
+            "session_cookie": []
+          }
+        ]
+      }
+    },
+    "/api/notifications/unread-count": {
+      "get": {
+        "tags": [
+          "notifications"
+        ],
+        "operationId": "unread_count",
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UnreadCountDto"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "device_bearer": []
+          },
+          {
+            "session_cookie": []
+          }
+        ]
+      }
+    },
     "/api/people": {
       "get": {
         "tags": [
@@ -6683,6 +6820,22 @@
           }
         }
       },
+      "MarkReadRequest": {
+        "type": "object",
+        "properties": {
+          "ids": {
+            "type": [
+              "array",
+              "null"
+            ],
+            "items": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "description": "The notifications to mark read; omitted or `null`: all of them."
+          }
+        }
+      },
       "MeResponse": {
         "type": "object",
         "required": [
@@ -7020,6 +7173,137 @@
               "null"
             ],
             "description": "Pass back as `cursor` for the next page; `null` on the last page."
+          }
+        }
+      },
+      "NotificationDto": {
+        "type": "object",
+        "required": [
+          "id",
+          "kind",
+          "subject",
+          "created_at",
+          "read"
+        ],
+        "properties": {
+          "actor": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/MemberDto",
+                "description": "Who shared or commented; `null` once their account was deleted."
+              }
+            ]
+          },
+          "comment_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid",
+            "description": "Comments: its id, to scroll the thread to it."
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "excerpt": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Comments: the start of its current text."
+          },
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "kind": {
+            "$ref": "#/components/schemas/NotificationKind"
+          },
+          "permission": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/SharePermission",
+                "description": "Shares: the permission given (now)."
+              }
+            ]
+          },
+          "read": {
+            "type": "boolean"
+          },
+          "subject": {
+            "$ref": "#/components/schemas/NotificationSubjectDto"
+          }
+        }
+      },
+      "NotificationKind": {
+        "type": "string",
+        "enum": [
+          "share",
+          "comment"
+        ]
+      },
+      "NotificationPage": {
+        "type": "object",
+        "required": [
+          "items"
+        ],
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/NotificationDto"
+            },
+            "description": "Newest first."
+          },
+          "next_cursor": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        }
+      },
+      "NotificationSubjectDto": {
+        "type": "object",
+        "description": "What a notification is about.",
+        "required": [
+          "kind",
+          "id",
+          "name"
+        ],
+        "properties": {
+          "folder_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid",
+            "description": "For a file: the folder holding it, when the caller may open that\nfolder (`null` when the file is shared on its own or seen through an\nalbum)."
+          },
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "description": "The folder, file or album id."
+          },
+          "kind": {
+            "$ref": "#/components/schemas/SubjectKind"
+          },
+          "mime": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Files only."
+          },
+          "name": {
+            "type": "string"
           }
         }
       },
@@ -7472,6 +7756,14 @@
           }
         }
       },
+      "SubjectKind": {
+        "type": "string",
+        "enum": [
+          "folder",
+          "file",
+          "album"
+        ]
+      },
       "SubjectRef": {
         "type": "object",
         "description": "Exactly one of `node_id` and `album_id`.",
@@ -7728,6 +8020,18 @@
           }
         }
       },
+      "UnreadCountDto": {
+        "type": "object",
+        "required": [
+          "unread"
+        ],
+        "properties": {
+          "unread": {
+            "type": "integer",
+            "format": "int64"
+          }
+        }
+      },
       "UpdateAlbumRequest": {
         "type": "object",
         "description": "Rename and/or choose the cover. At least one field is required.",
@@ -7948,6 +8252,9 @@
     },
     {
       "name": "comments"
+    },
+    {
+      "name": "notifications"
     }
   ]
 }
