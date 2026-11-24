@@ -60,7 +60,7 @@ class AlbumsLsDo(
 ) : LsDoScreen<AlbumListView, AlbumsIntent> {
     override val lsdo = lsdoSpec<AlbumListView, AlbumsIntent>()
 
-    override val state: StateFlow<AlbumListView> = vm.state.view(scope) { s ->
+    override val state: StateFlow<AlbumListView> = vm.state.view { s ->
         AlbumListView(s.albums?.map { it.row() }, s.loading, s.refreshing, s.error)
     }
 
@@ -159,7 +159,7 @@ class AlbumLsDo(
 
     override val lsdo = lsdoSpec<AlbumView, AlbumIntent>()
 
-    override val state: StateFlow<AlbumView> = vm.state.viewWith(overlay.state, scope) { s, o ->
+    override val state: StateFlow<AlbumView> = vm.state.viewWith(overlay.state) { s, o ->
         val album = s.album
         AlbumView(
             id = albumId,

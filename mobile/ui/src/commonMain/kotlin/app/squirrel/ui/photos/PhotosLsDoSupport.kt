@@ -1,15 +1,13 @@
 package app.squirrel.ui.photos
 
+import app.squirrel.ui.mapState
+import app.squirrel.ui.combineState
 import app.squirrel.api.models.AssetSummary
 import app.squirrel.lsdo.Doc
-import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
-import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.map
-import kotlinx.coroutines.flow.stateIn
 import kotlinx.serialization.Serializable
 
 /** A photo as LS-DO lists it: enough to pick one and tell it apart. */
@@ -40,16 +38,14 @@ class OverlayMirror {
 }
 
 /**
- * A screen's serializable view of a view model's state and its overlay, kept current in
- * [scope] (the composition's, while shown): the view model's own state is larger than an agent
- * needs and not serializable.
+ * A screen's serializable view of a view model's state and its overlay, computed when read
+ * ([combineState]): the view model's own state is larger than an agent needs and not serializable.
  */
-internal fun <T, R> StateFlow<T>.viewWith(overlay: StateFlow<PhotosOverlay>, scope: CoroutineScope, transform: (T, PhotosOverlay) -> R): StateFlow<R> =
-    combine(this, overlay, transform).stateIn(scope, SharingStarted.Eagerly, transform(value, overlay.value))
+internal fun <T, R> StateFlow<T>.viewWith(overlay: StateFlow<PhotosOverlay>, transform: (T, PhotosOverlay) -> R): StateFlow<R> =
+    combineState(this, overlay, transform)
 
 /** [viewWith], for a screen without an overlay. */
-internal fun <T, R> StateFlow<T>.view(scope: CoroutineScope, transform: (T) -> R): StateFlow<R> =
-    map(transform).stateIn(scope, SharingStarted.Eagerly, transform(value))
+internal fun <T, R> StateFlow<T>.view(transform: (T) -> R): StateFlow<R> = mapState(transform)
 
 /** A call the screen cannot refuse. */
 internal inline fun done(call: () -> Unit): String? {

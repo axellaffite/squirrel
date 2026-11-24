@@ -1,5 +1,6 @@
 package app.squirrel.ui.files
 
+import app.squirrel.ui.mapState
 import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
@@ -16,12 +17,10 @@ import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharedFlow
-import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.map
-import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.serialization.SerialName
@@ -78,7 +77,7 @@ class UploadsViewModel(api: SquirrelApi, private val upload: FileUpload = FileUp
     override val lsdo = lsdoSpec<UploadsState, UploadsIntent>()
 
     /** The uploads as LS-DO shows them, with their counts. */
-    override val state: StateFlow<UploadsState> = items.map(::uploadsState).stateIn(viewModelScope, SharingStarted.Eagerly, uploadsState(_items.value))
+    override val state: StateFlow<UploadsState> = items.mapState(::uploadsState)
 
     override suspend fun perform(intent: UploadsIntent): String? = when (intent) {
         is UploadsIntent.Dismiss -> {

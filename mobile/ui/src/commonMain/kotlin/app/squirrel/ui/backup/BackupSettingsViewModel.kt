@@ -1,5 +1,6 @@
 package app.squirrel.ui.backup
 
+import app.squirrel.ui.mapState
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import app.squirrel.shared.api.ApiError
@@ -10,11 +11,8 @@ import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.IO
 import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
-import kotlinx.coroutines.flow.map
-import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -48,7 +46,7 @@ class BackupSettingsViewModel(
 
     /** What an agent reads (LS-DO); started on first read, as [BackupViewModel.view]. */
     internal val view: StateFlow<BackupSettingsView> by lazy {
-        state.map(::settingsView).stateIn(viewModelScope, SharingStarted.Eagerly, settingsView(state.value))
+        state.mapState(::settingsView)
     }
 
     init {

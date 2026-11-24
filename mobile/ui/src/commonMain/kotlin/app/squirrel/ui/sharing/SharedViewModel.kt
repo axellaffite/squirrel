@@ -1,5 +1,6 @@
 package app.squirrel.ui.sharing
 
+import app.squirrel.ui.combineState
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import app.squirrel.api.models.SharedItemDto
@@ -10,11 +11,8 @@ import app.squirrel.ui.ResumeThrottle
 import app.squirrel.ui.files.FileHandoff
 import app.squirrel.ui.files.FileOpener
 import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
-import kotlinx.coroutines.flow.combine
-import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 
@@ -47,8 +45,7 @@ class SharedViewModel(
     val opener = FileOpener(api, handoff, viewModelScope)
 
     /** The list as LS-DO shows it (see [SharedListLsDo]); one flow for the session, however often the list is shown. */
-    val listing: StateFlow<SharedListState> = combine(state, opener.state, ::sharedListState)
-        .stateIn(viewModelScope, SharingStarted.Eagerly, sharedListState(_state.value, opener.state.value))
+    val listing: StateFlow<SharedListState> = combineState(state, opener.state, ::sharedListState)
 
     init {
         load()

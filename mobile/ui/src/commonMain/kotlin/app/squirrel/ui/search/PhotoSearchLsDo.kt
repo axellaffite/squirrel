@@ -72,7 +72,7 @@ class PhotoSearchLsDo(
 
     override val lsdo = lsdoSpec<PhotoSearchView, PhotoSearchIntent>()
 
-    override val state: StateFlow<PhotoSearchView> = vm.state.viewWith(overlay.state, scope) { s, o ->
+    override val state: StateFlow<PhotoSearchView> = vm.state.viewWith(overlay.state) { s, o ->
         PhotoSearchView(
             typed = s.typed,
             query = s.query,

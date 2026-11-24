@@ -89,7 +89,7 @@ class TimelineLsDo(
 
     override val lsdo = lsdoSpec<TimelineView, TimelineIntent>()
 
-    override val state: StateFlow<TimelineView> = vm.state.viewWith(overlay.state, scope) { s, o ->
+    override val state: StateFlow<TimelineView> = vm.state.viewWith(overlay.state) { s, o ->
         TimelineView(
             title = title,
             filter = filter,
