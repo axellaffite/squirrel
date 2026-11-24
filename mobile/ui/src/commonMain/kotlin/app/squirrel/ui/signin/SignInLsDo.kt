@@ -1,14 +1,12 @@
 package app.squirrel.ui.signin
 
+import app.squirrel.ui.mapState
 import app.squirrel.lsdo.Doc
 import app.squirrel.lsdo.LsDoScreen
 import app.squirrel.lsdo.lsdoSpec
 import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.first
-import kotlinx.coroutines.flow.map
-import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
@@ -90,7 +88,7 @@ class SignInLsDo(private val vm: SignInViewModel, scope: CoroutineScope) : LsDoS
     override val lsdo = lsdoSpec<SignInView, SignInIntent>()
 
     override val state: StateFlow<SignInView> =
-        vm.state.map { it.view() }.stateIn(scope, SharingStarted.Eagerly, vm.state.value.view())
+        vm.state.mapState { it.view() }
 
     override suspend fun perform(intent: SignInIntent): String? = when (intent) {
         is SignInIntent.SetServer -> done { vm.onServerChange(intent.address) }

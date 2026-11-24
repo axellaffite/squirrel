@@ -1,5 +1,6 @@
 package app.squirrel.ui.backup
 
+import app.squirrel.ui.combineState
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import app.squirrel.shared.settings.BackupSettings
@@ -49,8 +50,7 @@ class BackupViewModel(
      * makes, then kept up while this model lives: the registry reads it without collecting.
      */
     internal val view: StateFlow<BackupView> by lazy {
-        combine(snapshot, _failed) { s, failed -> backupView(s, failed) }
-            .stateIn(viewModelScope, SharingStarted.Eagerly, backupView(snapshot.value, _failed.value))
+        combineState(snapshot, _failed) { s, failed -> backupView(s, failed) }
     }
 
     fun onResume() {

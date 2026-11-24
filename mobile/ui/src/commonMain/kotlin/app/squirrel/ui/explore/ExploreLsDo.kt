@@ -63,7 +63,7 @@ class ExploreLsDo(
 ) : LsDoScreen<ExploreView, ExploreIntent> {
     override val lsdo = lsdoSpec<ExploreView, ExploreIntent>()
 
-    override val state: StateFlow<ExploreView> = vm.state.view(scope) { s ->
+    override val state: StateFlow<ExploreView> = vm.state.view { s ->
         val cards = cards(s)
         ExploreView(
             section = section,
