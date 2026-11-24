@@ -28,6 +28,7 @@ import app.squirrel.theme.components.Loading
 import app.squirrel.theme.components.SearchField
 import app.squirrel.theme.components.SegmentedControl
 import app.squirrel.ui.AppGraph
+import app.squirrel.ui.RegisterLsDo
 import app.squirrel.ui.explore.FilterBar
 import app.squirrel.ui.photos.ErrorRetry
 import app.squirrel.ui.photos.JustifiedPhotos
@@ -101,6 +102,7 @@ private fun PhotoSearch(graph: AppGraph, api: SquirrelApi, vm: PhotoSearchViewMo
 
 @Composable
 private fun DocumentSearch(api: SquirrelApi, vm: DocumentSearchViewModel) {
+    RegisterLsDo("document_search", remember(vm) { DocumentSearchLsDo(vm) })
     val state by vm.state.collectAsStateWithLifecycle()
     SearchField(
         value = state.typed,

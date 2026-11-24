@@ -10,8 +10,11 @@ import app.squirrel.ui.ResumeThrottle
 import app.squirrel.ui.files.FileHandoff
 import app.squirrel.ui.files.FileOpener
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 
@@ -43,6 +46,10 @@ class SharedViewModel(
     /** A shared file that is not a photo opens with another app. */
     val opener = FileOpener(api, handoff, viewModelScope)
 
+    /** The list as LS-DO shows it (see [SharedListLsDo]); one flow for the session, however often the list is shown. */
+    val listing: StateFlow<SharedListState> = combine(state, opener.state, ::sharedListState)
+        .stateIn(viewModelScope, SharingStarted.Eagerly, sharedListState(_state.value, opener.state.value))
+
     init {
         load()
     }
@@ -71,15 +78,19 @@ class SharedViewModel(
     fun cancelLeave() = _state.update { it.copy(leaving = null) }
 
     fun confirmLeave() {
-        val item = _state.value.leaving ?: return
-        viewModelScope.launch {
-            val result = call { api.sharing.deleteShare(item.shareId).okOrThrow() }
-            _state.update { s ->
-                when (result) {
-                    is Outcome.Ok -> s.copy(leaving = null, items = s.items.orEmpty().filterNot { it.shareId == item.shareId })
-                    is Outcome.Failed -> s.copy(leaving = null, error = result.message)
-                }
+        viewModelScope.launch { leave() }
+    }
+
+    /** Leaves the share asked about, once the server agreed; the server's refusal, or null. */
+    suspend fun leave(): String? {
+        val item = _state.value.leaving ?: return "Nothing is waiting to be left."
+        val result = call { api.sharing.deleteShare(item.shareId).okOrThrow() }
+        _state.update { s ->
+            when (result) {
+                is Outcome.Ok -> s.copy(leaving = null, items = s.items.orEmpty().filterNot { it.shareId == item.shareId })
+                is Outcome.Failed -> s.copy(leaving = null, error = result.message)
             }
         }
+        return (result as? Outcome.Failed)?.message
     }
 }
