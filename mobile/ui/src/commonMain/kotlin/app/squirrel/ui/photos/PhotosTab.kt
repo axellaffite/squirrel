@@ -14,20 +14,24 @@ import app.squirrel.ui.shell.SystemBack
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
+import app.squirrel.api.models.AlbumDto
 import app.squirrel.theme.SquirrelIcon
 import app.squirrel.theme.Tokens
 import app.squirrel.theme.components.IconButton
 import app.squirrel.theme.components.SegmentedControl
 import app.squirrel.shared.api.SquirrelApi
 import app.squirrel.ui.AppGraph
+import app.squirrel.ui.RegisterLsDo
 import app.squirrel.ui.explore.ExploreOverview
 import app.squirrel.ui.explore.ExploreSection
 import app.squirrel.ui.explore.ExploreSectionPage
@@ -50,16 +54,20 @@ sealed interface PhotosRoute {
     data class Filtered(val filter: PhotoFilter, val title: String) : PhotosRoute
 }
 
-private val MODES = listOf("Timeline", "Albums", "Explore")
-
 /** Photos: "Timeline | Albums | Explore", albums, Explore's pages, search, and the viewer. */
 @Composable
 fun PhotosTab(graph: AppGraph) {
     val api = graph.api ?: return
     val nav = viewModel(key = "nav-photos") { Navigator<PhotosRoute>(PhotosRoute.Home) }
     val stack by nav.stack.collectAsStateWithLifecycle()
+    // Here rather than in PhotosHome, so LS-DO's "photos" screen sees and sets it from any page.
+    var modeName by rememberSaveable { mutableStateOf(PhotosMode.Timeline.name) }
+    val mode = PhotosMode.valueOf(modeName)
+    val lsdo = remember(nav) { PhotosLsDo(nav, mode) { modeName = it.name } }
+    LaunchedEffect(stack, mode) { lsdo.shown(stack, mode) }
+    RegisterLsDo("photos", lsdo)
     when (val route = stack.last()) {
-        PhotosRoute.Home -> PhotosHome(graph, nav)
+        PhotosRoute.Home -> PhotosHome(graph, nav, mode) { modeName = it.name }
         is PhotosRoute.Album -> AlbumPage(graph, route.id, route.name, rootLabel = "Albums", onBack = { nav.pop() })
         PhotosRoute.Search -> SearchScreen(graph, SearchKind.Photos, onBack = { nav.pop() })
         is PhotosRoute.Section -> ExploreSectionPage(api, explore(api), route.section, onBack = { nav.pop() }, onOpen = filtered(nav))
@@ -79,9 +87,8 @@ private fun explore(api: SquirrelApi) = viewModel(key = "explore") { ExploreView
 private fun filtered(nav: Navigator<PhotosRoute>): OpenFilter = { filter, title -> nav.push(PhotosRoute.Filtered(filter, title)) }
 
 @Composable
-private fun PhotosHome(graph: AppGraph, nav: Navigator<PhotosRoute>) {
+private fun PhotosHome(graph: AppGraph, nav: Navigator<PhotosRoute>, mode: PhotosMode, onMode: (PhotosMode) -> Unit) {
     val api = graph.api ?: return
-    var mode by rememberSaveable { mutableStateOf(0) }
     var viewing by remember { mutableStateOf<String?>(null) }
     var selected by remember { mutableStateOf(emptySet<String>()) }
     var picking by remember { mutableStateOf<List<String>?>(null) }
@@ -89,23 +96,41 @@ private fun PhotosHome(graph: AppGraph, nav: Navigator<PhotosRoute>) {
     var notice by remember { mutableStateOf<String?>(null) }
     val timeline = viewModel(key = "timeline") { PhotosViewModel(api) }
     val albums = viewModel(key = "albums") { AlbumsViewModel(api) }
+    val scope = rememberCoroutineScope()
+    // A new sub-tab starts without a selection or a notice, however it was chosen.
+    LaunchedEffect(mode) {
+        selected = emptySet()
+        notice = null
+    }
+    val onAdded: (String) -> Unit = { message ->
+        notice = message
+        selected = emptySet()
+        albums.refresh()
+    }
     SystemBack(enabled = selected.isNotEmpty()) { selected = emptySet() }
     Box(Modifier.fillMaxSize()) {
         Column(Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(Tokens.space2)) {
             PageHeader("Photos", actions = {
-                if (mode == 1) IconButton(SquirrelIcon.Plus, label = "New album", onClick = { naming = true })
+                if (mode == PhotosMode.Albums) IconButton(SquirrelIcon.Plus, label = "New album", onClick = { naming = true })
                 IconButton(SquirrelIcon.Search, label = "Search photos", onClick = { nav.push(PhotosRoute.Search) })
             })
-            SegmentedControl(MODES, mode, onSelect = {
-                mode = it
-                selected = emptySet()
-                notice = null
-            })
+            SegmentedControl(PhotosMode.entries.map { it.label }, mode.ordinal, onSelect = { onMode(PhotosMode.entries[it]) })
             notice?.let { Alert(it, tone = AlertTone.Success) }
             when (mode) {
-                0 -> TimelineList(api, timeline, TileActions({ viewing = it.id }, selected) { selected = selected.toggled(it.id) })
-                1 -> AlbumsGrid(api, albums) { nav.push(PhotosRoute.Album(it.id, it.name)) }
-                else -> ExploreOverview(api, explore(api), onSeeAll = { nav.push(PhotosRoute.Section(it)) }, onOpen = filtered(nav))
+                PhotosMode.Timeline -> {
+                    val lsdo = remember(timeline) {
+                        TimelineLsDo(timeline, api, scope, onOpen = { viewing = it }, onClose = { viewing = null }, onAdded = onAdded)
+                    }
+                    LaunchedEffect(viewing, notice) { lsdo.overlay.shown(PhotosOverlay(viewing, notice)) }
+                    RegisterLsDo("timeline", lsdo)
+                    TimelineList(api, timeline, TileActions({ viewing = it.id }, selected) { selected = selected.toggled(it.id) })
+                }
+                PhotosMode.Albums -> {
+                    val open: (AlbumDto) -> Unit = { nav.push(PhotosRoute.Album(it.id, it.name)) }
+                    RegisterLsDo("albums", remember(albums) { AlbumsLsDo(albums, api, scope, open) })
+                    AlbumsGrid(api, albums, open)
+                }
+                PhotosMode.Explore -> ExploreOverview(api, explore(api), onSeeAll = { nav.push(PhotosRoute.Section(it)) }, onOpen = filtered(nav))
             }
         }
         if (selected.isNotEmpty()) {
@@ -115,11 +140,7 @@ private fun PhotosHome(graph: AppGraph, nav: Navigator<PhotosRoute>) {
         }
     }
     picking?.let { ids ->
-        AlbumPickerSheet(api, ids, onDone = { message ->
-            notice = message
-            selected = emptySet()
-            albums.refresh()
-        }, onClose = { picking = null })
+        AlbumPickerSheet(api, ids, onDone = onAdded, onClose = { picking = null })
     }
     if (naming) {
         NameSheet("New album", "Create album", validate = ::albumNameProblem, onSubmit = { name ->

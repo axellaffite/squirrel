@@ -9,6 +9,9 @@ import androidx.compose.foundation.lazy.LazyListScope
 import androidx.compose.foundation.text.BasicText
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
+import app.squirrel.ui.RegisterLsDo
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.semantics
@@ -26,17 +29,26 @@ import app.squirrel.ui.photos.ErrorRetry
 import app.squirrel.ui.photos.RailClearance
 import app.squirrel.ui.shell.PageHeader
 import app.squirrel.ui.shell.SystemBack
+import kotlinx.serialization.SerialName
+import kotlinx.serialization.Serializable
 
 /** Cards shown per section before "See all". */
-private const val PREVIEW = 6
+internal const val PREVIEW = 6
 
 /** One list of Explore, on a page of its own. */
-enum class ExploreSection(val title: String) { People("People"), Places("Places"), Tags("Tags"), Cameras("Cameras") }
+@Serializable
+enum class ExploreSection(val title: String) {
+    @SerialName("people") People("People"),
+    @SerialName("places") Places("Places"),
+    @SerialName("tags") Tags("Tags"),
+    @SerialName("cameras") Cameras("Cameras"),
+}
 
 /** Explore's overview: a few people, places, tags and cameras, each with "See all". */
 @Composable
 fun ExploreOverview(api: SquirrelApi, vm: ExploreViewModel, onSeeAll: (ExploreSection) -> Unit, onOpen: OpenFilter) {
     val state by vm.state.collectAsStateWithLifecycle()
+    RegisterExploreLsDo(vm, null, onSeeAll, onOpen)
     OnForeground(vm::resumed)
     when {
         !state.loaded && state.error != null -> return PullableColumn(state.loading, vm::load) { ErrorRetry(state.error.orEmpty(), vm::load) }
@@ -53,6 +65,13 @@ fun ExploreOverview(api: SquirrelApi, vm: ExploreViewModel, onSeeAll: (ExploreSe
         section(ExploreSection.Tags, state.tags.orEmpty(), onSeeAll) { TagCards(api, it, onOpen) }
         section(ExploreSection.Cameras, state.cameras.orEmpty(), onSeeAll) { CameraRows(it, onOpen) }
     }
+}
+
+/** Explore on show, as LS-DO's "explore" screen: the overview ([section] null) or one section's page. */
+@Composable
+private fun RegisterExploreLsDo(vm: ExploreViewModel, section: ExploreSection?, onSeeAll: (ExploreSection) -> Unit, onOpen: OpenFilter) {
+    val scope = rememberCoroutineScope()
+    RegisterLsDo("explore", remember(vm, section) { ExploreLsDo(vm, section, scope, onSeeAll, onOpen) })
 }
 
 private fun <T> LazyListScope.section(
@@ -86,6 +105,7 @@ private fun ExploreList(refreshing: Boolean, vm: ExploreViewModel, content: Lazy
 @Composable
 fun ExploreSectionPage(api: SquirrelApi, vm: ExploreViewModel, section: ExploreSection, onBack: () -> Unit, onOpen: OpenFilter) {
     val state by vm.state.collectAsStateWithLifecycle()
+    RegisterExploreLsDo(vm, section, onSeeAll = {}, onOpen = onOpen)
     SystemBack(onBack = onBack)
     Column(Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(Tokens.space2)) {
         PageHeader(section.title, onBack = onBack, backLabel = "Back to Explore")

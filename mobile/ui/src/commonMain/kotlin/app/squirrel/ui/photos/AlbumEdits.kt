@@ -8,6 +8,7 @@ import app.squirrel.api.models.SharedItemDto
 import app.squirrel.api.models.UpdateAlbumRequest
 import app.squirrel.shared.api.SquirrelApi
 import app.squirrel.shared.api.bodyOrThrow
+import app.squirrel.ui.attempt
 import app.squirrel.ui.explore.photoCount
 import app.squirrel.ui.sharing.Outcome
 import app.squirrel.ui.sharing.call
@@ -31,6 +32,15 @@ fun writableAlbums(own: List<AlbumDto>, shared: List<SharedItemDto>): List<Album
     val ids = own.map { it.id }.toSet()
     val extra = shared.filter { it.permission == SharePermission.write }.mapNotNull { it.album }.filter { it.id !in ids }
     return (own + extra).sortedWith(compareBy(String.CASE_INSENSITIVE_ORDER) { it.name })
+}
+
+/** What the album picker offers; [ok] false: one's own albums could not be listed. */
+class PickerAlbums(val albums: List<AlbumDto>, val ok: Boolean)
+
+suspend fun pickerAlbums(api: SquirrelApi): PickerAlbums {
+    val own = attempt { api.albums.listAlbums().bodyOrThrow() }
+    val shared = attempt { api.sharing.sharedWithMe().bodyOrThrow() }.orEmpty()
+    return PickerAlbums(writableAlbums(own.orEmpty(), shared), own != null)
 }
 
 /**

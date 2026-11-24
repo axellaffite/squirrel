@@ -4,6 +4,9 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.rememberCoroutineScope
+import app.squirrel.ui.RegisterLsDo
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -32,6 +35,12 @@ fun FilteredTimeline(graph: AppGraph, filter: PhotoFilter, title: String, onChan
     val people by explore.state.collectAsStateWithLifecycle()
     val vm = viewModel(key = "timeline-${filter.key}") { PhotosViewModel(api, filter = filter) }
     var viewing by remember { mutableStateOf<String?>(null) }
+    val scope = rememberCoroutineScope()
+    val lsdo = remember(vm) {
+        TimelineLsDo(vm, api, scope, onOpen = { viewing = it }, onClose = { viewing = null }, title = title, filter = filter, onFilter = onChange)
+    }
+    LaunchedEffect(viewing) { lsdo.overlay.shown(PhotosOverlay(viewing)) }
+    RegisterLsDo("timeline", lsdo)
     SystemBack(onBack = onBack)
     Column(Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(Tokens.space2)) {
         PageHeader(title, onBack = onBack, backLabel = "Back to Explore")
