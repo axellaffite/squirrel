@@ -10,6 +10,7 @@ import androidx.compose.foundation.text.BasicText
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Modifier
 import androidx.lifecycle.compose.LifecycleResumeEffect
@@ -30,6 +31,7 @@ import app.squirrel.theme.components.Progress
 import app.squirrel.theme.components.Sheet
 import app.squirrel.theme.components.Well
 import app.squirrel.theme.tabular
+import app.squirrel.ui.RegisterLsDo
 import app.squirrel.ui.shell.PageHeader
 import kotlinx.coroutines.launch
 
@@ -55,6 +57,8 @@ fun BackupScreen(vm: BackupViewModel, picker: AlbumPickerViewModel, actions: Pho
             Button("Allow access", onClick = actions::requestAccess, full = true, size = ButtonSize.Lg)
             return@Column
         }
+        // LS-DO: the album choice, while its row is on screen.
+        RegisterLsDo("album_picker", remember(picker) { AlbumPickerLsDo(picker) })
         StatusCard(state)
         Button(state.button, onClick = vm::backUpNow, enabled = !state.running, full = true, size = ButtonSize.Lg)
         state.notice?.let { Alert(it, tone = if (state.noticeIsError) AlertTone.Error else AlertTone.Info) }
