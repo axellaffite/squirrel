@@ -12,6 +12,7 @@ import io.ktor.server.routing.get
 import io.ktor.server.routing.post
 import io.ktor.server.routing.routing
 import kotlinx.serialization.SerializationException
+import kotlinx.serialization.builtins.ListSerializer
 import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.buildJsonObject
@@ -47,6 +48,17 @@ fun Application.lsdoRoutes(registry: LsDoRegistry) {
             if (screen == null) call.json(error("No screen \"$id\". Screens: ${registry.ids.joinToString().ifEmpty { "none" }}."), HttpStatusCode.NotFound)
             else call.json(screen)
         }
+        // What is rendered: compact text by default, ?format=json for the tree, ?bounds=1 for positions.
+        get("/ui") {
+            if (!call.allowed()) return@get
+            val ui = registry.ui()
+                ?: return@get call.json(error("This build cannot read the rendered UI."), HttpStatusCode.NotFound)
+            if (call.request.queryParameters["format"] == "json") {
+                call.json(LsDoJson.encodeToJsonElement(ListSerializer(UiNode.serializer()), ui))
+            } else {
+                call.respondText(ui.render(bounds = call.request.queryParameters["bounds"] == "1"), ContentType.Text.Plain)
+            }
+        }
         post("/do/{screen}") {
             if (!call.allowed()) return@post
             val id = call.parameters["screen"].orEmpty()
@@ -55,7 +67,7 @@ fun Application.lsdoRoutes(registry: LsDoRegistry) {
             } catch (e: SerializationException) {
                 return@post call.json(error("The body is not JSON: ${e.message}"), HttpStatusCode.BadRequest)
             }
-            val outcome = registry.perform(id, body)
+            val outcome = registry.perform(id, body, withUi = call.request.queryParameters["ui"] == "1")
             call.json(outcome.toJson(), if (outcome.ok || id in registry.ids) HttpStatusCode.OK else HttpStatusCode.NotFound)
         }
     }

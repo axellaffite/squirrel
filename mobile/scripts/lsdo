@@ -1,25 +1,27 @@
 #!/usr/bin/env bash
-# LS-DO: list the app's screens (state + available actions) and run an action on one.
-# The debug app serves them on the phone's loopback; this forwards the port over adb.
-#
-#   scripts/lsdo ls                          every screen on show
-#   scripts/lsdo ls files                    one screen
-#   scripts/lsdo do files enter '{"id":"x"}' run an action (params optional)
-#
-# LSDO_URL overrides the address (e.g. a desktop build); ANDROID_SERIAL picks the device.
+# LS-DO: list the app's screens (state + available actions), run an action, read what is rendered.
+#   scripts/lsdo ls [screen]                  every screen on show, or one
+#   scripts/lsdo do <screen> <action> [json]  run an action: scripts/lsdo do files enter '{"id":"x"}'
+#   scripts/lsdo ui [bounds|json]             the rendered UI (semantics) as compact text
+# LSDO_URL: address (iOS simulator: http://127.0.0.1:8765); otherwise adb forwards (ANDROID_SERIAL).
+# LSDO_TRACE=<dir>: each do also saves step-N.json (intent, answer, UI after) and step-N.png.
 set -euo pipefail
 
 PORT=8765
+# A backgrounded app (iOS suspends it) never answers: fail instead of hanging.
+TIMEOUT="${LSDO_TIMEOUT:-30}"
 URL="${LSDO_URL:-}"
+PLATFORM=ios
 
-usage() { sed -n '2,9p' "$0" | sed 's/^# \{0,1\}//'; exit 2; }
+usage() { sed -n '2,7p' "$0" | sed 's/^# \{0,1\}//'; exit 2; }
 
-[[ "${1:-}" == ls || "${1:-}" == do ]] || usage
+[[ "${1:-}" == ls || "${1:-}" == do || "${1:-}" == ui ]] || usage
 
 if [[ -z "$URL" ]]; then
   command -v adb >/dev/null || { echo "adb not found (or set LSDO_URL)" >&2; exit 1; }
   adb forward "tcp:$PORT" "tcp:$PORT" >/dev/null
   URL="http://127.0.0.1:$PORT"
+  PLATFORM=android
 fi
 
 # Screen ids can hold characters a URL path cannot (a second "files" is "files-2"; be safe anyway).
@@ -27,14 +29,36 @@ enc() { python3 -c 'import sys, urllib.parse; print(urllib.parse.quote(sys.argv[
 
 pretty() { if command -v jq >/dev/null; then jq .; else python3 -m json.tool; fi; }
 
-case "${1:-}" in
+screenshot() {
+  if [[ "$PLATFORM" == android ]]; then adb exec-out screencap -p > "$1"
+  else xcrun simctl io booted screenshot "$1" >/dev/null 2>&1; fi
+}
+
+trace() { # <screen> <body> <answer>
+  local dir="$LSDO_TRACE" n
+  mkdir -p "$dir"
+  n=$(( $(find "$dir" -maxdepth 1 -name 'step-*.json' | wc -l) + 1 ))
+  python3 -c 'import json,sys; print(json.dumps({"step": int(sys.argv[1]), "screen": sys.argv[2], "intent": json.loads(sys.argv[3]), "answer": json.loads(sys.argv[4])}, indent=2))' \
+    "$n" "$1" "$2" "$3" > "$dir/step-$n.json"
+  screenshot "$dir/step-$n.png" || echo "no screenshot for step $n" >&2
+}
+
+case "$1" in
   ls)
-    curl -fsS -H 'X-LsDo: 1' "$URL/ls${2:+/$(enc "$2")}" | pretty ;;
+    curl -fsS -m "$TIMEOUT" -H 'X-LsDo: 1' "$URL/ls${2:+/$(enc "$2")}" | pretty ;;
+  ui)
+    case "${2:-}" in
+      json) curl -fsS -m "$TIMEOUT" -H 'X-LsDo: 1' "$URL/ui?format=json" | pretty ;;
+      bounds) curl -fsS -m "$TIMEOUT" -H 'X-LsDo: 1' "$URL/ui?bounds=1"; echo ;;
+      *) curl -fsS -m "$TIMEOUT" -H 'X-LsDo: 1' "$URL/ui"; echo ;;
+    esac ;;
   do)
     [[ $# -ge 3 ]] || usage
     screen="$2" action="$3" params="${4:-}"
     [[ -n "$params" ]] || params='{}'
     body=$(python3 -c 'import json,sys; p=json.loads(sys.argv[2]); p["type"]=sys.argv[1]; print(json.dumps(p))' "$action" "$params")
-    curl -sS -X POST -H 'X-LsDo: 1' -H 'Content-Type: application/json' --data "$body" "$URL/do/$(enc "$screen")" | pretty ;;
-  *) usage ;;
+    query=""; [[ -n "${LSDO_TRACE:-}" || -n "${LSDO_UI:-}" ]] && query="?ui=1"
+    answer=$(curl -sS -m "$TIMEOUT" -X POST -H 'X-LsDo: 1' -H 'Content-Type: application/json' --data "$body" "$URL/do/$(enc "$screen")$query")
+    [[ -z "${LSDO_TRACE:-}" ]] || trace "$screen" "$body" "$answer"
+    printf '%s\n' "$answer" | pretty ;;
 esac

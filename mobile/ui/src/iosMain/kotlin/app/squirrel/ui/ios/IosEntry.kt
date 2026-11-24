@@ -27,6 +27,7 @@ private val observer by lazy {
  * must be, before launch finishes), and the app follows its own activity.
  */
 fun onLaunch() {
+    startLsDo()
     val backup = IosGraph.backup
     backup.tasks.register()
     val graph = IosGraph.instance
