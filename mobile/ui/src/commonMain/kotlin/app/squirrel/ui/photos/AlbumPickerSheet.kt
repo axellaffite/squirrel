@@ -13,7 +13,6 @@ import androidx.compose.ui.draw.clip
 import app.squirrel.api.models.AlbumDto
 import app.squirrel.api.models.ThumbnailStatus
 import app.squirrel.shared.api.SquirrelApi
-import app.squirrel.shared.api.bodyOrThrow
 import app.squirrel.theme.Shapes
 import app.squirrel.theme.SquirrelIcon
 import app.squirrel.theme.Tokens
@@ -22,7 +21,6 @@ import app.squirrel.theme.components.AlertTone
 import app.squirrel.theme.components.ListRow
 import app.squirrel.theme.components.Loading
 import app.squirrel.theme.components.Sheet
-import app.squirrel.ui.attempt
 import app.squirrel.ui.explore.photoCount
 import app.squirrel.ui.files.albumNameProblem
 import app.squirrel.ui.images.Thumbnail
@@ -44,10 +42,9 @@ fun AlbumPickerSheet(api: SquirrelApi, ids: List<String>, onDone: (String) -> Un
     var busy by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf<String?>(null) }
     val albums by produceState<List<AlbumDto>?>(null) {
-        val own = attempt { api.albums.listAlbums().bodyOrThrow() }
-        val shared = attempt { api.sharing.sharedWithMe().bodyOrThrow() }.orEmpty()
-        if (own == null) error = app.squirrel.ui.photos.UNREACHABLE
-        value = writableAlbums(own.orEmpty(), shared)
+        val picked = pickerAlbums(api)
+        if (!picked.ok) error = UNREACHABLE
+        value = picked.albums
     }
     if (naming) {
         NameSheet("New album", "Create album", validate = ::albumNameProblem, onSubmit = { name ->
