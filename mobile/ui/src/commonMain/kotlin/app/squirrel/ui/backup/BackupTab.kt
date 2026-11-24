@@ -3,6 +3,7 @@ package app.squirrel.ui.backup
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import app.squirrel.api.models.RenameDeviceRequest
@@ -11,6 +12,7 @@ import app.squirrel.ui.AppState
 import androidx.lifecycle.viewmodel.compose.viewModel
 import app.squirrel.shared.sync.MediaAccess
 import app.squirrel.ui.AppGraph
+import app.squirrel.ui.RegisterLsDo
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.IO
 import kotlinx.coroutines.withContext
@@ -55,8 +57,13 @@ fun BackupTab(graph: AppGraph, actions: PhotoAccessActions) {
                 deviceName = (graph.state.value as? AppState.SignedIn)?.account?.deviceName.orEmpty(),
             )
         }
+        // LS-DO: an agent opens and leaves settings through the same state the page's buttons set.
+        val lsdo = remember(settingsVm) { BackupSettingsLsDo(settingsVm) { settingsOpen = false } }
+        RegisterLsDo("backup_settings", lsdo)
         BackupSettingsScreen(settingsVm, picker, onBack = { settingsOpen = false })
     } else {
+        val lsdo = remember(vm) { BackupLsDo(vm) { settingsOpen = true } }
+        RegisterLsDo("backup", lsdo)
         BackupScreen(vm, picker, actions, onOpenSettings = { settingsOpen = true })
     }
 }

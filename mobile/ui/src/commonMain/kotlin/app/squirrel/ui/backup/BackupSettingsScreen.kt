@@ -12,6 +12,8 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
+import app.squirrel.ui.RegisterLsDo
 import androidx.compose.ui.Modifier
 import app.squirrel.ui.shell.SystemBack
 import app.squirrel.ui.shell.PageHeader
@@ -34,6 +36,7 @@ fun BackupSettingsScreen(vm: BackupSettingsViewModel, picker: AlbumPickerViewMod
     val albums by picker.state.collectAsStateWithLifecycle()
     val type = SquirrelTheme.type
     SystemBack(onBack = onBack)
+    RegisterLsDo("album_picker", remember(picker) { AlbumPickerLsDo(picker) })
     Column(
         modifier = Modifier.fillMaxWidth().verticalScroll(rememberScrollState()),
         verticalArrangement = Arrangement.spacedBy(Tokens.space4),
