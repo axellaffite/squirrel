@@ -19,6 +19,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -41,6 +42,7 @@ import app.squirrel.theme.components.BottomRail
 import app.squirrel.theme.popShadow
 import app.squirrel.theme.tabular
 import app.squirrel.ui.AccountInfo
+import app.squirrel.ui.RegisterLsDo
 
 private enum class Tab(val label: String, val icon: SquirrelIcon, val title: String, val line: String) {
     Photos("Photos", SquirrelIcon.Images, "Photos are not in the app yet", "Your timeline arrives in a later version of the app."),
@@ -64,6 +66,10 @@ fun Shell(
     var menuOpen by rememberSaveable { mutableStateOf(false) }
     LaunchedEffect(Unit) { onRefresh() }
     val current = Tab.valueOf(tab)
+    // LS-DO: an agent switches sections through the same state the bottom bar sets.
+    val lsdo = remember { ShellLsDo(AppTab.valueOf(current.name)) { tab = it.name } }
+    LaunchedEffect(current) { lsdo.shown(AppTab.valueOf(current.name)) }
+    RegisterLsDo("app", lsdo)
     Box(Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.safeDrawing)) {
         Column(Modifier.fillMaxSize().padding(horizontal = Tokens.gutter)) {
             Row(

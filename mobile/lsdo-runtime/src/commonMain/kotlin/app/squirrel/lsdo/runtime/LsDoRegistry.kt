@@ -135,7 +135,8 @@ class LsDoRegistry(
         val screen = entry.screen
         val state = screen.state.value
         val available = screen.availableIntents(state)
-        val actions = actionsOf(screen.lsdo.intent.descriptor).filter { available == null || it.name in available }
+        val all = actionsOf(screen.lsdo.intent.descriptor)
+        val actions = all.filter { available == null || it.name in available }
         return buildJsonObject {
             put("id", entry.id)
             put("busy", screen.isBusy(state))
@@ -152,6 +153,9 @@ class LsDoRegistry(
                     },
                 ),
             )
+            // What exists on this screen but makes no sense in this state (inside a folder only, etc.).
+            val unavailable = all.map { it.name }.filterNot { name -> actions.any { it.name == name } }
+            if (unavailable.isNotEmpty()) put("unavailable", JsonArray(unavailable.map(::JsonPrimitive)))
         }
     }
 }

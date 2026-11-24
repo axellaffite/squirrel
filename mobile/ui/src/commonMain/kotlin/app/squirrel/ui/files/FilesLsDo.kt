@@ -14,6 +14,9 @@ sealed interface FilesIntent {
     @Serializable @SerialName("up") @Doc("One folder up")
     data object Up : FilesIntent
 
+    @Serializable @SerialName("top") @Doc("Back to where this browser starts: the top level of Files (in Shared: the shared folder)")
+    data object Top : FilesIntent
+
     @Serializable @SerialName("more") @Doc("Load the next page of rows")
     data object More : FilesIntent
 
@@ -43,6 +46,7 @@ sealed interface FilesIntent {
 internal suspend fun FilesViewModel.performIntent(intent: FilesIntent): String? = when (intent) {
     is FilesIntent.Enter -> done { enter(intent.id ?: root) }
     FilesIntent.Up -> if (up()) null else "Already at the top of this browser."
+    FilesIntent.Top -> if (atRoot) "Already at the top of this browser." else done { enter(root) }
     FilesIntent.More -> done { more() }
     FilesIntent.Refresh -> done { refresh() }
     FilesIntent.Retry -> done { retry() }
@@ -56,7 +60,7 @@ internal suspend fun FilesViewModel.performIntent(intent: FilesIntent): String? 
 /** The actions that make sense now: no "up" at the root, no edits without the right to edit. */
 internal fun FilesViewModel.intentsFor(state: FilesState): Set<String> = buildSet {
     addAll(listOf("enter", "more", "refresh", "retry", "open"))
-    if (!atRoot) add("up")
+    if (!atRoot) addAll(listOf("up", "top"))
     if (state.confirm != null) add("dismiss_confirm")
     if (state.canAdd) add("create_folder")
     if (state.can.edit) addAll(listOf("rename", "move"))
