@@ -1,0 +1,302 @@
+{
+    "name": "timeline",
+    "description": "Photos by month: page, open a photo, add photos to an album; also the filtered timeline opened from explore. Reached by: app go_to photos (the default), or explore open <id>.",
+    "actions": [
+        {
+            "name": "add_to_album",
+            "description": "Add loaded photos to an album (one of yours, or shared with you for editing), as selecting them and choosing Add to album does. The whole timeline only, not one opened from Explore",
+            "params": {
+                "type": "object",
+                "properties": {
+                    "ids": {
+                        "type": "array",
+                        "items": {
+                            "type": "string"
+                        },
+                        "description": "Photo ids from photos"
+                    },
+                    "albumId": {
+                        "type": "string",
+                        "description": "An album id, as albums lists them"
+                    }
+                },
+                "required": [
+                    "ids",
+                    "albumId"
+                ]
+            }
+        },
+        {
+            "name": "add_to_new_album",
+            "description": "Add loaded photos to a new album named name, as Add to album, then New album… does. The whole timeline only",
+            "params": {
+                "type": "object",
+                "properties": {
+                    "ids": {
+                        "type": "array",
+                        "items": {
+                            "type": "string"
+                        },
+                        "description": "Photo ids from photos"
+                    },
+                    "name": {
+                        "type": "string"
+                    }
+                },
+                "required": [
+                    "ids",
+                    "name"
+                ]
+            }
+        },
+        {
+            "name": "close_photo",
+            "description": "Close the viewer. Only while a photo is open (viewing set)",
+            "params": {
+                "type": "object",
+                "properties": {}
+            }
+        },
+        {
+            "name": "filter",
+            "description": "Narrow or widen a timeline opened from Explore, as its filter bar does; an empty filter goes back to Explore. Only on a timeline opened from Explore",
+            "params": {
+                "type": "object",
+                "properties": {
+                    "filter": {
+                        "type": "object",
+                        "properties": {
+                            "person": {
+                                "type": "string",
+                                "nullable": true
+                            },
+                            "tag": {
+                                "type": "string",
+                                "nullable": true
+                            },
+                            "country": {
+                                "type": "string",
+                                "nullable": true
+                            },
+                            "region": {
+                                "type": "string",
+                                "nullable": true
+                            },
+                            "city": {
+                                "type": "string",
+                                "nullable": true
+                            },
+                            "cameraMake": {
+                                "type": "string",
+                                "nullable": true
+                            },
+                            "cameraModel": {
+                                "type": "string",
+                                "nullable": true
+                            },
+                            "kind": {
+                                "type": "string",
+                                "enum": [
+                                    "photo",
+                                    "screenshot",
+                                    "unknown_default_open_api"
+                                ],
+                                "nullable": true
+                            }
+                        }
+                    }
+                },
+                "required": [
+                    "filter"
+                ]
+            }
+        },
+        {
+            "name": "more",
+            "description": "Load the next page of a month, as scrolling to it does; no month: the first one not complete. Not once every month is complete",
+            "params": {
+                "type": "object",
+                "properties": {
+                    "month": {
+                        "type": "string",
+                        "nullable": true,
+                        "description": "e.g. 2024-07, from months"
+                    }
+                }
+            }
+        },
+        {
+            "name": "open",
+            "description": "Open a loaded photo (by its id in photos) in the viewer. Not while one is open",
+            "params": {
+                "type": "object",
+                "properties": {
+                    "id": {
+                        "type": "string"
+                    }
+                },
+                "required": [
+                    "id"
+                ]
+            }
+        },
+        {
+            "name": "refresh",
+            "description": "Reload the timeline from the top, as pulling down does",
+            "params": {
+                "type": "object",
+                "properties": {}
+            }
+        },
+        {
+            "name": "retry",
+            "description": "Try the failed load again, after an error",
+            "params": {
+                "type": "object",
+                "properties": {}
+            }
+        }
+    ],
+    "state": {
+        "type": "object",
+        "properties": {
+            "title": {
+                "type": "string",
+                "nullable": true,
+                "description": "Set on a timeline opened from Explore: its title (a person, place, tag or camera)"
+            },
+            "filter": {
+                "type": "object",
+                "properties": {
+                    "person": {
+                        "type": "string",
+                        "nullable": true
+                    },
+                    "tag": {
+                        "type": "string",
+                        "nullable": true
+                    },
+                    "country": {
+                        "type": "string",
+                        "nullable": true
+                    },
+                    "region": {
+                        "type": "string",
+                        "nullable": true
+                    },
+                    "city": {
+                        "type": "string",
+                        "nullable": true
+                    },
+                    "cameraMake": {
+                        "type": "string",
+                        "nullable": true
+                    },
+                    "cameraModel": {
+                        "type": "string",
+                        "nullable": true
+                    },
+                    "kind": {
+                        "type": "string",
+                        "enum": [
+                            "photo",
+                            "screenshot",
+                            "unknown_default_open_api"
+                        ],
+                        "nullable": true
+                    }
+                },
+                "nullable": true,
+                "description": "What the timeline is narrowed to; null: every photo"
+            },
+            "months": {
+                "type": "array",
+                "items": {
+                    "type": "object",
+                    "properties": {
+                        "month": {
+                            "type": "string",
+                            "description": "e.g. 2024-07"
+                        },
+                        "label": {
+                            "type": "string"
+                        },
+                        "count": {
+                            "type": "integer",
+                            "description": "Photos taken that month"
+                        },
+                        "loaded": {
+                            "type": "integer",
+                            "description": "Photos of it loaded so far"
+                        },
+                        "complete": {
+                            "type": "boolean",
+                            "description": "Every photo of it is loaded"
+                        },
+                        "loading": {
+                            "type": "boolean"
+                        },
+                        "failed": {
+                            "type": "boolean",
+                            "description": "Its last page failed: retry"
+                        }
+                    },
+                    "required": [
+                        "month",
+                        "label",
+                        "count",
+                        "loaded",
+                        "complete"
+                    ]
+                }
+            },
+            "photos": {
+                "type": "array",
+                "items": {
+                    "type": "object",
+                    "properties": {
+                        "id": {
+                            "type": "string"
+                        },
+                        "name": {
+                            "type": "string"
+                        },
+                        "takenAt": {
+                            "type": "string",
+                            "description": "Capture time on the camera's clock, e.g. 2024-07-14T18:30:05"
+                        },
+                        "video": {
+                            "type": "boolean"
+                        }
+                    },
+                    "required": [
+                        "id",
+                        "name",
+                        "takenAt"
+                    ]
+                },
+                "description": "Every photo loaded so far, newest first; months load page by page (more)"
+            },
+            "loadingMonths": {
+                "type": "boolean"
+            },
+            "refreshing": {
+                "type": "boolean"
+            },
+            "error": {
+                "type": "string",
+                "nullable": true
+            },
+            "viewing": {
+                "type": "string",
+                "nullable": true,
+                "description": "The photo open in the viewer"
+            },
+            "notice": {
+                "type": "string",
+                "nullable": true,
+                "description": "What the last add to an album did"
+            }
+        }
+    }
+}

@@ -1,0 +1,263 @@
+{
+    "name": "photo_search",
+    "description": "Photo search: text, filter, order, open a result. Reached by: app go_to photos, then photos search.",
+    "actions": [
+        {
+            "name": "close_photo",
+            "description": "Close the viewer. Only while a photo is open (viewing set)",
+            "params": {
+                "type": "object",
+                "properties": {}
+            }
+        },
+        {
+            "name": "filter",
+            "description": "Narrow the results, as the filter bar does; searches again at once",
+            "params": {
+                "type": "object",
+                "properties": {
+                    "filter": {
+                        "type": "object",
+                        "properties": {
+                            "person": {
+                                "type": "string",
+                                "nullable": true
+                            },
+                            "tag": {
+                                "type": "string",
+                                "nullable": true
+                            },
+                            "country": {
+                                "type": "string",
+                                "nullable": true
+                            },
+                            "region": {
+                                "type": "string",
+                                "nullable": true
+                            },
+                            "city": {
+                                "type": "string",
+                                "nullable": true
+                            },
+                            "cameraMake": {
+                                "type": "string",
+                                "nullable": true
+                            },
+                            "cameraModel": {
+                                "type": "string",
+                                "nullable": true
+                            },
+                            "kind": {
+                                "type": "string",
+                                "enum": [
+                                    "photo",
+                                    "screenshot",
+                                    "unknown_default_open_api"
+                                ],
+                                "nullable": true
+                            }
+                        }
+                    }
+                },
+                "required": [
+                    "filter"
+                ]
+            }
+        },
+        {
+            "name": "more",
+            "description": "Load the next results, as scrolling to the end does. Only when hasMore",
+            "params": {
+                "type": "object",
+                "properties": {}
+            }
+        },
+        {
+            "name": "open",
+            "description": "Open a photo found (by its id in photos) in the viewer. Not while one is open",
+            "params": {
+                "type": "object",
+                "properties": {
+                    "id": {
+                        "type": "string"
+                    }
+                },
+                "required": [
+                    "id"
+                ]
+            }
+        },
+        {
+            "name": "order",
+            "description": "Order the results by date (Timeline) or relevance (Best match). Not when search is unavailable",
+            "params": {
+                "type": "object",
+                "properties": {
+                    "order": {
+                        "type": "string",
+                        "enum": [
+                            "relevance",
+                            "date",
+                            "unknown_default_open_api"
+                        ]
+                    }
+                },
+                "required": [
+                    "order"
+                ]
+            }
+        },
+        {
+            "name": "retry",
+            "description": "Try again, after an error",
+            "params": {
+                "type": "object",
+                "properties": {}
+            }
+        },
+        {
+            "name": "search",
+            "description": "Search photos by what they show, as typing in the field then the search key does; empty text clears",
+            "params": {
+                "type": "object",
+                "properties": {
+                    "text": {
+                        "type": "string"
+                    }
+                },
+                "required": [
+                    "text"
+                ]
+            }
+        }
+    ],
+    "state": {
+        "type": "object",
+        "properties": {
+            "typed": {
+                "type": "string",
+                "description": "What is in the search field"
+            },
+            "query": {
+                "type": "string",
+                "description": "The query the photos belong to; empty before any search"
+            },
+            "filter": {
+                "type": "object",
+                "properties": {
+                    "person": {
+                        "type": "string",
+                        "nullable": true
+                    },
+                    "tag": {
+                        "type": "string",
+                        "nullable": true
+                    },
+                    "country": {
+                        "type": "string",
+                        "nullable": true
+                    },
+                    "region": {
+                        "type": "string",
+                        "nullable": true
+                    },
+                    "city": {
+                        "type": "string",
+                        "nullable": true
+                    },
+                    "cameraMake": {
+                        "type": "string",
+                        "nullable": true
+                    },
+                    "cameraModel": {
+                        "type": "string",
+                        "nullable": true
+                    },
+                    "kind": {
+                        "type": "string",
+                        "enum": [
+                            "photo",
+                            "screenshot",
+                            "unknown_default_open_api"
+                        ],
+                        "nullable": true
+                    }
+                }
+            },
+            "order": {
+                "type": "string",
+                "enum": [
+                    "relevance",
+                    "date",
+                    "unknown_default_open_api"
+                ]
+            },
+            "photos": {
+                "type": "array",
+                "items": {
+                    "type": "object",
+                    "properties": {
+                        "id": {
+                            "type": "string"
+                        },
+                        "name": {
+                            "type": "string"
+                        },
+                        "takenAt": {
+                            "type": "string",
+                            "description": "Capture time on the camera's clock, e.g. 2024-07-14T18:30:05"
+                        },
+                        "video": {
+                            "type": "boolean"
+                        }
+                    },
+                    "required": [
+                        "id",
+                        "name",
+                        "takenAt"
+                    ]
+                },
+                "description": "The photos found so far"
+            },
+            "hasMore": {
+                "type": "boolean",
+                "description": "More photos match: more loads them"
+            },
+            "loading": {
+                "type": "boolean"
+            },
+            "error": {
+                "type": "string",
+                "nullable": true
+            },
+            "unavailable": {
+                "type": "boolean",
+                "description": "This server cannot search photos (no text model): nothing to retry"
+            },
+            "people": {
+                "type": "array",
+                "items": {
+                    "type": "object",
+                    "properties": {
+                        "id": {
+                            "type": "string"
+                        },
+                        "name": {
+                            "type": "string"
+                        }
+                    },
+                    "required": [
+                        "id",
+                        "name"
+                    ]
+                },
+                "description": "Your people, for filter.person"
+            },
+            "viewing": {
+                "type": "string",
+                "nullable": true,
+                "description": "The photo open in the viewer"
+            }
+        }
+    }
+}

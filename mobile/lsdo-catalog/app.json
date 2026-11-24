@@ -1,0 +1,58 @@
+{
+    "name": "app",
+    "description": "The shell once signed in: the bottom bar's sections (photos, files, shared, backup). Always shown after sign-in.",
+    "actions": [
+        {
+            "name": "go_to",
+            "description": "Show a section, as tapping it in the bottom bar does",
+            "params": {
+                "type": "object",
+                "properties": {
+                    "tab": {
+                        "type": "string",
+                        "enum": [
+                            "photos",
+                            "files",
+                            "shared",
+                            "backup"
+                        ]
+                    }
+                },
+                "required": [
+                    "tab"
+                ]
+            }
+        }
+    ],
+    "state": {
+        "type": "object",
+        "properties": {
+            "tab": {
+                "type": "string",
+                "enum": [
+                    "photos",
+                    "files",
+                    "shared",
+                    "backup"
+                ],
+                "description": "The section shown"
+            },
+            "tabs": {
+                "type": "array",
+                "items": {
+                    "type": "string",
+                    "enum": [
+                        "photos",
+                        "files",
+                        "shared",
+                        "backup"
+                    ]
+                },
+                "description": "Every section of the bottom bar"
+            }
+        },
+        "required": [
+            "tab"
+        ]
+    }
+}

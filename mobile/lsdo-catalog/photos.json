@@ -1,0 +1,81 @@
+{
+    "name": "photos",
+    "description": "The Photos section's navigation: show timeline / albums / explore, open search, back. Reached by: app go_to photos.",
+    "actions": [
+        {
+            "name": "back",
+            "description": "Back one page, as the page's back button does. Not at home",
+            "params": {
+                "type": "object",
+                "properties": {}
+            }
+        },
+        {
+            "name": "search",
+            "description": "Open photo search, as the search button does. Home only",
+            "params": {
+                "type": "object",
+                "properties": {}
+            }
+        },
+        {
+            "name": "show",
+            "description": "Show a sub-tab (timeline, albums, explore), as the segmented control does. Home only",
+            "params": {
+                "type": "object",
+                "properties": {
+                    "mode": {
+                        "type": "string",
+                        "enum": [
+                            "timeline",
+                            "albums",
+                            "explore"
+                        ]
+                    }
+                },
+                "required": [
+                    "mode"
+                ]
+            }
+        }
+    ],
+    "state": {
+        "type": "object",
+        "properties": {
+            "page": {
+                "type": "string",
+                "enum": [
+                    "home",
+                    "album",
+                    "search",
+                    "section",
+                    "filtered"
+                ],
+                "description": "The page shown: home (the sub-tabs), album, search, section (one Explore list) or filtered (a timeline opened from Explore)"
+            },
+            "mode": {
+                "type": "string",
+                "enum": [
+                    "timeline",
+                    "albums",
+                    "explore"
+                ],
+                "description": "The sub-tab of home (kept while another page is on top)"
+            },
+            "title": {
+                "type": "string",
+                "nullable": true,
+                "description": "The album, section or filtered timeline's title; null at home and in search"
+            },
+            "albumId": {
+                "type": "string",
+                "nullable": true,
+                "description": "The album shown, on an album page"
+            },
+            "depth": {
+                "type": "integer",
+                "description": "Pages stacked, home included: back goes down one"
+            }
+        }
+    }
+}

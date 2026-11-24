@@ -1,0 +1,42 @@
+{
+    "name": "shared_nav",
+    "description": "The Shared section's pages (list, folder, album, photo): back returns to the list. Reached by: app go_to shared.",
+    "actions": [
+        {
+            "name": "back",
+            "description": "Back to the Shared list from what is open, a folder at any depth included (as its \"Shared\" breadcrumb does). Not on the list",
+            "params": {
+                "type": "object",
+                "properties": {}
+            }
+        }
+    ],
+    "state": {
+        "type": "object",
+        "properties": {
+            "page": {
+                "type": "string",
+                "enum": [
+                    "list",
+                    "folder",
+                    "album",
+                    "photo"
+                ],
+                "description": "The page shown: the list (screen shared_list), a shared folder (screen shared), an album or a photo"
+            },
+            "id": {
+                "type": "string",
+                "nullable": true,
+                "description": "The folder, album or photo open; null on the list"
+            },
+            "name": {
+                "type": "string",
+                "nullable": true,
+                "description": "The album or photo's name; null on the list and in a folder (its state has the name)"
+            }
+        },
+        "required": [
+            "page"
+        ]
+    }
+}

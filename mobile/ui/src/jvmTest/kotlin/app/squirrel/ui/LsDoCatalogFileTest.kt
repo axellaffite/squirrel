@@ -1,6 +1,7 @@
 package app.squirrel.ui
 
-import app.squirrel.lsdo.runtime.catalogFull
+import app.squirrel.lsdo.runtime.catalogIndex
+import app.squirrel.lsdo.runtime.catalogScreen
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonElement
 import java.io.File
@@ -8,22 +9,28 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 
 /**
- * `mobile/lsdo-catalog.json` is every LS-DO screen in full, for planning a scenario without a
- * device. It is generated from [LsDoScreens]: `./gradlew :ui:lsdoCatalog` writes it, and this
- * test fails when the committed copy no longer matches the code.
+ * `mobile/lsdo-catalog/` is every LS-DO screen, for planning a scenario without a device:
+ * `index.json` (names, how to reach them, action names) and one `<screen>.json` in full each, so
+ * an agent reads the index and only the screens it needs. Generated from [LsDoScreens]:
+ * `./gradlew :ui:lsdoCatalog` writes it, and this test fails when the committed copy is stale.
  */
 class LsDoCatalogFileTest {
     private val json = Json { prettyPrint = true }
 
+    private fun text(element: JsonElement) = json.encodeToString(JsonElement.serializer(), element) + "\n"
+
     @Test
     fun theCommittedCatalogMatchesTheCode() {
-        val file = File(requireNotNull(System.getProperty("lsdo.catalog")) { "lsdo.catalog is set by the build" })
-        val generated = json.encodeToString(JsonElement.serializer(), catalogFull(LsDoScreens)) + "\n"
+        val dir = File(requireNotNull(System.getProperty("lsdo.catalog")) { "lsdo.catalog is set by the build" })
+        val generated = mapOf("index.json" to text(catalogIndex(LsDoScreens))) +
+            LsDoScreens.associate { "${it.name}.json" to text(catalogScreen(it)) }
         if (System.getProperty("lsdo.catalog.write") == "true") {
-            file.writeText(generated)
+            dir.deleteRecursively()
+            dir.mkdirs()
+            generated.forEach { (name, content) -> dir.resolve(name).writeText(content) }
             return
         }
-        val committed = if (file.exists()) file.readText() else ""
-        assertEquals(generated, committed, "mobile/lsdo-catalog.json is stale: run ./gradlew :ui:lsdoCatalog")
+        val committed = dir.listFiles().orEmpty().associate { it.name to it.readText() }
+        assertEquals(generated, committed, "mobile/lsdo-catalog/ is stale: run ./gradlew :ui:lsdoCatalog")
     }
 }

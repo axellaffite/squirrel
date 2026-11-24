@@ -1,0 +1,68 @@
+{
+    "name": "uploads",
+    "description": "Uploads from this phone with their progress and errors (a do never waits for them: ls again). Reached by: any folder page (files or shared).",
+    "actions": [
+        {
+            "name": "dismiss",
+            "description": "Hide a failed upload's notice by its key in items, as its Dismiss button does. Only failed ones (error set)",
+            "params": {
+                "type": "object",
+                "properties": {
+                    "key": {
+                        "type": "integer"
+                    }
+                },
+                "required": [
+                    "key"
+                ]
+            }
+        }
+    ],
+    "state": {
+        "type": "object",
+        "properties": {
+            "items": {
+                "type": "array",
+                "items": {
+                    "type": "object",
+                    "properties": {
+                        "key": {
+                            "type": "integer",
+                            "description": "The upload's id: what dismiss takes"
+                        },
+                        "name": {
+                            "type": "string"
+                        },
+                        "parentId": {
+                            "type": "string",
+                            "description": "The folder it goes into: a folder page shows the uploads whose parentId is its folderId"
+                        },
+                        "progress": {
+                            "type": "number",
+                            "description": "0 to 1"
+                        },
+                        "error": {
+                            "type": "string",
+                            "nullable": true,
+                            "description": "Why it failed; null while it waits or uploads"
+                        }
+                    },
+                    "required": [
+                        "key",
+                        "name",
+                        "parentId"
+                    ]
+                },
+                "description": "Files on their way up, in order, and the failed ones until dismissed; a finished one leaves the list and its folder refreshes"
+            },
+            "uploading": {
+                "type": "integer",
+                "description": "Uploads waiting or running"
+            },
+            "failed": {
+                "type": "integer",
+                "description": "Failed uploads still listed"
+            }
+        }
+    }
+}

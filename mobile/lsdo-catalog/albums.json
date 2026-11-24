@@ -1,0 +1,109 @@
+{
+    "name": "albums",
+    "description": "The album list: open, create. Reached by: app go_to photos, then photos show albums.",
+    "actions": [
+        {
+            "name": "create",
+            "description": "New album, as the + button does; its page opens once created",
+            "params": {
+                "type": "object",
+                "properties": {
+                    "name": {
+                        "type": "string"
+                    }
+                },
+                "required": [
+                    "name"
+                ]
+            }
+        },
+        {
+            "name": "open",
+            "description": "Open an album (by its id in albums) on its own page",
+            "params": {
+                "type": "object",
+                "properties": {
+                    "id": {
+                        "type": "string"
+                    }
+                },
+                "required": [
+                    "id"
+                ]
+            }
+        },
+        {
+            "name": "refresh",
+            "description": "Reload the list, as pulling down does",
+            "params": {
+                "type": "object",
+                "properties": {}
+            }
+        },
+        {
+            "name": "retry",
+            "description": "Try the failed load again, after an error",
+            "params": {
+                "type": "object",
+                "properties": {}
+            }
+        }
+    ],
+    "state": {
+        "type": "object",
+        "properties": {
+            "albums": {
+                "type": "array",
+                "items": {
+                    "type": "object",
+                    "properties": {
+                        "id": {
+                            "type": "string"
+                        },
+                        "name": {
+                            "type": "string"
+                        },
+                        "count": {
+                            "type": "integer",
+                            "description": "Photos in it"
+                        },
+                        "access": {
+                            "type": "string",
+                            "enum": [
+                                "owner",
+                                "write",
+                                "read",
+                                "unknown_default_open_api"
+                            ],
+                            "description": "What you may do with it: owner, write (add and remove your own photos) or read"
+                        },
+                        "sharedBy": {
+                            "type": "string",
+                            "nullable": true,
+                            "description": "Who shared it with you; null: your own"
+                        }
+                    },
+                    "required": [
+                        "id",
+                        "name",
+                        "count",
+                        "access"
+                    ]
+                },
+                "nullable": true,
+                "description": "Null until the list first arrives"
+            },
+            "loading": {
+                "type": "boolean"
+            },
+            "refreshing": {
+                "type": "boolean",
+                "description": "Loading again over the albums shown"
+            },
+            "error": {
+                "type": "string",
+                "nullable": true
+            }
+        }
+    }
+}

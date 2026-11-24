@@ -82,20 +82,20 @@ tasks.withType<org.jetbrains.kotlin.gradle.tasks.KotlinNativeLink>()
     }
 
 // The LS-DO catalog, generated from LsDoScreens for planning without a device (see LsDoCatalogFileTest).
-val lsdoCatalogFile = rootProject.file("lsdo-catalog.json")
+val lsdoCatalogFile = rootProject.file("lsdo-catalog")
 tasks.named<Test>("jvmTest") {
     systemProperty("lsdo.catalog", lsdoCatalogFile.absolutePath)
     inputs.files(lsdoCatalogFile).withPropertyName("lsdoCatalog")
 }
 tasks.register<Test>("lsdoCatalog") {
     group = "lsdo"
-    description = "Writes mobile/lsdo-catalog.json from the app's LS-DO screens."
+    description = "Writes mobile/lsdo-catalog/ from the app's LS-DO screens."
     val jvmTest = tasks.named<Test>("jvmTest").get()
     testClassesDirs = jvmTest.testClassesDirs
     classpath = jvmTest.classpath
     filter { includeTestsMatching("app.squirrel.ui.LsDoCatalogFileTest") }
     systemProperty("lsdo.catalog", lsdoCatalogFile.absolutePath)
     systemProperty("lsdo.catalog.write", "true")
-    outputs.file(lsdoCatalogFile)
+    outputs.dir(lsdoCatalogFile)
     outputs.upToDateWhen { false }
 }

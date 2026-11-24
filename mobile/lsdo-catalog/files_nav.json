@@ -1,0 +1,38 @@
+{
+    "name": "files_nav",
+    "description": "The Files section's pages (browse, search): search opens document search, back closes it. Reached by: app go_to files.",
+    "actions": [
+        {
+            "name": "back",
+            "description": "Close search, back to the folder browser where it was. Only on search",
+            "params": {
+                "type": "object",
+                "properties": {}
+            }
+        },
+        {
+            "name": "search",
+            "description": "Open search, as the folder header's search button does. Only on the folder browser",
+            "params": {
+                "type": "object",
+                "properties": {}
+            }
+        }
+    ],
+    "state": {
+        "type": "object",
+        "properties": {
+            "page": {
+                "type": "string",
+                "enum": [
+                    "browse",
+                    "search"
+                ],
+                "description": "The page shown: the folder browser (screen files) or search (screen document_search)"
+            }
+        },
+        "required": [
+            "page"
+        ]
+    }
+}

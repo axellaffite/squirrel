@@ -1,0 +1,118 @@
+{
+    "name": "document_search",
+    "description": "Search of file names and PDF/text contents; snippets mark matches with **...**. Reached by: app go_to files, then files_nav search.",
+    "actions": [
+        {
+            "name": "more",
+            "description": "Load more results, as the \"Load more\" button does. Only when hasMore",
+            "params": {
+                "type": "object",
+                "properties": {}
+            }
+        },
+        {
+            "name": "retry",
+            "description": "Try the failed search again, after an error",
+            "params": {
+                "type": "object",
+                "properties": {}
+            }
+        },
+        {
+            "name": "search",
+            "description": "Search now for what is typed, as the keyboard's search key does. Only with 2 characters or more typed",
+            "params": {
+                "type": "object",
+                "properties": {}
+            }
+        },
+        {
+            "name": "type",
+            "description": "Type in the search field, replacing what is there: the search starts after a short pause. At least 2 characters search",
+            "params": {
+                "type": "object",
+                "properties": {
+                    "text": {
+                        "type": "string"
+                    }
+                },
+                "required": [
+                    "text"
+                ]
+            }
+        }
+    ],
+    "state": {
+        "type": "object",
+        "properties": {
+            "typed": {
+                "type": "string",
+                "description": "What is typed in the search field"
+            },
+            "query": {
+                "type": "string",
+                "description": "The query the results belong to; empty before any search"
+            },
+            "results": {
+                "type": "array",
+                "items": {
+                    "type": "object",
+                    "properties": {
+                        "id": {
+                            "type": "string",
+                            "description": "The file's id"
+                        },
+                        "name": {
+                            "type": "string"
+                        },
+                        "folderId": {
+                            "type": "string",
+                            "nullable": true,
+                            "description": "Its folder's id"
+                        },
+                        "mime": {
+                            "type": "string",
+                            "nullable": true
+                        },
+                        "meta": {
+                            "type": "string",
+                            "description": "Kind, pages and date, as the row shows them"
+                        },
+                        "snippet": {
+                            "type": "string",
+                            "description": "The passage around the matches, matched words in **…**; empty when only the name matched"
+                        }
+                    },
+                    "required": [
+                        "id",
+                        "name",
+                        "folderId",
+                        "mime",
+                        "meta",
+                        "snippet"
+                    ]
+                }
+            },
+            "hasMore": {
+                "type": "boolean",
+                "description": "More results wait: more loads them"
+            },
+            "settled": {
+                "type": "boolean",
+                "description": "The results are for what is typed and the search is done: empty results mean nothing matched"
+            },
+            "loading": {
+                "type": "boolean"
+            },
+            "error": {
+                "type": "string",
+                "nullable": true
+            },
+            "hint": {
+                "type": "string",
+                "nullable": true,
+                "description": "About short words in what is typed, as the field shows it"
+            }
+        }
+    }
+}
