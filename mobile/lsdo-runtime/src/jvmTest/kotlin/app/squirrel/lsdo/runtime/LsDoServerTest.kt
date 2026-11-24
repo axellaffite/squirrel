@@ -42,6 +42,28 @@ class LsDoServerTest {
     }
 
     @Test
+    fun `ui reads the rendered tree as text or JSON and a do can carry it`() = testApplication {
+        val registry = LsDoRegistry(capture = { listOf(UiNode(children = listOf(UiNode(role = "button", text = "Add", actions = listOf("click"))))) })
+        registry.register("counter", Counter())
+        application { lsdoRoutes(registry) }
+        val client = createClient { defaultRequest { headers.append(LSDO_HEADER, "1") } }
+
+        assertEquals("button \"Add\" [click]", client.get("/ui").bodyAsText())
+        val json = LsDoJson.parseToJsonElement(client.get("/ui?format=json").bodyAsText()).jsonArray
+        assertEquals("Add", json.single().jsonObject["text"]?.jsonPrimitive?.content)
+        val done = LsDoJson.parseToJsonElement(client.post("/do/counter?ui=1") { setBody("""{"type":"add","n":1}""") }.bodyAsText()).jsonObject
+        assertEquals("button \"Add\" [click]", done["ui"]?.jsonPrimitive?.content)
+    }
+
+    @Test
+    fun `ui is 404 when the build cannot read it`() = testApplication {
+        application { lsdoRoutes(LsDoRegistry()) }
+        val client = createClient { defaultRequest { headers.append(LSDO_HEADER, "1") } }
+
+        assertEquals(HttpStatusCode.NotFound, client.get("/ui").status)
+    }
+
+    @Test
     fun `requests without the LS-DO header are refused`() = testApplication {
         application { lsdoRoutes(LsDoRegistry()) }
 

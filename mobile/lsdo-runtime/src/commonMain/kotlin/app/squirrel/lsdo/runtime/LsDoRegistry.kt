@@ -29,12 +29,16 @@ val LsDoJson: Json = Json {
     classDiscriminator = "type"
 }
 
-/** What a do answers: whether it ran, the screen's refusal or the error, and the screens after it. */
-data class LsDoOutcome(val ok: Boolean, val message: String?, val screens: JsonObject) {
+/**
+ * What a do answers: whether it ran, the screen's refusal or the error, the screens after it,
+ * and what is rendered then ([ui], when asked for: the compact text of [render]).
+ */
+data class LsDoOutcome(val ok: Boolean, val message: String?, val screens: JsonObject, val ui: String? = null) {
     fun toJson(): JsonObject = buildJsonObject {
         put("ok", ok)
         put("message", message)
         put("screens", screens["screens"] ?: JsonArray(emptyList()))
+        ui?.let { put("ui", it) }
     }
 }
 
@@ -48,6 +52,8 @@ class LsDoRegistry(
     private val context: CoroutineContext = EmptyCoroutineContext,
     private val settle: Duration = 300.milliseconds,
     private val timeout: Duration = 10.seconds,
+    /** Reads what is rendered, one tree per window (null: this build cannot). Runs in [context]. */
+    private val capture: (suspend () -> List<UiNode>)? = null,
 ) : LsDo.Sink {
     private class Entry(val id: String, val screen: LsDoScreen<Any, Any>)
 
@@ -71,6 +77,12 @@ class LsDoRegistry(
         put("screens", JsonArray(entries.value.map(::describe)))
     }
 
+    /** Whether [ui] can read the rendered UI in this build. */
+    val canCaptureUi: Boolean get() = capture != null
+
+    /** What is rendered now, without its empty wrappers; null when this build cannot read it. */
+    suspend fun ui(): List<UiNode>? = capture?.let { read -> withContext(context) { read() }.flatMap { it.pruned() } }
+
     /** One screen, or null when none has that id. */
     fun ls(id: String): JsonObject? = find(id)?.let(::describe)
 
@@ -78,7 +90,7 @@ class LsDoRegistry(
      * Runs [intent] (`{"type": "<action>", ...params}`) on screen [id], waits until the screen
      * is idle (not busy, no change for [settle]) or [timeout] passed, then lists every screen.
      */
-    suspend fun perform(id: String, intent: JsonElement): LsDoOutcome {
+    suspend fun perform(id: String, intent: JsonElement, withUi: Boolean = false): LsDoOutcome {
         val entry = find(id) ?: return failure("No screen \"$id\". Screens: ${ids.joinToString().ifEmpty { "none" }}.")
         val screen = entry.screen
         val decoded = try {
@@ -102,7 +114,8 @@ class LsDoRegistry(
         }
         val idle = idle(screen)
         val note = message ?: if (idle) null else "Still busy after $timeout: ls again to see where it got to."
-        return LsDoOutcome(ok = message == null, message = note, screens = ls())
+        val ui = if (withUi) ui()?.render() else null
+        return LsDoOutcome(ok = message == null, message = note, screens = ls(), ui = ui)
     }
 
     /**

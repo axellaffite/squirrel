@@ -13,7 +13,8 @@ import kotlinx.coroutines.Dispatchers
  */
 internal object DevTools {
     fun start() {
-        val registry = LsDoRegistry(context = Dispatchers.Main.immediate)
+        ComposeUiCapture.install()
+        val registry = LsDoRegistry(context = Dispatchers.Main.immediate, capture = ComposeUiCapture::capture)
         LsDo.install(registry)
         runCatching { startLsDoServer(registry) }
             .onSuccess { Log.i("LsDo", "LS-DO listening on 127.0.0.1:$LSDO_PORT") }

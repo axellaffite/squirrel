@@ -50,6 +50,17 @@ the UI. `scripts/lsdo` forwards the port over adb:
     scripts/lsdo do files create_folder '{"name":"Taxes"}'
     scripts/lsdo do files up                          # refused at the top: the answer says why
 
+`scripts/lsdo ui` prints what is rendered, one element per line (`button "Add to Documents"
+[click]`, `tab "Files" {selected}`, `textfield "Password" = "••••" {password}`); `ui bounds` adds
+positions, `ui json` the tree. It is Compose's semantics tree on Android (every window: dialogs and
+popups too) and the UIKit accessibility elements Compose builds on iOS (positions in points). It
+shows no colors, images, truncation or overlap: those need a screenshot.
+
+With `LSDO_TRACE=<dir>`, each do also saves `step-N.json` (intent, answer, the UI after it) and
+`step-N.png`. The `lsdo-verifier` agent (`.claude/agents/`) reads such a trace and reports, step by
+step, whether the UI matches the state and the action, and which steps need a screenshot (it opens
+those itself).
+
 A do answers once the screen is idle, with every screen's new state. Every request needs an
 `X-LsDo` header (the script sends it), so a web page on the phone cannot drive the app. To add a screen: make its
 state `@Serializable`, give it a `@Serializable` sealed intent type (`@SerialName` = action name,
@@ -57,7 +68,16 @@ state `@Serializable`, give it a `@Serializable` sealed intent type (`@SerialNam
 in its composable (`ui/files/FilesLsDo.kt` is the example). `:lsdo` (the contract) ships
 everywhere; `:lsdo-runtime` (registry and server) is `debugImplementation` only, and
 `:androidApp:checkReleaseHasNoLsDo` (part of `check`) fails if it reaches the release build.
-iOS does not start the server yet.
+
+iOS: Kotlin/Native has no debug source sets, so `ui/build.gradle.kts` decides when Gradle
+configures. Xcode's Debug configuration (or `-Psquirrel.lsdo=true`) builds `src/iosLsDo`, which
+starts the server, and adds the runtime; anything else builds the empty `src/iosNoLsDo`. A release
+link fails if the runtime got into the binary anyway, and `-Psquirrel.lsdo=true` with
+`CONFIGURATION=Release` fails at once. The simulator shares the Mac's loopback, so no forwarding:
+
+    LSDO_URL=http://127.0.0.1:8765 scripts/lsdo ls
+
+A real iPhone needs the port forwarded over USB first (`iproxy 8765 8765`, from libimobiledevice).
 
 ## Android: install the debug app
 
