@@ -10,6 +10,8 @@ import app.squirrel.api.models.UpdateNodeRequest
 import app.squirrel.api.models.NodeKind
 import app.squirrel.api.models.NodeListing
 import app.squirrel.api.models.PathSegmentDto
+import app.squirrel.lsdo.LsDoScreen
+import app.squirrel.lsdo.lsdoSpec
 import app.squirrel.shared.api.SquirrelApi
 import app.squirrel.shared.api.bodyOrThrow
 import app.squirrel.shared.sync.formatBytes
@@ -25,10 +27,12 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import kotlinx.serialization.Serializable
 
 /** Files over this size ask before downloading. */
 const val CONFIRM_BYTES = 200L * 1000 * 1000
 
+@Serializable
 data class FilesState(
     /** Null: the root ("Files"). */
     val folderId: String? = null,
@@ -75,10 +79,19 @@ class FilesViewModel(
     private val handoff: FileHandoff?,
     private val pageSize: Int = 100,
     private val throttle: ResumeThrottle = ResumeThrottle(),
-    private val root: String? = null,
-) : ViewModel() {
+    /** Where the browser starts and never goes up past (null: the top level). */
+    val root: String? = null,
+) : ViewModel(), LsDoScreen<FilesState, FilesIntent> {
     private val _state = MutableStateFlow(FilesState())
-    val state: StateFlow<FilesState> = _state.asStateFlow()
+    override val state: StateFlow<FilesState> = _state.asStateFlow()
+
+    override val lsdo = lsdoSpec<FilesState, FilesIntent>()
+
+    override suspend fun perform(intent: FilesIntent): String? = performIntent(intent)
+
+    override fun availableIntents(state: FilesState): Set<String> = intentsFor(state)
+
+    override fun isBusy(state: FilesState): Boolean = state.loading || state.refreshing
 
     /** The folder load or page in flight; a new folder cancels it. */
     private var loadJob: Job? = null

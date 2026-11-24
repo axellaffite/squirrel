@@ -1,0 +1,40 @@
+#!/usr/bin/env bash
+# LS-DO: list the app's screens (state + available actions) and run an action on one.
+# The debug app serves them on the phone's loopback; this forwards the port over adb.
+#
+#   scripts/lsdo ls                          every screen on show
+#   scripts/lsdo ls files                    one screen
+#   scripts/lsdo do files enter '{"id":"x"}' run an action (params optional)
+#
+# LSDO_URL overrides the address (e.g. a desktop build); ANDROID_SERIAL picks the device.
+set -euo pipefail
+
+PORT=8765
+URL="${LSDO_URL:-}"
+
+usage() { sed -n '2,9p' "$0" | sed 's/^# \{0,1\}//'; exit 2; }
+
+[[ "${1:-}" == ls || "${1:-}" == do ]] || usage
+
+if [[ -z "$URL" ]]; then
+  command -v adb >/dev/null || { echo "adb not found (or set LSDO_URL)" >&2; exit 1; }
+  adb forward "tcp:$PORT" "tcp:$PORT" >/dev/null
+  URL="http://127.0.0.1:$PORT"
+fi
+
+# Screen ids can hold characters a URL path cannot (a second "files" is "files-2"; be safe anyway).
+enc() { python3 -c 'import sys, urllib.parse; print(urllib.parse.quote(sys.argv[1], safe=""))' "$1"; }
+
+pretty() { if command -v jq >/dev/null; then jq .; else python3 -m json.tool; fi; }
+
+case "${1:-}" in
+  ls)
+    curl -fsS -H 'X-LsDo: 1' "$URL/ls${2:+/$(enc "$2")}" | pretty ;;
+  do)
+    [[ $# -ge 3 ]] || usage
+    screen="$2" action="$3" params="${4:-}"
+    [[ -n "$params" ]] || params='{}'
+    body=$(python3 -c 'import json,sys; p=json.loads(sys.argv[2]); p["type"]=sys.argv[1]; print(json.dumps(p))' "$action" "$params")
+    curl -sS -X POST -H 'X-LsDo: 1' -H 'Content-Type: application/json' --data "$body" "$URL/do/$(enc "$screen")" | pretty ;;
+  *) usage ;;
+esac

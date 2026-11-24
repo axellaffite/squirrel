@@ -1,5 +1,6 @@
 plugins {
     alias(libs.plugins.kotlin.multiplatform)
+    alias(libs.plugins.kotlin.serialization)
     alias(libs.plugins.compose.compiler)
     alias(libs.plugins.compose.multiplatform)
     alias(libs.plugins.android.kmp.library)
@@ -31,6 +32,7 @@ kotlin {
         commonMain.dependencies {
             api(project(":shared"))
             api(project(":theme"))
+            api(project(":lsdo"))
             implementation(libs.jb.lifecycle.viewmodel.compose)
             implementation(libs.jb.lifecycle.runtime.compose)
             api(libs.coil.compose)
@@ -40,6 +42,7 @@ kotlin {
             implementation(libs.androidx.activity.compose)
         }
         commonTest.dependencies {
+            implementation(project(":lsdo-runtime"))
             implementation(libs.kotlin.test)
             implementation(libs.coroutines.test)
             implementation(libs.ktor.client.mock)

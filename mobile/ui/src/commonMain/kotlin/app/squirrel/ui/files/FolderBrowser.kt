@@ -23,6 +23,7 @@ import app.squirrel.theme.components.AlertTone
 import app.squirrel.theme.components.ButtonSize
 import app.squirrel.theme.components.Card
 import app.squirrel.theme.components.Progress
+import app.squirrel.ui.RegisterLsDo
 import app.squirrel.ui.sharing.Abilities
 import app.squirrel.ui.sharing.moveRoot
 import app.squirrel.ui.shell.NameSheet
@@ -80,6 +81,7 @@ fun FolderBrowser(
     onSearch: (() -> Unit)? = null,
 ) {
     val api = graph.api ?: return
+    RegisterLsDo(rootLabel.lowercase(), vm)
     val state by vm.state.collectAsStateWithLifecycle()
     var sheet by remember { mutableStateOf<FolderSheet?>(null) }
     val uploads = viewModel(key = "uploads") { UploadsViewModel(api) }

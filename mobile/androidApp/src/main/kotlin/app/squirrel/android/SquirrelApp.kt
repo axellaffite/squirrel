@@ -18,4 +18,9 @@ class SquirrelApp : Application(), BackupHost {
     val graph: AppGraph by lazy { AndroidGraph.create(this, backup, scope) }
 
     override val backupRunner: BackupRunner by lazy { AppBackupRunner(graph, backup, scope) }
+
+    override fun onCreate() {
+        super.onCreate()
+        DevTools.start()
+    }
 }
