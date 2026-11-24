@@ -39,6 +39,26 @@ The iOS targets are configured but built only when asked, so Android builds stay
 The native theme is generated from the web tokens; after changing `tokens.css`, run
 `pnpm gen:native-tokens` in `web/` (CI runs `pnpm check:native-tokens` and fails on drift).
 
+## LS-DO: drive the debug app from a script or an agent
+
+Debug builds serve the screens on show on the phone's loopback (port 8765): each one lists its
+state and the actions available now (ls), and runs one (do) through the same ViewModel calls as
+the UI. `scripts/lsdo` forwards the port over adb:
+
+    scripts/lsdo ls                                   # every screen: state + actions with JSON schemas
+    scripts/lsdo do files enter '{"id":"<folder id>"}'
+    scripts/lsdo do files create_folder '{"name":"Taxes"}'
+    scripts/lsdo do files up                          # refused at the top: the answer says why
+
+A do answers once the screen is idle, with every screen's new state. Every request needs an
+`X-LsDo` header (the script sends it), so a web page on the phone cannot drive the app. To add a screen: make its
+state `@Serializable`, give it a `@Serializable` sealed intent type (`@SerialName` = action name,
+`@Doc` = description), implement `LsDoScreen` in its ViewModel and call `RegisterLsDo(name, vm)`
+in its composable (`ui/files/FilesLsDo.kt` is the example). `:lsdo` (the contract) ships
+everywhere; `:lsdo-runtime` (registry and server) is `debugImplementation` only, and
+`:androidApp:checkReleaseHasNoLsDo` (part of `check`) fails if it reaches the release build.
+iOS does not start the server yet.
+
 ## Android: install the debug app
 
 With a phone in developer mode (Settings › About phone, tap the build number seven times):
