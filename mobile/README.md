@@ -60,7 +60,7 @@ shows no colors, images, truncation or overlap: those need a screenshot.
 
 `scripts/lsdo catalog` lists every LS-DO screen, shown or not (name, what it is and how to reach
 it, its actions); `catalog <screen>` gives one in full (each action's meaning, when it applies, its
-parameters, and the state's shape). The same, without a device: `mobile/lsdo-catalog.json`,
+parameters, and the state's shape). Without a device: `mobile/lsdo-catalog/` (`index.json`, then one file per screen),
 generated from `ui/.../LsDoScreens.kt` by `./gradlew :ui:lsdoCatalog`; `jvmTest` fails when it is
 stale. A screen added to LS-DO is added to `LsDoScreens`.
 

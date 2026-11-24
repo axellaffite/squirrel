@@ -1,0 +1,122 @@
+{
+    "name": "album_picker",
+    "description": "Which albums (iOS) or folders (Android) are backed up: open the sheet, toggle, select all. Reached by: app go_to backup (also on backup_settings).",
+    "actions": [
+        {
+            "name": "close",
+            "description": "Close the sheet. Only while it is open",
+            "params": {
+                "type": "object",
+                "properties": {}
+            }
+        },
+        {
+            "name": "open",
+            "description": "Open the sheet, as tapping the Albums/Folders row does; it reloads the list",
+            "params": {
+                "type": "object",
+                "properties": {}
+            }
+        },
+        {
+            "name": "select_all",
+            "description": "Back up all photos. Only while the sheet is open",
+            "params": {
+                "type": "object",
+                "properties": {}
+            }
+        },
+        {
+            "name": "toggle",
+            "description": "Add or remove one album (by its id in albums); from all photos, it selects just that one. Only while the sheet is open and the list loaded",
+            "params": {
+                "type": "object",
+                "properties": {
+                    "id": {
+                        "type": "string"
+                    }
+                },
+                "required": [
+                    "id"
+                ]
+            }
+        }
+    ],
+    "state": {
+        "type": "object",
+        "properties": {
+            "open": {
+                "type": "boolean",
+                "description": "The sheet is open: only then can the choice change"
+            },
+            "kind": {
+                "type": "string",
+                "enum": [
+                    "albums",
+                    "folders"
+                ],
+                "description": "Albums (iOS) or folders (Android)"
+            },
+            "all": {
+                "type": "boolean",
+                "description": "Every photo is backed up, whatever the album"
+            },
+            "selected": {
+                "type": "array",
+                "items": {
+                    "type": "string"
+                },
+                "description": "The ids backed up when not all (they may include albums no longer on the phone)"
+            },
+            "albums": {
+                "type": "array",
+                "items": {
+                    "type": "object",
+                    "properties": {
+                        "id": {
+                            "type": "string",
+                            "description": "What toggle takes"
+                        },
+                        "name": {
+                            "type": "string"
+                        },
+                        "count": {
+                            "type": "integer",
+                            "description": "Photos and videos in it"
+                        },
+                        "path": {
+                            "type": "string",
+                            "nullable": true,
+                            "description": "Where it lives (Android)"
+                        },
+                        "selected": {
+                            "type": "boolean",
+                            "description": "Backed up (false for every row while all photos are)"
+                        }
+                    },
+                    "required": [
+                        "id",
+                        "name",
+                        "count",
+                        "path",
+                        "selected"
+                    ]
+                },
+                "nullable": true,
+                "description": "The phone's albums or folders; null until loaded"
+            },
+            "label": {
+                "type": "string",
+                "description": "What the Albums/Folders row shows: \"All photos\", \"Camera, Screenshots\""
+            }
+        },
+        "required": [
+            "open",
+            "kind",
+            "all",
+            "selected",
+            "albums",
+            "label"
+        ]
+    }
+}

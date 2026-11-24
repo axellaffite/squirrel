@@ -1,0 +1,195 @@
+{
+    "name": "explore",
+    "description": "People, places, tags and cameras: open a card (a filtered timeline), see all of a section. Reached by: app go_to photos, then photos show explore.",
+    "actions": [
+        {
+            "name": "open",
+            "description": "Open the timeline of a card shown (by its id), as tapping it does",
+            "params": {
+                "type": "object",
+                "properties": {
+                    "id": {
+                        "type": "string"
+                    }
+                },
+                "required": [
+                    "id"
+                ]
+            }
+        },
+        {
+            "name": "refresh",
+            "description": "Reload every list, as pulling down does",
+            "params": {
+                "type": "object",
+                "properties": {}
+            }
+        },
+        {
+            "name": "retry",
+            "description": "Try the failed load again, after an error",
+            "params": {
+                "type": "object",
+                "properties": {}
+            }
+        },
+        {
+            "name": "see_all",
+            "description": "Show every card of a section on its own page, as See all does. Overview only, for a section in more",
+            "params": {
+                "type": "object",
+                "properties": {
+                    "section": {
+                        "type": "string",
+                        "enum": [
+                            "people",
+                            "places",
+                            "tags",
+                            "cameras"
+                        ]
+                    }
+                },
+                "required": [
+                    "section"
+                ]
+            }
+        }
+    ],
+    "state": {
+        "type": "object",
+        "properties": {
+            "section": {
+                "type": "string",
+                "enum": [
+                    "people",
+                    "places",
+                    "tags",
+                    "cameras"
+                ],
+                "nullable": true,
+                "description": "The list shown on its own page (after see_all); null: the overview, a few of each"
+            },
+            "people": {
+                "type": "array",
+                "items": {
+                    "type": "object",
+                    "properties": {
+                        "id": {
+                            "type": "string",
+                            "description": "What open takes: person:<id>, place:<country>/<region>/<city>, tag:<slug> or camera:<make>/<model>"
+                        },
+                        "name": {
+                            "type": "string"
+                        },
+                        "count": {
+                            "type": "integer",
+                            "description": "Photos it has"
+                        }
+                    },
+                    "required": [
+                        "id",
+                        "name",
+                        "count"
+                    ]
+                },
+                "description": "The cards shown"
+            },
+            "places": {
+                "type": "array",
+                "items": {
+                    "type": "object",
+                    "properties": {
+                        "id": {
+                            "type": "string",
+                            "description": "What open takes: person:<id>, place:<country>/<region>/<city>, tag:<slug> or camera:<make>/<model>"
+                        },
+                        "name": {
+                            "type": "string"
+                        },
+                        "count": {
+                            "type": "integer",
+                            "description": "Photos it has"
+                        }
+                    },
+                    "required": [
+                        "id",
+                        "name",
+                        "count"
+                    ]
+                }
+            },
+            "tags": {
+                "type": "array",
+                "items": {
+                    "type": "object",
+                    "properties": {
+                        "id": {
+                            "type": "string",
+                            "description": "What open takes: person:<id>, place:<country>/<region>/<city>, tag:<slug> or camera:<make>/<model>"
+                        },
+                        "name": {
+                            "type": "string"
+                        },
+                        "count": {
+                            "type": "integer",
+                            "description": "Photos it has"
+                        }
+                    },
+                    "required": [
+                        "id",
+                        "name",
+                        "count"
+                    ]
+                }
+            },
+            "cameras": {
+                "type": "array",
+                "items": {
+                    "type": "object",
+                    "properties": {
+                        "id": {
+                            "type": "string",
+                            "description": "What open takes: person:<id>, place:<country>/<region>/<city>, tag:<slug> or camera:<make>/<model>"
+                        },
+                        "name": {
+                            "type": "string"
+                        },
+                        "count": {
+                            "type": "integer",
+                            "description": "Photos it has"
+                        }
+                    },
+                    "required": [
+                        "id",
+                        "name",
+                        "count"
+                    ]
+                }
+            },
+            "more": {
+                "type": "array",
+                "items": {
+                    "type": "string",
+                    "enum": [
+                        "people",
+                        "places",
+                        "tags",
+                        "cameras"
+                    ]
+                },
+                "description": "Sections with more cards than the overview shows: see_all lists them"
+            },
+            "loaded": {
+                "type": "boolean",
+                "description": "Every list has arrived once"
+            },
+            "loading": {
+                "type": "boolean"
+            },
+            "error": {
+                "type": "string",
+                "nullable": true
+            }
+        }
+    }
+}

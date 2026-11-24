@@ -1,0 +1,415 @@
+{
+    "name": "files",
+    "description": "Your own folders, in the Files section. Reached by: app go_to files (it starts at the top level).",
+    "actions": [
+        {
+            "name": "create_folder",
+            "description": "New folder in the folder shown. Only inside a folder you can add to (canAdd), never at the top",
+            "params": {
+                "type": "object",
+                "properties": {
+                    "name": {
+                        "type": "string"
+                    }
+                },
+                "required": [
+                    "name"
+                ]
+            }
+        },
+        {
+            "name": "dismiss_confirm",
+            "description": "Answer no to the large-download question. Only while it is asked (confirm set)",
+            "params": {
+                "type": "object",
+                "properties": {}
+            }
+        },
+        {
+            "name": "enter",
+            "description": "Open a folder by id; no id: where this browser started",
+            "params": {
+                "type": "object",
+                "properties": {
+                    "id": {
+                        "type": "string",
+                        "nullable": true
+                    }
+                }
+            }
+        },
+        {
+            "name": "more",
+            "description": "Load the next page of rows, when the folder has more (nextCursor set)",
+            "params": {
+                "type": "object",
+                "properties": {}
+            }
+        },
+        {
+            "name": "move",
+            "description": "Move a row of the folder shown into another folder. Needs edit access",
+            "params": {
+                "type": "object",
+                "properties": {
+                    "id": {
+                        "type": "string"
+                    },
+                    "parentId": {
+                        "type": "string"
+                    }
+                },
+                "required": [
+                    "id",
+                    "parentId"
+                ]
+            }
+        },
+        {
+            "name": "open",
+            "description": "Open a row of the folder shown (by its id in items): a folder is entered, a file opens in another app",
+            "params": {
+                "type": "object",
+                "properties": {
+                    "id": {
+                        "type": "string"
+                    },
+                    "confirmed": {
+                        "type": "boolean",
+                        "description": "Skip the large-download question"
+                    }
+                },
+                "required": [
+                    "id"
+                ]
+            }
+        },
+        {
+            "name": "refresh",
+            "description": "Reload the folder from its first page",
+            "params": {
+                "type": "object",
+                "properties": {}
+            }
+        },
+        {
+            "name": "rename",
+            "description": "Rename a row of the folder shown. Needs edit access",
+            "params": {
+                "type": "object",
+                "properties": {
+                    "id": {
+                        "type": "string"
+                    },
+                    "name": {
+                        "type": "string"
+                    }
+                },
+                "required": [
+                    "id",
+                    "name"
+                ]
+            }
+        },
+        {
+            "name": "retry",
+            "description": "Try the failed load again, after an error",
+            "params": {
+                "type": "object",
+                "properties": {}
+            }
+        },
+        {
+            "name": "top",
+            "description": "Back to where this browser starts: the top level of Files (in Shared: the shared folder). Not at the top",
+            "params": {
+                "type": "object",
+                "properties": {}
+            }
+        },
+        {
+            "name": "up",
+            "description": "One folder up. Not at the top",
+            "params": {
+                "type": "object",
+                "properties": {}
+            }
+        }
+    ],
+    "state": {
+        "type": "object",
+        "properties": {
+            "folderId": {
+                "type": "string",
+                "nullable": true
+            },
+            "folder": {
+                "type": "object",
+                "properties": {
+                    "created_at": {
+                        "type": "string"
+                    },
+                    "id": {
+                        "type": "string"
+                    },
+                    "is_root": {
+                        "type": "boolean"
+                    },
+                    "kind": {
+                        "type": "string",
+                        "enum": [
+                            "folder",
+                            "file",
+                            "unknown_default_open_api"
+                        ]
+                    },
+                    "modified_at": {
+                        "type": "string"
+                    },
+                    "name": {
+                        "type": "string"
+                    },
+                    "size": {
+                        "type": "integer"
+                    },
+                    "mime": {
+                        "type": "string",
+                        "nullable": true
+                    },
+                    "parent_id": {
+                        "type": "string",
+                        "nullable": true
+                    },
+                    "thumbnail": {
+                        "type": "object",
+                        "properties": {
+                            "version": {
+                                "type": "integer"
+                            },
+                            "blurhash": {
+                                "type": "string",
+                                "nullable": true
+                            }
+                        },
+                        "required": [
+                            "version"
+                        ],
+                        "nullable": true
+                    }
+                },
+                "required": [
+                    "created_at",
+                    "id",
+                    "is_root",
+                    "kind",
+                    "modified_at",
+                    "name",
+                    "size"
+                ],
+                "nullable": true
+            },
+            "access": {
+                "type": "string",
+                "enum": [
+                    "owner",
+                    "write",
+                    "read",
+                    "unknown_default_open_api"
+                ]
+            },
+            "sharedBy": {
+                "type": "object",
+                "properties": {
+                    "display_name": {
+                        "type": "string"
+                    },
+                    "username": {
+                        "type": "string"
+                    }
+                },
+                "required": [
+                    "display_name",
+                    "username"
+                ],
+                "nullable": true
+            },
+            "path": {
+                "type": "array",
+                "items": {
+                    "type": "object",
+                    "properties": {
+                        "id": {
+                            "type": "string"
+                        },
+                        "name": {
+                            "type": "string"
+                        }
+                    },
+                    "required": [
+                        "id",
+                        "name"
+                    ]
+                }
+            },
+            "items": {
+                "type": "array",
+                "items": {
+                    "type": "object",
+                    "properties": {
+                        "created_at": {
+                            "type": "string"
+                        },
+                        "id": {
+                            "type": "string"
+                        },
+                        "is_root": {
+                            "type": "boolean"
+                        },
+                        "kind": {
+                            "type": "string",
+                            "enum": [
+                                "folder",
+                                "file",
+                                "unknown_default_open_api"
+                            ]
+                        },
+                        "modified_at": {
+                            "type": "string"
+                        },
+                        "name": {
+                            "type": "string"
+                        },
+                        "size": {
+                            "type": "integer"
+                        },
+                        "mime": {
+                            "type": "string",
+                            "nullable": true
+                        },
+                        "parent_id": {
+                            "type": "string",
+                            "nullable": true
+                        },
+                        "thumbnail": {
+                            "type": "object",
+                            "properties": {
+                                "version": {
+                                    "type": "integer"
+                                },
+                                "blurhash": {
+                                    "type": "string",
+                                    "nullable": true
+                                }
+                            },
+                            "required": [
+                                "version"
+                            ],
+                            "nullable": true
+                        }
+                    },
+                    "required": [
+                        "created_at",
+                        "id",
+                        "is_root",
+                        "kind",
+                        "modified_at",
+                        "name",
+                        "size"
+                    ]
+                }
+            },
+            "nextCursor": {
+                "type": "string",
+                "nullable": true
+            },
+            "started": {
+                "type": "boolean"
+            },
+            "loading": {
+                "type": "boolean"
+            },
+            "refreshing": {
+                "type": "boolean"
+            },
+            "error": {
+                "type": "string",
+                "nullable": true
+            },
+            "downloads": {
+                "type": "object",
+                "additionalProperties": {
+                    "type": "number"
+                }
+            },
+            "confirm": {
+                "type": "object",
+                "properties": {
+                    "created_at": {
+                        "type": "string"
+                    },
+                    "id": {
+                        "type": "string"
+                    },
+                    "is_root": {
+                        "type": "boolean"
+                    },
+                    "kind": {
+                        "type": "string",
+                        "enum": [
+                            "folder",
+                            "file",
+                            "unknown_default_open_api"
+                        ]
+                    },
+                    "modified_at": {
+                        "type": "string"
+                    },
+                    "name": {
+                        "type": "string"
+                    },
+                    "size": {
+                        "type": "integer"
+                    },
+                    "mime": {
+                        "type": "string",
+                        "nullable": true
+                    },
+                    "parent_id": {
+                        "type": "string",
+                        "nullable": true
+                    },
+                    "thumbnail": {
+                        "type": "object",
+                        "properties": {
+                            "version": {
+                                "type": "integer"
+                            },
+                            "blurhash": {
+                                "type": "string",
+                                "nullable": true
+                            }
+                        },
+                        "required": [
+                            "version"
+                        ],
+                        "nullable": true
+                    }
+                },
+                "required": [
+                    "created_at",
+                    "id",
+                    "is_root",
+                    "kind",
+                    "modified_at",
+                    "name",
+                    "size"
+                ],
+                "nullable": true
+            },
+            "message": {
+                "type": "string",
+                "nullable": true
+            }
+        }
+    }
+}

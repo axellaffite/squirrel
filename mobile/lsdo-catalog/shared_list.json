@@ -1,0 +1,133 @@
+{
+    "name": "shared_list",
+    "description": "What others shared with you: open a folder (shows the shared browser), an album or a photo; leave a share. Reached by: app go_to shared.",
+    "actions": [
+        {
+            "name": "ask_leave",
+            "description": "Leave a share by its id in items: asks first, as the Leave action does",
+            "params": {
+                "type": "object",
+                "properties": {
+                    "id": {
+                        "type": "string"
+                    }
+                },
+                "required": [
+                    "id"
+                ]
+            }
+        },
+        {
+            "name": "cancel_leave",
+            "description": "Answer no to \"Leave …?\". Only while it is asked (leaving set)",
+            "params": {
+                "type": "object",
+                "properties": {}
+            }
+        },
+        {
+            "name": "confirm_leave",
+            "description": "Answer yes to \"Leave …?\": the share goes from the list. Only while it is asked (leaving set)",
+            "params": {
+                "type": "object",
+                "properties": {}
+            }
+        },
+        {
+            "name": "open",
+            "description": "Open a row by its id in items: a folder opens in the shared browser (screen shared), an album in its page, a photo in the viewer. Not a file: it opens in another app",
+            "params": {
+                "type": "object",
+                "properties": {
+                    "id": {
+                        "type": "string"
+                    }
+                },
+                "required": [
+                    "id"
+                ]
+            }
+        },
+        {
+            "name": "refresh",
+            "description": "Reload the list, as pulling down does; also tries again after an error",
+            "params": {
+                "type": "object",
+                "properties": {}
+            }
+        }
+    ],
+    "state": {
+        "type": "object",
+        "properties": {
+            "items": {
+                "type": "array",
+                "items": {
+                    "type": "object",
+                    "properties": {
+                        "id": {
+                            "type": "string",
+                            "description": "The share's id: what open and ask_leave take"
+                        },
+                        "kind": {
+                            "type": "string",
+                            "enum": [
+                                "folder",
+                                "file",
+                                "photo",
+                                "album"
+                            ]
+                        },
+                        "name": {
+                            "type": "string"
+                        },
+                        "subjectId": {
+                            "type": "string",
+                            "description": "The folder, file or album's own id (an open folder is the shared screen's folderId)"
+                        },
+                        "owner": {
+                            "type": "string",
+                            "description": "Who shared it"
+                        },
+                        "canEdit": {
+                            "type": "boolean",
+                            "description": "You may edit it (\"Can edit\"); else view only"
+                        },
+                        "photoCount": {
+                            "type": "integer",
+                            "nullable": true,
+                            "description": "Photos in an album; null for folders and files"
+                        }
+                    },
+                    "required": [
+                        "id",
+                        "kind",
+                        "name",
+                        "subjectId",
+                        "owner",
+                        "canEdit"
+                    ]
+                },
+                "nullable": true,
+                "description": "What other people shared with you, newest first; null until the first load"
+            },
+            "loading": {
+                "type": "boolean"
+            },
+            "error": {
+                "type": "string",
+                "nullable": true
+            },
+            "leaving": {
+                "type": "string",
+                "nullable": true,
+                "description": "The share id waiting for \"Leave …?\": confirm_leave or cancel_leave"
+            },
+            "message": {
+                "type": "string",
+                "nullable": true,
+                "description": "What became of a file a person opened with another app"
+            }
+        }
+    }
+}

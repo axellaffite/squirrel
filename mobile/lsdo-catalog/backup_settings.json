@@ -1,0 +1,139 @@
+{
+    "name": "backup_settings",
+    "description": "Backup settings: the four toggles and this phone's name; back returns to backup. Reached by: backup open_settings.",
+    "actions": [
+        {
+            "name": "back",
+            "description": "Back to the Backup screen",
+            "params": {
+                "type": "object",
+                "properties": {}
+            }
+        },
+        {
+            "name": "rename",
+            "description": "Type a new name for this phone and save it (1 to 64 characters). Not while a name is being saved",
+            "params": {
+                "type": "object",
+                "properties": {
+                    "name": {
+                        "type": "string"
+                    }
+                },
+                "required": [
+                    "name"
+                ]
+            }
+        },
+        {
+            "name": "set_auto_backup",
+            "description": "The \"Back up automatically\" toggle",
+            "params": {
+                "type": "object",
+                "properties": {
+                    "on": {
+                        "type": "boolean"
+                    }
+                },
+                "required": [
+                    "on"
+                ]
+            }
+        },
+        {
+            "name": "set_charging_only",
+            "description": "The \"Only while charging\" toggle",
+            "params": {
+                "type": "object",
+                "properties": {
+                    "on": {
+                        "type": "boolean"
+                    }
+                },
+                "required": [
+                    "on"
+                ]
+            }
+        },
+        {
+            "name": "set_include_videos",
+            "description": "The \"Include videos\" toggle",
+            "params": {
+                "type": "object",
+                "properties": {
+                    "on": {
+                        "type": "boolean"
+                    }
+                },
+                "required": [
+                    "on"
+                ]
+            }
+        },
+        {
+            "name": "set_wifi_only",
+            "description": "The \"Only on Wi-Fi\" toggle",
+            "params": {
+                "type": "object",
+                "properties": {
+                    "on": {
+                        "type": "boolean"
+                    }
+                },
+                "required": [
+                    "on"
+                ]
+            }
+        }
+    ],
+    "state": {
+        "type": "object",
+        "properties": {
+            "autoBackup": {
+                "type": "boolean",
+                "description": "Back up in the background, when new photos appear and every few hours; off: only \"Back up now\""
+            },
+            "wifiOnly": {
+                "type": "boolean"
+            },
+            "chargingOnly": {
+                "type": "boolean"
+            },
+            "includeVideos": {
+                "type": "boolean"
+            },
+            "deviceName": {
+                "type": "string",
+                "description": "This phone's name as typed in the field"
+            },
+            "savedName": {
+                "type": "string",
+                "description": "The name the server kept"
+            },
+            "nameError": {
+                "type": "string",
+                "nullable": true,
+                "description": "Why the name was not saved"
+            },
+            "renaming": {
+                "type": "boolean",
+                "description": "A new name is being saved"
+            },
+            "folderHint": {
+                "type": "string",
+                "description": "Where this phone's backups go"
+            }
+        },
+        "required": [
+            "autoBackup",
+            "wifiOnly",
+            "chargingOnly",
+            "includeVideos",
+            "deviceName",
+            "savedName",
+            "nameError",
+            "renaming",
+            "folderHint"
+        ]
+    }
+}

@@ -1,0 +1,166 @@
+{
+    "name": "backup",
+    "description": "Backup status, progress, counts and failures: back up now, retry failures, open settings. Needs photo access (else only refresh). Reached by: app go_to backup.",
+    "actions": [
+        {
+            "name": "back_up_now",
+            "description": "Start a run now, as the \"Back up now\" button does. Not while one is running, nor without photo access",
+            "params": {
+                "type": "object",
+                "properties": {}
+            }
+        },
+        {
+            "name": "hide_failures",
+            "description": "Close the \"Not backed up\" sheet. Only while it is open",
+            "params": {
+                "type": "object",
+                "properties": {}
+            }
+        },
+        {
+            "name": "open_settings",
+            "description": "Open Backup settings (the backup_settings screen). Not without photo access",
+            "params": {
+                "type": "object",
+                "properties": {}
+            }
+        },
+        {
+            "name": "refresh",
+            "description": "Read photo access and the battery setting again, as coming back to the app does",
+            "params": {
+                "type": "object",
+                "properties": {}
+            }
+        },
+        {
+            "name": "retry_failures",
+            "description": "\"Try again\" on the \"Not backed up\" sheet: closes it and starts a run. Only while it is open",
+            "params": {
+                "type": "object",
+                "properties": {}
+            }
+        },
+        {
+            "name": "show_failures",
+            "description": "Open the \"Not backed up\" sheet (failures in state). Only when something failed",
+            "params": {
+                "type": "object",
+                "properties": {}
+            }
+        }
+    ],
+    "state": {
+        "type": "object",
+        "properties": {
+            "loading": {
+                "type": "boolean",
+                "description": "The status is still being read"
+            },
+            "step": {
+                "type": "string",
+                "enum": [
+                    "idle",
+                    "scanning",
+                    "hashing",
+                    "checking",
+                    "uploading",
+                    "paused",
+                    "waiting_for_network",
+                    "error"
+                ]
+            },
+            "running": {
+                "type": "boolean",
+                "description": "A run is going on: \"Back up now\" is disabled"
+            },
+            "headline": {
+                "type": "string",
+                "description": "The status card's figure: \"1 204 left\", \"Everything is backed up\""
+            },
+            "detail": {
+                "type": "string",
+                "description": "Size left and the network rule"
+            },
+            "lastRun": {
+                "type": "string"
+            },
+            "progress": {
+                "type": "number",
+                "nullable": true,
+                "description": "0–1 while uploading or preparing; null otherwise"
+            },
+            "progressLabel": {
+                "type": "string",
+                "nullable": true
+            },
+            "total": {
+                "type": "integer",
+                "description": "Photos and videos selected for backup"
+            },
+            "backedUp": {
+                "type": "integer"
+            },
+            "waiting": {
+                "type": "integer"
+            },
+            "failed": {
+                "type": "integer"
+            },
+            "bytesLeft": {
+                "type": "integer"
+            },
+            "notice": {
+                "type": "string",
+                "nullable": true,
+                "description": "Why the backup is paused or stopped"
+            },
+            "noticeIsError": {
+                "type": "boolean"
+            },
+            "access": {
+                "type": "string",
+                "enum": [
+                    "full",
+                    "partial",
+                    "no_videos",
+                    "none"
+                ]
+            },
+            "accessNote": {
+                "type": "string",
+                "nullable": true,
+                "description": "What partial or video-less access means for the backup"
+            },
+            "locationWarning": {
+                "type": "string",
+                "nullable": true
+            },
+            "batteryNotice": {
+                "type": "string",
+                "nullable": true
+            },
+            "failures": {
+                "type": "array",
+                "items": {
+                    "type": "object",
+                    "properties": {
+                        "name": {
+                            "type": "string"
+                        },
+                        "error": {
+                            "type": "string"
+                        }
+                    },
+                    "required": [
+                        "name",
+                        "error"
+                    ]
+                },
+                "nullable": true,
+                "description": "The \"Not backed up\" sheet's rows while it is open; null when closed"
+            }
+        }
+    }
+}

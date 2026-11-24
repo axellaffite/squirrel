@@ -3,7 +3,7 @@
 #   scripts/lsdo ls [screen]                  every screen on show, or one
 #   scripts/lsdo do <screen> <action> [json]  run an action: scripts/lsdo do files enter '{"id":"x"}'
 #   scripts/lsdo ui [bounds|json]             the rendered UI (semantics) as compact text
-#   scripts/lsdo catalog [screen]             every screen, shown or not (offline: mobile/lsdo-catalog.json)
+#   scripts/lsdo catalog [screen]             every screen, shown or not (offline: mobile/lsdo-catalog/)
 # LSDO_URL: address (iOS simulator: http://127.0.0.1:8765); otherwise adb forwards (ANDROID_SERIAL).
 # LSDO_TRACE=<dir>: each do also saves step-N.json (intent, answer, UI after) and step-N.png.
 set -euo pipefail

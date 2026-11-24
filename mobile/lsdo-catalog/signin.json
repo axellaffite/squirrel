@@ -1,0 +1,147 @@
+{
+    "name": "signin",
+    "description": "The sign-in flow: the server address, then username and password (step: server / credentials / signed_in). The password is never in the state (passwordSet only). Reached by: a fresh install or after sign-out.",
+    "actions": [
+        {
+            "name": "change_server",
+            "description": "Back to the address screen (clears the password), as the Change link does. On the credentials screen",
+            "params": {
+                "type": "object",
+                "properties": {}
+            }
+        },
+        {
+            "name": "continue",
+            "description": "Check the address and go on to username and password, as the Continue button does. On the address screen",
+            "params": {
+                "type": "object",
+                "properties": {
+                    "address": {
+                        "type": "string",
+                        "nullable": true,
+                        "description": "Type this address first"
+                    }
+                }
+            }
+        },
+        {
+            "name": "set_password",
+            "description": "Type the password. On the credentials screen",
+            "params": {
+                "type": "object",
+                "properties": {
+                    "password": {
+                        "type": "string"
+                    }
+                },
+                "required": [
+                    "password"
+                ]
+            }
+        },
+        {
+            "name": "set_server",
+            "description": "Type the server address (\"home.example\" or \"http://192.168.1.10:8080\"). On the address screen",
+            "params": {
+                "type": "object",
+                "properties": {
+                    "address": {
+                        "type": "string"
+                    }
+                },
+                "required": [
+                    "address"
+                ]
+            }
+        },
+        {
+            "name": "set_username",
+            "description": "Type the username. On the credentials screen",
+            "params": {
+                "type": "object",
+                "properties": {
+                    "username": {
+                        "type": "string"
+                    }
+                },
+                "required": [
+                    "username"
+                ]
+            }
+        },
+        {
+            "name": "sign_in",
+            "description": "Sign in, as the Sign in button does; the app opens once it succeeds. On the credentials screen",
+            "params": {
+                "type": "object",
+                "properties": {
+                    "username": {
+                        "type": "string",
+                        "nullable": true,
+                        "description": "Type this username first"
+                    },
+                    "password": {
+                        "type": "string",
+                        "nullable": true,
+                        "description": "Type this password first"
+                    }
+                }
+            }
+        }
+    ],
+    "state": {
+        "type": "object",
+        "properties": {
+            "step": {
+                "type": "string",
+                "enum": [
+                    "server",
+                    "credentials",
+                    "signed_in"
+                ],
+                "description": "server: the address screen; credentials: username and password; signed_in: done, the app opens"
+            },
+            "server": {
+                "type": "string",
+                "description": "The address typed, normalized (https://host) once accepted"
+            },
+            "serverError": {
+                "type": "string",
+                "nullable": true,
+                "description": "Why the address was refused"
+            },
+            "username": {
+                "type": "string"
+            },
+            "usernameError": {
+                "type": "string",
+                "nullable": true
+            },
+            "passwordSet": {
+                "type": "boolean",
+                "description": "A password is typed (never shown)"
+            },
+            "passwordError": {
+                "type": "string",
+                "nullable": true
+            },
+            "alert": {
+                "type": "string",
+                "nullable": true,
+                "description": "The failure shown above the button: no answer, not set up, wrong credentials, too many attempts"
+            },
+            "busy": {
+                "type": "boolean",
+                "description": "A request is in flight; every field and button is disabled"
+            },
+            "cleartext": {
+                "type": "boolean",
+                "description": "Plain http on a home or VPN address: the screen warns it is not encrypted"
+            }
+        },
+        "required": [
+            "step",
+            "server"
+        ]
+    }
+}

@@ -1,0 +1,204 @@
+{
+    "screens": [
+        {
+            "name": "app",
+            "description": "The shell once signed in: the bottom bar's sections (photos, files, shared, backup). Always shown after sign-in.",
+            "actions": [
+                "go_to"
+            ]
+        },
+        {
+            "name": "files",
+            "description": "Your own folders, in the Files section. Reached by: app go_to files (it starts at the top level).",
+            "actions": [
+                "create_folder",
+                "dismiss_confirm",
+                "enter",
+                "more",
+                "move",
+                "open",
+                "refresh",
+                "rename",
+                "retry",
+                "top",
+                "up"
+            ]
+        },
+        {
+            "name": "shared",
+            "description": "A folder someone shared with you, in the same browser as files; its top is the shared folder. Reached by: app go_to shared, then shared_list open <share id of a folder>.",
+            "actions": [
+                "create_folder",
+                "dismiss_confirm",
+                "enter",
+                "more",
+                "move",
+                "open",
+                "refresh",
+                "rename",
+                "retry",
+                "top",
+                "up"
+            ]
+        },
+        {
+            "name": "signin",
+            "description": "The sign-in flow: the server address, then username and password (step: server / credentials / signed_in). The password is never in the state (passwordSet only). Reached by: a fresh install or after sign-out.",
+            "actions": [
+                "change_server",
+                "continue",
+                "set_password",
+                "set_server",
+                "set_username",
+                "sign_in"
+            ]
+        },
+        {
+            "name": "files_nav",
+            "description": "The Files section's pages (browse, search): search opens document search, back closes it. Reached by: app go_to files.",
+            "actions": [
+                "back",
+                "search"
+            ]
+        },
+        {
+            "name": "document_search",
+            "description": "Search of file names and PDF/text contents; snippets mark matches with **...**. Reached by: app go_to files, then files_nav search.",
+            "actions": [
+                "more",
+                "retry",
+                "search",
+                "type"
+            ]
+        },
+        {
+            "name": "uploads",
+            "description": "Uploads from this phone with their progress and errors (a do never waits for them: ls again). Reached by: any folder page (files or shared).",
+            "actions": [
+                "dismiss"
+            ]
+        },
+        {
+            "name": "shared_nav",
+            "description": "The Shared section's pages (list, folder, album, photo): back returns to the list. Reached by: app go_to shared.",
+            "actions": [
+                "back"
+            ]
+        },
+        {
+            "name": "shared_list",
+            "description": "What others shared with you: open a folder (shows the shared browser), an album or a photo; leave a share. Reached by: app go_to shared.",
+            "actions": [
+                "ask_leave",
+                "cancel_leave",
+                "confirm_leave",
+                "open",
+                "refresh"
+            ]
+        },
+        {
+            "name": "photos",
+            "description": "The Photos section's navigation: show timeline / albums / explore, open search, back. Reached by: app go_to photos.",
+            "actions": [
+                "back",
+                "search",
+                "show"
+            ]
+        },
+        {
+            "name": "timeline",
+            "description": "Photos by month: page, open a photo, add photos to an album; also the filtered timeline opened from explore. Reached by: app go_to photos (the default), or explore open <id>.",
+            "actions": [
+                "add_to_album",
+                "add_to_new_album",
+                "close_photo",
+                "filter",
+                "more",
+                "open",
+                "refresh",
+                "retry"
+            ]
+        },
+        {
+            "name": "albums",
+            "description": "The album list: open, create. Reached by: app go_to photos, then photos show albums.",
+            "actions": [
+                "create",
+                "open",
+                "refresh",
+                "retry"
+            ]
+        },
+        {
+            "name": "album",
+            "description": "One album's page: its photos, rename, cover and removal (owner or write access). Reached by: albums open <id> or albums create <name>.",
+            "actions": [
+                "close_photo",
+                "more",
+                "open",
+                "refresh",
+                "remove",
+                "rename",
+                "retry",
+                "set_cover"
+            ]
+        },
+        {
+            "name": "explore",
+            "description": "People, places, tags and cameras: open a card (a filtered timeline), see all of a section. Reached by: app go_to photos, then photos show explore.",
+            "actions": [
+                "open",
+                "refresh",
+                "retry",
+                "see_all"
+            ]
+        },
+        {
+            "name": "photo_search",
+            "description": "Photo search: text, filter, order, open a result. Reached by: app go_to photos, then photos search.",
+            "actions": [
+                "close_photo",
+                "filter",
+                "more",
+                "open",
+                "order",
+                "retry",
+                "search"
+            ]
+        },
+        {
+            "name": "backup",
+            "description": "Backup status, progress, counts and failures: back up now, retry failures, open settings. Needs photo access (else only refresh). Reached by: app go_to backup.",
+            "actions": [
+                "back_up_now",
+                "hide_failures",
+                "open_settings",
+                "refresh",
+                "retry_failures",
+                "show_failures"
+            ]
+        },
+        {
+            "name": "backup_settings",
+            "description": "Backup settings: the four toggles and this phone's name; back returns to backup. Reached by: backup open_settings.",
+            "actions": [
+                "back",
+                "rename",
+                "set_auto_backup",
+                "set_charging_only",
+                "set_include_videos",
+                "set_wifi_only"
+            ]
+        },
+        {
+            "name": "album_picker",
+            "description": "Which albums (iOS) or folders (Android) are backed up: open the sheet, toggle, select all. Reached by: app go_to backup (also on backup_settings).",
+            "actions": [
+                "close",
+                "open",
+                "select_all",
+                "toggle"
+            ]
+        }
+    ]
+}
