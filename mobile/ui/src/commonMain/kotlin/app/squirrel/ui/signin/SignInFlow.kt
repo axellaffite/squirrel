@@ -6,6 +6,7 @@ import androidx.compose.runtime.getValue
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import app.squirrel.ui.AppGraph
+import app.squirrel.ui.RegisterLsDo
 
 /** The server and sign-in screens, ending in [AppGraph.onSignedIn]. */
 @Composable
@@ -13,6 +14,7 @@ fun SignInFlow(graph: AppGraph, attempt: Int, lastServer: String?) {
     val vm = viewModel(key = "sign-in-$attempt") {
         SignInViewModel(apiFor = graph::newApi, device = graph.device, lastServer = lastServer)
     }
+    RegisterLsDo("signin", vm.lsdoScreen)
     val state by vm.state.collectAsStateWithLifecycle()
     when (val step = state.step) {
         SignInStep.Server -> ServerScreen(state, vm::onServerChange, vm::onContinue)

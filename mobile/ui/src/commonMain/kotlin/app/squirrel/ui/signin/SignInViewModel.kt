@@ -54,6 +54,9 @@ class SignInViewModel(
     private var api: SquirrelApi? = null
     private var serverUrl: String? = null
 
+    /** These screens for an agent (LS-DO): a view of [state] without the password. */
+    val lsdoScreen: SignInLsDo by lazy { SignInLsDo(this, viewModelScope) }
+
     fun onServerChange(value: String) = _state.update { it.copy(server = value, serverError = null, alert = null) }
     fun onUsernameChange(value: String) = _state.update { it.copy(username = value, usernameError = null, alert = null) }
     fun onPasswordChange(value: String) = _state.update { it.copy(password = value, passwordError = null, alert = null) }
