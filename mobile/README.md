@@ -49,6 +49,8 @@ the UI. `scripts/lsdo` forwards the port over adb:
     scripts/lsdo do files enter '{"id":"<folder id>"}'
     scripts/lsdo do files create_folder '{"name":"Taxes"}'
     scripts/lsdo do files up                          # refused at the top: the answer says why
+    scripts/lsdo do app go_to '{"tab":"files"}'       # the bottom bar, anywhere once signed in
+    scripts/lsdo do files top                         # back to the top level of the browser
 
 `scripts/lsdo ui` prints what is rendered, one element per line (`button "Add to Documents"
 [click]`, `tab "Files" {selected}`, `textfield "Password" = "••••" {password}`); `ui bounds` adds
@@ -61,7 +63,8 @@ With `LSDO_TRACE=<dir>`, each do also saves `step-N.json` (intent, answer, the U
 step, whether the UI matches the state and the action, and which steps need a screenshot (it opens
 those itself).
 
-A do answers once the screen is idle, with every screen's new state. Every request needs an
+A do answers once the screen is idle, with every screen's new state. Each screen lists the
+actions available now, and under `unavailable` those that exist but make no sense in this state. Every request needs an
 `X-LsDo` header (the script sends it), so a web page on the phone cannot drive the app. To add a screen: make its
 state `@Serializable`, give it a `@Serializable` sealed intent type (`@SerialName` = action name,
 `@Doc` = description), implement `LsDoScreen` in its ViewModel and call `RegisterLsDo(name, vm)`

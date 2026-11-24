@@ -22,6 +22,7 @@ import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
+import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.jsonPrimitive
 import kotlinx.serialization.json.Json
 import kotlin.test.AfterTest
@@ -99,6 +100,21 @@ class FilesLsDoTest {
         assertFalse("create_folder" in root.actionNames())
         assertTrue(registry.perform("files", intent("""{"type":"up"}""")).message.orEmpty().contains("not available"))
         assertEquals("No row \"nope\" in the folder shown.", registry.perform("files", intent("""{"type":"open","id":"nope"}""")).message)
+    }
+
+    @Test
+    fun topGoesBackToTheTopLevelAndTheRootListsWhatIsUnavailable() = run {
+        val registry = LsDoRegistry(settle = 50.milliseconds)
+        registry.register("files", FilesViewModel(api(), handoff = null))
+        registry.perform("files", intent("""{"type":"enter","id":"docs"}"""))
+
+        val top = registry.perform("files", intent("""{"type":"top"}"""))
+
+        assertTrue(top.ok, top.message)
+        val screen = top.screens.screen()
+        assertEquals(null, screen.state()["folderId"]?.jsonPrimitive?.contentOrNull)
+        val unavailable = screen.getValue("unavailable").jsonArray.map { it.jsonPrimitive.content }
+        assertTrue(unavailable.containsAll(listOf("up", "top", "create_folder")), unavailable.toString())
     }
 
     @Test
