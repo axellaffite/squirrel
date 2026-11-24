@@ -5,6 +5,10 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.text.BasicText
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.rememberCoroutineScope
+import app.squirrel.ui.RegisterLsDo
+import app.squirrel.ui.photos.PhotosOverlay
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -63,6 +67,10 @@ private val ORDERS = listOf(SearchOrder.date to "Timeline", SearchOrder.relevanc
 private fun PhotoSearch(graph: AppGraph, api: SquirrelApi, vm: PhotoSearchViewModel) {
     val state by vm.state.collectAsStateWithLifecycle()
     var viewing by remember { mutableStateOf<String?>(null) }
+    val scope = rememberCoroutineScope()
+    val lsdo = remember(vm) { PhotoSearchLsDo(vm, scope, onOpen = { viewing = it }, onClose = { viewing = null }) }
+    LaunchedEffect(viewing) { lsdo.overlay.shown(PhotosOverlay(viewing)) }
+    RegisterLsDo("photo_search", lsdo)
     SearchField(
         value = state.typed,
         onValueChange = vm::type,

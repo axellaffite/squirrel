@@ -4,6 +4,7 @@ import app.squirrel.api.models.CameraGroupDto
 import app.squirrel.api.models.PhotoKindFilter
 import app.squirrel.api.models.PlaceGroupDto
 import app.squirrel.theme.SquirrelIcon
+import kotlinx.serialization.Serializable
 
 /** The server's limit on a filter value. */
 private const val MAX_VALUE = 200
@@ -13,6 +14,7 @@ private const val MAX_VALUE = 200
  * a region or city needs a country, a camera model needs its make. [region] empty: places
  * without a region (as Explore lists them).
  */
+@Serializable
 data class PhotoFilter(
     val person: String? = null,
     val tag: String? = null,

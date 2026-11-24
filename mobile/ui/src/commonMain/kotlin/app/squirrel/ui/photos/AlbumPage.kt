@@ -17,6 +17,8 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.text.BasicText
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import app.squirrel.ui.RegisterLsDo
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -68,6 +70,14 @@ fun AlbumPage(graph: AppGraph, id: String, name: String, rootLabel: String, onBa
             busy = false
         }
     }
+    val lsdo = remember(vm) {
+        AlbumLsDo(vm, api, id, name, scope, onOpen = { viewing = it }, onClose = { viewing = null }, onNotice = { text, error ->
+            selected = emptySet()
+            notice = text to error
+        })
+    }
+    LaunchedEffect(viewing, notice) { lsdo.overlay.shown(PhotosOverlay(viewing, notice?.first, notice?.second == true)) }
+    RegisterLsDo("album", lsdo)
     SystemBack { if (selected.isNotEmpty()) selected = emptySet() else onBack() }
     Box(Modifier.fillMaxSize()) {
         Column(Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(Tokens.space2)) {
