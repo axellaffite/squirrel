@@ -4,7 +4,9 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.produceState
 import androidx.compose.ui.Modifier
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -17,6 +19,7 @@ import app.squirrel.theme.Tokens
 import app.squirrel.theme.components.Alert
 import app.squirrel.theme.components.Loading
 import app.squirrel.ui.AppGraph
+import app.squirrel.ui.RegisterLsDo
 import app.squirrel.ui.files.FilesViewModel
 import app.squirrel.ui.files.FolderBrowser
 import app.squirrel.ui.files.OpenerConfirm
@@ -48,8 +51,13 @@ fun SharedTab(graph: AppGraph) {
     val nav = viewModel(key = "nav-shared") { Navigator<SharedRoute>(SharedRoute.List) }
     val vm = viewModel(key = "shared") { SharedViewModel(api, graph.files) }
     val stack by nav.stack.collectAsStateWithLifecycle()
+    // LS-DO: an agent goes back through the tab's own stack, and opens rows through the list's open.
+    val navLsDo = remember(nav) { SharedNavLsDo(nav) }
+    LaunchedEffect(stack) { navLsDo.shown(stack.last()) }
+    RegisterLsDo("shared_nav", navLsDo)
     when (val route = stack.last()) {
         SharedRoute.List -> {
+            RegisterLsDo("shared_list", remember(vm, nav) { SharedListLsDo(vm) { item -> open(item, vm, nav) } })
             SharedList(api, vm) { item -> open(item, vm, nav) }
             OpenerConfirm(vm.opener)
         }
