@@ -1,5 +1,6 @@
 package app.squirrel.android.sync
 
+import app.squirrel.shared.notifications.NotificationPoster
 import app.squirrel.shared.sync.QueueState
 import app.squirrel.shared.sync.StopCause
 import app.squirrel.shared.sync.SyncState
@@ -12,12 +13,15 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeoutOrNull
 
 /** The app's engine behind [BackupRunner]. */
 class AppBackupRunner(
     private val graph: AppGraph,
     private val backup: AndroidBackup,
     private val scope: CoroutineScope,
+    /** New shares and comments, announced after each run; null: none. */
+    private val poster: NotificationPoster? = null,
 ) : BackupRunner {
     override suspend fun pending(): Pair<Long, Long> {
         graph.awaitReady()
@@ -58,5 +62,11 @@ class AppBackupRunner(
             if (outcome == RunOutcome.Continue) backup.scheduler.continueLater(settings, manual)
             backup.scheduler.rearm(settings)
         }
+        // Best effort, bounded: a slow server never holds the worker.
+        poster?.let { withTimeoutOrNull(ANNOUNCE_TIMEOUT_MS) { graph.announceNotifications(it) } }
+    }
+
+    private companion object {
+        const val ANNOUNCE_TIMEOUT_MS = 20_000L
     }
 }

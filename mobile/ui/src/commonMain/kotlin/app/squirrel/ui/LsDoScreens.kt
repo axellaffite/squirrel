@@ -27,6 +27,8 @@ import app.squirrel.ui.search.DocumentSearchIntent
 import app.squirrel.ui.search.DocumentSearchLsDoState
 import app.squirrel.ui.search.PhotoSearchIntent
 import app.squirrel.ui.search.PhotoSearchView
+import app.squirrel.ui.notifications.NotificationsIntent
+import app.squirrel.ui.notifications.NotificationsView
 import app.squirrel.ui.sharing.SharedListIntent
 import app.squirrel.ui.sharing.SharedListState
 import app.squirrel.ui.sharing.SharedNavIntent
@@ -60,6 +62,7 @@ val LsDoScreens: List<LsDoEntry> = listOf(
         "A folder someone shared with you, in the same browser as files; its top is the shared folder. Reached by: app go_to shared, then shared_list open <share id of a folder>.",
         lsdoSpec<FilesState, FilesIntent>(),
     ),
+    entry("notifications", "The bell in the top row (unread count) and its sheet: open, page, mark read, open an item (its subject in the Shared section: shared_nav, shared_list). Always shown after sign-in.", lsdoSpec<NotificationsView, NotificationsIntent>()),
     entry("signin", "The sign-in flow: the server address, then username and password (step: server / credentials / signed_in). The password is never in the state (passwordSet only). Reached by: a fresh install or after sign-out.", lsdoSpec<SignInView, SignInIntent>()),
     entry("files_nav", "The Files section's pages (browse, search): search opens document search, back closes it. Reached by: app go_to files.", lsdoSpec<FilesNavState, FilesNavIntent>()),
     entry("document_search", "Search of file names and PDF/text contents; snippets mark matches with **...**. Reached by: app go_to files, then files_nav search.", lsdoSpec<DocumentSearchLsDoState, DocumentSearchIntent>()),

@@ -21,13 +21,20 @@ import app.squirrel.ui.files.FilePicker
 import app.squirrel.ui.files.FilesTab
 import app.squirrel.ui.files.LocalFilePicker
 import app.squirrel.ui.sharing.SharedTab
+import app.squirrel.ui.notifications.NotificationPrompt
+import app.squirrel.ui.notifications.NotificationsBell
 import app.squirrel.ui.backup.PhotoAccessActions
 import app.squirrel.ui.shell.Shell
 import app.squirrel.ui.signin.SignInFlow
 
 /** The app's root composable, shared by Android and iOS. */
 @Composable
-fun App(graph: AppGraph, actions: PhotoAccessActions = PhotoAccessActions.None, picker: FilePicker? = null) {
+fun App(
+    graph: AppGraph,
+    actions: PhotoAccessActions = PhotoAccessActions.None,
+    picker: FilePicker? = null,
+    notifications: NotificationPrompt? = null,
+) {
     SquirrelTheme {
         val state by graph.state.collectAsStateWithLifecycle()
         val images by graph.imageLoader.collectAsStateWithLifecycle()
@@ -54,6 +61,7 @@ fun App(graph: AppGraph, actions: PhotoAccessActions = PhotoAccessActions.None, 
                                     photos = { PhotosTab(graph) },
                                     files = { FilesTab(graph) },
                                     shared = { SharedTab(graph) },
+                                    topActions = { select -> NotificationsBell(graph, notifications, select) },
                                 )
                             }
                             overlay.Layer()

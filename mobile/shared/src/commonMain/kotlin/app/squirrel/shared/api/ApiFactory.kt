@@ -7,6 +7,7 @@ import app.squirrel.api.apis.CommentsApi
 import app.squirrel.api.apis.DevicesApi
 import app.squirrel.api.apis.ExploreApi
 import app.squirrel.api.apis.FilesApi
+import app.squirrel.api.apis.NotificationsApi
 import app.squirrel.api.apis.PeopleApi
 import app.squirrel.api.apis.SearchApi
 import app.squirrel.api.apis.SharingApi
@@ -117,6 +118,7 @@ class SquirrelApi(
     val people = PeopleApi(baseUrl, authed)
     val sharing = SharingApi(baseUrl, authed)
     val comments = CommentsApi(baseUrl, authed)
+    val notifications = NotificationsApi(baseUrl, authed)
     val uploads = UploadsFacade(baseUrl, authed)
     val chunks = ChunkUploader(baseUrl, authed, public)
 

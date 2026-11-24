@@ -12,6 +12,9 @@ import app.squirrel.shared.auth.TokenStore
 import app.squirrel.shared.db.SquirrelDatabase
 import app.squirrel.shared.db.createDatabase
 import app.squirrel.shared.db.forgetDevice
+import app.squirrel.shared.notifications.NotificationAnnouncer
+import app.squirrel.shared.notifications.NotificationPoster
+import app.squirrel.shared.notifications.SettingsAnnounceStore
 import app.squirrel.shared.settings.SettingsStore
 import io.ktor.client.engine.HttpClientEngine
 import kotlinx.coroutines.CancellationException
@@ -69,6 +72,8 @@ private class SettingsPendingClear(private val settings: SettingsStore) : Pendin
     override suspend fun isPending(): Boolean = settings.value(PENDING_CLEAR_KEY) != null
     override suspend fun set(pending: Boolean) = settings.setValue(PENDING_CLEAR_KEY, if (pending) "1" else null)
 }
+
+private const val NOTIFICATIONS_ASKED_KEY = "notifications.asked"
 
 /** Kept by `forgetDevice` (Setting.sq `removeDeviceState`). */
 const val PENDING_CLEAR_KEY = "session.clear_pending"
@@ -182,6 +187,32 @@ class AppGraph(
             // Access granted, widened, shrunk or reselected while the app was away: rescan now.
             val seen = settings.value(SCAN_ACCESS_KEY)
             if (seen != null && seen != platform.source.accessFingerprint()) platform.runSoon(settings.backup())
+        }
+    }
+
+    /**
+     * After a background run: an OS notification for each unread notification not announced yet.
+     * Best effort: offline or signed out, nothing is posted. The number announced.
+     */
+    suspend fun announceNotifications(poster: NotificationPoster): Int {
+        awaitReady()
+        val api = api ?: return 0
+        return try {
+            withContext(io) { NotificationAnnouncer(api, SettingsAnnounceStore(settings), poster).announce() }
+        } catch (e: CancellationException) {
+            throw e
+        } catch (_: Exception) {
+            0
+        }
+    }
+
+    /** The first time the inbox opens (per sign-in): asks for permission to post notifications. */
+    fun askNotificationsOnce(ask: () -> Unit) {
+        scope.launch {
+            val first = withContext(io) {
+                (settings.value(NOTIFICATIONS_ASKED_KEY) == null).also { if (it) settings.setValue(NOTIFICATIONS_ASKED_KEY, "1") }
+            }
+            if (first) ask()
         }
     }
 

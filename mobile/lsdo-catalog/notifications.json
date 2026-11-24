@@ -1,0 +1,144 @@
+{
+    "name": "notifications",
+    "description": "The bell in the top row (unread count) and its sheet: open, page, mark read, open an item (its subject in the Shared section: shared_nav, shared_list). Always shown after sign-in.",
+    "actions": [
+        {
+            "name": "close",
+            "description": "Close the sheet",
+            "params": {
+                "type": "object",
+                "properties": {}
+            }
+        },
+        {
+            "name": "mark_all_read",
+            "description": "Mark every notification read",
+            "params": {
+                "type": "object",
+                "properties": {}
+            }
+        },
+        {
+            "name": "more",
+            "description": "Load the next page. Only when hasMore",
+            "params": {
+                "type": "object",
+                "properties": {}
+            }
+        },
+        {
+            "name": "open",
+            "description": "Open the notifications sheet, as tapping the bell does (loads the list)",
+            "params": {
+                "type": "object",
+                "properties": {}
+            }
+        },
+        {
+            "name": "open_item",
+            "description": "Tap a notification by its id: marks it read, closes the sheet and opens its subject in the Shared section (a file's folder, an album, a photo). Not a file shared on its own that is not a photo: it opens in another app",
+            "params": {
+                "type": "object",
+                "properties": {
+                    "id": {
+                        "type": "string"
+                    }
+                },
+                "required": [
+                    "id"
+                ]
+            }
+        },
+        {
+            "name": "refresh",
+            "description": "Reload the count, and the list when the sheet is open",
+            "params": {
+                "type": "object",
+                "properties": {}
+            }
+        }
+    ],
+    "state": {
+        "type": "object",
+        "properties": {
+            "unread": {
+                "type": "integer",
+                "description": "The bell's unread count"
+            },
+            "open": {
+                "type": "boolean",
+                "description": "The notifications sheet is shown"
+            },
+            "items": {
+                "type": "array",
+                "items": {
+                    "type": "object",
+                    "properties": {
+                        "id": {
+                            "type": "string",
+                            "description": "What open_item takes"
+                        },
+                        "kind": {
+                            "type": "string",
+                            "description": "share or comment"
+                        },
+                        "actor": {
+                            "type": "string",
+                            "description": "Who shared or commented"
+                        },
+                        "text": {
+                            "type": "string",
+                            "description": "The line after the actor's name, as the sheet shows it"
+                        },
+                        "createdAt": {
+                            "type": "string",
+                            "description": "When it happened (ISO 8601)"
+                        },
+                        "read": {
+                            "type": "boolean"
+                        },
+                        "subjectKind": {
+                            "type": "string",
+                            "description": "folder, file or album"
+                        },
+                        "subjectId": {
+                            "type": "string"
+                        },
+                        "folderId": {
+                            "type": "string",
+                            "nullable": true,
+                            "description": "For a file: the folder open_item shows; null when the file opens on its own"
+                        }
+                    },
+                    "required": [
+                        "id",
+                        "kind",
+                        "actor",
+                        "text",
+                        "createdAt",
+                        "read",
+                        "subjectKind",
+                        "subjectId"
+                    ]
+                },
+                "nullable": true,
+                "description": "Newest first; null until the sheet first loaded"
+            },
+            "hasMore": {
+                "type": "boolean",
+                "description": "More pages exist: more loads the next"
+            },
+            "loading": {
+                "type": "boolean"
+            },
+            "error": {
+                "type": "string",
+                "nullable": true
+            }
+        },
+        "required": [
+            "unread",
+            "open"
+        ]
+    }
+}

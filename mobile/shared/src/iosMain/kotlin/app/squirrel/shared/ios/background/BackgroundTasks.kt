@@ -3,10 +3,12 @@ package app.squirrel.shared.ios.background
 import app.squirrel.shared.settings.BackupSettings
 import kotlinx.cinterop.BetaInteropApi
 import kotlinx.cinterop.ExperimentalForeignApi
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withTimeoutOrNull
 import platform.BackgroundTasks.BGAppRefreshTaskRequest
 import platform.BackgroundTasks.BGContinuedProcessingTask
 import platform.BackgroundTasks.BGContinuedProcessingTaskRequest
@@ -36,6 +38,9 @@ private const val REFRESH_AFTER_S = 6 * 60.0 * 60
 /** A refresh task gets about 30 s: the run stops a little before. */
 private const val REFRESH_BUDGET_MS = 25_000L
 
+/** Fetching and posting notifications never takes longer than this. */
+private const val ANNOUNCE_TIMEOUT_MS = 15_000L
+
 /** What a background task runs: the engine, until [deadline] (epoch ms) or cancelled. */
 interface BackgroundRunner {
     /** One run; [progress] gets (done, total) when known. */
@@ -44,6 +49,10 @@ interface BackgroundRunner {
 
     /** The current settings (read from the database). */
     fun settings(): BackupSettings
+
+    /** New shares and comments as local notifications; alongside each scheduled background run. */
+    @Throws(Exception::class)
+    suspend fun announce() {}
 }
 
 /**
@@ -102,7 +111,11 @@ class BackgroundTasks(private val runner: BackgroundRunner, private val scope: C
     private fun handle(task: BGTask, deadline: Long?) {
         val job = scope.launch {
             try {
-                runner.run(deadline, manual = false)
+                coroutineScope {
+                    // Alongside the run, not after it: a refresh task's 30 s would not leave room.
+                    launch { announceQuietly() }
+                    runner.run(deadline, manual = false)
+                }
             } finally {
                 schedule(runner.settings())
             }
@@ -125,6 +138,16 @@ class BackgroundTasks(private val runner: BackgroundRunner, private val scope: C
         }
         task.expirationHandler = { job.cancel() }
         job.invokeOnCompletion { task.setTaskCompletedWithSuccess(it == null) }
+    }
+
+    private suspend fun announceQuietly() {
+        try {
+            withTimeoutOrNull(ANNOUNCE_TIMEOUT_MS) { runner.announce() }
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            println("Squirrel: notifications not announced: ${e.message}")
+        }
     }
 
     /** A run in the app; one at a time, so repeated requests never stack background time. */

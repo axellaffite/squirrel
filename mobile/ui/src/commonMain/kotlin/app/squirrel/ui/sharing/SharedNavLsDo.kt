@@ -35,7 +35,8 @@ sealed interface SharedNavIntent {
 }
 
 internal fun sharedNavState(route: SharedRoute): SharedNavState = when (route) {
-    SharedRoute.List -> SharedNavState(SharedPage.List)
+    // A file route only lasts until the file opens with another app, over the list.
+    SharedRoute.List, is SharedRoute.File -> SharedNavState(SharedPage.List)
     is SharedRoute.Folder -> SharedNavState(SharedPage.Folder, route.id)
     is SharedRoute.Album -> SharedNavState(SharedPage.Album, route.id, route.name)
     is SharedRoute.Photo -> SharedNavState(SharedPage.Photo, route.id, route.name)

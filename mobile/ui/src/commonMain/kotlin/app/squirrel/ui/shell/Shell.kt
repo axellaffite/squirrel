@@ -61,6 +61,8 @@ fun Shell(
     photos: (@Composable () -> Unit)? = null,
     files: (@Composable () -> Unit)? = null,
     shared: (@Composable () -> Unit)? = null,
+    /** Global actions before the account menu (the notifications bell); [select] shows a section. */
+    topActions: @Composable (select: (AppTab) -> Unit) -> Unit = {},
 ) {
     var tab by rememberSaveable { mutableStateOf(Tab.Photos.name) }
     var menuOpen by rememberSaveable { mutableStateOf(false) }
@@ -77,6 +79,7 @@ fun Shell(
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 BasicText("Squirrel", style = SquirrelTheme.type.wordmark, modifier = Modifier.weight(1f))
+                topActions { tab = it.name }
                 Box {
                     IconButton(SquirrelIcon.User, label = "Account menu", onClick = {
                         menuOpen = !menuOpen

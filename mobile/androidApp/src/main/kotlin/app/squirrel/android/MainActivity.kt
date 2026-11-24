@@ -1,5 +1,6 @@
 package app.squirrel.android
 
+import android.Manifest
 import android.annotation.SuppressLint
 import android.content.ActivityNotFoundException
 import android.content.Intent
@@ -16,6 +17,7 @@ import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import app.squirrel.android.sync.MediaObserver
 import app.squirrel.ui.App
+import app.squirrel.ui.notifications.NotificationPrompt
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.MainScope
 import kotlinx.coroutines.cancel
@@ -32,6 +34,13 @@ class MainActivity : ComponentActivity() {
         // A grant (full or partial) starts a run; a refusal leaves the screen's notice.
         if (granted.values.any { it }) app.graph.backUpNow()
         if (granted.isNotEmpty() && granted.values.none { it } && !shouldShowAnyRationale()) openAppSettings()
+    }
+
+    /** Android 13+: posting notifications, asked the first time the inbox opens (granted or not, nothing else follows). */
+    private val notificationPermission = registerForActivityResult(ActivityResultContracts.RequestPermission()) { }
+
+    private val notificationPrompt = NotificationPrompt {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) notificationPermission.launch(Manifest.permission.POST_NOTIFICATIONS)
     }
 
     /** Android 13+: images and video; 14+ also "selected photos" (the system offers the picker). */
@@ -72,7 +81,7 @@ class MainActivity : ComponentActivity() {
         observer = MediaObserver(this) {
             scope.launch(Dispatchers.IO) { app.backup.scheduler.onNewMedia(app.graph.settings.backup()) }
         }
-        setContent { App(app.graph, photoActions, picker) }
+        setContent { App(app.graph, photoActions, picker, notificationPrompt) }
     }
 
     override fun onStart() {
