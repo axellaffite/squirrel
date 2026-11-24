@@ -12,6 +12,7 @@ import androidx.compose.ui.Modifier
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import app.squirrel.api.models.AssetDetails
+import app.squirrel.api.models.NodeDto
 import app.squirrel.api.models.NodeKind
 import app.squirrel.api.models.SharedItemDto
 import app.squirrel.shared.api.bodyOrThrow
@@ -36,6 +37,9 @@ sealed interface SharedRoute {
     data class Folder(val id: String) : SharedRoute
     data class Album(val id: String, val name: String) : SharedRoute
     data class Photo(val id: String, val name: String) : SharedRoute
+
+    /** A file to open with another app (from a notification): it opens, and the list shows again. */
+    data class File(val node: NodeDto) : SharedRoute
 }
 
 /** Whether a shared file opens in the photo viewer (rather than with another app). */
@@ -69,6 +73,10 @@ fun SharedTab(graph: AppGraph) {
         )
         is SharedRoute.Album -> AlbumPage(graph, route.id, route.name, rootLabel = "Shared", onBack = { nav.pop() })
         is SharedRoute.Photo -> SharedPhoto(graph, route, onBack = { nav.pop() })
+        is SharedRoute.File -> LaunchedEffect(route) {
+            nav.pop()
+            vm.opener.open(route.node)
+        }
     }
 }
 

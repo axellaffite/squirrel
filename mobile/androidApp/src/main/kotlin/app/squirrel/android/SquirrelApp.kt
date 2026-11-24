@@ -1,6 +1,7 @@
 package app.squirrel.android
 
 import android.app.Application
+import app.squirrel.android.notify.AndroidNotificationPoster
 import app.squirrel.android.sync.AndroidBackup
 import app.squirrel.android.sync.AppBackupRunner
 import app.squirrel.android.sync.BackupHost
@@ -17,7 +18,7 @@ class SquirrelApp : Application(), BackupHost {
     /** One graph per process, shared by the activity and the workers. */
     val graph: AppGraph by lazy { AndroidGraph.create(this, backup, scope) }
 
-    override val backupRunner: BackupRunner by lazy { AppBackupRunner(graph, backup, scope) }
+    override val backupRunner: BackupRunner by lazy { AppBackupRunner(graph, backup, scope, AndroidNotificationPoster(this)) }
 
     override fun onCreate() {
         super.onCreate()

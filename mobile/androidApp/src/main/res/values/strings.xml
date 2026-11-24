@@ -10,4 +10,6 @@
     </plurals>
     <string name="backup_checking">Checking what is new</string>
     <string name="backup_waiting_network">Waiting for network…</string>
+    <!-- Shares and comments, announced after a background run. -->
+    <string name="activity_channel">Shares and comments</string>
 </resources>

@@ -1,6 +1,7 @@
 package app.squirrel.ui.ios
 
 import app.squirrel.shared.ios.background.BackgroundRunner
+import app.squirrel.shared.ios.notify.IosNotificationPoster
 import app.squirrel.shared.settings.BackupSettings
 import app.squirrel.shared.sync.StopCause
 import app.squirrel.shared.sync.SyncState
@@ -35,4 +36,8 @@ class GraphRunner(private val graph: () -> AppGraph) : BackgroundRunner {
     }
 
     override fun settings(): BackupSettings = graph().settings.backup()
+
+    override suspend fun announce() {
+        graph().announceNotifications(IosNotificationPoster())
+    }
 }
