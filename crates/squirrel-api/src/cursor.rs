@@ -6,6 +6,7 @@ use base64::engine::general_purpose::URL_SAFE_NO_PAD;
 use squirrel_core::NodeKind;
 use squirrel_db::comments::CommentCursor;
 use squirrel_db::nodes::ListCursor;
+use squirrel_db::notifications::NotificationCursor;
 use squirrel_db::timeline::TimelineCursor;
 use squirrel_db::trash::TrashCursor;
 use time::{OffsetDateTime, PrimitiveDateTime};
@@ -97,6 +98,21 @@ pub fn encode_comment(cursor: &CommentCursor) -> String {
 pub fn decode_comment(raw: &str) -> Result<CommentCursor, ApiError> {
     let (nanos, id) = decode(raw)?;
     Ok(CommentCursor {
+        created_at: cursor_time(&nanos)?,
+        id: id.parse::<Uuid>().map_err(|_| invalid())?,
+    })
+}
+
+pub fn encode_notification(cursor: &NotificationCursor) -> String {
+    encode(
+        &cursor.created_at.unix_timestamp_nanos().to_string(),
+        &cursor.id.to_string(),
+    )
+}
+
+pub fn decode_notification(raw: &str) -> Result<NotificationCursor, ApiError> {
+    let (nanos, id) = decode(raw)?;
+    Ok(NotificationCursor {
         created_at: cursor_time(&nanos)?,
         id: id.parse::<Uuid>().map_err(|_| invalid())?,
     })

@@ -18,6 +18,7 @@ use crate::extract::Caller;
 use crate::files_dto::NodeDto;
 use crate::input::{ApiJson, ApiPath, ApiQuery};
 use crate::routes::albums::{Viewpoint, dtos};
+use crate::routes::notifications::announce_share;
 use crate::sharing_dto::{CreateShareRequest, MemberDto, ShareDto, SharedItemDto, SubjectRef};
 use crate::state::AppState;
 
@@ -83,6 +84,7 @@ pub async fn create_share(
         .await?
         .ok_or(ApiError::NotFound)?;
     tracing::info!(user_id = %caller.user.id, share_id = %id, "shared");
+    announce_share(&state, id).await;
     Ok((StatusCode::CREATED, Json(ShareDto::from(&share))))
 }
 

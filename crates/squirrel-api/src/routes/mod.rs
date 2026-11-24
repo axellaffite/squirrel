@@ -15,6 +15,7 @@ pub mod jobs;
 pub mod join;
 pub mod ml_settings;
 pub mod nodes;
+pub mod notifications;
 pub mod people;
 pub mod photo_search;
 pub mod photos;
