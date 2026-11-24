@@ -85,6 +85,7 @@ fun FolderBrowser(
     val state by vm.state.collectAsStateWithLifecycle()
     var sheet by remember { mutableStateOf<FolderSheet?>(null) }
     val uploads = viewModel(key = "uploads") { UploadsViewModel(api) }
+    RegisterLsDo("uploads", uploads)
     val uploading by uploads.items.collectAsStateWithLifecycle()
     val picker = LocalFilePicker.current
     val scope = rememberCoroutineScope()
