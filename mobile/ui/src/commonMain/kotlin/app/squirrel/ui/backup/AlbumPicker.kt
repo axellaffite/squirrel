@@ -18,8 +18,11 @@ import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.IO
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -75,6 +78,11 @@ class AlbumPickerViewModel(
 ) : ViewModel() {
     private val _state = MutableStateFlow(AlbumPickerState(kind = kind))
     val state: StateFlow<AlbumPickerState> = _state.asStateFlow()
+
+    /** What an agent reads (LS-DO); started on first read, as [BackupViewModel.view]. */
+    internal val view: StateFlow<AlbumPickerView> by lazy {
+        state.map(::albumPickerView).stateIn(viewModelScope, SharingStarted.Eagerly, albumPickerView(state.value))
+    }
 
     init {
         viewModelScope.launch {
