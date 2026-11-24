@@ -14,8 +14,11 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
@@ -44,6 +47,10 @@ class DocumentSearchViewModel(
 ) : ViewModel() {
     private val _state = MutableStateFlow(DocumentSearchState())
     val state: StateFlow<DocumentSearchState> = _state.asStateFlow()
+
+    /** The search as LS-DO shows it (see [DocumentSearchLsDo]); one flow for the session. */
+    val listing: StateFlow<DocumentSearchLsDoState> = state.map(::documentSearchLsDoState)
+        .stateIn(viewModelScope, SharingStarted.Eagerly, documentSearchLsDoState(_state.value))
 
     /** Opening a result with another app. */
     val opener = FileOpener(api, handoff, viewModelScope)

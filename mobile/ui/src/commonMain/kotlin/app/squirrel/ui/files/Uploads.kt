@@ -3,6 +3,9 @@ package app.squirrel.ui.files
 import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import app.squirrel.lsdo.Doc
+import app.squirrel.lsdo.LsDoScreen
+import app.squirrel.lsdo.lsdoSpec
 import app.squirrel.shared.api.ApiError
 import app.squirrel.shared.api.SquirrelApi
 import app.squirrel.shared.sync.AssetReader
@@ -13,11 +16,16 @@ import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharedFlow
+import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import kotlinx.serialization.SerialName
+import kotlinx.serialization.Serializable
 
 /** A file chosen in the system picker: its name, and its bytes once opened (null: unreadable). */
 class PickedFile(val name: String, val open: suspend () -> AssetReader?, val release: () -> Unit = {})
@@ -31,23 +39,62 @@ interface FilePicker {
 val LocalFilePicker = staticCompositionLocalOf<FilePicker?> { null }
 
 /** One upload as the folder page shows it. */
+@Serializable
 data class UploadItem(
-    val key: Int,
+    @Doc("The upload's id: what dismiss takes") val key: Int,
     val name: String,
-    val parentId: String,
-    val progress: Float = 0f,
-    val error: String? = null,
+    @Doc("The folder it goes into: a folder page shows the uploads whose parentId is its folderId") val parentId: String,
+    @Doc("0 to 1") val progress: Float = 0f,
+    @Doc("Why it failed; null while it waits or uploads") val error: String? = null,
 ) {
     val failed: Boolean get() = error != null
 }
+
+@Serializable
+data class UploadsState(
+    @Doc("Files on their way up, in order, and the failed ones until dismissed; a finished one leaves the list and its folder refreshes")
+    val items: List<UploadItem> = emptyList(),
+    @Doc("Uploads waiting or running") val uploading: Int = 0,
+    @Doc("Failed uploads still listed") val failed: Int = 0,
+)
+
+/** What an agent can do with uploads (LS-DO). Adding files is left out: it needs the system picker. */
+@Serializable
+sealed interface UploadsIntent {
+    @Serializable @SerialName("dismiss") @Doc("Hide a failed upload's notice by its key in items, as its Dismiss button does. Only failed ones (error set)")
+    data class Dismiss(val key: Int) : UploadsIntent
+}
+
+private fun uploadsState(items: List<UploadItem>) = UploadsState(items, uploading = items.count { !it.failed }, failed = items.count { it.failed })
 
 /**
  * Uploads from the phone into folders, one file at a time, through the backup engine's upload
  * pieces ([FileUpload]). Lives with the session, so a folder left meanwhile keeps uploading.
  */
-class UploadsViewModel(api: SquirrelApi, private val upload: FileUpload = FileUpload(api)) : ViewModel() {
+class UploadsViewModel(api: SquirrelApi, private val upload: FileUpload = FileUpload(api)) : ViewModel(), LsDoScreen<UploadsState, UploadsIntent> {
     private val _items = MutableStateFlow<List<UploadItem>>(emptyList())
     val items: StateFlow<List<UploadItem>> = _items.asStateFlow()
+
+    override val lsdo = lsdoSpec<UploadsState, UploadsIntent>()
+
+    /** The uploads as LS-DO shows them, with their counts. */
+    override val state: StateFlow<UploadsState> = items.map(::uploadsState).stateIn(viewModelScope, SharingStarted.Eagerly, uploadsState(_items.value))
+
+    override suspend fun perform(intent: UploadsIntent): String? = when (intent) {
+        is UploadsIntent.Dismiss -> {
+            val item = _items.value.firstOrNull { it.key == intent.key }
+            when {
+                item == null -> "No upload ${intent.key} in the list."
+                !item.failed -> "${item.name} is still uploading: only a failed upload can be dismissed."
+                else -> null.also { dismiss(item.key) }
+            }
+        }
+    }
+
+    override fun availableIntents(state: UploadsState): Set<String> = if (state.failed > 0) setOf("dismiss") else emptySet()
+
+    /** Never: uploads run as long as the files take, so a do does not wait for them; ls shows how far they got. */
+    override fun isBusy(state: UploadsState): Boolean = false
 
     private val _finished = MutableSharedFlow<String>(extraBufferCapacity = FINISHED_BUFFER)
 
