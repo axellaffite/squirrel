@@ -1,0 +1,128 @@
+{
+    "name": "friends",
+    "description": "Your friends (a one-way list: they are not told): add by username or from suggestions (people you share with), remove. Friends without access show as one-tap picks in the Share sheet. Reached by: app go_to shared, then shared_nav friends.",
+    "actions": [
+        {
+            "name": "add",
+            "description": "Type a username in \"Add by username\" and add it, as the Add button does. The account is not told. Refused (addError) for no such account, yourself, or 500 friends",
+            "params": {
+                "type": "object",
+                "properties": {
+                    "username": {
+                        "type": "string"
+                    }
+                },
+                "required": [
+                    "username"
+                ]
+            }
+        },
+        {
+            "name": "add_suggestion",
+            "description": "Add a suggestion by its username, in one tap",
+            "params": {
+                "type": "object",
+                "properties": {
+                    "username": {
+                        "type": "string"
+                    }
+                },
+                "required": [
+                    "username"
+                ]
+            }
+        },
+        {
+            "name": "refresh",
+            "description": "Reload friends and suggestions; also tries again after an error",
+            "params": {
+                "type": "object",
+                "properties": {}
+            }
+        },
+        {
+            "name": "remove",
+            "description": "Take a friend off the list by username; nothing they were shared changes, and they are not told",
+            "params": {
+                "type": "object",
+                "properties": {
+                    "username": {
+                        "type": "string"
+                    }
+                },
+                "required": [
+                    "username"
+                ]
+            }
+        }
+    ],
+    "state": {
+        "type": "object",
+        "properties": {
+            "friends": {
+                "type": "array",
+                "items": {
+                    "type": "object",
+                    "properties": {
+                        "username": {
+                            "type": "string",
+                            "description": "The account's username: what add_suggestion, remove and share_with take"
+                        },
+                        "name": {
+                            "type": "string",
+                            "description": "Its display name"
+                        }
+                    },
+                    "required": [
+                        "username",
+                        "name"
+                    ]
+                },
+                "nullable": true,
+                "description": "Your friends, by name; null until the first load"
+            },
+            "suggestions": {
+                "type": "array",
+                "items": {
+                    "type": "object",
+                    "properties": {
+                        "username": {
+                            "type": "string",
+                            "description": "The account's username: what add_suggestion, remove and share_with take"
+                        },
+                        "name": {
+                            "type": "string",
+                            "description": "Its display name"
+                        }
+                    },
+                    "required": [
+                        "username",
+                        "name"
+                    ]
+                },
+                "description": "People you shared with or who shared with you, not friends yet; most recent first"
+            },
+            "username": {
+                "type": "string",
+                "description": "The \"Add by username\" field"
+            },
+            "loading": {
+                "type": "boolean"
+            },
+            "busy": {
+                "type": "boolean",
+                "description": "An add or a removal is in flight"
+            },
+            "error": {
+                "type": "string",
+                "nullable": true,
+                "description": "A load, a suggestion or a removal that failed"
+            },
+            "addError": {
+                "type": "string",
+                "nullable": true,
+                "description": "Why the username typed could not be added, under the field"
+            }
+        }
+    }
+}

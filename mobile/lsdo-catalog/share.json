@@ -1,0 +1,168 @@
+{
+    "name": "share",
+    "description": "The Share sheet of a folder, file, album or photo you own: share by username or with a friend's pick (share_with), change or stop a share, close. Reached by: tapping Share on something you own (a folder page's header or a row's actions, an album's header, the photo viewer); no LS-DO action opens it yet (scripts/lsdo ui shows the button).",
+    "actions": [
+        {
+            "name": "change",
+            "description": "Change the permission of someone in shares",
+            "params": {
+                "type": "object",
+                "properties": {
+                    "username": {
+                        "type": "string"
+                    },
+                    "canEdit": {
+                        "type": "boolean"
+                    }
+                },
+                "required": [
+                    "username",
+                    "canEdit"
+                ]
+            }
+        },
+        {
+            "name": "close",
+            "description": "Close the sheet",
+            "params": {
+                "type": "object",
+                "properties": {}
+            }
+        },
+        {
+            "name": "set_permission",
+            "description": "Choose Read or Write for the next share (the sheet's Read/Write control)",
+            "params": {
+                "type": "object",
+                "properties": {
+                    "canEdit": {
+                        "type": "boolean"
+                    }
+                },
+                "required": [
+                    "canEdit"
+                ]
+            }
+        },
+        {
+            "name": "share",
+            "description": "Type a username and tap Share, with the permission chosen; the field empties once it worked",
+            "params": {
+                "type": "object",
+                "properties": {
+                    "username": {
+                        "type": "string"
+                    }
+                },
+                "required": [
+                    "username"
+                ]
+            }
+        },
+        {
+            "name": "share_with",
+            "description": "Tap a friend's pick (one in picks): shares at once with the permission chosen",
+            "params": {
+                "type": "object",
+                "properties": {
+                    "username": {
+                        "type": "string"
+                    }
+                },
+                "required": [
+                    "username"
+                ]
+            }
+        },
+        {
+            "name": "stop",
+            "description": "Stop sharing with someone in shares",
+            "params": {
+                "type": "object",
+                "properties": {
+                    "username": {
+                        "type": "string"
+                    }
+                },
+                "required": [
+                    "username"
+                ]
+            }
+        }
+    ],
+    "state": {
+        "type": "object",
+        "properties": {
+            "name": {
+                "type": "string",
+                "description": "The folder, file, album or photo being shared"
+            },
+            "shares": {
+                "type": "array",
+                "items": {
+                    "type": "object",
+                    "properties": {
+                        "username": {
+                            "type": "string",
+                            "description": "Who has access: what change and stop take"
+                        },
+                        "name": {
+                            "type": "string"
+                        },
+                        "canEdit": {
+                            "type": "boolean",
+                            "description": "May edit (\"Write\"); else view only (\"Read\")"
+                        }
+                    },
+                    "required": [
+                        "username",
+                        "name",
+                        "canEdit"
+                    ]
+                },
+                "nullable": true,
+                "description": "Who has access; null until loaded"
+            },
+            "picks": {
+                "type": "array",
+                "items": {
+                    "type": "object",
+                    "properties": {
+                        "username": {
+                            "type": "string",
+                            "description": "The account's username: what add_suggestion, remove and share_with take"
+                        },
+                        "name": {
+                            "type": "string",
+                            "description": "Its display name"
+                        }
+                    },
+                    "required": [
+                        "username",
+                        "name"
+                    ]
+                },
+                "description": "Friends without access yet, shown as one-tap picks: share_with takes their username"
+            },
+            "username": {
+                "type": "string",
+                "description": "The Username field"
+            },
+            "canEdit": {
+                "type": "boolean",
+                "description": "The permission chosen for the next share (Write); else Read"
+            },
+            "error": {
+                "type": "string",
+                "nullable": true
+            },
+            "busy": {
+                "type": "boolean",
+                "description": "A share is in flight"
+            }
+        },
+        "required": [
+            "name"
+        ]
+    }
+}
