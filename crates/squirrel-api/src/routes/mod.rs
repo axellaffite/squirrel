@@ -9,6 +9,7 @@ pub mod devices;
 pub mod duplicates;
 pub mod explore;
 pub mod faces;
+pub mod friends;
 pub mod health;
 pub mod invitations;
 pub mod jobs;
