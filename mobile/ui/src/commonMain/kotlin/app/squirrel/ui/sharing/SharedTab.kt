@@ -23,6 +23,9 @@ import app.squirrel.ui.AppGraph
 import app.squirrel.ui.files.FilesViewModel
 import app.squirrel.ui.files.FolderBrowser
 import app.squirrel.ui.files.OpenerConfirm
+import app.squirrel.ui.friends.FriendsLsDo
+import app.squirrel.ui.friends.FriendsPage
+import app.squirrel.ui.friends.FriendsViewModel
 import app.squirrel.ui.photos.AlbumPage
 import app.squirrel.ui.shell.Navigator
 import app.squirrel.ui.shell.PageHeader
@@ -40,6 +43,7 @@ sealed interface SharedRoute {
 
     /** A file to open with another app (from a notification): it opens, and the list shows again. */
     data class File(val node: NodeDto) : SharedRoute
+    data object Friends : SharedRoute
 }
 
 /** Whether a shared file opens in the photo viewer (rather than with another app). */
@@ -62,7 +66,7 @@ fun SharedTab(graph: AppGraph) {
     when (val route = stack.last()) {
         SharedRoute.List -> {
             RegisterLsDo("shared_list", remember(vm, nav) { SharedListLsDo(vm) { item -> open(item, vm, nav) } })
-            SharedList(api, vm) { item -> open(item, vm, nav) }
+            SharedList(api, vm, onFriends = { nav.push(SharedRoute.Friends) }) { item -> open(item, vm, nav) }
             OpenerConfirm(vm.opener)
         }
         is SharedRoute.Folder -> FolderBrowser(
@@ -76,6 +80,11 @@ fun SharedTab(graph: AppGraph) {
         is SharedRoute.File -> LaunchedEffect(route) {
             nav.pop()
             vm.opener.open(route.node)
+        }
+        SharedRoute.Friends -> {
+            val friends = viewModel(key = "friends") { FriendsViewModel(api) }
+            RegisterLsDo("friends", remember(friends) { FriendsLsDo(friends) })
+            FriendsPage(friends, onBack = { nav.pop() })
         }
     }
 }
