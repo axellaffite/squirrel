@@ -1,6 +1,6 @@
 # Notifications
 
-Date: 2026-11-24. Status: in progress. Tells people when something is shared with them or commented on.
+Date: 2026-11-24. Status: built. Tells people when something is shared with them or commented on.
 
 ## Decisions (validated with the user)
 
@@ -33,3 +33,10 @@ Date: 2026-11-24. Status: in progress. Tells people when something is shared wit
    hooks in share and comment creation; OpenAPI; API tests.
 3. Web: bell + panel in the shell, links to the subject; E2E.
 4. Phone: bell + sheet, OS notification from the background sync.
+
+## As built
+
+- Migration `20261124000001_notifications.sql`; `squirrel_db::notifications`; routes in `squirrel-api/src/routes/notifications.rs` (session or phone token). One notification per share (unique `share_id`), per comment and person.
+- Web: bell in the rail (desktop) or top row (phone), popover/sheet, 60 s poll while visible; links reuse `?open=` and add `comments=1` to open the thread. E2E `e2e/notifications.spec.ts`.
+- Phone: bell + sheet + LS-DO screen `notifications`; OS notifications after each background backup run (Android WorkManager, iOS BGTask), deduplicated by a mark in settings, up to 3 then one summary; permission asked on the first bell tap.
+- Not done: scrolling to the exact comment, deep links from OS notifications, announcing when automatic backup is off. OS notifications untested on a real device.
