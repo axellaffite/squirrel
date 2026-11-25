@@ -10,6 +10,8 @@ export type Comment = components['schemas']['CommentDto'];
 export type CommentPage = components['schemas']['CommentPage'];
 export type Permission = components['schemas']['SharePermission'];
 export type Access = components['schemas']['AccessLevel'];
+export type Friend = components['schemas']['FriendDto'];
+export type FriendsPage = components['schemas']['FriendsPage'];
 
 /** What a share or a comment thread is about: one folder or file, or one album. */
 export type Subject = { node_id: string } | { album_id: string };
@@ -55,3 +57,13 @@ export const editComment = (id: string, body: string): Promise<Outcome<Comment>>
 
 export const deleteComment = (id: string): Promise<Outcome<unknown>> =>
 	call(api.DELETE('/api/comments/{id}', { params: { path: { id } } }));
+
+/** The caller's friends and the people suggested as friends. */
+export const listFriends = (): Promise<Outcome<FriendsPage>> => call(api.GET('/api/friends'));
+
+/** Adds `username` to the caller's friends (already one is fine). */
+export const addFriend = (username: string): Promise<Outcome<Friend>> =>
+	call(api.POST('/api/friends', { body: { username } }));
+
+export const removeFriend = (username: string): Promise<Outcome<unknown>> =>
+	call(api.DELETE('/api/friends/{username}', { params: { path: { username } } }));
