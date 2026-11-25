@@ -7,7 +7,9 @@
 	import Page from '#lib/components/shell/Page.svelte';
 	import SharedAlbum from '#lib/components/sharing/SharedAlbum.svelte';
 	import SharedNodeRow from '#lib/components/sharing/SharedNodeRow.svelte';
+	import Icon from '#lib/components/icons/Icon.svelte';
 	import Alert from '#lib/components/ui/Alert.svelte';
+	import Button from '#lib/components/ui/Button.svelte';
 	import EmptyState from '#lib/components/ui/EmptyState.svelte';
 	import { getNode, type FileNode } from '#lib/files/api.ts';
 	import { openRequest, withoutOpenRequest } from '#lib/notifications/logic.ts';
@@ -82,6 +84,7 @@
 
 <Page title="Shared">
 	{#snippet description()}Folders, files and albums other people shared with you.{/snippet}
+	{#snippet actions()}<Button variant="secondary" href="/settings/friends"><Icon name="users" />Friends</Button>{/snippet}
 
 	{#if error}<Alert>{error}</Alert>{/if}
 	{#if items === null}

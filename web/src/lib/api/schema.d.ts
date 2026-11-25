@@ -489,6 +489,38 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/friends": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["list_friends"];
+        put?: never;
+        post: operations["add_friend"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/friends/{username}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete: operations["remove_friend"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/healthz": {
         parameters: {
             query?: never;
@@ -1168,6 +1200,10 @@ export interface components {
             password: string;
             username: string;
         };
+        AddFriendRequest: {
+            /** @description The account to add. */
+            username: string;
+        };
         AlbumDto: {
             /** @description What the caller may do with it. */
             access: components["schemas"]["AccessLevel"];
@@ -1624,6 +1660,22 @@ export interface components {
             last_error?: string | null;
             /** Format: date-time */
             updated_at: string;
+        };
+        /** @description A friend: an account the caller picked for quick sharing. */
+        FriendDto: {
+            /** Format: date-time */
+            added_at: string;
+            display_name: string;
+            username: string;
+        };
+        FriendsPage: {
+            /** @description By display name, at most 500. */
+            friends: components["schemas"]["FriendDto"][];
+            /**
+             * @description People the caller shared with or got a share from, not yet friends,
+             *     most recent first, at most 20.
+             */
+            suggestions: components["schemas"]["MemberDto"][];
         };
         Health: {
             status: string;
@@ -3805,6 +3857,88 @@ export interface operations {
                 };
             };
             422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    list_friends: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FriendsPage"];
+                };
+            };
+        };
+    };
+    add_friend: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AddFriendRequest"];
+            };
+        };
+        responses: {
+            /** @description Added, or already a friend */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FriendDto"];
+                };
+            };
+            /** @description No such account, yourself, or 500 friends already */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    remove_friend: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The friend's username */
+                username: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description No longer a friend */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not a friend */
+            404: {
                 headers: {
                     [name: string]: unknown;
                 };
