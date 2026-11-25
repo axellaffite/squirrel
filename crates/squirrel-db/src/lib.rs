@@ -16,6 +16,7 @@ pub mod duplicates;
 mod error;
 pub mod explore;
 pub mod faces;
+pub mod friends;
 pub mod instance;
 pub mod invitations;
 pub mod media;
