@@ -6,10 +6,9 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.WindowInsets
-import androidx.compose.foundation.layout.ime
-import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.ime
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.layout.width
@@ -24,6 +23,7 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextOverflow
@@ -33,16 +33,16 @@ import app.squirrel.theme.Shapes
 import app.squirrel.theme.SquirrelIcon
 import app.squirrel.theme.SquirrelTheme
 import app.squirrel.theme.Tokens
+import app.squirrel.theme.components.BottomRail
 import app.squirrel.theme.components.Button
 import app.squirrel.theme.components.ButtonVariant
 import app.squirrel.theme.components.EmptyState
 import app.squirrel.theme.components.IconButton
 import app.squirrel.theme.components.RailItem
-import app.squirrel.theme.components.BottomRail
 import app.squirrel.theme.popShadow
 import app.squirrel.theme.tabular
 import app.squirrel.ui.AccountInfo
-import app.squirrel.ui.RegisterLsDo
+import io.github.axellaffite.lsdo.compose.RegisterLsDo
 
 private enum class Tab(val label: String, val icon: SquirrelIcon, val title: String, val line: String) {
     Photos("Photos", SquirrelIcon.Images, "Photos are not in the app yet", "Your timeline arrives in a later version of the app."),

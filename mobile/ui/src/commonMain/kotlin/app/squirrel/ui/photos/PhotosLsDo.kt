@@ -1,9 +1,9 @@
 package app.squirrel.ui.photos
 
-import app.squirrel.lsdo.Doc
-import app.squirrel.lsdo.LsDoScreen
-import app.squirrel.lsdo.lsdoSpec
 import app.squirrel.ui.shell.Navigator
+import io.github.axellaffite.lsdo.Doc
+import io.github.axellaffite.lsdo.LsDoScreen
+import io.github.axellaffite.lsdo.lsdoSpec
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow

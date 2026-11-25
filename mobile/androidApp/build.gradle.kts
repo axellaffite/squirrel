@@ -42,7 +42,7 @@ dependencies {
     implementation(libs.ktor.client.okhttp)
     implementation(libs.androidx.work)
     // LS-DO (an agent lists and drives the screens): debug builds only, see checkReleaseHasNoLsDo.
-    debugImplementation(project(":lsdo-runtime"))
+    debugImplementation(libs.lsdo.runtime.compose)
 
     testImplementation(libs.kotlin.test)
     testImplementation(libs.robolectric)
@@ -62,7 +62,7 @@ dependencies {
 // The LS-DO runtime opens a server that drives the app: it must never reach a release build.
 val checkReleaseHasNoLsDo by tasks.registering {
     group = "verification"
-    description = "Fails if :lsdo-runtime is in the release runtime dependency graph."
+    description = "Fails if the LS-DO runtime is in the release runtime dependency graph."
     val release = configurations.named("releaseRuntimeClasspath").flatMap { it.incoming.resolutionResult.rootComponent }
     doLast {
         val seen = mutableSetOf<org.gradle.api.artifacts.result.ResolvedComponentResult>()

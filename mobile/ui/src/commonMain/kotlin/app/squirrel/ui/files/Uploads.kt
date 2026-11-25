@@ -1,17 +1,17 @@
 package app.squirrel.ui.files
 
-import app.squirrel.ui.mapState
 import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import app.squirrel.lsdo.Doc
-import app.squirrel.lsdo.LsDoScreen
-import app.squirrel.lsdo.lsdoSpec
 import app.squirrel.shared.api.ApiError
 import app.squirrel.shared.api.SquirrelApi
 import app.squirrel.shared.sync.AssetReader
 import app.squirrel.shared.sync.FileUpload
 import app.squirrel.ui.photos.UNREACHABLE
+import io.github.axellaffite.lsdo.Doc
+import io.github.axellaffite.lsdo.LsDoScreen
+import io.github.axellaffite.lsdo.lsdoSpec
+import io.github.axellaffite.lsdo.mapState
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.MutableSharedFlow

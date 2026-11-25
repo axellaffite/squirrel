@@ -2,45 +2,45 @@ package app.squirrel.ui.photos
 
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
-import androidx.compose.runtime.rememberCoroutineScope
-import androidx.compose.ui.Alignment
-import app.squirrel.theme.components.Alert
-import app.squirrel.theme.components.AlertTone
-import app.squirrel.theme.components.Button
-import app.squirrel.theme.components.ButtonSize
-import app.squirrel.theme.components.ButtonVariant
-import app.squirrel.ui.files.albumNameProblem
-import app.squirrel.ui.sharing.Outcome
-import app.squirrel.ui.shell.NameSheet
-import kotlinx.coroutines.launch
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.text.BasicText
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
-import app.squirrel.ui.RegisterLsDo
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import app.squirrel.theme.SquirrelIcon
 import app.squirrel.theme.SquirrelTheme
 import app.squirrel.theme.Tokens
+import app.squirrel.theme.components.Alert
+import app.squirrel.theme.components.AlertTone
+import app.squirrel.theme.components.Button
+import app.squirrel.theme.components.ButtonSize
+import app.squirrel.theme.components.ButtonVariant
 import app.squirrel.theme.components.IconButton
 import app.squirrel.theme.tabular
 import app.squirrel.ui.AppGraph
 import app.squirrel.ui.explore.photoCount
+import app.squirrel.ui.files.albumNameProblem
 import app.squirrel.ui.sharing.CommentsSheet
+import app.squirrel.ui.sharing.Outcome
 import app.squirrel.ui.sharing.ShareSheet
 import app.squirrel.ui.sharing.Subject
 import app.squirrel.ui.sharing.memberName
+import app.squirrel.ui.shell.NameSheet
 import app.squirrel.ui.shell.PageHeader
 import app.squirrel.ui.shell.SystemBack
 import app.squirrel.ui.viewer.ViewerHost
 import app.squirrel.ui.viewer.ViewerRequest
+import io.github.axellaffite.lsdo.compose.RegisterLsDo
+import kotlinx.coroutines.launch
 
 private enum class AlbumSheet { Share, Comments, Rename }
 

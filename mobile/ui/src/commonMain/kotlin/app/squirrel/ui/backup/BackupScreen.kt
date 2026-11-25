@@ -31,8 +31,8 @@ import app.squirrel.theme.components.Progress
 import app.squirrel.theme.components.Sheet
 import app.squirrel.theme.components.Well
 import app.squirrel.theme.tabular
-import app.squirrel.ui.RegisterLsDo
 import app.squirrel.ui.shell.PageHeader
+import io.github.axellaffite.lsdo.compose.RegisterLsDo
 import kotlinx.coroutines.launch
 
 /** MASTER.md phone section: the Backup screen with its one graphite status card. */

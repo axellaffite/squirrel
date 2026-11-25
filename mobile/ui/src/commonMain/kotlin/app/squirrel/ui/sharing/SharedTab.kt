@@ -6,8 +6,8 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.remember
 import androidx.compose.runtime.produceState
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
@@ -20,7 +20,6 @@ import app.squirrel.theme.Tokens
 import app.squirrel.theme.components.Alert
 import app.squirrel.theme.components.Loading
 import app.squirrel.ui.AppGraph
-import app.squirrel.ui.RegisterLsDo
 import app.squirrel.ui.files.FilesViewModel
 import app.squirrel.ui.files.FolderBrowser
 import app.squirrel.ui.files.OpenerConfirm
@@ -30,6 +29,7 @@ import app.squirrel.ui.shell.PageHeader
 import app.squirrel.ui.shell.SystemBack
 import app.squirrel.ui.viewer.ViewerHost
 import app.squirrel.ui.viewer.ViewerRequest
+import io.github.axellaffite.lsdo.compose.RegisterLsDo
 
 /** The pages of the Shared tab. */
 sealed interface SharedRoute {

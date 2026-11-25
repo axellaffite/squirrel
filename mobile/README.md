@@ -41,7 +41,8 @@ The native theme is generated from the web tokens; after changing `tokens.css`, 
 
 ## LS-DO: drive the debug app from a script or an agent
 
-Debug builds serve the screens on show on the phone's loopback (port 8765): each one lists its
+LS-DO is the [lsdo](https://github.com/axellaffite/lsdo) library (Maven Central,
+`io.github.axellaffite.lsdo`, version in `gradle/libs.versions.toml`). Debug builds serve the screens on show on the phone's loopback (port 8765): each one lists its
 state and the actions available now (ls), and runs one (do) through the same ViewModel calls as
 the UI. `scripts/lsdo` forwards the port over adb:
 
@@ -74,8 +75,8 @@ actions available now, and under `unavailable` those that exist but make no sens
 `X-LsDo` header (the script sends it), so a web page on the phone cannot drive the app. To add a screen: make its
 state `@Serializable`, give it a `@Serializable` sealed intent type (`@SerialName` = action name,
 `@Doc` = description), implement `LsDoScreen` in its ViewModel and call `RegisterLsDo(name, vm)`
-in its composable (`ui/files/FilesLsDo.kt` is the example). `:lsdo` (the contract) ships
-everywhere; `:lsdo-runtime` (registry and server) is `debugImplementation` only, and
+in its composable (`ui/files/FilesLsDo.kt` is the example). `lsdo-compose` (the contract) ships
+everywhere; `lsdo-runtime-compose` (registry, server, UI capture) is `debugImplementation` only, and
 `:androidApp:checkReleaseHasNoLsDo` (part of `check`) fails if it reaches the release build.
 
 iOS: Kotlin/Native has no debug source sets, so `ui/build.gradle.kts` decides when Gradle

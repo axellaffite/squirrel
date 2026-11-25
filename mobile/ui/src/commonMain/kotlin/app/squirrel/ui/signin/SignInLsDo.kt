@@ -1,9 +1,9 @@
 package app.squirrel.ui.signin
 
-import app.squirrel.ui.mapState
-import app.squirrel.lsdo.Doc
-import app.squirrel.lsdo.LsDoScreen
-import app.squirrel.lsdo.lsdoSpec
+import io.github.axellaffite.lsdo.Doc
+import io.github.axellaffite.lsdo.LsDoScreen
+import io.github.axellaffite.lsdo.lsdoSpec
+import io.github.axellaffite.lsdo.mapState
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.first

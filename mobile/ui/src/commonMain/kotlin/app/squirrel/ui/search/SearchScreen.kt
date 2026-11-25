@@ -6,12 +6,10 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.text.BasicText
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.rememberCoroutineScope
-import app.squirrel.ui.RegisterLsDo
-import app.squirrel.ui.photos.PhotosOverlay
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
@@ -32,15 +30,17 @@ import app.squirrel.theme.components.Loading
 import app.squirrel.theme.components.SearchField
 import app.squirrel.theme.components.SegmentedControl
 import app.squirrel.ui.AppGraph
-import app.squirrel.ui.RegisterLsDo
 import app.squirrel.ui.explore.FilterBar
 import app.squirrel.ui.photos.ErrorRetry
 import app.squirrel.ui.photos.JustifiedPhotos
+import app.squirrel.ui.photos.PhotosOverlay
 import app.squirrel.ui.photos.TileActions
 import app.squirrel.ui.shell.PageHeader
 import app.squirrel.ui.shell.SystemBack
 import app.squirrel.ui.viewer.ViewerHost
 import app.squirrel.ui.viewer.ViewerRequest
+import io.github.axellaffite.lsdo.compose.RegisterLsDo
+import io.github.axellaffite.lsdo.compose.RegisterLsDo
 
 /** What the search screen looks for. */
 enum class SearchKind(val label: String) { Photos("Photos"), Files("Files") }

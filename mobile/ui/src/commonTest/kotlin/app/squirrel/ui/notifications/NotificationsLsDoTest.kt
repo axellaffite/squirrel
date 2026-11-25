@@ -1,7 +1,7 @@
 package app.squirrel.ui.notifications
 
-import app.squirrel.lsdo.runtime.LsDoRegistry
 import app.squirrel.ui.testing.runReal
+import io.github.axellaffite.lsdo.runtime.LsDoRegistry
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.test.resetMain

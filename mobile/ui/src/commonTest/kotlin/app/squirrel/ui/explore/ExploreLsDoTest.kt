@@ -1,11 +1,11 @@
 package app.squirrel.ui.explore
 
-import app.squirrel.lsdo.runtime.LsDoRegistry
 import app.squirrel.ui.testing.await
 import app.squirrel.ui.testing.json
 import app.squirrel.ui.testing.runReal
 import app.squirrel.ui.testing.summary
 import app.squirrel.ui.testing.testApi
+import io.github.axellaffite.lsdo.runtime.LsDoRegistry
 import io.ktor.client.engine.mock.respondError
 import io.ktor.http.HttpStatusCode
 import kotlinx.coroutines.CoroutineScope

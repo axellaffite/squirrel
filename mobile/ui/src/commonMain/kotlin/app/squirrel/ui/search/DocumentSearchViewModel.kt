@@ -1,6 +1,5 @@
 package app.squirrel.ui.search
 
-import app.squirrel.ui.mapState
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import app.squirrel.api.models.DocumentHit
@@ -10,6 +9,7 @@ import app.squirrel.shared.api.SquirrelApi
 import app.squirrel.shared.api.bodyOrThrow
 import app.squirrel.ui.files.FileHandoff
 import app.squirrel.ui.files.FileOpener
+import io.github.axellaffite.lsdo.mapState
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.currentCoroutineContext

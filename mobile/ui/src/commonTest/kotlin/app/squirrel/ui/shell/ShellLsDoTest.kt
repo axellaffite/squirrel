@@ -1,6 +1,6 @@
 package app.squirrel.ui.shell
 
-import app.squirrel.lsdo.runtime.LsDoRegistry
+import io.github.axellaffite.lsdo.runtime.LsDoRegistry
 import kotlinx.coroutines.test.runTest
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.jsonArray

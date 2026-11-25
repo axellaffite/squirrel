@@ -1,9 +1,9 @@
 package app.squirrel.ui.backup
 
-import app.squirrel.lsdo.Doc
-import app.squirrel.lsdo.LsDoScreen
-import app.squirrel.lsdo.lsdoSpec
 import app.squirrel.shared.settings.AlbumFilter
+import io.github.axellaffite.lsdo.Doc
+import io.github.axellaffite.lsdo.LsDoScreen
+import io.github.axellaffite.lsdo.lsdoSpec
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable

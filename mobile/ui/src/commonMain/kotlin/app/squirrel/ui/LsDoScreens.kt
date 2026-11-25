@@ -1,8 +1,5 @@
 package app.squirrel.ui
 
-import app.squirrel.lsdo.LsDoEntry
-import app.squirrel.lsdo.lsdoSpec
-import app.squirrel.lsdo.LsDoSpec
 import app.squirrel.ui.backup.AlbumPickerIntent
 import app.squirrel.ui.backup.AlbumPickerView
 import app.squirrel.ui.backup.BackupIntent
@@ -11,10 +8,14 @@ import app.squirrel.ui.backup.BackupSettingsView
 import app.squirrel.ui.backup.BackupView
 import app.squirrel.ui.explore.ExploreIntent
 import app.squirrel.ui.explore.ExploreView
+import app.squirrel.ui.files.FilesIntent
 import app.squirrel.ui.files.FilesNavIntent
 import app.squirrel.ui.files.FilesNavState
+import app.squirrel.ui.files.FilesState
 import app.squirrel.ui.files.UploadsIntent
 import app.squirrel.ui.files.UploadsState
+import app.squirrel.ui.notifications.NotificationsIntent
+import app.squirrel.ui.notifications.NotificationsView
 import app.squirrel.ui.photos.AlbumIntent
 import app.squirrel.ui.photos.AlbumListView
 import app.squirrel.ui.photos.AlbumView
@@ -27,18 +28,17 @@ import app.squirrel.ui.search.DocumentSearchIntent
 import app.squirrel.ui.search.DocumentSearchLsDoState
 import app.squirrel.ui.search.PhotoSearchIntent
 import app.squirrel.ui.search.PhotoSearchView
-import app.squirrel.ui.notifications.NotificationsIntent
-import app.squirrel.ui.notifications.NotificationsView
 import app.squirrel.ui.sharing.SharedListIntent
 import app.squirrel.ui.sharing.SharedListState
 import app.squirrel.ui.sharing.SharedNavIntent
 import app.squirrel.ui.sharing.SharedNavState
-import app.squirrel.ui.signin.SignInIntent
-import app.squirrel.ui.signin.SignInView
-import app.squirrel.ui.files.FilesIntent
-import app.squirrel.ui.files.FilesState
 import app.squirrel.ui.shell.AppIntent
 import app.squirrel.ui.shell.AppState
+import app.squirrel.ui.signin.SignInIntent
+import app.squirrel.ui.signin.SignInView
+import io.github.axellaffite.lsdo.LsDoEntry
+import io.github.axellaffite.lsdo.LsDoSpec
+import io.github.axellaffite.lsdo.lsdoSpec
 
 /**
  * Every LS-DO screen of the app, shown or not: the catalog (`scripts/lsdo catalog`,

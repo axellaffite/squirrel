@@ -11,7 +11,6 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
-import app.squirrel.ui.RegisterLsDo
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.semantics
@@ -29,6 +28,7 @@ import app.squirrel.ui.photos.ErrorRetry
 import app.squirrel.ui.photos.RailClearance
 import app.squirrel.ui.shell.PageHeader
 import app.squirrel.ui.shell.SystemBack
+import io.github.axellaffite.lsdo.compose.RegisterLsDo
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 

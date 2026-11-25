@@ -1,12 +1,12 @@
 package app.squirrel.ui.search
 
-import app.squirrel.lsdo.runtime.LsDoRegistry
 import app.squirrel.ui.photos.PhotosOverlay
 import app.squirrel.ui.testing.apiError
 import app.squirrel.ui.testing.json
 import app.squirrel.ui.testing.runReal
 import app.squirrel.ui.testing.summary
 import app.squirrel.ui.testing.testApi
+import io.github.axellaffite.lsdo.runtime.LsDoRegistry
 import io.ktor.client.engine.mock.respondError
 import io.ktor.http.HttpStatusCode
 import io.ktor.http.Parameters

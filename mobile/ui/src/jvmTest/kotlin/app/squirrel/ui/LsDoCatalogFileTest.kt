@@ -1,7 +1,7 @@
 package app.squirrel.ui
 
-import app.squirrel.lsdo.runtime.catalogIndex
-import app.squirrel.lsdo.runtime.catalogScreen
+import io.github.axellaffite.lsdo.runtime.catalogIndex
+import io.github.axellaffite.lsdo.runtime.catalogScreen
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonElement
 import java.io.File

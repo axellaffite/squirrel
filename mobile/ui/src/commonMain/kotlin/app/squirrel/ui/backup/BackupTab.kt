@@ -6,13 +6,13 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
+import androidx.lifecycle.viewmodel.compose.viewModel
 import app.squirrel.api.models.RenameDeviceRequest
 import app.squirrel.shared.api.bodyOrThrow
-import app.squirrel.ui.AppState
-import androidx.lifecycle.viewmodel.compose.viewModel
 import app.squirrel.shared.sync.MediaAccess
 import app.squirrel.ui.AppGraph
-import app.squirrel.ui.RegisterLsDo
+import app.squirrel.ui.AppState
+import io.github.axellaffite.lsdo.compose.RegisterLsDo
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.IO
 import kotlinx.coroutines.withContext

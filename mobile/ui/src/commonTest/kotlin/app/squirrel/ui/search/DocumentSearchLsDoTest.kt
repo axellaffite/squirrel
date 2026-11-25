@@ -1,6 +1,5 @@
 package app.squirrel.ui.search
 
-import app.squirrel.lsdo.runtime.LsDoRegistry
 import app.squirrel.ui.files.FilesNavLsDo
 import app.squirrel.ui.files.FilesRoute
 import app.squirrel.ui.shell.Navigator
@@ -8,6 +7,7 @@ import app.squirrel.ui.testing.json
 import app.squirrel.ui.testing.node
 import app.squirrel.ui.testing.runReal
 import app.squirrel.ui.testing.testApi
+import io.github.axellaffite.lsdo.runtime.LsDoRegistry
 import io.ktor.client.engine.mock.respondError
 import io.ktor.http.HttpStatusCode
 import kotlinx.coroutines.Dispatchers

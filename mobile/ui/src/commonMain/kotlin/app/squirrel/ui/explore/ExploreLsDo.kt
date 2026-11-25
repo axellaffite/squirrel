@@ -1,10 +1,10 @@
 package app.squirrel.ui.explore
 
-import app.squirrel.lsdo.Doc
-import app.squirrel.lsdo.LsDoScreen
-import app.squirrel.lsdo.lsdoSpec
 import app.squirrel.ui.photos.done
 import app.squirrel.ui.photos.view
+import io.github.axellaffite.lsdo.Doc
+import io.github.axellaffite.lsdo.LsDoScreen
+import io.github.axellaffite.lsdo.lsdoSpec
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.serialization.SerialName

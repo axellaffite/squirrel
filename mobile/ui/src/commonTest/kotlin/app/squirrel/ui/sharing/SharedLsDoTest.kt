@@ -1,13 +1,13 @@
 package app.squirrel.ui.sharing
 
 import app.squirrel.api.models.SharedItemDto
-import app.squirrel.lsdo.runtime.LsDoRegistry
 import app.squirrel.ui.shell.Navigator
 import app.squirrel.ui.testing.json
 import app.squirrel.ui.testing.node
 import app.squirrel.ui.testing.runReal
 import app.squirrel.ui.testing.summary
 import app.squirrel.ui.testing.testApi
+import io.github.axellaffite.lsdo.runtime.LsDoRegistry
 import io.ktor.client.engine.mock.respond
 import io.ktor.client.engine.mock.respondError
 import io.ktor.http.HttpMethod

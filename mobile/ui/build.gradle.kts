@@ -40,7 +40,7 @@ kotlin {
         commonMain.dependencies {
             api(project(":shared"))
             api(project(":theme"))
-            api(project(":lsdo"))
+            api(libs.lsdo.compose)
             implementation(libs.jb.lifecycle.viewmodel.compose)
             implementation(libs.jb.lifecycle.runtime.compose)
             api(libs.coil.compose)
@@ -50,7 +50,7 @@ kotlin {
             implementation(libs.androidx.activity.compose)
         }
         commonTest.dependencies {
-            implementation(project(":lsdo-runtime"))
+            implementation(libs.lsdo.runtime)
             implementation(libs.kotlin.test)
             implementation(libs.coroutines.test)
             implementation(libs.ktor.client.mock)
@@ -63,7 +63,7 @@ kotlin {
             iosMain {
                 // Twins, as on Android: the real startLsDo() with the runtime, or an empty one.
                 kotlin.srcDir(if (lsdoEnabled) "src/iosLsDo/kotlin" else "src/iosNoLsDo/kotlin")
-                if (lsdoEnabled) dependencies { implementation(project(":lsdo-runtime")) }
+                if (lsdoEnabled) dependencies { implementation(libs.lsdo.runtime.compose) }
             }
         }
     }
@@ -76,7 +76,7 @@ tasks.withType<org.jetbrains.kotlin.gradle.tasks.KotlinNativeLink>()
         val binary = outputFile
         doLast {
             val file = binary.get().let { if (it.isDirectory) it.resolve(it.nameWithoutExtension) else it }
-            val leaked = "app.squirrel.lsdo.runtime" in String(file.readBytes(), Charsets.ISO_8859_1)
+            val leaked = "io.github.axellaffite.lsdo.runtime" in String(file.readBytes(), Charsets.ISO_8859_1)
             check(!leaked) { "LS-DO runtime linked into the release binary ${file.name}." }
         }
     }

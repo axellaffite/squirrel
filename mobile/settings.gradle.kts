@@ -16,4 +16,4 @@ dependencyResolutionManagement {
     }
 }
 
-include(":shared", ":theme", ":ui", ":androidApp", ":lsdo", ":lsdo-runtime")
+include(":shared", ":theme", ":ui", ":androidApp")
