@@ -25,6 +25,7 @@ export default defineConfig({
 		{ name: 'documents', testMatch: 'documents.spec.ts', dependencies: ['onboarding'], use: { ...desktop, ...dates } },
 		{ name: 'sharing', testMatch: 'sharing.spec.ts', dependencies: ['onboarding'], use: desktop },
 		{ name: 'notifications', testMatch: 'notifications.spec.ts', dependencies: ['onboarding'], use: desktop },
+		{ name: 'friends', testMatch: 'friends.spec.ts', dependencies: ['onboarding'], use: desktop },
 		{ name: 'text-editor', testMatch: 'text-editor.spec.ts', dependencies: ['onboarding'], use: desktop },
 		{ name: 'devices', testMatch: 'devices.spec.ts', dependencies: ['onboarding'], use: desktop },
 		// Machine learning (skipped without models, failing on CI where they are installed).

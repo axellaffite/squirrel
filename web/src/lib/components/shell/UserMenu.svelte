@@ -67,6 +67,10 @@
 				<span class="muted">@{username}</span>
 			</div>
 			<ThemePicker value={theme} onchange={onthemechange} />
+			<a class="item" href="/settings/friends" onclick={() => close(false)}>
+				<Icon name="users" />
+				<span>Friends</span>
+			</a>
 			<a class="item" href="/settings/devices" onclick={() => close(false)}>
 				<Icon name="smartphone" />
 				<span>Devices</span>

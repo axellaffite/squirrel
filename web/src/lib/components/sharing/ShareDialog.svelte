@@ -1,13 +1,15 @@
 <script lang="ts">
 	import { onMount, untrack } from 'svelte';
 	import Icon from '#lib/components/icons/Icon.svelte';
+	import FriendPicks from '#lib/components/sharing/FriendPicks.svelte';
 	import ShareRow from '#lib/components/sharing/ShareRow.svelte';
 	import Alert from '#lib/components/ui/Alert.svelte';
 	import Button from '#lib/components/ui/Button.svelte';
 	import Dialog from '#lib/components/ui/Dialog.svelte';
 	import SegmentedControl from '#lib/components/ui/SegmentedControl.svelte';
 	import TextField from '#lib/components/ui/TextField.svelte';
-	import { deleteShare, listShares, shareWith, type Permission, type Share, type Subject } from '#lib/sharing/api.ts';
+	import { deleteShare, listFriends, listShares, shareWith, type Friend, type Permission, type Share, type Subject } from '#lib/sharing/api.ts';
+	import { pickableFriends } from '#lib/sharing/friends.ts';
 	import { removeById, upsertShare } from '#lib/sharing/logic.ts';
 
 	interface Props {
@@ -28,6 +30,9 @@
 	const target = untrack(() => subject);
 	let open = $state(true);
 	let shares: Share[] | null = $state(null);
+	/** Without friends (none, or they failed to load) the dialog works by username alone. */
+	let friends: Friend[] = $state([]);
+	const picks = $derived(pickableFriends(friends, shares));
 	let username = $state('');
 	let permission: Permission = $state('read');
 	let error: string | null = $state(null);
@@ -35,10 +40,25 @@
 	const uid = $props.id();
 
 	onMount(async () => {
-		const result = await listShares(target);
-		if (result.ok) shares = result.data;
-		else error = result.error;
+		const [shared, known] = await Promise.all([listShares(target), listFriends()]);
+		if (shared.ok) shares = shared.data;
+		else error = shared.error;
+		if (known.ok) friends = known.data.friends;
 	});
+
+	/** Shares with `who`; returns whether it worked (the error is shown otherwise). */
+	async function share(who: string): Promise<boolean> {
+		busy = true;
+		error = null;
+		const result = await shareWith(target, who, permission);
+		busy = false;
+		if (!result.ok) {
+			error = result.error;
+			return false;
+		}
+		shares = upsertShare(shares ?? [], result.data);
+		return true;
+	}
 
 	async function submit(event: SubmitEvent) {
 		event.preventDefault();
@@ -47,16 +67,7 @@
 			error = 'Enter a username.';
 			return;
 		}
-		busy = true;
-		error = null;
-		const result = await shareWith(target, who, permission);
-		busy = false;
-		if (!result.ok) {
-			error = result.error;
-			return;
-		}
-		shares = upsertShare(shares ?? [], result.data);
-		username = '';
+		if (await share(who)) username = '';
 	}
 
 	async function change(share: Share, next: Permission) {
@@ -90,6 +101,7 @@
 				<Button type="submit" disabled={busy}><Icon name="share" />Share</Button>
 			</div>
 		</form>
+		<FriendPicks friends={picks} disabled={busy || shares === null} onPick={(friend) => share(friend.username)} />
 		{#if error}<Alert>{error}</Alert>{/if}
 		{#if shares === null}
 			{#if !error}<p class="muted" aria-live="polite">Loading…</p>{/if}
