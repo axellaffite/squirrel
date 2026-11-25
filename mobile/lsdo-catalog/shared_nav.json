@@ -1,10 +1,18 @@
 {
     "name": "shared_nav",
-    "description": "The Shared section's pages (list, folder, album, photo): back returns to the list. Reached by: app go_to shared.",
+    "description": "The Shared section's pages (list, folder, album, photo, friends): friends opens Friends from the list, back returns to the list. Reached by: app go_to shared.",
     "actions": [
         {
             "name": "back",
             "description": "Back to the Shared list from what is open, a folder at any depth included (as its \"Shared\" breadcrumb does). Not on the list",
+            "params": {
+                "type": "object",
+                "properties": {}
+            }
+        },
+        {
+            "name": "friends",
+            "description": "Open the Friends screen (screen friends), as the list's Friends button does. Only on the list",
             "params": {
                 "type": "object",
                 "properties": {}
@@ -20,9 +28,10 @@
                     "list",
                     "folder",
                     "album",
-                    "photo"
+                    "photo",
+                    "friends"
                 ],
-                "description": "The page shown: the list (screen shared_list), a shared folder (screen shared), an album or a photo"
+                "description": "The page shown: the list (screen shared_list), a shared folder (screen shared), an album, a photo, or friends (screen friends)"
             },
             "id": {
                 "type": "string",

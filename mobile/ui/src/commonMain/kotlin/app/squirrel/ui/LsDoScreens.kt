@@ -28,6 +28,10 @@ import app.squirrel.ui.search.DocumentSearchIntent
 import app.squirrel.ui.search.DocumentSearchLsDoState
 import app.squirrel.ui.search.PhotoSearchIntent
 import app.squirrel.ui.search.PhotoSearchView
+import app.squirrel.ui.friends.FriendsIntent
+import app.squirrel.ui.friends.FriendsView
+import app.squirrel.ui.sharing.ShareIntent
+import app.squirrel.ui.sharing.ShareView
 import app.squirrel.ui.sharing.SharedListIntent
 import app.squirrel.ui.sharing.SharedListState
 import app.squirrel.ui.sharing.SharedNavIntent
@@ -67,8 +71,10 @@ val LsDoScreens: List<LsDoEntry> = listOf(
     entry("files_nav", "The Files section's pages (browse, search): search opens document search, back closes it. Reached by: app go_to files.", lsdoSpec<FilesNavState, FilesNavIntent>()),
     entry("document_search", "Search of file names and PDF/text contents; snippets mark matches with **...**. Reached by: app go_to files, then files_nav search.", lsdoSpec<DocumentSearchLsDoState, DocumentSearchIntent>()),
     entry("uploads", "Uploads from this phone with their progress and errors (a do never waits for them: ls again). Reached by: any folder page (files or shared).", lsdoSpec<UploadsState, UploadsIntent>()),
-    entry("shared_nav", "The Shared section's pages (list, folder, album, photo): back returns to the list. Reached by: app go_to shared.", lsdoSpec<SharedNavState, SharedNavIntent>()),
+    entry("shared_nav", "The Shared section's pages (list, folder, album, photo, friends): friends opens Friends from the list, back returns to the list. Reached by: app go_to shared.", lsdoSpec<SharedNavState, SharedNavIntent>()),
     entry("shared_list", "What others shared with you: open a folder (shows the shared browser), an album or a photo; leave a share. Reached by: app go_to shared.", lsdoSpec<SharedListState, SharedListIntent>()),
+    entry("friends", "Your friends (a one-way list: they are not told): add by username or from suggestions (people you share with), remove. Friends without access show as one-tap picks in the Share sheet. Reached by: app go_to shared, then shared_nav friends.", lsdoSpec<FriendsView, FriendsIntent>()),
+    entry("share", "The Share sheet of a folder, file, album or photo you own: share by username or with a friend's pick (share_with), change or stop a share, close. Reached by: tapping Share on something you own (a folder page's header or a row's actions, an album's header, the photo viewer); no LS-DO action opens it yet (scripts/lsdo ui shows the button).", lsdoSpec<ShareView, ShareIntent>()),
     entry("photos", "The Photos section's navigation: show timeline / albums / explore, open search, back. Reached by: app go_to photos.", lsdoSpec<PhotosView, PhotosIntent>()),
     entry("timeline", "Photos by month: page, open a photo, add photos to an album; also the filtered timeline opened from explore. Reached by: app go_to photos (the default), or explore open <id>.", lsdoSpec<TimelineView, TimelineIntent>()),
     entry("albums", "The album list: open, create. Reached by: app go_to photos, then photos show albums.", lsdoSpec<AlbumListView, AlbumsIntent>()),

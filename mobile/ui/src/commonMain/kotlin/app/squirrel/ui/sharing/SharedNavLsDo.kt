@@ -17,11 +17,12 @@ enum class SharedPage {
     @SerialName("folder") Folder,
     @SerialName("album") Album,
     @SerialName("photo") Photo,
+    @SerialName("friends") Friends,
 }
 
 @Serializable
 data class SharedNavState(
-    @Doc("The page shown: the list (screen shared_list), a shared folder (screen shared), an album or a photo") val page: SharedPage,
+    @Doc("The page shown: the list (screen shared_list), a shared folder (screen shared), an album, a photo, or friends (screen friends)") val page: SharedPage,
     @Doc("The folder, album or photo open; null on the list") val id: String? = null,
     @Doc("The album or photo's name; null on the list and in a folder (its state has the name)") val name: String? = null,
 )
@@ -32,6 +33,10 @@ sealed interface SharedNavIntent {
     @Serializable @SerialName("back")
     @Doc("Back to the Shared list from what is open, a folder at any depth included (as its \"Shared\" breadcrumb does). Not on the list")
     data object Back : SharedNavIntent
+
+    @Serializable @SerialName("friends")
+    @Doc("Open the Friends screen (screen friends), as the list's Friends button does. Only on the list")
+    data object Friends : SharedNavIntent
 }
 
 internal fun sharedNavState(route: SharedRoute): SharedNavState = when (route) {
@@ -40,6 +45,7 @@ internal fun sharedNavState(route: SharedRoute): SharedNavState = when (route) {
     is SharedRoute.Folder -> SharedNavState(SharedPage.Folder, route.id)
     is SharedRoute.Album -> SharedNavState(SharedPage.Album, route.id, route.name)
     is SharedRoute.Photo -> SharedNavState(SharedPage.Photo, route.id, route.name)
+    SharedRoute.Friends -> SharedNavState(SharedPage.Friends)
 }
 
 /**
@@ -54,9 +60,10 @@ class SharedNavLsDo(private val nav: Navigator<SharedRoute>) : LsDoScreen<Shared
 
     override suspend fun perform(intent: SharedNavIntent): String? = when (intent) {
         SharedNavIntent.Back -> if (nav.pop()) null.also { shown(nav.top) } else "Already on the Shared list."
+        SharedNavIntent.Friends -> if (nav.top == SharedRoute.List) null.also { nav.push(SharedRoute.Friends); shown(nav.top) } else "Friends opens from the Shared list."
     }
 
-    override fun availableIntents(state: SharedNavState): Set<String> = if (state.page == SharedPage.List) emptySet() else setOf("back")
+    override fun availableIntents(state: SharedNavState): Set<String> = if (state.page == SharedPage.List) setOf("friends") else setOf("back")
 
     /** The tab recomposed with [route] on top. */
     fun shown(route: SharedRoute) {

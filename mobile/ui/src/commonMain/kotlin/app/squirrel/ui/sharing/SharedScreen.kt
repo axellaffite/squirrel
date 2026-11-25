@@ -49,12 +49,12 @@ import app.squirrel.ui.shell.SheetAction
 
 /** The "Shared" page: folders, files and albums other people shared with the caller. */
 @Composable
-fun SharedList(api: SquirrelApi, vm: SharedViewModel, onOpen: (SharedItemDto) -> Unit) {
+fun SharedList(api: SquirrelApi, vm: SharedViewModel, onFriends: () -> Unit, onOpen: (SharedItemDto) -> Unit) {
     val state by vm.state.collectAsStateWithLifecycle()
     var actions by remember { mutableStateOf<SharedItemDto?>(null) }
     OnForeground(vm::resumed)
     Column(Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(Tokens.space2)) {
-        PageHeader("Shared")
+        PageHeader("Shared") { IconButton(SquirrelIcon.Users, label = "Friends", onClick = onFriends) }
         val opener by vm.opener.state.collectAsStateWithLifecycle()
         opener.message?.let { Alert(it) }
         val items = state.items
