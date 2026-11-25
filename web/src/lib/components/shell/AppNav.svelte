@@ -8,16 +8,21 @@
 		canInvite: boolean;
 		/** Account controls at the foot of the sidebar (≥ 1024 px only). */
 		footer?: Snippet;
+		/** Global tools beside the brand at the top of the sidebar (≥ 1024 px only). */
+		tools?: Snippet;
 	}
 
-	let { path, canInvite, footer }: Props = $props();
+	let { path, canInvite, footer, tools }: Props = $props();
 
 	const items = $derived(navItems(canInvite));
 </script>
 
 <!-- The graphite rail: a floating bar at the bottom on phones and tablets, a sidebar from 1024 px. -->
 <aside class="rail">
-	<a href="/" class="brand">Squirrel</a>
+	<div class="head">
+		<a href="/" class="brand">Squirrel</a>
+		{#if tools}{@render tools()}{/if}
+	</div>
 	<nav aria-label="Main">
 		<ul>
 			{#each items as item (item.href)}
@@ -49,7 +54,7 @@
 		transform: translateZ(0);
 	}
 
-	.brand,
+	.head,
 	.foot {
 		display: none;
 	}
@@ -150,10 +155,17 @@
 			box-shadow: none;
 		}
 
+		.head {
+			display: flex;
+			align-items: center;
+			justify-content: space-between;
+			gap: var(--space-2);
+			padding-bottom: var(--space-4);
+		}
+
 		.brand {
 			display: block;
-			align-self: flex-start;
-			padding: 0 var(--space-2) var(--space-4);
+			padding: 0 var(--space-2);
 			border-radius: var(--radius-sm);
 			color: var(--rail-ink);
 			font-size: var(--text-xl);

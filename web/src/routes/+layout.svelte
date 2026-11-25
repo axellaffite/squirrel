@@ -6,6 +6,7 @@
 	import { onMount } from 'svelte';
 	import UploadPanel from '#lib/components/files/UploadPanel.svelte';
 	import Icon from '#lib/components/icons/Icon.svelte';
+	import NotificationBell from '#lib/components/notifications/NotificationBell.svelte';
 	import AppNav from '#lib/components/shell/AppNav.svelte';
 	import UserMenu from '#lib/components/shell/UserMenu.svelte';
 	import Alert from '#lib/components/ui/Alert.svelte';
@@ -14,6 +15,7 @@
 	import IconButton from '#lib/components/ui/IconButton.svelte';
 	import { redirectFor } from '#lib/guard.ts';
 	import { LOGOUT_ERROR } from '#lib/session-logic.ts';
+	import { setUnread, watchUnread } from '#lib/notifications/inbox.svelte.ts';
 	import { loadSession, logout, session } from '#lib/session.svelte.ts';
 	import { applyTheme, readTheme, saveTheme, type ThemeChoice } from '#lib/theme.ts';
 	import { installBeforeUnloadGuard } from '#lib/upload/uploads.svelte.ts';
@@ -49,6 +51,17 @@
 
 	$effect(() => {
 		if (!session.me) logoutError = null;
+	});
+
+	// One unread poller while someone is signed in; a new account starts from zero.
+	const signedIn = $derived(session.me?.username ?? null);
+	$effect(() => {
+		if (signedIn === null) return;
+		const stop = watchUnread();
+		return () => {
+			stop();
+			setUnread(0);
+		};
 	});
 
 	function changeTheme(choice: ThemeChoice) {
@@ -98,6 +111,7 @@
 {:else if session.me}
 	<div class="shell">
 		<AppNav path={page.url.pathname} canInvite={session.me.can_invite}>
+			{#snippet tools()}<NotificationBell tone="rail" />{/snippet}
 			{#snippet footer()}
 				<UserMenu
 					tone="rail"
@@ -117,6 +131,7 @@
 				<a href="/" class="wordmark">Squirrel</a>
 				<span class="top-tools">
 					<IconButton icon="search" label="Open search" tooltip="Search" fill="tint" href="/search" current={page.url.pathname === '/search'} />
+					<NotificationBell />
 					<UserMenu
 					displayName={session.me.display_name}
 					username={session.me.username}

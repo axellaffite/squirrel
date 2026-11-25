@@ -1,6 +1,7 @@
 <script lang="ts">
-	import { goto } from '$app/navigation';
-	import { onMount } from 'svelte';
+	import { goto, replaceState } from '$app/navigation';
+	import { page } from '$app/state';
+	import { onMount, untrack } from 'svelte';
 	import ConfirmDialog from '#lib/components/ConfirmDialog.svelte';
 	import Preview from '#lib/components/files/Preview.svelte';
 	import Page from '#lib/components/shell/Page.svelte';
@@ -8,7 +9,8 @@
 	import SharedNodeRow from '#lib/components/sharing/SharedNodeRow.svelte';
 	import Alert from '#lib/components/ui/Alert.svelte';
 	import EmptyState from '#lib/components/ui/EmptyState.svelte';
-	import type { FileNode } from '#lib/files/api.ts';
+	import { getNode, type FileNode } from '#lib/files/api.ts';
+	import { openRequest, withoutOpenRequest } from '#lib/notifications/logic.ts';
 	import { deleteShare, sharedWithMe, type SharedItem } from '#lib/sharing/api.ts';
 	import { memberName, splitShared } from '#lib/sharing/logic.ts';
 
@@ -16,6 +18,7 @@
 	let error: string | null = $state(null);
 	let leaving: SharedItem | null = $state(null);
 	let previewing: FileNode | null = $state(null);
+	let previewComments = $state(false);
 
 	const groups = $derived(splitShared(items ?? []));
 	/** Files shared for writing (directly or through a folder above) open in the editor as "Edit". */
@@ -32,7 +35,10 @@
 
 	function open(node: FileNode) {
 		if (node.kind === 'folder') void goto(`/files/${node.id}`);
-		else previewing = node;
+		else {
+			previewComments = false;
+			previewing = node;
+		}
 	}
 
 	async function leave(item: SharedItem): Promise<string | null> {
@@ -41,6 +47,33 @@
 		items = (items ?? []).filter((entry) => entry.share_id !== item.share_id);
 		return null;
 	}
+
+	/**
+	 * `?open=<id>` (from a notification): previews a file shared on its own, or one seen through a
+	 * shared album, once; `?comments=1` with its thread shown.
+	 */
+	async function openRequested() {
+		const request = openRequest(page.url);
+		if (!request?.open) return;
+		replaceState(withoutOpenRequest(page.url), {});
+		const shared = items?.find((item) => item.node?.id === request.open)?.node;
+		const node = shared ?? (await fileById(request.open));
+		if (!node) return;
+		previewComments = request.comments;
+		previewing = node;
+	}
+
+	async function fileById(id: string): Promise<FileNode | null> {
+		const result = await getNode(id);
+		if (result.ok && result.data.node.kind === 'file') return result.data.node;
+		error = result.ok ? null : result.error;
+		return null;
+	}
+
+	$effect(() => {
+		void page.url.search;
+		if (items !== null) untrack(() => void openRequested());
+	});
 
 	onMount(load);
 </script>
@@ -93,7 +126,17 @@
 {/if}
 
 {#if previewing}
-	<Preview node={previewing} canEdit={canEditShared(previewing)} onClose={() => (previewing = null)} />
+	{#key previewing}
+		<Preview
+			node={previewing}
+			canEdit={canEditShared(previewing)}
+			comments={previewComments}
+			onClose={() => {
+				previewing = null;
+				previewComments = false;
+			}}
+		/>
+	{/key}
 {/if}
 
 <style>
