@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { untrack } from 'svelte';
 	import Icon from '#lib/components/icons/Icon.svelte';
 	import Alert from '#lib/components/ui/Alert.svelte';
 	import Button from '#lib/components/ui/Button.svelte';
@@ -19,13 +20,15 @@
 		onClose: () => void;
 		/** The viewer may change the file: its editor button says "Edit" rather than "Open in editor". */
 		canEdit?: boolean;
+		/** Opens with the comment thread shown. */
+		comments?: boolean;
 	}
 
-	let { node, onClose, canEdit = true }: Props = $props();
+	let { node, onClose, canEdit = true, comments = false }: Props = $props();
 	const editable = $derived(isEditable(node));
 
 	let open = $state(true);
-	let showComments = $state(false);
+	let showComments = $state(untrack(() => comments));
 	const kind = $derived(previewKind(node.mime));
 	const url = $derived(contentUrl(node.id));
 	/** Images show a screen-sized preview once one can be made; "Open in new tab" keeps the original. */

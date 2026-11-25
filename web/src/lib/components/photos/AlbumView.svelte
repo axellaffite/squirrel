@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { goto, replaceState } from '$app/navigation';
 	import { page } from '$app/state';
-	import { onMount, untrack } from 'svelte';
+	import { onMount, tick, untrack } from 'svelte';
 	import ConfirmDialog from '#lib/components/ConfirmDialog.svelte';
 	import Breadcrumbs from '#lib/components/files/Breadcrumbs.svelte';
 	import NameDialog from '#lib/components/files/NameDialog.svelte';
@@ -29,6 +29,7 @@
 	} from '#lib/photos/api.ts';
 	import { photoInAddress, withPhoto } from '#lib/photos/address.ts';
 	import { Selection } from '#lib/photos/selection.svelte.ts';
+	import { openRequest, withoutOpenRequest } from '#lib/notifications/logic.ts';
 	import { abilities, memberName } from '#lib/sharing/logic.ts';
 	import { neighbourAfterRemoval, trashPhotos } from '#lib/photos/trash.ts';
 
@@ -153,6 +154,19 @@
 		if (result.ok) viewing = result.data.asset;
 		else replaceState(withPhoto(page.url.href, null), {});
 	}
+
+	/** `?comments=1` (from a notification) opens the thread once, then leaves the address clean. */
+	async function commentsFromAddress() {
+		await tick();
+		if (!openRequest(page.url)?.comments) return;
+		replaceState(withoutOpenRequest(page.url), {});
+		commenting = true;
+	}
+
+	$effect(() => {
+		void page.url.search;
+		untrack(() => void commentsFromAddress());
+	});
 
 	onMount(() => {
 		void reload();

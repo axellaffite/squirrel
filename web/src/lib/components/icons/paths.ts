@@ -192,7 +192,11 @@ export const ICONS = {
 		'M5 18H3'
 	],
 	share: [circle(18, 5, 3), circle(6, 12, 3), circle(18, 19, 3), 'M8.59 13.51l6.83 3.98', 'M15.41 6.51l-6.82 3.98'],
-	'message-circle': ['M7.9 20A9 9 0 1 0 4 16.1L2 22Z']
+	'message-circle': ['M7.9 20A9 9 0 1 0 4 16.1L2 22Z'],
+	bell: [
+		'M10.268 21a2 2 0 0 0 3.464 0',
+		'M3.262 15.326A1 1 0 0 0 4 17h16a1 1 0 0 0 .74-1.673C19.41 13.956 18 12.499 18 8A6 6 0 0 0 6 8c0 4.499-1.411 5.956-2.738 7.326'
+	]
 } as const satisfies Record<string, readonly string[]>;
 
 export type IconName = keyof typeof ICONS;

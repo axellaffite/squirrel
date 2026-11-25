@@ -618,6 +618,54 @@ export interface paths {
         patch: operations["update_node"];
         trace?: never;
     };
+    "/api/notifications": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["list_notifications"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/notifications/read": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["mark_read"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/notifications/unread-count": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["unread_count"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/people": {
         parameters: {
             query?: never;
@@ -1646,6 +1694,10 @@ export interface components {
             password: string;
             username: string;
         };
+        MarkReadRequest: {
+            /** @description The notifications to mark read; omitted or `null`: all of them. */
+            ids?: string[] | null;
+        };
         MeResponse: {
             /** @description Whether this user may create invitations (instance setting and role). */
             can_invite: boolean;
@@ -1782,6 +1834,50 @@ export interface components {
             items: components["schemas"]["NodeDto"][];
             /** @description Pass back as `cursor` for the next page; `null` on the last page. */
             next_cursor?: string | null;
+        };
+        NotificationDto: {
+            actor?: null | components["schemas"]["MemberDto"];
+            /**
+             * Format: uuid
+             * @description Comments: its id, to scroll the thread to it.
+             */
+            comment_id?: string | null;
+            /** Format: date-time */
+            created_at: string;
+            /** @description Comments: the start of its current text. */
+            excerpt?: string | null;
+            /** Format: uuid */
+            id: string;
+            kind: components["schemas"]["NotificationKind"];
+            permission?: null | components["schemas"]["SharePermission"];
+            read: boolean;
+            subject: components["schemas"]["NotificationSubjectDto"];
+        };
+        /** @enum {string} */
+        NotificationKind: "share" | "comment";
+        NotificationPage: {
+            /** @description Newest first. */
+            items: components["schemas"]["NotificationDto"][];
+            next_cursor?: string | null;
+        };
+        /** @description What a notification is about. */
+        NotificationSubjectDto: {
+            /**
+             * Format: uuid
+             * @description For a file: the folder holding it, when the caller may open that
+             *     folder (`null` when the file is shared on its own or seen through an
+             *     album).
+             */
+            folder_id?: string | null;
+            /**
+             * Format: uuid
+             * @description The folder, file or album id.
+             */
+            id: string;
+            kind: components["schemas"]["SubjectKind"];
+            /** @description Files only. */
+            mime?: string | null;
+            name: string;
         };
         PathSegmentDto: {
             /** Format: uuid */
@@ -1951,6 +2047,8 @@ export interface components {
              */
             used_bytes: number;
         };
+        /** @enum {string} */
+        SubjectKind: "folder" | "file" | "album";
         /** @description Exactly one of `node_id` and `album_id`. */
         SubjectRef: {
             /** Format: uuid */
@@ -2055,6 +2153,10 @@ export interface components {
             items: components["schemas"]["TrashEntryDto"][];
             /** @description Pass back as `cursor` for the next page; `null` on the last page. */
             next_cursor?: string | null;
+        };
+        UnreadCountDto: {
+            /** Format: int64 */
+            unread: number;
         };
         /** @description Rename and/or choose the cover. At least one field is required. */
         UpdateAlbumRequest: {
@@ -4171,6 +4273,89 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    list_notifications: {
+        parameters: {
+            query?: {
+                /** @description `next_cursor` of the previous page. */
+                cursor?: string;
+                /** @description Default 30, at most 100. */
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["NotificationPage"];
+                };
+            };
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    mark_read: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["MarkReadRequest"];
+            };
+        };
+        responses: {
+            /** @description Marked read; the unread count left */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["UnreadCountDto"];
+                };
+            };
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    unread_count: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["UnreadCountDto"];
                 };
             };
         };

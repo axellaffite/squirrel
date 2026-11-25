@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { goto, replaceState } from '$app/navigation';
 	import { page } from '$app/state';
-	import { onMount } from 'svelte';
+	import { onMount, untrack } from 'svelte';
 	import Breadcrumbs from '#lib/components/files/Breadcrumbs.svelte';
 	import DropZone from '#lib/components/files/DropZone.svelte';
 	import FileTable from '#lib/components/files/FileTable.svelte';
@@ -31,6 +31,7 @@
 		type PathSegment
 	} from '#lib/files/api.ts';
 	import { latestOnly } from '#lib/files/latest.ts';
+	import { openRequest, withoutOpenRequest } from '#lib/notifications/logic.ts';
 	import { mediaStatus } from '#lib/photos/api.ts';
 	import { createPoller } from '#lib/photos/status.ts';
 	import type { Access, Member } from '#lib/sharing/api.ts';
@@ -44,7 +45,7 @@
 		| { kind: 'new-text-file' }
 		| { kind: 'rename'; node: FileNode }
 		| { kind: 'move'; node: FileNode }
-		| { kind: 'preview'; node: FileNode }
+		| { kind: 'preview'; node: FileNode; comments?: boolean }
 		| { kind: 'actions'; node: FileNode }
 		| { kind: 'share'; node: FileNode }
 		| { kind: 'comments'; node: FileNode }
@@ -101,21 +102,34 @@
 		if (listing.ok) {
 			items = listing.data;
 			error = null;
-			openRequested();
 		} else error = listing.error;
 	}
 
-	/** `?open=<id>` (from search results): previews that file once, then leaves the address clean. */
+	/**
+	 * `?open=<id>` (search results, notifications) previews that file once; `?comments=1` opens
+	 * its thread, or the folder's without `open`. Then the address is left clean.
+	 */
 	function openRequested() {
-		const id = page.url.searchParams.get('open');
-		if (!id) return;
-		const url = new URL(page.url.href);
-		url.searchParams.delete('open');
-		replaceState(url, {});
-		const node = items.find((item) => item.id === id);
-		if (node) open(node);
-		else error = 'That file is no longer in this folder.';
+		const request = openRequest(page.url);
+		if (!request) return;
+		replaceState(withoutOpenRequest(page.url), {});
+		// The folder itself could not be shown: its message stays.
+		if (folderId !== null && !folder) return;
+		if (request.open === null) {
+			if (folder) dialog = { kind: 'comments', node: folder };
+			return;
+		}
+		const node = items.find((item) => item.id === request.open);
+		if (!node) error = 'That file is no longer in this folder.';
+		else if (node.kind === 'folder') open(node);
+		else dialog = { kind: 'preview', node, comments: request.comments };
 	}
+
+	// Also when the address changes without leaving the folder (e.g. a notification for a file here).
+	$effect(() => {
+		void page.url.search;
+		if (loaded && !loading) untrack(openRequested);
+	});
 
 	function changed() {
 		storageVersion += 1;
@@ -287,7 +301,7 @@
 			onClose={() => (dialog = null)}
 		/>
 	{:else if dialog?.kind === 'preview'}
-		<Preview node={dialog.node} canEdit={can.edit} onClose={() => (dialog = null)} />
+		<Preview node={dialog.node} canEdit={can.edit} comments={dialog.comments} onClose={() => (dialog = null)} />
 	{:else if dialog?.kind === 'share'}
 		<ShareDialog subject={{ node_id: dialog.node.id }} name={dialog.node.name} onClose={() => (dialog = null)} />
 	{:else if dialog?.kind === 'comments'}
