@@ -2337,6 +2337,124 @@
         ]
       }
     },
+    "/api/friends": {
+      "get": {
+        "tags": [
+          "friends"
+        ],
+        "operationId": "list_friends",
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FriendsPage"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "device_bearer": []
+          },
+          {
+            "session_cookie": []
+          }
+        ]
+      },
+      "post": {
+        "tags": [
+          "friends"
+        ],
+        "operationId": "add_friend",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AddFriendRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "Added, or already a friend",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FriendDto"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "No such account, yourself, or 500 friends already",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "device_bearer": []
+          },
+          {
+            "csrf_token": [],
+            "session_cookie": []
+          }
+        ]
+      }
+    },
+    "/api/friends/{username}": {
+      "delete": {
+        "tags": [
+          "friends"
+        ],
+        "operationId": "remove_friend",
+        "parameters": [
+          {
+            "name": "username",
+            "in": "path",
+            "description": "The friend's username",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "No longer a friend"
+          },
+          "404": {
+            "description": "Not a friend",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "device_bearer": []
+          },
+          {
+            "csrf_token": [],
+            "session_cookie": []
+          }
+        ]
+      }
+    },
     "/api/healthz": {
       "get": {
         "tags": [
@@ -5439,6 +5557,18 @@
           }
         }
       },
+      "AddFriendRequest": {
+        "type": "object",
+        "required": [
+          "username"
+        ],
+        "properties": {
+          "username": {
+            "type": "string",
+            "description": "The account to add."
+          }
+        }
+      },
       "AlbumDto": {
         "type": "object",
         "required": [
@@ -6617,6 +6747,50 @@
           "updated_at": {
             "type": "string",
             "format": "date-time"
+          }
+        }
+      },
+      "FriendDto": {
+        "type": "object",
+        "description": "A friend: an account the caller picked for quick sharing.",
+        "required": [
+          "username",
+          "display_name",
+          "added_at"
+        ],
+        "properties": {
+          "added_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "display_name": {
+            "type": "string"
+          },
+          "username": {
+            "type": "string"
+          }
+        }
+      },
+      "FriendsPage": {
+        "type": "object",
+        "required": [
+          "friends",
+          "suggestions"
+        ],
+        "properties": {
+          "friends": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/FriendDto"
+            },
+            "description": "By display name, at most 500."
+          },
+          "suggestions": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/MemberDto"
+            },
+            "description": "People the caller shared with or got a share from, not yet friends,\nmost recent first, at most 20."
           }
         }
       },
@@ -8255,6 +8429,9 @@
     },
     {
       "name": "notifications"
+    },
+    {
+      "name": "friends"
     }
   ]
 }

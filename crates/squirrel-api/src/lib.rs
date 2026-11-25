@@ -16,6 +16,7 @@ mod explore_dto;
 mod extract;
 mod files_dto;
 mod filter_dto;
+mod friends_dto;
 mod input;
 pub mod maintenance;
 pub mod ml;
@@ -75,7 +76,8 @@ const CHUNK_TIMEOUT: Duration = Duration::from_secs(5 * 60);
         (name = "admin"), (name = "files"), (name = "uploads"), (name = "trash"),
         (name = "storage"), (name = "jobs"), (name = "photos"), (name = "albums"),
         (name = "search"), (name = "devices"), (name = "sync"), (name = "explore"), (name = "ml"), (name = "people"),
-        (name = "duplicates"), (name = "sharing"), (name = "comments"), (name = "notifications")
+        (name = "duplicates"), (name = "sharing"), (name = "comments"), (name = "notifications"),
+        (name = "friends")
     ),
     // Schemas only referenced from query parameters are not collected from
     // the routes: list them here.
@@ -270,6 +272,11 @@ fn json_routes() -> OpenApiRouter<AppState> {
         ))
         .routes(routes!(routes::shares::delete_share))
         .routes(routes!(routes::shares::shared_with_me))
+        .routes(routes!(
+            routes::friends::list_friends,
+            routes::friends::add_friend
+        ))
+        .routes(routes!(routes::friends::remove_friend))
         .routes(routes!(
             routes::comments::list_comments,
             routes::comments::create_comment
