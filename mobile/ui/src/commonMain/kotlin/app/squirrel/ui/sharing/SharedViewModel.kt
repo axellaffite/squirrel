@@ -1,6 +1,5 @@
 package app.squirrel.ui.sharing
 
-import app.squirrel.ui.combineState
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import app.squirrel.api.models.SharedItemDto
@@ -10,6 +9,7 @@ import app.squirrel.shared.api.okOrThrow
 import app.squirrel.ui.ResumeThrottle
 import app.squirrel.ui.files.FileHandoff
 import app.squirrel.ui.files.FileOpener
+import io.github.axellaffite.lsdo.combineState
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow

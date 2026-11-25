@@ -1,9 +1,9 @@
 package app.squirrel.ui.photos
 
-import app.squirrel.ui.mapState
-import app.squirrel.ui.combineState
 import app.squirrel.api.models.AssetSummary
-import app.squirrel.lsdo.Doc
+import io.github.axellaffite.lsdo.Doc
+import io.github.axellaffite.lsdo.combineState
+import io.github.axellaffite.lsdo.mapState
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow

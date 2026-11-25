@@ -1,6 +1,5 @@
 package app.squirrel.ui.photos
 
-import app.squirrel.lsdo.runtime.LsDoRegistry
 import app.squirrel.shared.api.SquirrelApi
 import app.squirrel.ui.explore.PhotoFilter
 import app.squirrel.ui.shell.Navigator
@@ -10,6 +9,7 @@ import app.squirrel.ui.testing.runReal
 import app.squirrel.ui.testing.summary
 import app.squirrel.ui.testing.testApi
 import app.squirrel.ui.testing.text
+import io.github.axellaffite.lsdo.runtime.LsDoRegistry
 import io.ktor.client.engine.mock.respondError
 import io.ktor.http.HttpMethod
 import io.ktor.http.HttpStatusCode

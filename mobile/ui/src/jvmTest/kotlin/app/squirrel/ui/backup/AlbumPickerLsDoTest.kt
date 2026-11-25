@@ -1,10 +1,10 @@
 package app.squirrel.ui.backup
 
-import app.squirrel.lsdo.runtime.LsDoRegistry
 import app.squirrel.shared.db.createDatabase
 import app.squirrel.shared.db.createJvmDriver
 import app.squirrel.shared.settings.AlbumFilter
 import app.squirrel.shared.settings.SettingsStore
+import io.github.axellaffite.lsdo.runtime.LsDoRegistry
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.test.resetMain

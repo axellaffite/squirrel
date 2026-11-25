@@ -1,12 +1,12 @@
 package app.squirrel.ui.backup
 
-import app.squirrel.ui.combineState
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import app.squirrel.shared.settings.BackupSettings
 import app.squirrel.shared.sync.BackupStatus
 import app.squirrel.shared.sync.MediaAccess
 import app.squirrel.shared.sync.QueuedAsset
+import io.github.axellaffite.lsdo.combineState
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted

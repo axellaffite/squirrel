@@ -1,7 +1,7 @@
 package app.squirrel.ui.files
 
 import app.squirrel.api.models.NodeDto
-import app.squirrel.lsdo.Doc
+import io.github.axellaffite.lsdo.Doc
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 

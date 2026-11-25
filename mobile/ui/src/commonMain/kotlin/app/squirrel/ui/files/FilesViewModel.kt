@@ -3,15 +3,13 @@ package app.squirrel.ui.files
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import app.squirrel.api.models.AccessLevel
-import app.squirrel.api.models.MemberDto
 import app.squirrel.api.models.CreateFolderRequest
+import app.squirrel.api.models.MemberDto
 import app.squirrel.api.models.NodeDto
-import app.squirrel.api.models.UpdateNodeRequest
 import app.squirrel.api.models.NodeKind
 import app.squirrel.api.models.NodeListing
 import app.squirrel.api.models.PathSegmentDto
-import app.squirrel.lsdo.LsDoScreen
-import app.squirrel.lsdo.lsdoSpec
+import app.squirrel.api.models.UpdateNodeRequest
 import app.squirrel.shared.api.SquirrelApi
 import app.squirrel.shared.api.bodyOrThrow
 import app.squirrel.shared.sync.formatBytes
@@ -21,6 +19,8 @@ import app.squirrel.ui.photos.UNREACHABLE
 import app.squirrel.ui.sharing.Abilities
 import app.squirrel.ui.sharing.Outcome
 import app.squirrel.ui.sharing.call
+import io.github.axellaffite.lsdo.LsDoScreen
+import io.github.axellaffite.lsdo.lsdoSpec
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow

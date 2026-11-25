@@ -6,7 +6,7 @@ import androidx.compose.runtime.getValue
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import app.squirrel.ui.AppGraph
-import app.squirrel.ui.RegisterLsDo
+import io.github.axellaffite.lsdo.compose.RegisterLsDo
 
 /** The server and sign-in screens, ending in [AppGraph.onSignedIn]. */
 @Composable

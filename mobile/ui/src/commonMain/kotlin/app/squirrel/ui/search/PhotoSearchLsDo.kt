@@ -1,17 +1,17 @@
 package app.squirrel.ui.search
 
 import app.squirrel.api.models.SearchOrder
-import app.squirrel.lsdo.Doc
-import app.squirrel.lsdo.LsDoScreen
-import app.squirrel.lsdo.lsdoSpec
 import app.squirrel.ui.explore.PhotoFilter
 import app.squirrel.ui.explore.personLabel
-import app.squirrel.ui.photos.PhotoRow
 import app.squirrel.ui.photos.OverlayMirror
+import app.squirrel.ui.photos.PhotoRow
 import app.squirrel.ui.photos.done
 import app.squirrel.ui.photos.missingPhotos
 import app.squirrel.ui.photos.row
 import app.squirrel.ui.photos.viewWith
+import io.github.axellaffite.lsdo.Doc
+import io.github.axellaffite.lsdo.LsDoScreen
+import io.github.axellaffite.lsdo.lsdoSpec
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.serialization.SerialName

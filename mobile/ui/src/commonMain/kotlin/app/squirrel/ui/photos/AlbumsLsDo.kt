@@ -2,14 +2,14 @@ package app.squirrel.ui.photos
 
 import app.squirrel.api.models.AccessLevel
 import app.squirrel.api.models.AlbumDto
-import app.squirrel.lsdo.Doc
-import app.squirrel.lsdo.LsDoScreen
-import app.squirrel.lsdo.lsdoSpec
 import app.squirrel.shared.api.SquirrelApi
 import app.squirrel.ui.files.albumNameProblem
 import app.squirrel.ui.sharing.Abilities
 import app.squirrel.ui.sharing.Outcome
 import app.squirrel.ui.sharing.memberName
+import io.github.axellaffite.lsdo.Doc
+import io.github.axellaffite.lsdo.LsDoScreen
+import io.github.axellaffite.lsdo.lsdoSpec
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.serialization.SerialName

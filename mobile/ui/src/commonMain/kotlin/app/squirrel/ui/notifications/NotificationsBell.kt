@@ -17,8 +17,8 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.clearAndSetSemantics
-import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.withStyle
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -42,11 +42,11 @@ import app.squirrel.theme.components.Sheet
 import app.squirrel.theme.tabular
 import app.squirrel.ui.AppGraph
 import app.squirrel.ui.OnForeground
-import app.squirrel.ui.RegisterLsDo
 import app.squirrel.ui.sharing.SharedRoute
 import app.squirrel.ui.sharing.commentWhen
 import app.squirrel.ui.shell.AppTab
 import app.squirrel.ui.shell.Navigator
+import io.github.axellaffite.lsdo.compose.RegisterLsDo
 import kotlin.time.Clock
 
 /** Asks the system for permission to post notifications (Android 13+, iOS); the first time the inbox opens. */

@@ -1,11 +1,11 @@
 package app.squirrel.ui.signin
 
 import app.squirrel.api.models.DevicePlatform
-import app.squirrel.lsdo.runtime.LsDoRegistry
 import app.squirrel.shared.api.DeviceDetails
 import app.squirrel.shared.api.SquirrelApi
 import app.squirrel.shared.auth.InMemoryTokenStore
 import app.squirrel.shared.auth.Session
+import io.github.axellaffite.lsdo.runtime.LsDoRegistry
 import io.ktor.client.engine.mock.MockEngine
 import io.ktor.client.engine.mock.respond
 import io.ktor.client.engine.mock.toByteArray
