@@ -14,7 +14,6 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import app.squirrel.api.models.AssetDetails
 import app.squirrel.api.models.NodeDto
 import app.squirrel.api.models.NodeKind
-import app.squirrel.api.models.SharedItemDto
 import app.squirrel.shared.api.bodyOrThrow
 import app.squirrel.theme.Tokens
 import app.squirrel.theme.components.Alert
@@ -50,8 +49,8 @@ sealed interface SharedRoute {
 fun isPhotoFile(mime: String?): Boolean = mime != null && (mime.startsWith("image/") || mime.startsWith("video/"))
 
 /**
- * Shared: what other people shared with the caller. A folder, album or photo opens in the
- * normal screens, with only what its access allows.
+ * Shared: what other people shared with the caller, and what the caller shared. A folder, album
+ * or photo opens in the normal screens, with only what its access allows.
  */
 @Composable
 fun SharedTab(graph: AppGraph) {
@@ -65,8 +64,8 @@ fun SharedTab(graph: AppGraph) {
     RegisterLsDo("shared_nav", navLsDo)
     when (val route = stack.last()) {
         SharedRoute.List -> {
-            RegisterLsDo("shared_list", remember(vm, nav) { SharedListLsDo(vm) { item -> open(item, vm, nav) } })
-            SharedList(api, vm, onFriends = { nav.push(SharedRoute.Friends) }) { item -> open(item, vm, nav) }
+            RegisterLsDo("shared_list", remember(vm, nav) { SharedListLsDo(vm) { target -> open(target, vm, nav) } })
+            SharedList(api, vm, onFriends = { nav.push(SharedRoute.Friends) }) { target -> open(target, vm, nav) }
             OpenerConfirm(vm.opener)
         }
         is SharedRoute.Folder -> FolderBrowser(
@@ -89,9 +88,9 @@ fun SharedTab(graph: AppGraph) {
     }
 }
 
-private fun open(item: SharedItemDto, vm: SharedViewModel, nav: Navigator<SharedRoute>) {
-    item.album?.let { return nav.push(SharedRoute.Album(it.id, it.name)) }
-    val node = item.node ?: return
+private fun open(target: SharedTarget, vm: SharedViewModel, nav: Navigator<SharedRoute>) {
+    target.album?.let { return nav.push(SharedRoute.Album(it.id, it.name)) }
+    val node = target.node ?: return
     when {
         node.kind == NodeKind.folder -> nav.push(SharedRoute.Folder(node.id))
         isPhotoFile(node.mime) -> nav.push(SharedRoute.Photo(node.id, node.name))

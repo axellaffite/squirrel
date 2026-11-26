@@ -7,6 +7,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyListScope
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.text.BasicText
 import androidx.compose.runtime.Composable
@@ -19,6 +20,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import app.squirrel.api.models.NodeKind
+import app.squirrel.api.models.SharedByMeDto
 import app.squirrel.api.models.SharedItemDto
 import app.squirrel.shared.api.SquirrelApi
 import app.squirrel.theme.SquirrelIcon
@@ -28,7 +30,6 @@ import app.squirrel.theme.components.Alert
 import app.squirrel.theme.components.Badge
 import app.squirrel.theme.components.Button
 import app.squirrel.theme.components.ButtonVariant
-import app.squirrel.theme.components.EmptyState
 import app.squirrel.theme.components.IconButton
 import app.squirrel.theme.components.ListRow
 import app.squirrel.theme.components.Loading
@@ -47,9 +48,9 @@ import app.squirrel.ui.shell.ActionsSheet
 import app.squirrel.ui.shell.PageHeader
 import app.squirrel.ui.shell.SheetAction
 
-/** The "Shared" page: folders, files and albums other people shared with the caller. */
+/** The "Shared" page: what other people shared with the caller, then what the caller shared. */
 @Composable
-fun SharedList(api: SquirrelApi, vm: SharedViewModel, onFriends: () -> Unit, onOpen: (SharedItemDto) -> Unit) {
+fun SharedList(api: SquirrelApi, vm: SharedViewModel, onFriends: () -> Unit, onOpen: (SharedTarget) -> Unit) {
     val state by vm.state.collectAsStateWithLifecycle()
     var actions by remember { mutableStateOf<SharedItemDto?>(null) }
     OnForeground(vm::resumed)
@@ -57,14 +58,9 @@ fun SharedList(api: SquirrelApi, vm: SharedViewModel, onFriends: () -> Unit, onO
         PageHeader("Shared") { IconButton(SquirrelIcon.Users, label = "Friends", onClick = onFriends) }
         val opener by vm.opener.state.collectAsStateWithLifecycle()
         opener.message?.let { Alert(it) }
-        val items = state.items
         when {
-            items == null && state.error != null -> PullableColumn(state.loading, vm::load) { ErrorRetry(state.error.orEmpty(), vm::load) }
-            items == null -> Loading()
-            items.isEmpty() -> PullableColumn(state.refreshing, vm::load) {
-                state.error?.let { ErrorRetry(it, vm::load) }
-                EmptyState(SquirrelIcon.Users, "Nothing shared with you yet", "When someone shares a folder, a file or an album with you, it shows up here.")
-            }
+            state.items == null && state.byMe == null && state.error != null -> PullableColumn(state.loading, vm::load) { ErrorRetry(state.error.orEmpty(), vm::load) }
+            state.items == null && state.byMe == null -> Loading()
             else -> PullToRefresh(state.refreshing, vm::load) {
                 LazyColumn(
                     modifier = Modifier.fillMaxSize(),
@@ -72,16 +68,8 @@ fun SharedList(api: SquirrelApi, vm: SharedViewModel, onFriends: () -> Unit, onO
                     contentPadding = PaddingValues(bottom = RailClearance),
                 ) {
                     state.error?.let { error -> item(key = "error") { ErrorRetry(error, vm::load) } }
-                    if (state.nodes.isNotEmpty()) item(key = "files-head") { SectionHead("Folders and files", null) }
-                    items(state.nodes, key = { it.shareId }) { item -> SharedNodeRow(item, onOpen = { onOpen(item) }, onActions = { actions = item }) }
-                    if (state.albums.isNotEmpty()) {
-                        item(key = "albums") {
-                            Column(verticalArrangement = Arrangement.spacedBy(Tokens.space2)) {
-                                SectionHead("Albums", null)
-                                TwoColumns(state.albums) { item, modifier -> SharedAlbumCard(api, item, modifier, onOpen = { onOpen(item) }, onActions = { actions = item }) }
-                            }
-                        }
-                    }
+                    sharedWithMe(api, state, onOpen, onActions = { actions = it })
+                    sharedByMe(api, state, onOpen, onManage = vm::manage)
                 }
             }
         }
@@ -91,7 +79,7 @@ fun SharedList(api: SquirrelApi, vm: SharedViewModel, onFriends: () -> Unit, onO
         ActionsSheet(
             title = name,
             actions = listOf(
-                SheetAction("Open", if (item.album != null) SquirrelIcon.Library else SquirrelIcon.ExternalLink, "Open $name") { onOpen(item) },
+                SheetAction("Open", if (item.album != null) SquirrelIcon.Library else SquirrelIcon.ExternalLink, "Open $name") { onOpen(item.target) },
                 SheetAction("Leave", SquirrelIcon.LogOut, "Leave $name", danger = true) { vm.askLeave(item) },
             ),
             onClose = { actions = null },
@@ -102,6 +90,43 @@ fun SharedList(api: SquirrelApi, vm: SharedViewModel, onFriends: () -> Unit, onO
             BasicText("You will no longer see it. ${memberName(item.owner)} can share it with you again.", style = SquirrelTheme.type.body)
             Button("Leave", onClick = vm::confirmLeave, variant = ButtonVariant.DangerSolid, full = true)
             Button("Cancel", onClick = vm::cancelLeave, variant = ButtonVariant.Quiet, full = true)
+        }
+    }
+    state.managing?.let { item ->
+        subjectOf(item)?.let { subject -> ShareSheet(api, subject, subjectName(item), onClose = vm::doneManaging) }
+    }
+}
+
+/** "Shared with me": folders and files, then albums; a line while there is nothing. */
+private fun LazyListScope.sharedWithMe(api: SquirrelApi, state: SharedState, onOpen: (SharedTarget) -> Unit, onActions: (SharedItemDto) -> Unit) {
+    item(key = "with-me-head") { SectionHead("Shared with me", null) }
+    val items = state.items ?: return
+    if (items.isEmpty()) item(key = "with-me-empty") { SharedSectionEmpty("When someone shares a folder, a file or an album with you, it shows up here.") }
+    if (state.nodes.isNotEmpty()) item(key = "with-me-files") { SharedGroupHead("Folders and files") }
+    items(state.nodes, key = { "with-me-${it.shareId}" }) { item -> SharedNodeRow(item, onOpen = { onOpen(item.target) }, onActions = { onActions(item) }) }
+    if (state.albums.isNotEmpty()) {
+        item(key = "with-me-albums") {
+            Column(verticalArrangement = Arrangement.spacedBy(Tokens.space2)) {
+                SharedGroupHead("Albums")
+                TwoColumns(state.albums) { item, modifier -> SharedAlbumCard(api, item, modifier, onOpen = { onOpen(item.target) }, onActions = { onActions(item) }) }
+            }
+        }
+    }
+}
+
+/** "Shared by me": the caller's folders and files, then albums, each with who has it. */
+private fun LazyListScope.sharedByMe(api: SquirrelApi, state: SharedState, onOpen: (SharedTarget) -> Unit, onManage: (SharedByMeDto) -> Unit) {
+    item(key = "by-me-head") { SectionHead("Shared by me", null) }
+    val items = state.byMe ?: return
+    if (items.isEmpty()) item(key = "by-me-empty") { SharedSectionEmpty("Share a folder, a file or an album and it shows up here, with the people you shared it with.") }
+    if (state.byMeNodes.isNotEmpty()) item(key = "by-me-files") { SharedGroupHead("Folders and files") }
+    items(state.byMeNodes, key = { "by-me-${it.node?.id}" }) { item -> SharedByMeNodeRow(item, onOpen = { onOpen(item.target) }, onManage = { onManage(item) }) }
+    if (state.byMeAlbums.isNotEmpty()) {
+        item(key = "by-me-albums") {
+            Column(verticalArrangement = Arrangement.spacedBy(Tokens.space2)) {
+                SharedGroupHead("Albums")
+                TwoColumns(state.byMeAlbums) { item, modifier -> SharedByMeAlbumCard(api, item, modifier, onOpen = { onOpen(item.target) }, onManage = { onManage(item) }) }
+            }
         }
     }
 }

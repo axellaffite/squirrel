@@ -1,6 +1,5 @@
 package app.squirrel.ui.sharing
 
-import app.squirrel.api.models.SharedItemDto
 import app.squirrel.ui.shell.Navigator
 import app.squirrel.ui.testing.json
 import app.squirrel.ui.testing.node
@@ -40,7 +39,11 @@ class SharedLsDoTest {
 
     private val owner = """{"username":"anna","display_name":"Anna"}"""
     private val album = """{"id":"al","name":"Holidays","item_count":3,"updated_at":"2026-11-20T17:05:00Z","access":"write","cover":${summary("p")},"shared_by":$owner}"""
+    private val bob = """{"username":"bob","display_name":"Bob"}"""
+    private val carol = """{"username":"carol","display_name":"Carol"}"""
     private val left = mutableListOf<String>()
+
+    private fun person(id: String, who: String) = """{"id":"$id","person":$who,"permission":"read","created_at":"2026-11-20T17:05:00Z"}"""
 
     private suspend fun vm() = SharedViewModel(testApi { request ->
         when {
@@ -50,6 +53,9 @@ class SharedLsDoTest {
                     """{"share_id":"s2","owner":$owner,"permission":"write","shared_at":"2026-11-20T17:05:00Z","album":$album}""",
                     """{"share_id":"s3","owner":$owner,"permission":"read","shared_at":"2026-11-20T17:05:00Z","node":${node("tax")}}""",
                 ).joinToString(",") + "]",
+            )
+            request.url.encodedPath == "/api/shared-by-me" -> json(
+                """[{"people":[${person("m1", bob)},${person("m2", carol)}],"shared_at":"2026-11-20T17:05:00Z","node":${node("trip", "folder")}}]""",
             )
             request.url.encodedPath.startsWith("/api/shares/") && request.method == HttpMethod.Delete -> {
                 left += request.url.encodedPath.substringAfterLast('/')
@@ -65,7 +71,7 @@ class SharedLsDoTest {
     private class Tab(vm: SharedViewModel) {
         val nav = Navigator<SharedRoute>(SharedRoute.List)
         val navLsDo = SharedNavLsDo(nav)
-        val list = SharedListLsDo(vm) { item: SharedItemDto ->
+        val list = SharedListLsDo(vm) { item: SharedTarget ->
             item.album?.let { nav.push(SharedRoute.Album(it.id, it.name)) } ?: item.node?.let { nav.push(SharedRoute.Folder(it.id)) }
             navLsDo.shown(nav.top)
         }
@@ -125,6 +131,32 @@ class SharedLsDoTest {
         assertEquals(listOf("s2"), left)
         val rows = done.screens.screen("shared_list").state().getValue("items").jsonArray.map { it.jsonObject.string("id") }
         assertEquals(listOf("s1", "s3"), rows)
+    }
+
+    @Test
+    fun anAgentSeesWhatTheySharedOpensItAndManagesIt() = run {
+        val vm = vm()
+        val tab = Tab(vm)
+        val registry = LsDoRegistry(settle = 50.milliseconds)
+        registry.register("shared_list", tab.list)
+        registry.register("shared_nav", tab.navLsDo)
+
+        val listed = registry.perform("shared_list", intent("""{"type":"refresh"}"""))
+        val mine = listed.screens.screen("shared_list").state().getValue("sharedByMe").jsonArray.map { it.jsonObject }
+        assertEquals(listOf("trip"), mine.map { it.string("id") })
+        assertEquals(listOf("Bob", "Carol"), mine.single().getValue("people").jsonArray.map { it.jsonPrimitive.content })
+        assertTrue("manage" in listed.screens.screen("shared_list").actionNames())
+
+        assertEquals("Nothing of yours \"nope\" in sharedByMe.", registry.perform("shared_list", intent("""{"type":"manage","id":"nope"}""")).message)
+        val managed = registry.perform("shared_list", intent("""{"type":"manage","id":"trip"}"""))
+        assertTrue(managed.ok, managed.message)
+        assertEquals("trip", managed.screens.screen("shared_list").state().string("managing"))
+        assertFalse("manage" in managed.screens.screen("shared_list").actionNames())
+        vm.doneManaging()
+
+        val opened = registry.perform("shared_list", intent("""{"type":"open_mine","id":"trip"}"""))
+        assertTrue(opened.ok, opened.message)
+        assertEquals(SharedRoute.Folder("trip"), tab.nav.top)
     }
 
     @Test

@@ -31,6 +31,20 @@ const val COMMENT_MAX = 4000
 /** An account's name; comments of deleted accounts keep a `null` author. */
 fun memberName(member: MemberDto?): String = member?.displayName ?: "Deleted user"
 
+/** People named before the rest are counted ("With Bob, Carol and 2 others"). */
+private const val NAMED_PEOPLE = 2
+
+/** Who one of the caller's things is shared with: "With Bob", "With Bob, Carol and 2 others". */
+fun sharedWithSummary(people: List<MemberDto>): String {
+    val names = people.map(::memberName)
+    return when {
+        names.isEmpty() -> "With nobody"
+        names.size == 1 -> "With ${names.single()}"
+        names.size <= NAMED_PEOPLE + 1 -> "With ${names.dropLast(1).joinToString(", ")} and ${names.last()}"
+        else -> "With ${names.take(NAMED_PEOPLE).joinToString(", ")} and ${names.size - NAMED_PEOPLE} others"
+    }
+}
+
 fun permissionLabel(permission: SharePermission): String = if (permission == SharePermission.write) "Can edit" else "Can view"
 
 /** What the caller may do with a folder, file, album or photo, from its `access`. */
