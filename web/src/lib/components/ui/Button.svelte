@@ -57,7 +57,7 @@
 {/if}
 
 <style>
-	/* Every button is a pill. Hover changes fill or shadow only; presses sink 1 px. */
+	/* Buttons: 8 px corners, sized to their label. Hover changes a fill or a border colour only; presses sink 1 px. */
 	.btn {
 		position: relative;
 		display: inline-flex;
@@ -66,8 +66,8 @@
 		gap: var(--space-2);
 		min-height: var(--control-md);
 		padding: var(--space-2) var(--space-4);
-		border: 0;
-		border-radius: var(--radius-full);
+		border: 1px solid transparent;
+		border-radius: var(--radius-control);
 		font-family: inherit;
 		font-size: var(--text-md);
 		line-height: var(--text-md-lh);
@@ -78,9 +78,9 @@
 		cursor: pointer;
 		user-select: none;
 		transition:
-			box-shadow var(--dur) var(--ease),
 			transform var(--dur-fast) var(--ease),
 			background-color var(--dur-fast) var(--ease),
+			border-color var(--dur-fast) var(--ease),
 			color var(--dur-fast) var(--ease);
 	}
 
@@ -111,13 +111,15 @@
 		background: var(--accent);
 		color: var(--on-accent);
 		font-weight: var(--weight-strong);
-		box-shadow: var(--glow);
+		box-shadow: var(--shadow-card);
 	}
 
 	.secondary,
 	.danger {
-		background: var(--tint);
+		background: var(--card);
+		border-color: var(--hair-strong);
 		color: var(--ink);
+		box-shadow: var(--shadow-card);
 	}
 
 	.danger {
@@ -137,11 +139,14 @@
 
 	@media (hover: hover) {
 		.primary:not(:disabled):hover {
-			box-shadow: var(--glow-hover);
+			background: color-mix(in srgb, var(--accent) 88%, var(--ink));
 		}
 
 		.secondary:not(:disabled):hover,
-		.danger:not(:disabled):hover,
+		.danger:not(:disabled):hover {
+			border-color: color-mix(in srgb, var(--ink) 28%, transparent);
+		}
+
 		.quiet:not(:disabled):hover {
 			background: var(--tint-strong);
 		}
@@ -151,7 +156,7 @@
 		}
 
 		.danger-solid:not(:disabled):hover {
-			box-shadow: var(--shadow-card);
+			background: color-mix(in srgb, var(--danger) 88%, var(--ink));
 		}
 	}
 

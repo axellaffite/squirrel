@@ -19,7 +19,15 @@
 <CoverCard {href} {name} count={photoCount(place.count)} cover={place.cover} icon="map-pin">
 	{#snippet extra()}
 		{#if place.location}
-			<Locator latitude={place.location.latitude} longitude={place.location.longitude} place={place.city ? `${place.city}, ${country}` : country} />
+			<span class="locator"><Locator latitude={place.location.latitude} longitude={place.location.longitude} place={place.city ? `${place.city}, ${country}` : country} /></span>
 		{/if}
 	{/snippet}
 </CoverCard>
+
+<style>
+	/* The map sits a step below the count, as it did before the owner line joined the text block. */
+	.locator {
+		display: block;
+		margin-top: var(--space-2);
+	}
+</style>

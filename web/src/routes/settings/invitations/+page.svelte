@@ -110,7 +110,7 @@
 
 <svelte:head><title>Invitations · Squirrel</title></svelte:head>
 
-<Page title="Invitations">
+<Page title="Invitations" back={{ href: '/settings', label: 'Settings' }}>
 	{#snippet description()}
 		{#if canInvite}Each link lets one person create an account. {expiry}{:else}Only administrators can invite people
 			to this drive. Ask an administrator if someone needs an account.{/if}
@@ -223,11 +223,15 @@
 		font-weight: var(--weight-label);
 	}
 
+	/* One grouped card; ListRow draws the hairline between rows (MASTER.md › "Table"). */
 	.rows {
 		display: grid;
-		gap: var(--space-2);
 		margin: 0;
 		padding: 0;
 		list-style: none;
+		border: 1px solid var(--hair);
+		border-radius: var(--radius-card);
+		background: var(--card);
+		box-shadow: var(--shadow-card);
 	}
 </style>

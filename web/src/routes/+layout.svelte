@@ -8,6 +8,8 @@
 	import Icon from '#lib/components/icons/Icon.svelte';
 	import NotificationBell from '#lib/components/notifications/NotificationBell.svelte';
 	import AppNav from '#lib/components/shell/AppNav.svelte';
+	import SidebarStorage from '#lib/components/shell/SidebarStorage.svelte';
+	import TopBar from '#lib/components/shell/TopBar.svelte';
 	import UserMenu from '#lib/components/shell/UserMenu.svelte';
 	import Alert from '#lib/components/ui/Alert.svelte';
 	import Button from '#lib/components/ui/Button.svelte';
@@ -111,8 +113,7 @@
 {:else if session.me}
 	<div class="shell">
 		<AppNav path={page.url.pathname} canInvite={session.me.can_invite}>
-			{#snippet tools()}<NotificationBell tone="rail" />{/snippet}
-			{#snippet footer()}
+			{#snippet tools()}
 				<UserMenu
 					tone="rail"
 					displayName={session.me?.display_name ?? ''}
@@ -121,10 +122,8 @@
 					onthemechange={changeTheme}
 					onlogout={handleLogout}
 				/>
-				<button type="button" class="rail-logout" onclick={handleLogout}>
-					<span class="rail-dot"><Icon name="log-out" /></span>Log out
-				</button>
 			{/snippet}
+			{#snippet footer()}<SidebarStorage />{/snippet}
 		</AppNav>
 		<div class="panel">
 			<header class="phone-top">
@@ -142,6 +141,7 @@
 					/>
 				</span>
 			</header>
+			<TopBar path={page.url.pathname} canInvite={session.me.can_invite} />
 			{#if logoutError}<Alert>{logoutError}</Alert>{/if}
 			<div class="view">
 				{#if target === null}
@@ -176,7 +176,7 @@
 		gap: var(--space-4);
 	}
 
-	/* Ground (body gradient) holding the graphite rail and one large rounded panel. */
+	/* Ground (body gradient) holding the sidebar (or the phone bar) and one near-flat panel. */
 	.shell {
 		min-height: 100svh;
 		padding: calc(var(--frame) + env(safe-area-inset-top)) var(--frame)
@@ -190,6 +190,7 @@
 		min-width: 0;
 		min-height: calc(100svh - 2 * var(--frame) - var(--rail-bar-h) - var(--space-3));
 		padding: var(--panel-pad);
+		border: 1px solid var(--hair);
 		border-radius: var(--radius-panel);
 		background: var(--panel);
 		box-shadow: var(--panel-edge);
@@ -230,54 +231,6 @@
 	.wordmark:focus-visible {
 		outline: var(--ring-width) solid var(--accent);
 		outline-offset: var(--ring-offset);
-	}
-
-	.rail-logout {
-		display: flex;
-		align-items: center;
-		gap: var(--space-3);
-		min-height: var(--tap);
-		padding: var(--space-1);
-		border: 0;
-		border-radius: var(--radius-full);
-		background: transparent;
-		color: var(--rail-muted);
-		font-size: var(--text-md);
-		font-weight: var(--weight-label);
-		text-align: left;
-		cursor: pointer;
-		transition:
-			color var(--dur-fast) var(--ease),
-			transform var(--dur-fast) var(--ease);
-	}
-
-	.rail-dot {
-		display: grid;
-		place-items: center;
-		width: var(--control-sm);
-		height: var(--control-sm);
-		border-radius: var(--radius-full);
-		background: var(--rail-well);
-		transition: background-color var(--dur-fast) var(--ease);
-	}
-
-	@media (hover: hover) {
-		.rail-logout:hover {
-			color: var(--rail-ink);
-		}
-
-		.rail-logout:hover .rail-dot {
-			background: var(--rail-well-hover);
-		}
-	}
-
-	.rail-logout:focus-visible {
-		outline: var(--ring-width) solid var(--rail-ink);
-		outline-offset: var(--ring-offset);
-	}
-
-	.rail-logout:active {
-		transform: translateY(var(--press));
 	}
 
 	@media (min-width: 64rem) {

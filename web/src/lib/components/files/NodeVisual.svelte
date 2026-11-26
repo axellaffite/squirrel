@@ -39,7 +39,7 @@
 		display: block;
 		width: 100%;
 		height: 100%;
-		border-radius: var(--radius-full);
+		border-radius: var(--radius-control);
 		overflow: hidden;
 	}
 

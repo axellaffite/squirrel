@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { contentUrl, formatBytes, previewKind, storageSummary } from '#lib/files/format.ts';
+import { contentUrl, formatBytes, kindLabel, previewKind, storageSummary } from '#lib/files/format.ts';
 
 describe('formatBytes', () => {
 	it.each([
@@ -41,4 +41,16 @@ describe('storageSummary', () => {
 		expect(storageSummary({ used_bytes: 1500, quota_bytes: null })).toBe('1.5 KB used');
 		expect(storageSummary({ used_bytes: 1500, quota_bytes: 1_000_000 })).toBe('1.5 KB of 1.0 MB used');
 	});
+});
+
+describe('kindLabel', () => {
+	it.each([
+		[{ kind: 'folder', name: 'Biarritz, August' }, 'Folder'],
+		[{ kind: 'file', name: 'lease-2026.pdf' }, 'PDF'],
+		[{ kind: 'file', name: 'IMG_4021.heic' }, 'HEIC'],
+		[{ kind: 'file', name: 'archive.tar.gz' }, 'GZ'],
+		[{ kind: 'file', name: 'README' }, 'File'],
+		[{ kind: 'file', name: '.env' }, 'File'],
+		[{ kind: 'file', name: 'notes.verylongextension' }, 'File']
+	] as const)('%o → %s', (node, expected) => expect(kindLabel(node)).toBe(expected));
 });

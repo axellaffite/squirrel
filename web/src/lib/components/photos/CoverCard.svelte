@@ -7,48 +7,63 @@
 	interface Props {
 		href: string;
 		name: string;
-		/** "12 photos". */
 		count: string;
 		cover: AssetSummary | null;
-		/** Shown when there is no cover. */
 		icon?: IconName;
-		/** Under the name and count (a place's locator). */
 		extra?: Snippet;
+		/** A row under a hairline, inside the card but outside the link (e.g. who shared it, Leave). */
+		footer?: Snippet;
 	}
 
-	let { href, name, count, cover, icon = 'library', extra }: Props = $props();
+	let { href, name, count, cover, icon = 'library', extra, footer }: Props = $props();
 </script>
 
-<!-- MASTER "Album card", also for tags and places: 4:3 cover, name and count. The whole card is the link. -->
-<a class="card" {href}>
-	<span class="cover"><AlbumCover {cover} {icon} /></span>
-	<span class="text">
-		<span class="name">{name}</span>
-		<span class="count tabular">{count}</span>
-	</span>
-	{#if extra}<span class="extra">{@render extra()}</span>{/if}
-</a>
+<!--
+	MASTER "Album card", also for tags and places: 4:3 cover, name and count, the link. An optional
+	footer holds controls of its own, so it sits beside the link rather than inside it.
+-->
+<div class="card">
+	<a class="link" {href}>
+		<span class="cover"><AlbumCover {cover} {icon} /></span>
+		<span class="text">
+			<span class="name">{name}</span>
+			<span class="count tabular">{count}</span>
+			{#if extra}<span class="extra">{@render extra()}</span>{/if}
+		</span>
+	</a>
+	{#if footer}<div class="footer">{@render footer()}</div>{/if}
+</div>
 
 <style>
 	.card {
 		display: grid;
-		gap: var(--space-2);
-		padding: var(--space-2) var(--space-2) var(--space-3);
+		min-width: 0;
+		border: 1px solid var(--hair);
 		border-radius: var(--radius-card);
 		background: var(--card);
 		box-shadow: var(--shadow-card);
 		color: var(--ink);
-		text-decoration: none;
 		transition:
+			border-color var(--dur) var(--ease),
 			box-shadow var(--dur) var(--ease),
 			transform var(--dur-fast) var(--ease);
 	}
 
+	.link {
+		display: grid;
+		gap: var(--space-2);
+		padding: var(--space-2) var(--space-2) var(--space-3);
+		border-radius: inherit;
+		color: inherit;
+		text-decoration: none;
+	}
+
+	/* Concentric with the card: 12 px corners, 8 px padding, 4 px cover. */
 	.cover {
 		display: block;
 		aspect-ratio: var(--album-ratio);
 		overflow: hidden;
-		border-radius: var(--radius-tile);
+		border-radius: calc(var(--radius-card) - var(--space-2));
 	}
 
 	.text {
@@ -67,7 +82,9 @@
 
 	.extra {
 		display: block;
-		padding-inline: var(--space-1);
+		color: var(--ink-muted);
+		font-size: var(--text-sm);
+		line-height: var(--text-sm-lh);
 	}
 
 	.count {
@@ -76,18 +93,29 @@
 		line-height: var(--text-sm-lh);
 	}
 
+	.footer {
+		display: flex;
+		align-items: center;
+		justify-content: space-between;
+		gap: var(--space-2);
+		min-width: 0;
+		padding: var(--space-1) var(--space-1) var(--space-1) var(--space-3);
+		border-top: 1px solid var(--hair);
+	}
+
 	@media (hover: hover) {
-		.card:hover {
+		.card:has(.link:hover) {
+			border-color: var(--hair-strong);
 			box-shadow: var(--shadow-hover);
 		}
 	}
 
-	.card:focus-visible {
+	.link:focus-visible {
 		outline: var(--ring-width) solid var(--accent);
 		outline-offset: var(--ring-offset);
 	}
 
-	.card:active {
+	.card:has(.link:active) {
 		transform: translateY(var(--press));
 	}
 

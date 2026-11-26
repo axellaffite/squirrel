@@ -97,7 +97,7 @@
 		min-height: var(--control-md);
 		padding: var(--space-2) var(--space-4) var(--space-2) calc(var(--space-4) + var(--icon-sm) + var(--space-2));
 		border: 1px solid var(--edge);
-		border-radius: var(--radius-full);
+		border-radius: var(--radius-control);
 		background: var(--card);
 		color: var(--ink);
 		font-size: var(--text-md);

@@ -93,7 +93,7 @@
 		max-height: var(--sheet-max);
 		margin: auto auto 0;
 		padding: 0;
-		border: 0;
+		border: 1px solid var(--hair);
 		border-radius: var(--radius-panel) var(--radius-panel) 0 0;
 		background: var(--card);
 		color: var(--ink);
@@ -127,8 +127,11 @@
 		}
 	}
 
+	/* The page behind is blurred (static radius, never animated) under the scrim. */
 	dialog::backdrop {
 		background: var(--scrim);
+		-webkit-backdrop-filter: blur(var(--backdrop-blur));
+		backdrop-filter: blur(var(--backdrop-blur));
 		opacity: 0;
 		transition:
 			opacity var(--dur-fast) var(--ease),

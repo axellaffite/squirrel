@@ -9,7 +9,7 @@
 		theme: ThemeChoice;
 		onthemechange: (choice: ThemeChoice) => void;
 		onlogout: () => void;
-		/** `rail`: full-width trigger on the graphite rail, opening upwards. */
+		/** `rail`: an avatar at the top right of the sidebar, opening downwards over the panel. */
 		tone?: 'panel' | 'rail';
 		/** Below 1024 px Invitations is not on the rail: the menu links to it instead. */
 		canInvite?: boolean;
@@ -56,8 +56,10 @@
 		onclick={() => (open = !open)}
 	>
 		<span class="avatar" aria-hidden="true">{initial}</span>
-		<span class="name">{displayName}</span>
-		<Icon name={tone === 'rail' ? 'more' : 'chevron-down'} />
+		{#if tone !== 'rail'}
+			<span class="name">{displayName}</span>
+			<Icon name="chevron-down" />
+		{/if}
 	</button>
 
 	{#if open}
@@ -67,6 +69,10 @@
 				<span class="muted">@{username}</span>
 			</div>
 			<ThemePicker value={theme} onchange={onthemechange} />
+			<a class="item" href="/settings/appearance" onclick={() => close(false)}>
+				<Icon name="image" />
+				<span>Appearance</span>
+			</a>
 			<a class="item" href="/settings/friends" onclick={() => close(false)}>
 				<Icon name="users" />
 				<span>Friends</span>
@@ -85,7 +91,6 @@
 					<span>Invitations</span>
 				</a>
 			{/if}
-			<!-- On ≥ 1024 px "Log out" sits in the top bar instead, so only one is ever visible. -->
 			<button type="button" class="logout" onclick={onlogout}>
 				<Icon name="log-out" />
 				<span>Log out</span>
@@ -107,7 +112,7 @@
 		min-height: var(--tap);
 		padding: var(--space-1) var(--space-3) var(--space-1) var(--space-1);
 		border: 0;
-		border-radius: var(--radius-full);
+		border-radius: var(--radius-control);
 		background: var(--card);
 		box-shadow: var(--shadow-card);
 		color: var(--ink);
@@ -120,9 +125,13 @@
 			transform var(--dur-fast) var(--ease);
 	}
 
+	/* On the sidebar the trigger is the avatar alone: a 36 px circle (44 px hit area). */
 	.rail .trigger {
-		width: 100%;
-		background: var(--rail-well);
+		justify-content: center;
+		width: var(--tap);
+		padding: 0;
+		border-radius: var(--radius-full);
+		background: transparent;
 		box-shadow: none;
 		color: var(--rail-ink);
 	}
@@ -133,8 +142,11 @@
 		}
 
 		.rail .trigger:hover {
-			background: var(--rail-well-hover);
 			box-shadow: none;
+		}
+
+		.rail .trigger:hover .avatar {
+			background: var(--rail-well);
 		}
 	}
 
@@ -165,6 +177,11 @@
 	.rail .avatar {
 		background: var(--rail-active);
 		color: var(--rail-active-ink);
+		transition: background-color var(--dur-fast) var(--ease);
+	}
+
+	.rail .trigger:focus-visible {
+		outline-color: var(--rail-ink);
 	}
 
 	.name {
@@ -188,9 +205,10 @@
 		top: calc(100% + var(--space-2));
 		right: 0;
 		display: grid;
-		gap: var(--space-4);
+		gap: var(--space-1);
 		width: min(var(--menu-w), calc(100vw - 2 * var(--gutter)));
-		padding: var(--space-4);
+		padding: var(--space-1);
+		border: 1px solid var(--hair);
 		border-radius: var(--radius-card);
 		background: var(--card);
 		color: var(--ink);
@@ -203,9 +221,7 @@
 	}
 
 	.rail .panel {
-		top: auto;
 		right: auto;
-		bottom: calc(100% + var(--space-2));
 		left: 0;
 	}
 
@@ -215,15 +231,12 @@
 			transform: translateY(calc(-1 * var(--rise)));
 		}
 
-		.rail .panel {
-			transform: translateY(var(--rise));
-		}
 	}
 
 	.who {
 		display: grid;
 		min-width: 0;
-		padding-inline: var(--space-1);
+		padding: var(--space-2) var(--space-3) var(--space-1);
 		overflow-wrap: anywhere;
 		font-weight: var(--weight-label);
 	}
@@ -241,8 +254,8 @@
 		min-height: var(--tap);
 		padding: var(--space-2) var(--space-3);
 		border: 0;
-		border-radius: var(--radius-full);
-		background: var(--tint);
+		border-radius: var(--radius-sm);
+		background: transparent;
 		color: var(--ink);
 		font-weight: var(--weight-label);
 		text-decoration: none;
@@ -255,7 +268,7 @@
 	@media (hover: hover) {
 		.item:hover,
 		.logout:hover {
-			background: var(--tint-strong);
+			background: var(--tint);
 		}
 	}
 
@@ -265,7 +278,6 @@
 	}
 
 	@media (min-width: 64rem) {
-		.logout,
 		.phone-only {
 			display: none;
 		}

@@ -74,6 +74,7 @@ test('shares a folder read-only and an album for writing, with comments both way
 
 	// Alice finds both under "Shared by me", with Bob named, and manages the folder's sharing from there.
 	await alice.goto('/shared');
+	await alice.getByRole('tab', { name: /^Shared by me/ }).click();
 	const byMe = alice.getByRole('region', { name: 'Shared by me' });
 	const mine = byMe.getByTestId('shared-by-me-item').filter({ hasText: folder.name });
 	await expect(mine).toContainText('With bob');

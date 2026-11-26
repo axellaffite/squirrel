@@ -47,3 +47,14 @@ const dateFormat = new Intl.DateTimeFormat(undefined, { dateStyle: 'medium', tim
 export function formatDate(iso: string): string {
 	return dateFormat.format(new Date(iso));
 }
+
+/** Longest extension shown as a kind; anything longer reads as a plain file. */
+const MAX_KIND_LENGTH = 5;
+
+/** The table's Kind column: "Folder", the file extension in capitals ("PDF"), or "File". */
+export function kindLabel(node: { kind: string; name: string }): string {
+	if (node.kind === 'folder') return 'Folder';
+	const dot = node.name.lastIndexOf('.');
+	const ext = dot > 0 ? node.name.slice(dot + 1) : '';
+	return ext && ext.length <= MAX_KIND_LENGTH ? ext.toUpperCase() : 'File';
+}

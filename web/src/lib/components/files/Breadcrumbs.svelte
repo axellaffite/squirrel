@@ -56,7 +56,7 @@
 		align-items: center;
 		min-height: var(--control-sm);
 		padding-inline: var(--space-2);
-		border-radius: var(--radius-full);
+		border-radius: var(--radius-control);
 		overflow-wrap: anywhere;
 	}
 

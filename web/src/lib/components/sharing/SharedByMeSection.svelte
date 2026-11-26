@@ -20,7 +20,8 @@
 </script>
 
 <section class="part" aria-labelledby="shared-by-me">
-	<h2 id="shared-by-me">Shared by me</h2>
+	<!-- Named by the page's tabs: the heading stays for the region's name. -->
+	<h2 id="shared-by-me" class="visually-hidden">Shared by me</h2>
 	{#if error}<Alert>{error}</Alert>{/if}
 	{#if items === null}
 		{#if !error}<p class="muted" aria-live="polite">Loading…</p>{/if}
@@ -72,19 +73,25 @@
 		letter-spacing: var(--track-heading);
 	}
 
+	/* Section labels (MASTER three tiers): small, muted. */
 	h3 {
-		font-size: var(--text-lg);
-		line-height: var(--text-lg-lh);
-		font-weight: var(--weight-heading);
-		letter-spacing: var(--track-heading);
+		color: var(--ink-muted);
+		font-size: var(--text-sm);
+		line-height: var(--text-sm-lh);
+		font-weight: var(--weight-label);
+		letter-spacing: 0;
 	}
 
+	/* One grouped card; ListRow draws the hairline between rows (MASTER.md › "Table"). */
 	.rows {
 		display: grid;
-		gap: var(--space-2);
 		margin: 0;
 		padding: 0;
 		list-style: none;
+		border: 1px solid var(--hair);
+		border-radius: var(--radius-card);
+		background: var(--card);
+		box-shadow: var(--shadow-card);
 	}
 
 	.albums {

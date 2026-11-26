@@ -71,7 +71,7 @@
 
 <svelte:head><title>Devices · Squirrel</title></svelte:head>
 
-<Page title="Devices">
+<Page title="Devices" back={{ href: '/settings', label: 'Settings' }}>
 	{#snippet description()}Phones signed in to your Squirrel. Revoking one signs it out at once; what it backed up
 		stays.{/snippet}
 
@@ -158,12 +158,16 @@
 		background: var(--tint);
 	}
 
+	/* One grouped card; ListRow draws the hairline between rows (MASTER.md › "Table"). */
 	.rows {
 		display: grid;
-		gap: var(--space-2);
 		margin: 0;
 		padding: 0;
 		list-style: none;
+		border: 1px solid var(--hair);
+		border-radius: var(--radius-card);
+		background: var(--card);
+		box-shadow: var(--shadow-card);
 	}
 
 	/* Inline from 768 px; one "Actions" button opening a sheet on phones, like file rows. */

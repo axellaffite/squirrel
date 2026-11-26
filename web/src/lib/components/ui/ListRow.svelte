@@ -12,6 +12,11 @@
 		detail?: Snippet;
 		/** Quiet action buttons on the right. */
 		actions?: Snippet;
+		/**
+		 * Table cells between the name and the actions (≥ 768 px). The row then joins its list's
+		 * columns (CSS subgrid): the list must be a grid with one track per child of the row.
+		 */
+		cells?: Snippet;
 		/** Highlights the row (e.g. the item a dialog is acting on). */
 		selected?: boolean;
 		/** Index for the arrival stagger; omit to skip the arrival animation. */
@@ -20,13 +25,14 @@
 		nodeId?: string;
 	}
 
-	let { icon, title, meta, detail, actions, selected = false, arrive, testId, nodeId }: Props =
+	let { icon, title, meta, detail, actions, cells, selected = false, arrive, testId, nodeId }: Props =
 		$props();
 </script>
 
 <li
 	class="row"
 	class:selected
+	class:has-cells={cells !== undefined}
 	class:arrive={arrive !== undefined}
 	style:--i={arrive}
 	data-testid={testId}
@@ -38,13 +44,16 @@
 		{#if meta}<div class="meta">{@render meta()}</div>{/if}
 		{#if detail}<div class="detail">{@render detail()}</div>{/if}
 	</div>
+	{#if cells}<div class="cells">{@render cells()}</div>{/if}
 	{#if actions}<div class="actions">{@render actions()}</div>{/if}
 </li>
 
 <style>
-	/* A white row card: round tint icon well, name and metadata, quiet round actions. */
-	/* Wide actions (e.g. an armed confirmation) wrap under the name instead of crushing it. */
+	/* A flat table row inside its list's grouped card (MASTER.md › "Table"): 8 px tint icon tile,
+	   name and metadata, quiet actions; a hairline between rows. Wide actions (e.g. an armed
+	   confirmation) wrap under the name instead of crushing it. */
 	.row {
+		--row-radius: calc(var(--radius-card) - 1px);
 		position: relative;
 		display: flex;
 		flex-wrap: wrap;
@@ -52,16 +61,39 @@
 		gap: var(--space-2) var(--space-3);
 		min-height: var(--row-min);
 		padding: var(--space-2) var(--space-2) var(--space-2) var(--space-3);
-		border-radius: var(--radius-card);
-		background: var(--card);
-		box-shadow: var(--shadow-card);
-		transition:
-			box-shadow var(--dur) var(--ease),
-			transform var(--dur-fast) var(--ease);
+		transition: background-color var(--dur-fast) var(--ease);
+	}
+
+	.row:not(:first-child) {
+		border-top: 1px solid var(--hair);
+	}
+
+	.row:first-child {
+		border-top-left-radius: var(--row-radius);
+		border-top-right-radius: var(--row-radius);
+	}
+
+	.row:last-child {
+		border-bottom-left-radius: var(--row-radius);
+		border-bottom-right-radius: var(--row-radius);
+	}
+
+	/* Focus and selection rings sit 4 px inside the row, radius 12 - 4 = 8, so they never touch
+	   the card's corners or a neighbour's ring. */
+	.row::after {
+		content: '';
+		position: absolute;
+		inset: var(--space-1);
+		border-radius: calc(var(--radius-card) - var(--space-1));
+		pointer-events: none;
 	}
 
 	.selected {
-		box-shadow: var(--shadow-card), var(--select-ring);
+		background: var(--accent-soft);
+	}
+
+	.selected::after {
+		box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--accent) 45%, transparent);
 	}
 
 	.well {
@@ -70,7 +102,7 @@
 		width: var(--well-sm);
 		height: var(--well-sm);
 		flex: none;
-		border-radius: var(--radius-full);
+		border-radius: var(--radius-control);
 		background: var(--tint);
 		color: var(--ink);
 	}
@@ -142,30 +174,65 @@
 		content: '';
 		position: absolute;
 		inset: 0;
-		border-radius: var(--radius-card);
+		border-radius: inherit;
 	}
 
 	.title :global(.row-link:focus-visible) {
 		outline: none;
 	}
 
-	.row:has(:global(.row-link:focus-visible)) {
-		outline: var(--ring-width) solid var(--accent);
-		outline-offset: var(--ring-offset);
+	.row:has(:global(.row-link:focus-visible))::after {
+		box-shadow: 0 0 0 var(--ring-width) var(--accent);
 	}
 
 	@media (hover: hover) {
 		.row:has(:global(.row-link:hover)) {
-			box-shadow: var(--shadow-hover);
+			background: var(--tint);
 		}
 
 		.selected:has(:global(.row-link:hover)) {
-			box-shadow: var(--shadow-hover), var(--select-ring);
+			background: var(--accent-soft);
 		}
 	}
 
-	.row:has(:global(.row-link:active)) {
+	.row:has(:global(.row-link:active)) .main {
 		transform: translateY(var(--press));
+	}
+
+	.main {
+		transition: transform var(--dur-fast) var(--ease);
+	}
+
+	.cells {
+		display: none;
+	}
+
+	@media (min-width: 48rem) {
+		.has-cells {
+			display: grid;
+			grid-column: 1 / -1;
+			grid-template-columns: subgrid;
+			row-gap: 0;
+			column-gap: normal;
+		}
+
+		.has-cells .cells {
+			display: contents;
+		}
+
+		.has-cells .meta {
+			display: none;
+		}
+
+		.has-cells .actions {
+			margin-left: 0;
+		}
+
+		/* A table row sits under its header band: no rounded top corners. */
+		.has-cells:first-child {
+			border-top-left-radius: 0;
+			border-top-right-radius: 0;
+		}
 	}
 
 	@media (forced-colors: active) {

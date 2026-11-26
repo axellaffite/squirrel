@@ -10,6 +10,7 @@
 	import SharedWithMeSection from '#lib/components/sharing/SharedWithMeSection.svelte';
 	import Icon from '#lib/components/icons/Icon.svelte';
 	import Button from '#lib/components/ui/Button.svelte';
+	import Tabs from '#lib/components/ui/Tabs.svelte';
 	import { getNode, type FileNode } from '#lib/files/api.ts';
 	import { openRequest, withoutOpenRequest } from '#lib/notifications/logic.ts';
 	import { deleteShare, sharedByMe, sharedWithMe, type SharedByMe, type SharedItem, type Subject } from '#lib/sharing/api.ts';
@@ -30,6 +31,25 @@
 	let previewComments = $state(false);
 
 	/** Files of one's own, or shared for writing (directly or through a folder above), open in the editor as "Edit". */
+	type SharedTab = 'with-me' | 'by-me';
+
+	/** The open tab lives in the URL (`?tab=by-me`), so it survives a reload and can be linked. */
+	// Read once on load; the shallow navigation below updates the address bar, not page.url.
+	let tab: SharedTab = $state(untrack(() => (page.url.searchParams.get('tab') === 'by-me' ? 'by-me' : 'with-me')));
+	const countOf = (list: readonly unknown[] | null): number | null => (list === null ? null : list.length);
+	const tabs = $derived([
+		{ value: 'with-me' as const, label: 'Shared with me', count: countOf(withMe) },
+		{ value: 'by-me' as const, label: 'Shared by me', count: countOf(byMe) }
+	]);
+
+	function selectTab(next: SharedTab) {
+		tab = next;
+		const url = new URL(page.url.href);
+		if (next === 'with-me') url.searchParams.delete('tab');
+		else url.searchParams.set('tab', next);
+		void goto(url, { state: {}, shallow: true, replace: true });
+	}
+
 	const canEdit = (node: FileNode) =>
 		byMe?.some((item) => item.node?.id === node.id) || withMe?.find((item) => item.node?.id === node.id)?.permission === 'write';
 	const subjectName = (item: SharedItem) => item.node?.name ?? item.album?.name ?? '';
@@ -109,8 +129,17 @@
 	{#snippet description()}What other people shared with you, and what you shared with them.{/snippet}
 	{#snippet actions()}<Button variant="secondary" href="/settings/friends"><Icon name="users" />Friends</Button>{/snippet}
 
-	<SharedWithMeSection items={withMe} error={withMeError} onOpen={open} onLeave={(item) => (leaving = item)} />
-	<SharedByMeSection items={byMe} error={byMeError} onOpen={open} onManage={manage} />
+	<Tabs label="Shared" id="shared" {tabs} value={tab} onchange={selectTab} />
+
+	{#if tab === 'with-me'}
+		<div id="shared-panel-with-me" role="tabpanel" aria-labelledby="shared-tab-with-me">
+			<SharedWithMeSection items={withMe} error={withMeError} onOpen={open} onLeave={(item) => (leaving = item)} />
+		</div>
+	{:else}
+		<div id="shared-panel-by-me" role="tabpanel" aria-labelledby="shared-tab-by-me">
+			<SharedByMeSection items={byMe} error={byMeError} onOpen={open} onManage={manage} />
+		</div>
+	{/if}
 </Page>
 
 {#if leaving}

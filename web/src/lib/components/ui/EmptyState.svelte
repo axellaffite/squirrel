@@ -36,7 +36,7 @@
 		width: var(--well-lg);
 		height: var(--well-lg);
 		margin-bottom: var(--space-3);
-		border-radius: var(--radius-full);
+		border-radius: var(--radius-card);
 		background: var(--card);
 		box-shadow: var(--shadow-card);
 		color: var(--ink);

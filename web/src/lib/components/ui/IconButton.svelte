@@ -77,7 +77,7 @@
 		flex: none;
 		padding: 0;
 		border: 0;
-		border-radius: var(--radius-full);
+		border-radius: var(--radius-control);
 		background: transparent;
 		color: var(--ink-muted);
 		cursor: pointer;
@@ -91,7 +91,7 @@
 		content: '';
 		position: absolute;
 		inset: calc((var(--control-sm) - var(--tap)) / 2);
-		border-radius: var(--radius-full);
+		border-radius: var(--radius-control);
 	}
 
 	.tint {

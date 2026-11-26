@@ -15,32 +15,25 @@
 	let { item, album, onLeave }: Props = $props();
 </script>
 
-<!-- The album card (a link), then who shared it and the way out, outside the link. -->
+<!-- One card: the album and who shared it (the link), then a footer with your right and Leave. -->
 <li class="shared" data-testid="shared-album">
-	<AlbumCard {album} />
-	<div class="foot">
-		<span class="owner">{memberName(item.owner)}</span>
-		<Badge>{permissionLabel(item.permission)}</Badge>
-		<Button variant="quiet" size="sm" aria-label={`Leave ${album.name}`} onclick={onLeave}>Leave</Button>
-	</div>
+	<AlbumCard {album}>
+		{#snippet extra()}<span class="owner">From {memberName(item.owner)}</span>{/snippet}
+		{#snippet footer()}
+			<Badge>{permissionLabel(item.permission)}</Badge>
+			<Button variant="quiet" size="sm" aria-label={`Leave ${album.name}`} onclick={onLeave}>Leave</Button>
+		{/snippet}
+	</AlbumCard>
 </li>
 
 <style>
 	.shared {
 		display: grid;
-		gap: var(--space-1);
 		min-width: 0;
 	}
 
-	.foot {
-		display: flex;
-		flex-wrap: wrap;
-		align-items: center;
-		gap: var(--space-1) var(--space-2);
-		padding-inline: var(--space-1);
-	}
-
 	.owner {
+		display: block;
 		min-width: 0;
 		overflow: hidden;
 		text-overflow: ellipsis;

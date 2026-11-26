@@ -1,27 +1,39 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
+	import NameDialog from '#lib/components/files/NameDialog.svelte';
 	import NodeVisual from '#lib/components/files/NodeVisual.svelte';
 	import Icon from '#lib/components/icons/Icon.svelte';
 	import type { IconName } from '#lib/components/icons/paths.ts';
+	import Page from '#lib/components/shell/Page.svelte';
+	import Badge from '#lib/components/ui/Badge.svelte';
+	import Button from '#lib/components/ui/Button.svelte';
 	import ListRow from '#lib/components/ui/ListRow.svelte';
 	import Meter from '#lib/components/ui/Meter.svelte';
-	import { listFolder, storageUsage, type FileNode, type StorageUsage } from '#lib/files/api.ts';
-	import { formatBytes, formatDate, storageSummary } from '#lib/files/format.ts';
+	import { createFolder, listFolder, storageUsage, type FileNode, type StorageUsage } from '#lib/files/api.ts';
+	import { formatBytes, formatDate, kindLabel, storageSummary } from '#lib/files/format.ts';
 	import { latestOnly } from '#lib/files/latest.ts';
 	import { recentItems, uploadTarget } from '#lib/home.ts';
-	import { mediaStatus } from '#lib/photos/api.ts';
+	import { listMonths, mediaStatus } from '#lib/photos/api.ts';
+	import { sharedWithMe } from '#lib/sharing/api.ts';
 	import { createPoller } from '#lib/photos/status.ts';
 	import { session } from '#lib/session.svelte.ts';
 	import { enqueue, onUploadsSettled } from '#lib/upload/uploads.svelte.ts';
 
 	/** How many recently changed items the home page lists. */
-	const RECENT_COUNT = 4;
+	const RECENT_COUNT = 5;
+	const count = new Intl.NumberFormat();
 
 	let usage = $state<StorageUsage | null>(null);
 	let usageError: string | null = $state(null);
 	let roots: FileNode[] = $state([]);
 	let recent: FileNode[] | null = $state(null);
 	let recentError: string | null = $state(null);
+	/** Real counts only (MASTER rule 6): null until loaded, and the card shows no figure then. */
+	let photoCount: number | null = $state(null);
+	let driveCount: number | null = $state(null);
+	let sharedCount: number | null = $state(null);
+	let newFolderOpen = $state(false);
+	let fileInput: HTMLInputElement | undefined = $state();
 	const trackUsage = latestOnly();
 	const trackRecent = latestOnly();
 
@@ -31,20 +43,25 @@
 	);
 	const rootName = (id: string | null | undefined) => roots.find((root) => root.id === id)?.name;
 
-	interface QuickLink {
+	interface Overview {
 		href: string;
 		label: string;
 		icon: IconName;
-		/** Already in the bottom bar on phones. */
-		wideOnly?: boolean;
+		line: string | null;
 	}
 
-	const ROOT_ICONS: Record<string, IconName> = { Photos: 'image', Documents: 'file-text' };
-	const quick: QuickLink[] = $derived([
-		...roots.map((root) => ({ href: `/files/${root.id}`, label: root.name, icon: ROOT_ICONS[root.name] ?? 'folder' })),
-		{ href: '/trash', label: 'Trash', icon: 'trash', wideOnly: true },
-		...(session.me?.can_invite ? [{ href: '/settings/invitations', label: 'Invite', icon: 'user-plus' as const }] : [])
+	const plural = (n: number, one: string, many: string) => `${count.format(n)} ${n === 1 ? one : many}`;
+	const overview: Overview[] = $derived([
+		{ href: '/photos', label: 'Photos', icon: 'images', line: photoCount === null ? null : plural(photoCount, 'photo', 'photos') },
+		{ href: '/files', label: 'Files', icon: 'folder', line: driveCount === null ? null : plural(driveCount, 'item', 'items') },
+		{ href: '/shared', label: 'Shared', icon: 'users', line: sharedCount === null ? null : `${count.format(sharedCount)} shared with you` }
 	]);
+
+	async function loadCounts() {
+		const [months, shared] = await Promise.all([listMonths(), sharedWithMe()]);
+		if (months.ok) photoCount = months.data.reduce((sum, m) => sum + m.count, 0);
+		if (shared.ok) sharedCount = shared.data.length;
+	}
 
 	async function loadUsage() {
 		const result = await trackUsage(storageUsage());
@@ -69,6 +86,7 @@
 			return;
 		}
 		roots = top.data;
+		driveCount = children.reduce((sum, listing) => sum + (listing.ok ? listing.data.length : 0), 0);
 		const failed = children.find((listing) => !listing.ok);
 		if (failed && !failed.ok) recentError = failed.error;
 		else recentError = null;
@@ -94,9 +112,18 @@
 		visible: () => document.visibilityState === 'visible'
 	});
 
+	async function newFolder(name: string): Promise<string | null> {
+		if (!target) return 'There is no folder to create it in.';
+		const result = await createFolder(target.id, name);
+		if (!result.ok) return result.error ?? 'Something went wrong.';
+		await loadRecent();
+		return null;
+	}
+
 	onMount(() => {
 		void loadUsage();
 		void loadRecent();
+		void loadCounts();
 		const unsubscribe = onUploadsSettled(() => {
 			void loadUsage();
 			void loadRecent();
@@ -116,320 +143,323 @@
 <svelte:head><title>Home · Squirrel</title></svelte:head>
 
 {#if session.me}
-	<main class="home">
-		<div class="col">
-			<h1 class="hello arrive" style:--i={0}>Hello, {session.me.display_name}</h1>
+	<Page title={`Hello, ${session.me.display_name}`}>
+		{#snippet description()}Everything you keep at home, in one place.{/snippet}
+		{#snippet actions()}
+			<Button variant="secondary" size="sm" disabled={!target} onclick={() => (newFolderOpen = true)}>
+				<Icon name="plus" />New folder
+			</Button>
+			<input
+				bind:this={fileInput}
+				type="file"
+				multiple
+				class="visually-hidden"
+				tabindex="-1"
+				aria-hidden="true"
+				disabled={!target}
+				onchange={chosen}
+			/>
+			<Button
+				size="sm"
+				disabled={!target}
+				aria-label={target ? `Upload files to ${target.name}` : 'Upload files'}
+				onclick={() => fileInput?.click()}
+			>
+				<Icon name="upload" />Upload
+			</Button>
+		{/snippet}
 
-			<section class="storage arrive" style:--i={1} aria-labelledby="storage-title">
-				<div class="storage-top">
-					<div class="storage-text" aria-live="polite">
-						<h2 id="storage-title">
-							{#if percent !== null}You've used {percent}% of your space
-							{:else if usage}{formatBytes(usage.used_bytes)} stored
-							{:else}Storage{/if}
-						</h2>
-						{#if usage}
-							<p class="figures tabular">
-								{storageSummary(usage)}{#if usage.trash_bytes > 0}<span class="sep" aria-hidden="true">·</span
-									>{formatBytes(usage.trash_bytes)} in trash{/if}
-							</p>
-						{:else if usageError}
-							<p class="figures">Storage use is unavailable right now.</p>
-						{:else}
-							<p class="figures">Loading…</p>
-						{/if}
-					</div>
-					<label class="fab" class:disabled={!target} title={target ? `Upload files to ${target.name}` : undefined}>
-						<input
-							type="file"
-							multiple
-							class="visually-hidden"
-							disabled={!target}
-							aria-label={target ? `Upload files to ${target.name}` : 'Upload files'}
-							onchange={chosen}
-						/>
-						<Icon name="upload" />
-					</label>
-				</div>
-				{#if usage && usage.quota_bytes != null}
+		<!-- Phones: the sidebar (and its storage block) is not shown, so storage stays here. -->
+		{#if usage}
+			<section class="storage arrive" style:--i={1} aria-label="Storage">
+				<p class="figures tabular">
+					{storageSummary(usage)}{#if usage.trash_bytes > 0}<span class="sep" aria-hidden="true">·</span
+						>{formatBytes(usage.trash_bytes)} in trash{/if}
+				</p>
+				{#if usage.quota_bytes != null}
 					<Meter label="Storage used" value={usage.used_bytes} max={usage.quota_bytes} valueText={storageSummary(usage)} />
 				{/if}
 			</section>
+		{:else if usageError}
+			<p class="note storage">Storage use is unavailable right now.</p>
+		{/if}
 
-			<nav class="quick arrive" style:--i={2} aria-label="Shortcuts">
-				{#each quick as link (link.href)}
-					<a class="q" class:wide-only={link.wideOnly} href={link.href}>
-						<span class="q-well"><Icon name={link.icon} /></span>
-						<span class="q-label">{link.label}</span>
-					</a>
-				{/each}
-			</nav>
-		</div>
+		<nav class="cards arrive" style:--i={2} aria-label="Shortcuts">
+			{#each overview as card (card.href)}
+				<a class="card" href={card.href}>
+					<span class="tile"><Icon name={card.icon} /></span>
+					<span class="card-text">
+						<span class="card-label">{card.label}</span>
+						<span class="card-line tabular">{card.line ?? ' '}</span>
+					</span>
+				</a>
+			{/each}
+		</nav>
 
-		<section class="col recent arrive" style:--i={3} aria-labelledby="recent-title">
+		<section class="recent arrive" style:--i={3} aria-labelledby="recent-title">
 			<div class="recent-head">
-				<h2 id="recent-title">Recent</h2>
-				<a class="all" href="/files">All files<Icon name="arrow-right" /></a>
+				<h2 id="recent-title">Recent files</h2>
+				<a class="all" href="/files">View all</a>
 			</div>
 			{#if recentError}
 				<p class="note">Recent files are unavailable right now.</p>
 			{:else if recent === null}
 				<p class="note">Loading…</p>
 			{:else if recent.length === 0}
-				<p class="note">Nothing here yet. Upload your first files with the round button.</p>
+				<p class="note">Nothing here yet. Upload your first files with the Upload button.</p>
 			{:else}
-				<ul class="rows">
-					{#each recent as node, index (node.id)}
-						<ListRow arrive={index + 4}>
-							{#snippet icon()}<NodeVisual {node} />{/snippet}
-							{#snippet title()}
-								<a class="row-link" href={`/files/${node.kind === 'folder' ? node.id : node.parent_id}`}>{node.name}</a>
-							{/snippet}
-							{#snippet meta()}
-								{node.kind === 'folder' ? 'Folder' : formatBytes(node.size)}{#if rootName(node.parent_id)}<span
-										class="sep"
-										aria-hidden="true">·</span
-									>in {rootName(node.parent_id)}{/if}<span class="sep" aria-hidden="true">·</span>{formatDate(node.modified_at)}
-							{/snippet}
-						</ListRow>
-					{/each}
-				</ul>
-				<p class="note">Latest changes at the top of your folders.</p>
+				<div class="table">
+					<div class="thead" aria-hidden="true">
+						<span></span><span>Name</span><span>Kind</span><span>Size</span><span>Modified</span>
+					</div>
+					<ul class="rows">
+						{#each recent as node, index (node.id)}
+							<ListRow arrive={index + 4}>
+								{#snippet icon()}<NodeVisual {node} />{/snippet}
+								{#snippet title()}
+									<a class="row-link" href={`/files/${node.kind === 'folder' ? node.id : node.parent_id}`}>{node.name}</a>
+								{/snippet}
+								{#snippet cells()}
+									<span class="cell"><Badge>{kindLabel(node)}</Badge></span>
+									<span class="cell num">{node.kind === 'folder' ? '' : formatBytes(node.size)}</span>
+									<span class="cell num">{formatDate(node.modified_at)}</span>
+								{/snippet}
+								{#snippet meta()}
+									{node.kind === 'folder' ? 'Folder' : formatBytes(node.size)}{#if rootName(node.parent_id)}<span
+											class="sep"
+											aria-hidden="true">·</span
+										>in {rootName(node.parent_id)}{/if}<span class="sep" aria-hidden="true">·</span>{formatDate(node.modified_at)}
+								{/snippet}
+							</ListRow>
+						{/each}
+					</ul>
+					<p class="tfoot">Latest changes at the top of your folders.</p>
+				</div>
 			{/if}
 		</section>
-	</main>
+	</Page>
+
+	{#if newFolderOpen}
+		<NameDialog title="New folder" submitLabel="Create folder" onSubmit={newFolder} onClose={() => (newFolderOpen = false)} />
+	{/if}
 {/if}
 
 <style>
-	.home {
-		display: grid;
-		gap: var(--space-5);
-		align-items: start;
+	.tabular {
+		font-variant-numeric: tabular-nums;
 	}
 
-	@media (min-width: 64rem) {
-		.home {
-			grid-template-columns: 1.15fr 1fr;
-			column-gap: var(--space-6);
-		}
+	.note {
+		margin: 0;
+		color: var(--ink-muted);
+		font-size: var(--text-sm);
 	}
 
-	.col {
-		display: grid;
-		gap: var(--space-4);
-		align-content: start;
-		min-width: 0;
-	}
-
-	.hello {
-		padding-block: var(--space-2);
-		font-size: var(--text-display);
-		line-height: var(--text-display-lh);
-		letter-spacing: var(--track-tight);
-		overflow-wrap: anywhere;
-	}
-
-	/* Storage: a tinted well with the orchid upload button and the pill meter. */
 	.storage {
 		display: grid;
-		gap: var(--space-4);
-		padding: var(--well-pad);
-		border-radius: var(--radius-well);
-		background: var(--tint);
-	}
-
-	.storage-top {
-		display: flex;
-		align-items: flex-start;
-		justify-content: space-between;
-		gap: var(--space-3);
-	}
-
-	.storage-text {
-		display: grid;
-		gap: var(--space-1);
-		min-width: 0;
-	}
-
-	.storage h2 {
-		font-size: var(--text-lg);
-		line-height: var(--text-lg-lh);
-		font-weight: var(--weight-label);
-		letter-spacing: var(--track-label);
+		gap: var(--space-2);
 	}
 
 	.figures {
+		margin: 0;
 		color: var(--ink-muted);
-		font-variant-numeric: tabular-nums;
 		font-size: var(--text-sm);
-		line-height: var(--text-sm-lh);
-	}
-
-	.fab {
-		position: relative;
-		display: grid;
-		place-items: center;
-		width: var(--fab);
-		height: var(--fab);
-		flex: none;
-		border-radius: var(--radius-full);
-		background: var(--accent);
-		color: var(--on-accent);
-		box-shadow: var(--glow);
-		cursor: pointer;
-		transition:
-			box-shadow var(--dur) var(--ease),
-			transform var(--dur-fast) var(--ease);
-	}
-
-	@media (hover: hover) {
-		.fab:not(.disabled):hover {
-			box-shadow: var(--glow-hover);
-		}
-	}
-
-	.fab:has(input:focus-visible) {
-		outline: var(--ring-width) solid var(--accent);
-		outline-offset: var(--ring-offset);
-	}
-
-	.fab:not(.disabled):active {
-		transform: translateY(var(--press));
-	}
-
-	.fab.disabled {
-		opacity: var(--disabled-opacity);
-		box-shadow: none;
-		cursor: not-allowed;
-	}
-
-	/* Shortcuts: tinted pills holding white round icon wells. */
-	.quick {
-		display: grid;
-		grid-template-columns: repeat(auto-fit, minmax(var(--quick-min), 1fr));
-		gap: var(--space-2);
-	}
-
-	.q {
-		display: grid;
-		justify-items: center;
-		gap: var(--space-2);
-		min-width: 0;
-		padding: var(--space-3) 0;
-		border-radius: var(--radius-full);
-		background: var(--tint);
-		color: var(--ink);
-		font-size: var(--text-xs);
-		line-height: var(--text-xs-lh);
-		font-weight: var(--weight-label);
-		text-decoration: none;
-		transition:
-			background-color var(--dur-fast) var(--ease),
-			transform var(--dur-fast) var(--ease);
-	}
-
-	.q-well {
-		display: grid;
-		place-items: center;
-		width: var(--well-md);
-		height: var(--well-md);
-		border-radius: var(--radius-full);
-		background: var(--card);
-		box-shadow: var(--shadow-card);
 	}
 
 	.sep {
 		margin-inline: var(--space-1);
 	}
 
-	.q-label {
-		max-width: 100%;
-		overflow: hidden;
-		text-overflow: ellipsis;
-		white-space: nowrap;
-	}
-
-	@media (max-width: 47.99rem) {
-		.wide-only {
+	@media (min-width: 64rem) {
+		.storage {
 			display: none;
 		}
 	}
 
-	@media (min-width: 48rem) {
-		.q {
-			font-size: var(--text-sm);
-			line-height: var(--text-sm-lh);
-		}
-	}
-
-	@media (hover: hover) {
-		.q:hover {
-			background: var(--tint-strong);
-		}
-	}
-
-	.q:focus-visible {
-		outline: var(--ring-width) solid var(--accent);
-		outline-offset: var(--ring-offset);
-	}
-
-	.q:active {
-		transform: translateY(var(--press));
-	}
-
-	/* Recent: a tinted well of white row cards. */
-	.recent {
-		gap: var(--space-3);
-		padding: var(--well-pad);
-		border-radius: var(--radius-well);
-		background: var(--tint);
-	}
-
-	.recent-head {
-		display: flex;
-		align-items: center;
-		justify-content: space-between;
+	/* Overview cards: white, hairline, near-flat; an 8 px icon tile over the label and its count. */
+	.cards {
+		display: grid;
+		grid-template-columns: repeat(3, minmax(0, 1fr));
 		gap: var(--space-3);
 	}
 
-	.all {
-		display: inline-flex;
-		align-items: center;
-		gap: var(--space-1);
-		min-height: var(--tap);
-		padding-inline: var(--space-3);
-		border-radius: var(--radius-full);
+	@media (min-width: 64rem) {
+		.cards {
+			grid-template-columns: repeat(4, minmax(0, 1fr));
+		}
+	}
+
+	.card {
+		display: grid;
+		gap: var(--space-4);
+		padding: var(--card-pad);
+		border: 1px solid var(--hair);
+		border-radius: var(--radius-card);
+		background: var(--card);
+		box-shadow: var(--shadow-card);
 		color: var(--ink);
-		font-size: var(--text-sm);
-		font-weight: var(--weight-label);
 		text-decoration: none;
 		transition:
-			background-color var(--dur-fast) var(--ease),
+			border-color var(--dur) var(--ease),
+			box-shadow var(--dur) var(--ease),
 			transform var(--dur-fast) var(--ease);
 	}
 
 	@media (hover: hover) {
-		.all:hover {
-			background: var(--tint-strong);
+		.card:hover {
+			border-color: var(--hair-strong);
+			box-shadow: var(--shadow-hover);
 		}
 	}
 
-	.all:active {
+	.card:focus-visible {
+		outline: var(--ring-width) solid var(--accent);
+		outline-offset: var(--ring-offset);
+	}
+
+	.card:active {
 		transform: translateY(var(--press));
+	}
+
+	.tile {
+		display: grid;
+		place-items: center;
+		width: var(--well-sm);
+		height: var(--well-sm);
+		border-radius: var(--radius-control);
+		background: var(--tint);
+	}
+
+	.card-text {
+		display: grid;
+		min-width: 0;
+	}
+
+	.card-label {
+		font-weight: var(--weight-label);
+		letter-spacing: var(--track-label);
+	}
+
+	.card-line {
+		overflow: hidden;
+		text-overflow: ellipsis;
+		white-space: nowrap;
+		color: var(--ink-muted);
+		font-size: var(--text-sm);
+		line-height: var(--text-sm-lh);
+	}
+
+	.recent {
+		display: grid;
+		gap: var(--space-3);
+		min-width: 0;
+	}
+
+	.recent-head {
+		display: flex;
+		align-items: baseline;
+		justify-content: space-between;
+		gap: var(--space-3);
+	}
+
+	.recent-head h2 {
+		margin: 0;
+		color: var(--ink-muted);
+		font-size: var(--text-sm);
+		line-height: var(--text-sm-lh);
+		font-weight: var(--weight-label);
+		letter-spacing: 0;
+	}
+
+	.all {
+		border-radius: var(--radius-sm);
+		color: var(--ink-muted);
+		font-size: var(--text-sm);
+		text-decoration: none;
+		transition: color var(--dur-fast) var(--ease);
+	}
+
+	@media (hover: hover) {
+		.all:hover {
+			color: var(--ink);
+		}
+	}
+
+	.all:focus-visible {
+		outline: var(--ring-width) solid var(--accent);
+		outline-offset: var(--ring-offset);
+	}
+
+	/* MASTER.md › "Table": header band, rows on shared columns (subgrid, ≥ 768 px), a footer line. */
+	.table {
+		border: 1px solid var(--hair);
+		border-radius: var(--radius-card);
+		background: var(--card);
+		box-shadow: var(--shadow-card);
+	}
+
+	.thead {
+		display: none;
 	}
 
 	.rows {
 		display: grid;
-		gap: var(--space-2);
 		margin: 0;
 		padding: 0;
 		list-style: none;
 	}
 
-	.note {
-		padding-inline: var(--space-2);
+	.cell {
+		white-space: nowrap;
+	}
+
+	.num {
 		color: var(--ink-muted);
 		font-size: var(--text-sm);
 		line-height: var(--text-sm-lh);
+		font-variant-numeric: tabular-nums;
+	}
+
+	.tfoot {
+		max-width: none;
+		margin: 0;
+		padding: var(--space-3) var(--space-3);
+		border-top: 1px solid var(--hair);
+		color: var(--ink-muted);
+		font-size: var(--text-sm);
+		line-height: var(--text-sm-lh);
+	}
+
+	@media (min-width: 48rem) {
+		.table {
+			display: grid;
+			grid-template-columns: var(--well-sm) minmax(0, 1fr) auto auto auto;
+			column-gap: var(--space-4);
+		}
+
+		.thead,
+		.rows,
+		.tfoot {
+			grid-column: 1 / -1;
+		}
+
+		.thead,
+		.rows {
+			display: grid;
+			grid-template-columns: subgrid;
+		}
+
+		.thead {
+			align-items: center;
+			min-height: var(--table-head);
+			padding: 0 var(--space-2) 0 var(--space-3);
+			border-bottom: 1px solid var(--hair);
+			border-radius: calc(var(--radius-card) - 1px) calc(var(--radius-card) - 1px) 0 0;
+			background: var(--head);
+			color: var(--ink-muted);
+			font-size: var(--text-sm);
+			line-height: var(--text-sm-lh);
+			font-weight: var(--weight-label);
+		}
 	}
 </style>

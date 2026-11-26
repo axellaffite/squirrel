@@ -174,7 +174,7 @@
 		width: var(--well-sm);
 		height: var(--well-sm);
 		flex: none;
-		border-radius: var(--radius-full);
+		border-radius: var(--radius-control);
 		background: var(--card);
 		box-shadow: var(--shadow-card);
 		color: var(--ink);

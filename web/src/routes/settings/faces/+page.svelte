@@ -34,7 +34,7 @@
 
 <svelte:head><title>Faces · Squirrel</title></svelte:head>
 
-<Page title="Faces">
+<Page title="Faces" back={{ href: '/settings', label: 'Settings' }}>
 	{#snippet description()}Group your photos by the people in them.{/snippet}
 
 	{#if sw.error}<Alert>{sw.error}</Alert>{/if}

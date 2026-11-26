@@ -49,7 +49,9 @@ test('first user sets up the drive and invites a second user', async ({ page, br
 	await carol.goto('/setup');
 	await expect(carol).toHaveURL(/\/login$/);
 
-	await page.getByRole('button', { name: 'Log out' }).click();
+	// Log out lives in the account menu (the avatar at the top of the sidebar).
+	await page.getByRole('button', { name: 'Account and theme' }).locator('visible=true').click();
+	await page.getByRole('button', { name: 'Log out' }).locator('visible=true').click();
 	await expect(page).toHaveURL(/\/login$/);
 	await page.getByLabel('Username').fill('Alice');
 	await page.getByLabel('Password').fill(PASSWORD);

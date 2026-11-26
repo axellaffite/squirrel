@@ -69,7 +69,7 @@
 
 <svelte:head><title>Friends · Squirrel</title></svelte:head>
 
-<Page title="Friends">
+<Page title="Friends" back={{ href: '/settings', label: 'Settings' }}>
 	{#snippet description()}People you share with often. They show up first when you share, and are not told when you add
 		them.{/snippet}
 
@@ -172,11 +172,15 @@
 		letter-spacing: var(--track-heading);
 	}
 
+	/* One grouped card; ListRow draws the hairline between rows (MASTER.md › "Table"). */
 	.rows {
 		display: grid;
-		gap: var(--space-2);
 		margin: 0;
 		padding: 0;
 		list-style: none;
+		border: 1px solid var(--hair);
+		border-radius: var(--radius-card);
+		background: var(--card);
+		box-shadow: var(--shadow-card);
 	}
 </style>

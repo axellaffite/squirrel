@@ -29,6 +29,7 @@
 	.card {
 		display: block;
 		padding: var(--card-pad);
+		border: 1px solid var(--hair);
 		border-radius: var(--radius-card);
 		background: var(--card);
 		box-shadow: var(--shadow-card);
@@ -39,12 +40,14 @@
 		text-decoration: none;
 		cursor: pointer;
 		transition:
+			border-color var(--dur) var(--ease),
 			box-shadow var(--dur) var(--ease),
 			transform var(--dur-fast) var(--ease);
 	}
 
 	@media (hover: hover) {
 		.interactive:hover {
+			border-color: var(--hair-strong);
 			box-shadow: var(--shadow-hover);
 		}
 	}

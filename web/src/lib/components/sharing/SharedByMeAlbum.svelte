@@ -14,28 +14,20 @@
 	let { item, album, onManage }: Props = $props();
 </script>
 
-<!-- The album card (a link), then who it is shared with and the sharing dialog, outside the link. -->
+<!-- One card: the album (a link), then a footer with who it is shared with and Manage. -->
 <li class="shared" data-testid="shared-by-me-album">
-	<AlbumCard {album} />
-	<div class="foot">
-		<span class="people">{sharedWithSummary(item.people.map((share) => share.person))}</span>
-		<Button variant="quiet" size="sm" aria-label={`Manage sharing of ${album.name}`} onclick={onManage}>Manage</Button>
-	</div>
+	<AlbumCard {album}>
+		{#snippet footer()}
+			<span class="people">{sharedWithSummary(item.people.map((share) => share.person))}</span>
+			<Button variant="quiet" size="sm" aria-label={`Manage sharing of ${album.name}`} onclick={onManage}>Manage</Button>
+		{/snippet}
+	</AlbumCard>
 </li>
 
 <style>
 	.shared {
 		display: grid;
-		gap: var(--space-1);
 		min-width: 0;
-	}
-
-	.foot {
-		display: flex;
-		flex-wrap: wrap;
-		align-items: center;
-		gap: var(--space-1) var(--space-2);
-		padding-inline: var(--space-1);
 	}
 
 	.people {
