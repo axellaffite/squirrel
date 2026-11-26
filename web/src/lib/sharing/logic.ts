@@ -3,6 +3,9 @@ import { sortByName } from '#lib/photos/albums.ts';
 import type { Album } from '#lib/photos/api.ts';
 import type { Access, Comment, Member, Permission, Share, SharedItem } from '#lib/sharing/api.ts';
 
+/** People named before the rest are counted ("With Bob, Carol and 2 others"). */
+const NAMED_PEOPLE = 2;
+
 /** The server's comment limit, in characters once trimmed. */
 export const COMMENT_MAX = 4000;
 
@@ -78,12 +81,26 @@ export function moveRoot(access: Access, path: readonly Place[], folder: Place):
 	return { id: top.id, name: top.name };
 }
 
-/** "Shared with me", folders and files apart from albums. */
-export function splitShared(items: readonly SharedItem[]): { nodes: SharedItem[]; albums: SharedItem[] } {
+interface Subjected {
+	node?: unknown;
+	album?: unknown;
+}
+
+/** A Shared list ("with me" or "by me"), folders and files apart from albums. */
+export function splitShared<T extends Subjected>(items: readonly T[]): { nodes: T[]; albums: T[] } {
 	return {
 		nodes: items.filter((item) => item.node),
 		albums: items.filter((item) => item.album)
 	};
+}
+
+/** Who one of the caller's things is shared with: "With Bob", "With Bob, Carol and 2 others". */
+export function sharedWithSummary(people: readonly Member[]): string {
+	const names = people.map(memberName);
+	if (names.length === 0) return 'With nobody';
+	if (names.length === 1) return `With ${names[0]}`;
+	if (names.length <= NAMED_PEOPLE + 1) return `With ${names.slice(0, -1).join(', ')} and ${names.at(-1)}`;
+	return `With ${names.slice(0, NAMED_PEOPLE).join(', ')} and ${names.length - NAMED_PEOPLE} others`;
 }
 
 /** The albums photos can be added to: one's own and those shared for writing, by name. */

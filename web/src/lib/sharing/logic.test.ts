@@ -12,6 +12,7 @@ import {
 	permissionLabel,
 	removeById,
 	replaceById,
+	sharedWithSummary,
 	splitShared,
 	upsertShare,
 	writableAlbums
@@ -155,5 +156,24 @@ describe('writableAlbums', () => {
 			item({ permission: 'write', album: album('a', 'Alps') })
 		];
 		expect(writableAlbums(own, shared).map((a) => a.id)).toEqual(['a', 'b', 'c']);
+	});
+});
+
+describe('sharedWithSummary', () => {
+	const person = (name: string) => ({ username: name.toLowerCase(), display_name: name });
+
+	it('names one, two or three people', () => {
+		expect(sharedWithSummary([person('Bob')])).toBe('With Bob');
+		expect(sharedWithSummary([person('Bob'), person('Carol')])).toBe('With Bob and Carol');
+		expect(sharedWithSummary([person('Bob'), person('Carol'), person('Dan')])).toBe('With Bob, Carol and Dan');
+	});
+
+	it('counts the others past two names', () => {
+		const people = ['Bob', 'Carol', 'Dan', 'Eve'].map(person);
+		expect(sharedWithSummary(people)).toBe('With Bob, Carol and 2 others');
+	});
+
+	it('says nobody for an empty list', () => {
+		expect(sharedWithSummary([])).toBe('With nobody');
 	});
 });
