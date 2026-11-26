@@ -71,6 +71,8 @@ const DATA: &[&str] = &[
     "/api/folders",
     "/api/files",
     "/api/files/{id}/content",
+    "/api/files/archive",
+    "/api/files/archive/{ticket}",
     "/api/files/{id}/thumbnail",
     "/api/trash",
     "/api/trash/{id}",
@@ -190,6 +192,7 @@ fn concrete(path: &str) -> String {
     path.replace("/api/admin/jobs/{id}", "/api/admin/jobs/1")
         .replace("{index}", "0")
         .replace("{token}", "some-token")
+        .replace("{ticket}", "some-ticket")
         .replace("{id}", &id)
 }
 

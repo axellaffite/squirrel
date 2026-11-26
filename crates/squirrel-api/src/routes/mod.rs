@@ -1,5 +1,6 @@
 pub mod admin;
 pub mod albums;
+pub mod archive;
 pub mod auth;
 pub mod collab;
 pub mod comments;

@@ -37,6 +37,9 @@ pub enum ApiError {
     MethodNotAllowed,
     #[error("the request body is too large")]
     PayloadTooLarge,
+    /// The zip would reach the 4 GiB limit of the plain ZIP format.
+    #[error("too much to put in one zip: select fewer files")]
+    ArchiveTooLarge,
     #[error("the request body must be JSON (Content-Type: application/json)")]
     UnsupportedMediaType,
     #[error("too many requests, wait a moment and try again")]
@@ -95,6 +98,7 @@ impl ApiError {
             ApiError::NotReady => (StatusCode::NOT_FOUND, "not_ready"),
             ApiError::MethodNotAllowed => (StatusCode::METHOD_NOT_ALLOWED, "method_not_allowed"),
             ApiError::PayloadTooLarge => (StatusCode::PAYLOAD_TOO_LARGE, "payload_too_large"),
+            ApiError::ArchiveTooLarge => (StatusCode::PAYLOAD_TOO_LARGE, "archive_too_large"),
             ApiError::UnsupportedMediaType => {
                 (StatusCode::UNSUPPORTED_MEDIA_TYPE, "unsupported_media_type")
             }

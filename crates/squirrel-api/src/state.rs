@@ -6,6 +6,7 @@ use squirrel_storage::{BlobStore, PreviewCache, PreviewCacheConfig};
 use time::Duration;
 use tokio::sync::Semaphore;
 
+use crate::archives::ArchiveTickets;
 use crate::client_ip::TrustedProxies;
 use crate::downloads::DownloadLimits;
 use crate::previews::{PreviewLimits, Previews};
@@ -171,6 +172,8 @@ pub struct AppState {
     pub sync_rate: Option<Arc<UserRateLimiter>>,
     /// Streaming file bodies; a slot lives as long as its body.
     pub downloads: Slots,
+    /// Zip download tickets, in memory.
+    pub archives: Arc<ArchiveTickets>,
     pub free_space: FreeSpace,
     /// Photo search's text encoder; `None` when the text model is not installed.
     pub text_encoder: Option<Arc<crate::ml::TextEncoder>>,
@@ -206,6 +209,7 @@ impl AppState {
             hash_permits: Arc::new(Semaphore::new(config.hash_concurrency)),
             uploads: Arc::new(UploadRuntime::new(&config.upload_limits)),
             downloads: config.download_limits.slots(),
+            archives: Arc::default(),
             sync_rate: config
                 .sync_check_rate
                 .map(|rate| Arc::new(UserRateLimiter::new(rate))),

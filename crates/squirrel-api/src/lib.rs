@@ -3,6 +3,8 @@
 mod access;
 mod album_rules_dto;
 mod albums_dto;
+mod archive_dto;
+mod archives;
 mod blocking;
 mod client_ip;
 pub mod collab;
@@ -36,6 +38,7 @@ mod spa;
 mod state;
 mod sync_dto;
 mod upload_runtime;
+mod zip;
 
 pub use client_ip::{TrustedProxies, TrustedProxiesError};
 pub use downloads::DownloadLimits;
@@ -219,6 +222,7 @@ fn json_routes() -> OpenApiRouter<AppState> {
         ))
         .routes(routes!(routes::nodes::create_folder))
         .routes(routes!(routes::nodes::create_text_file))
+        .routes(routes!(routes::archive::create_archive))
         .routes(routes!(routes::thumbnails::thumbnail))
         .routes(routes!(
             routes::trash::list_trash,
@@ -383,6 +387,7 @@ fn transfer_routes(config: &ApiConfig) -> OpenApiRouter<AppState> {
         // A WebSocket lives as long as the editor is open: no request timeout.
         .routes(routes!(routes::collab::collab_socket))
         .routes(routes!(routes::content::file_content))
+        .routes(routes!(routes::archive::download_archive))
         .layer(DefaultBodyLimit::max(API_BODY_LIMIT));
     chunks.merge(long_running)
 }

@@ -1985,6 +1985,149 @@
         ]
       }
     },
+    "/api/files/archive": {
+      "post": {
+        "tags": [
+          "files"
+        ],
+        "operationId": "create_archive",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateArchiveRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "Download it with `GET /api/files/archive/{ticket}` within 10 minutes",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ArchiveTicket"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "No ids, more than 500, or a folder among them",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "An id the caller cannot download",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "archive_too_large: the zip would reach 4 GiB",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "device_bearer": []
+          },
+          {
+            "csrf_token": [],
+            "session_cookie": []
+          }
+        ]
+      }
+    },
+    "/api/files/archive/{ticket}": {
+      "get": {
+        "tags": [
+          "files"
+        ],
+        "operationId": "download_archive",
+        "parameters": [
+          {
+            "name": "ticket",
+            "in": "path",
+            "description": "`ticket` from `POST /api/files/archive`",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The zip, streamed; `Content-Length` is the ticket's `size`",
+            "content": {
+              "application/zip": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "type": "integer",
+                    "format": "int32",
+                    "minimum": 0
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Unknown or expired ticket, another user's, or a file deleted since",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Too many downloads in progress",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "device_bearer": []
+          },
+          {
+            "session_cookie": []
+          }
+        ]
+      }
+    },
     "/api/files/{id}/collab": {
       "post": {
         "tags": [
@@ -5895,6 +6038,36 @@
         },
         "additionalProperties": false
       },
+      "ArchiveTicket": {
+        "type": "object",
+        "description": "A zip ready to download with `GET /api/files/archive/{ticket}`.",
+        "required": [
+          "ticket",
+          "name",
+          "size",
+          "count"
+        ],
+        "properties": {
+          "count": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Files in the zip."
+          },
+          "name": {
+            "type": "string",
+            "description": "Suggested file name, e.g. `Squirrel 12 photos 2026-11-26.zip`."
+          },
+          "size": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Exact byte length of the zip (its `Content-Length`)."
+          },
+          "ticket": {
+            "type": "string",
+            "description": "Opaque; usable only by the caller, as many times as needed, for 10 minutes."
+          }
+        }
+      },
       "AssetDetails": {
         "type": "object",
         "description": "Everything the photo viewer shows about one photo.",
@@ -6275,6 +6448,22 @@
                 "description": "Makes a dynamic album: its photos are the caller's photos matching\nthese rules, now and later."
               }
             ]
+          }
+        }
+      },
+      "CreateArchiveRequest": {
+        "type": "object",
+        "required": [
+          "node_ids"
+        ],
+        "properties": {
+          "node_ids": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "description": "1–500 file ids, each one the caller may download (their own files, or\nfiles in something shared with them). Duplicates are collapsed; the\nzip keeps the order given."
           }
         }
       },
