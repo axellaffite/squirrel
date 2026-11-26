@@ -13,17 +13,22 @@ import kotlinx.datetime.LocalDate
 const val MAX_RULE_PEOPLE = 20
 const val MAX_RULE_TAGS = 20
 
+/** The server's limit on a dynamic album's search text, in characters. */
+const val MAX_RULE_SEARCH = 200
+
 private const val NO_RULE = "Choose at least one rule."
 private const val BAD_DATE = "Enter dates as YYYY-MM-DD."
 private const val DATES_REVERSED = "The first day is after the last one."
 
 /**
  * A dynamic album's rules while they are edited: groups combined with AND, each empty one
- * constraining nothing. [region] empty: places without a region. Dates are typed text
+ * constraining nothing. [search] is matched as photo search matches it (blank: no search).
+ * [region] empty: places without a region. Dates are typed text
  * (`YYYY-MM-DD`, both days included); [toRules] gives what the API takes, or null while a
  * [problem] stands.
  */
 data class RulesForm(
+    val search: String = "",
     val people: List<String> = emptyList(),
     val peopleMatch: MatchMode = MatchMode.any,
     val tags: List<String> = emptyList(),
@@ -56,6 +61,7 @@ data class RulesForm(
         val country = text(country)
         val make = text(cameraMake)
         return AlbumRulesDto(
+            search = text(search),
             people = people.ifEmpty { null },
             peopleMatch = peopleMatch.takeIf { people.isNotEmpty() },
             tags = tags.ifEmpty { null },
@@ -82,6 +88,7 @@ data class RulesForm(
                 !hasCondition -> NO_RULE
                 people.size > MAX_RULE_PEOPLE -> "At most $MAX_RULE_PEOPLE people."
                 tags.size > MAX_RULE_TAGS -> "At most $MAX_RULE_TAGS tags."
+                characters(search.trim()) > MAX_RULE_SEARCH -> "At most $MAX_RULE_SEARCH characters to search."
                 (takenFrom.isNotBlank() && first == null) || (takenTo.isNotBlank() && last == null) -> BAD_DATE
                 first != null && last != null && first > last -> DATES_REVERSED
                 else -> null
@@ -93,6 +100,7 @@ data class RulesForm(
     companion object {
         /** Saved rules, ready to edit. */
         fun from(rules: AlbumRulesDto): RulesForm = RulesForm(
+            search = rules.search.orEmpty(),
             people = rules.people.orEmpty(),
             peopleMatch = rules.peopleMatch.known(),
             tags = rules.tags.orEmpty(),
@@ -119,6 +127,9 @@ private fun toggled(list: List<String>, value: String, max: Int): List<String> =
 
 private fun text(value: String?): String? = value?.trim()?.takeIf { it.isNotEmpty() }
 
+/** Characters as the server counts them (code points: an emoji is one). */
+private fun characters(value: String): Int = value.length - value.count { it.isLowSurrogate() }
+
 /** A `YYYY-MM-DD` day, or null (blank or not a day). */
 private fun day(value: String): LocalDate? {
     val text = value.trim()
@@ -130,8 +141,9 @@ private fun day(value: String): LocalDate? {
     }
 }
 
-/** "Anna and Bob · Beach · Brest · Canon · Photos only · From 2024-01-01" ([personName] null: "Unnamed"). */
+/** "“shirtless” · Anna and Bob · Beach · Brest · Canon · Photos only · From 2024-01-01" ([personName] null: "Unnamed"). */
 fun rulesSummary(rules: AlbumRulesDto, personName: (String) -> String?): String = buildList {
+    rules.search?.takeIf { it.isNotBlank() }?.let { add("“$it”") }
     rules.people?.takeIf { it.isNotEmpty() }?.let { add(joined(it.map { id -> personLabel(personName(id)) }, rules.peopleMatch)) }
     rules.tags?.takeIf { it.isNotEmpty() }?.let { add(joined(it.map(::tagLabel), rules.tagsMatch)) }
     rules.country?.let { country -> add(rules.city ?: rules.region?.takeIf { it.isNotEmpty() } ?: country) }

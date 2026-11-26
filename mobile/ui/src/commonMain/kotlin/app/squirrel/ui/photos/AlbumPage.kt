@@ -37,7 +37,10 @@ import app.squirrel.ui.sharing.Outcome
 import app.squirrel.ui.sharing.ShareSheet
 import app.squirrel.ui.sharing.Subject
 import app.squirrel.ui.sharing.memberName
+import app.squirrel.theme.components.Sheet
+import app.squirrel.ui.shell.ActionsSheet
 import app.squirrel.ui.shell.NameSheet
+import app.squirrel.ui.shell.SheetAction
 import app.squirrel.ui.shell.PageHeader
 import app.squirrel.ui.shell.SystemBack
 import app.squirrel.ui.viewer.ViewerHost
@@ -45,7 +48,7 @@ import app.squirrel.ui.viewer.ViewerRequest
 import io.github.axellaffite.lsdo.compose.RegisterLsDo
 import kotlinx.coroutines.launch
 
-private enum class AlbumSheet { Share, Comments, Rename }
+private enum class AlbumSheet { Share, Comments, More, Rename, Delete }
 
 /**
  * One album, one's own or shared: its photos, the viewer over them, and the tools its access
@@ -88,6 +91,26 @@ fun AlbumPage(graph: AppGraph, id: String, name: String, rootLabel: String, onBa
             attempt { api.people.listPeople(includeHidden = true).bodyOrThrow() }?.let { list -> value = list.associate { it.id to it.name } }
         }
     }
+    val albums = viewModel(key = "albums") { AlbumsViewModel(api) }
+    var deleting by remember { mutableStateOf(false) }
+    // Deleted: the list forgets it and the page closes; failed: the page says why. Once at a time.
+    val removeAlbum: suspend () -> Pair<String, Boolean>? = remove@{
+        if (deleting) return@remove "The album is already being deleted." to true
+        deleting = true
+        val result = try {
+            deleteAlbum(api, id)
+        } finally {
+            deleting = false
+        }
+        sheet = null
+        when (result) {
+            is Outcome.Ok -> null.also {
+                albums.refresh()
+                onBack()
+            }
+            is Outcome.Failed -> result.message to true
+        }
+    }
     val run: (suspend () -> Pair<String, Boolean>?) -> Unit = { work ->
         busy = true
         scope.launch {
@@ -99,7 +122,7 @@ fun AlbumPage(graph: AppGraph, id: String, name: String, rootLabel: String, onBa
         AlbumLsDo(vm, api, id, name, scope, onOpen = { viewing = it }, onClose = { viewing = null }, downloads = downloads, onNotice = { text, error ->
             selected = emptySet()
             notice = text to error
-        }, onEditRules = { editingRules += 1 })
+        }, onEditRules = { editingRules += 1 }, onDelete = { removeAlbum()?.first })
     }
     LaunchedEffect(viewing, notice) { lsdo.overlay.shown(PhotosOverlay(viewing, notice?.first, notice?.second == true)) }
     RegisterLsDo("album", lsdo)
@@ -113,7 +136,7 @@ fun AlbumPage(graph: AppGraph, id: String, name: String, rootLabel: String, onBa
                         IconButton(SquirrelIcon.SlidersHorizontal, label = "Edit the rules of $title", onClick = { editingRules += 1 }, tinted = true)
                     }
                     IconButton(SquirrelIcon.Share, label = "Share $title", onClick = { sheet = AlbumSheet.Share }, tinted = true)
-                    IconButton(SquirrelIcon.Pencil, label = "Rename the album $title", onClick = { sheet = AlbumSheet.Rename }, tinted = true)
+                    IconButton(SquirrelIcon.More, label = "More for $title", onClick = { sheet = AlbumSheet.More }, tinted = true)
                 }
             })
             state.album?.let { album ->
@@ -127,7 +150,8 @@ fun AlbumPage(graph: AppGraph, id: String, name: String, rootLabel: String, onBa
                 can.edit -> "Select photos in the timeline, then choose Add to album."
                 else -> "Photos added to it show up here."
             }
-            AlbumPhotos(api, vm, selection, emptyLine = empty)
+            // A dynamic album reads as a timeline: its photos come by capture date, newest first.
+            AlbumPhotos(api, vm, selection, emptyLine = empty, dated = dynamic)
         }
         if (selected.isNotEmpty() && selectable) {
             SelectionBar(
@@ -167,6 +191,19 @@ fun AlbumPage(graph: AppGraph, id: String, name: String, rootLabel: String, onBa
     when (sheet) {
         AlbumSheet.Share -> ShareSheet(api, Subject.Album(id), title, onClose = { sheet = null }, readOnly = dynamic)
         AlbumSheet.Comments -> CommentsSheet(api, Subject.Album(id), "“$title”", onClose = { sheet = null })
+        AlbumSheet.More -> ActionsSheet(
+            title,
+            listOf(
+                SheetAction("Rename", SquirrelIcon.Pencil, "Rename the album $title") { sheet = AlbumSheet.Rename },
+                SheetAction("Delete album", SquirrelIcon.Trash, "Delete the album $title", danger = true) { sheet = AlbumSheet.Delete },
+            ),
+            onClose = { if (sheet == AlbumSheet.More) sheet = null },
+        )
+        AlbumSheet.Delete -> Sheet("Delete “$title”?", onDismiss = { sheet = null }) {
+            BasicText("The album goes for everyone it is shared with. Its photos stay in the timeline.", style = SquirrelTheme.type.body)
+            Button("Delete album", enabled = !busy, onClick = { run { removeAlbum() } }, variant = ButtonVariant.DangerSolid, full = true)
+            Button("Cancel", onClick = { sheet = null }, variant = ButtonVariant.Quiet, full = true)
+        }
         AlbumSheet.Rename -> NameSheet("Rename album", "Save", initial = title, validate = ::albumNameProblem, onSubmit = { next ->
             when (val result = renameAlbum(api, id, next)) {
                 is Outcome.Ok -> null.also { vm.details() }

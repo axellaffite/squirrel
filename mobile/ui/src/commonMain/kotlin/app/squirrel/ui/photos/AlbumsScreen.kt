@@ -15,6 +15,7 @@ import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.text.BasicText
+import androidx.compose.foundation.lazy.LazyListScope
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
@@ -97,9 +98,9 @@ fun NewAlbumSheet(onManual: () -> Unit, onDynamic: () -> Unit, onClose: () -> Un
     }
 }
 
-/** One album's photos in justified rows. */
+/** One album's photos in justified rows, or as a timeline (month headings) when [dated]. */
 @Composable
-fun AlbumPhotos(api: SquirrelApi, vm: AlbumViewModel, actions: TileActions, emptyLine: String) {
+fun AlbumPhotos(api: SquirrelApi, vm: AlbumViewModel, actions: TileActions, emptyLine: String, dated: Boolean = false) {
     val state by vm.state.collectAsStateWithLifecycle()
     OnForeground(vm::resumed)
     if (!state.started && state.loading) return Loading()
@@ -109,9 +110,9 @@ fun AlbumPhotos(api: SquirrelApi, vm: AlbumViewModel, actions: TileActions, empt
             if (state.complete) EmptyState(SquirrelIcon.Images, "This album is empty", emptyLine)
         }
     }
+    val footer: LazyListScope.() -> Unit = { state.error?.let { error -> item(key = "error") { ErrorRetry(error, vm::retry) } } }
     PullToRefresh(state.refreshing, vm::refresh) {
-        JustifiedPhotos(api, state.items, actions, onNearEnd = vm::more, footer = {
-            state.error?.let { error -> item(key = "error") { ErrorRetry(error, vm::retry) } }
-        })
+        if (dated) DatedPhotos(api, state.items, actions, onNearEnd = vm::more, footer = footer)
+        else JustifiedPhotos(api, state.items, actions, onNearEnd = vm::more, footer = footer)
     }
 }

@@ -61,8 +61,8 @@ private val KINDS = listOf(null to "Any", PhotoKindFilter.photo to "Photos only"
 private const val PREVIEW_TILES = 6
 
 /**
- * The rule editor of a dynamic album: its name (when new), the rule groups (people, tags, place,
- * camera, kind, dates), and a live count of the photos they match. [onSaved] gets the album.
+ * The rule editor of a dynamic album: its name (when new), the rule groups (search text, people,
+ * tags, place, camera, kind, dates), and a live count of the photos they match. [onSaved] gets the album.
  */
 @Composable
 fun AlbumRulesPage(api: SquirrelApi, vm: AlbumRulesViewModel, title: String, onSaved: (AlbumDto) -> Unit, onBack: () -> Unit) {
@@ -83,6 +83,9 @@ fun AlbumRulesPage(api: SquirrelApi, vm: AlbumRulesViewModel, title: String, onS
             BasicText("Photos that match every rule below show up in the album by themselves, now and later.", style = SquirrelTheme.type.caption)
             PreviewCard(api, state)
             if (state.choicesFailed) Alert(UNREACHABLE, tone = AlertTone.Error)
+            SectionTitle("What they show")
+            TextField(form.search, { v -> vm.edit { it.copy(search = v) } }, label = "Search")
+            BasicText("Any words, in any language: “shirtless”, “dog on the beach”. Photos match as search finds them.", style = SquirrelTheme.type.caption)
             RowGroup {
                 val names = state.people.associate { it.id to it.name }
                 ListRow("People", icon = SquirrelIcon.User, meta = groupMeta(form.people.map { personLabel(names[it]) }, form.peopleMatch, "Anyone"), onClick = { sheet = RuleSheet.People })

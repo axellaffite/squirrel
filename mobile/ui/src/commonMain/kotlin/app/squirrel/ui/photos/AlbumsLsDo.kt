@@ -106,7 +106,7 @@ data class AlbumView(
     val id: String,
     @Doc("The album's name (as opened, until its details arrive)") val name: String,
     @Doc("Photos in it; null until its details arrive") val count: Long? = null,
-    @Doc("What you may do: owner (rename, set the cover, remove), write (remove your own photos) or read; null until its details arrive") val access: AccessLevel? = null,
+    @Doc("What you may do: owner (rename, set the cover, remove, delete), write (remove your own photos) or read; null until its details arrive") val access: AccessLevel? = null,
     @Doc("Who shared it with you; null: your own") val sharedBy: String? = null,
     @Doc("Its photos come from rules (no remove; the owner edits them with edit_rules)") val dynamic: Boolean = false,
     @Doc("Its photos loaded so far, page by page (more)") val photos: List<PhotoRow> = emptyList(),
@@ -138,7 +138,10 @@ sealed interface AlbumIntent {
     @Serializable @SerialName("close_photo") @Doc("Close the viewer. Only while a photo is open (viewing set)")
     data object ClosePhoto : AlbumIntent
 
-    @Serializable @SerialName("rename") @Doc("Rename the album, as the pencil does. Owner only")
+    @Serializable @SerialName("delete") @Doc("Delete the album, as More › Delete album then its confirmation does: it goes for everyone it is shared with, its photos stay. The page closes. Owner only")
+    data object Delete : AlbumIntent
+
+    @Serializable @SerialName("rename") @Doc("Rename the album, as More › Rename does. Owner only")
     data class Rename(val name: String) : AlbumIntent
 
     @Serializable @SerialName("set_cover") @Doc("Make a loaded photo the album's cover, as Set as cover does. Owner only")
@@ -174,6 +177,8 @@ class AlbumLsDo(
     private val onOpen: (String) -> Unit,
     private val onClose: () -> Unit,
     private val onEditRules: () -> Unit = {},
+    /** Deletes the album as the page's confirmation does: null once deleted (the page closes), else why not. */
+    private val onDelete: suspend () -> String? = { "Deleting is not available here." },
     private val downloads: PhotoDownloads? = null,
     private val onNotice: (String, Boolean) -> Unit,
 ) : LsDoScreen<AlbumView, AlbumIntent> {
@@ -214,6 +219,8 @@ class AlbumLsDo(
         is AlbumIntent.SetCover -> missingPhotos(listOf(intent.id), shown, "this album") ?: setCover(intent.id)
         is AlbumIntent.Remove ->
             if (state.value.dynamic) "A dynamic album's photos come from its rules: none can be removed." else missingPhotos(intent.ids, shown, "this album") ?: remove(intent.ids)
+        AlbumIntent.Delete ->
+            if (state.value.access != AccessLevel.owner) "Only the owner deletes an album." else onDelete()
         AlbumIntent.EditRules -> if (state.value.dynamic && state.value.access == AccessLevel.owner) done(onEditRules) else "Only the owner of a dynamic album edits its rules."
         is AlbumIntent.Download -> downloadShown(downloads, intent.ids, shown, "this album")
         AlbumIntent.ConfirmDownload -> confirmDownload(downloads)
@@ -252,7 +259,7 @@ class AlbumLsDo(
         if (state.error != null) add("retry")
         if (state.viewing == null) add("open") else add("close_photo")
         val can = Abilities.of(state.access ?: AccessLevel.read)
-        if (can.owner) addAll(listOf("rename", "set_cover"))
+        if (can.owner) addAll(listOf("rename", "set_cover", "delete"))
         if (can.edit && !state.dynamic) add("remove")
         if (can.owner && state.dynamic) add("edit_rules")
         addDownloadIntents(state.download, state.viewing)

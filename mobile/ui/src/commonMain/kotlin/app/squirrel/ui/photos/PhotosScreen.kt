@@ -86,15 +86,7 @@ private fun TimelineBlocks(api: SquirrelApi, vm: PhotosViewModel, state: PhotosS
                 when (block) {
                     is TimelineBlock.Header -> {
                         LaunchedEffect(block.month) { vm.ensure(block.month) }
-                        BasicText(
-                            block.label,
-                            style = SquirrelTheme.type.cardTitle,
-                            modifier = Modifier
-                                .height(Tokens.photoMonthHead)
-                                .wrapContentHeight(Alignment.Bottom)
-                                .padding(bottom = Tokens.space2)
-                                .semantics { heading() },
-                        )
+                        MonthHeading(block.label)
                     }
                     is TimelineBlock.Row -> PhotoRow(api, block.height, block.tiles, actions)
                     is TimelineBlock.Placeholder -> {
@@ -105,6 +97,20 @@ private fun TimelineBlocks(api: SquirrelApi, vm: PhotosViewModel, state: PhotosS
             }
         }
     }
+}
+
+/** A month's heading in a timeline ("July 2024"). */
+@Composable
+fun MonthHeading(label: String) {
+    BasicText(
+        label,
+        style = SquirrelTheme.type.cardTitle,
+        modifier = Modifier
+            .height(Tokens.photoMonthHead)
+            .wrapContentHeight(Alignment.Bottom)
+            .padding(bottom = Tokens.space2)
+            .semantics { heading() },
+    )
 }
 
 @Composable

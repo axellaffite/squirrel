@@ -27,6 +27,14 @@
             }
         },
         {
+            "name": "delete",
+            "description": "Delete the album, as More › Delete album then its confirmation does: it goes for everyone it is shared with, its photos stay. The page closes. Owner only",
+            "params": {
+                "type": "object",
+                "properties": {}
+            }
+        },
+        {
             "name": "download",
             "description": "Save loaded photos to this phone, as selecting them and choosing Download does: one photo goes to the photo library, several to one zip (Downloads on Android, the share sheet on iOS). Above 200 MB it asks first (download.question). ls again until download.progress is null",
             "params": {
@@ -105,7 +113,7 @@
         },
         {
             "name": "rename",
-            "description": "Rename the album, as the pencil does. Owner only",
+            "description": "Rename the album, as More › Rename does. Owner only",
             "params": {
                 "type": "object",
                 "properties": {
@@ -167,7 +175,7 @@
                     "unknown_default_open_api"
                 ],
                 "nullable": true,
-                "description": "What you may do: owner (rename, set the cover, remove), write (remove your own photos) or read; null until its details arrive"
+                "description": "What you may do: owner (rename, set the cover, remove, delete), write (remove your own photos) or read; null until its details arrive"
             },
             "sharedBy": {
                 "type": "string",

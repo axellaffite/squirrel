@@ -25,6 +25,7 @@ data class RuleChoice(
 data class AlbumRulesView(
     @Doc("A new dynamic album (its name is set here); else an album's rules being edited") val creating: Boolean,
     val name: String = "",
+    @Doc("What the photos must show, matched as photo search does; empty: no search") val search: String = "",
     @Doc("Person ids chosen") val people: List<String> = emptyList(),
     @Doc("Whether photos need any or all of the people") val peopleMatch: MatchMode = MatchMode.any,
     val tags: List<String> = emptyList(),
@@ -54,6 +55,9 @@ data class AlbumRulesView(
 sealed interface AlbumRulesIntent {
     @Serializable @SerialName("set_name") @Doc("Type the new album's name. Creating only")
     data class SetName(val name: String) : AlbumRulesIntent
+
+    @Serializable @SerialName("set_search") @Doc("Type what the photos must show (any words, any language; at most 200 characters); empty: no search")
+    data class SetSearch(val text: String) : AlbumRulesIntent
 
     @Serializable @SerialName("toggle_person") @Doc("Add or remove a person (an id of personChoices); at most 20")
     data class TogglePerson(val id: String) : AlbumRulesIntent
@@ -94,6 +98,7 @@ internal fun rulesView(s: AlbumRulesState): AlbumRulesView {
     return AlbumRulesView(
         creating = s.creating,
         name = s.name,
+        search = f.search,
         people = f.people,
         peopleMatch = f.peopleMatch,
         tags = f.tags,
@@ -132,6 +137,7 @@ class AlbumRulesLsDo(
 
     override suspend fun perform(intent: AlbumRulesIntent): String? = when (intent) {
         is AlbumRulesIntent.SetName -> if (vm.state.value.creating) done { vm.setName(intent.name) } else "Rename the album from its page."
+        is AlbumRulesIntent.SetSearch -> done { vm.edit { it.copy(search = intent.text) } }
         is AlbumRulesIntent.TogglePerson -> toggle(intent.id, vm.state.value.form.people, MAX_RULE_PEOPLE, "people") { it.togglePerson(intent.id) }
         is AlbumRulesIntent.ToggleTag -> toggle(intent.tag, vm.state.value.form.tags, MAX_RULE_TAGS, "tags") { it.toggleTag(intent.tag) }
         is AlbumRulesIntent.Match -> when (intent.group) {
@@ -153,7 +159,7 @@ class AlbumRulesLsDo(
         if (value !in chosen && chosen.size >= max) "At most $max $what." else done { vm.edit(change) }
 
     override fun availableIntents(state: AlbumRulesView): Set<String> = buildSet {
-        addAll(listOf("toggle_person", "toggle_tag", "match", "set_place", "set_camera", "set_kind", "set_dates", "cancel"))
+        addAll(listOf("set_search", "toggle_person", "toggle_tag", "match", "set_place", "set_camera", "set_kind", "set_dates", "cancel"))
         if (state.creating) add("set_name")
         if (state.country != null) add("clear_place")
         if (state.cameraMake != null) add("clear_camera")

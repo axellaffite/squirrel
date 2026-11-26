@@ -8,6 +8,7 @@ import app.squirrel.api.models.SharedItemDto
 import app.squirrel.api.models.UpdateAlbumRequest
 import app.squirrel.shared.api.SquirrelApi
 import app.squirrel.shared.api.bodyOrThrow
+import app.squirrel.shared.api.okOrThrow
 import app.squirrel.ui.attempt
 import app.squirrel.ui.explore.photoCount
 import app.squirrel.ui.sharing.Outcome
@@ -107,6 +108,10 @@ suspend fun removeFromAlbum(api: SquirrelApi, albumId: String, ids: List<String>
 
 suspend fun renameAlbum(api: SquirrelApi, id: String, name: String): Outcome<AlbumDto> =
     call { api.albums.updateAlbum(id, UpdateAlbumRequest(name = name)).bodyOrThrow() }
+
+/** Deletes the album; its photos stay in their owners' timelines. Owner only. */
+suspend fun deleteAlbum(api: SquirrelApi, id: String): Outcome<Unit> =
+    call { api.albums.deleteAlbum(id).okOrThrow() }
 
 suspend fun setAlbumCover(api: SquirrelApi, id: String, photoId: String): Outcome<AlbumDto> =
     call { api.albums.updateAlbum(id, UpdateAlbumRequest(coverNodeId = photoId)).bodyOrThrow() }

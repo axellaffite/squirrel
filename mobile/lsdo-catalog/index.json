@@ -177,6 +177,7 @@
                 "cancel_download",
                 "close_photo",
                 "confirm_download",
+                "delete",
                 "download",
                 "edit_rules",
                 "more",
@@ -202,6 +203,7 @@
                 "set_kind",
                 "set_name",
                 "set_place",
+                "set_search",
                 "toggle_person",
                 "toggle_tag"
             ]

@@ -149,6 +149,21 @@
             }
         },
         {
+            "name": "set_search",
+            "description": "Type what the photos must show (any words, any language; at most 200 characters); empty: no search",
+            "params": {
+                "type": "object",
+                "properties": {
+                    "text": {
+                        "type": "string"
+                    }
+                },
+                "required": [
+                    "text"
+                ]
+            }
+        },
+        {
             "name": "toggle_person",
             "description": "Add or remove a person (an id of personChoices); at most 20",
             "params": {
@@ -188,6 +203,10 @@
             },
             "name": {
                 "type": "string"
+            },
+            "search": {
+                "type": "string",
+                "description": "What the photos must show, matched as photo search does; empty: no search"
             },
             "people": {
                 "type": "array",

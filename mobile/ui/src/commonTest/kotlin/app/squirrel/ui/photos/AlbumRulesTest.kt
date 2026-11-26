@@ -20,6 +20,19 @@ class AlbumRulesTest {
     }
 
     @Test
+    fun aSearchTextIsSentTrimmedAndBounded() {
+        assertEquals(false, RulesForm(search = "   ").hasCondition)
+        assertEquals(AlbumRulesDto(search = "shirtless"), RulesForm(search = "  shirtless ").toRules())
+        assertNull(RulesForm(search = "é".repeat(200)).problem)
+        assertEquals("At most 200 characters to search.", RulesForm(search = "é".repeat(201)).problem)
+        val emoji = "\uD83D\uDC36".repeat(200)
+        assertNull(RulesForm(search = emoji).problem, "an emoji is one character, as the server counts")
+        val saved = AlbumRulesDto(search = "shirtless", tags = listOf("beach"))
+        assertEquals("shirtless", RulesForm.from(saved).search)
+        assertEquals("“shirtless” · Beach", rulesSummary(saved) { null })
+    }
+
+    @Test
     fun peopleAndTagsToggleAndKeepTheirMatchMode() {
         val form = RulesForm().togglePerson("anna").togglePerson("bob").togglePerson("anna").toggleTag("beach").copy(tagsMatch = MatchMode.all)
         assertEquals(listOf("bob"), form.people)
