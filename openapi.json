@@ -236,6 +236,16 @@
                 }
               }
             }
+          },
+          "503": {
+            "description": "Rules with a search text: `ml_unavailable` (no text model on this server) or `busy` (the text model or the label bank is not ready yet: try again)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
           }
         },
         "security": [
@@ -287,7 +297,7 @@
             }
           },
           "503": {
-            "description": "The library is too large to count in time",
+            "description": "`busy`: the library is too large to count in time, or the text model or label bank is not ready yet; `ml_unavailable`: a search text without a text model",
             "content": {
               "application/json": {
                 "schema": {
@@ -469,6 +479,16 @@
           },
           "422": {
             "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Rules with a search text: `ml_unavailable` (no text model on this server) or `busy` (the text model or the label bank is not ready yet: try again)",
             "content": {
               "application/json": {
                 "schema": {
@@ -6007,6 +6027,13 @@
               "null"
             ],
             "description": "A region of `country`; needs `country`. Empty: places without a region."
+          },
+          "search": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "What the photos must show, in any language (1–200 characters), matched\nas photo search matches it (`GET /api/search/photos`), e.g. `shirtless`.\nNeeds the text model (503 `ml_unavailable` without it)."
           },
           "tags": {
             "type": "array",

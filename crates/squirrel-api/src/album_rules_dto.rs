@@ -9,6 +9,7 @@ use uuid::Uuid;
 
 use crate::error::ApiError;
 use crate::filter_dto::{PhotoFilterQuery, PhotoKindFilter};
+use crate::ml::MAX_QUERY_CHARS;
 
 time::serde::format_description!(day, Date, "[year]-[month]-[day]");
 
@@ -84,6 +85,11 @@ pub struct AlbumRulesDto {
     #[serde(default, with = "day::option")]
     #[schema(value_type = Option<String>, format = Date)]
     pub taken_to: Option<Date>,
+    /// What the photos must show, in any language (1–200 characters), matched
+    /// as photo search matches it (`GET /api/search/photos`), e.g. `shirtless`.
+    /// Needs the text model (503 `ml_unavailable` without it).
+    #[serde(default)]
+    pub search: Option<String>,
 }
 
 impl AlbumRulesDto {
@@ -117,6 +123,20 @@ impl AlbumRulesDto {
                 "taken_from must not be after taken_to".into(),
             ));
         }
+        let search = self
+            .search
+            .as_deref()
+            .map(str::trim)
+            .filter(|text| !text.is_empty())
+            .map(str::to_owned);
+        if search
+            .as_ref()
+            .is_some_and(|text| text.chars().count() > MAX_QUERY_CHARS)
+        {
+            return Err(ApiError::Validation(format!(
+                "search must be at most {MAX_QUERY_CHARS} characters"
+            )));
+        }
         let rules = AlbumRules {
             people: self.people.clone(),
             people_match: self.people_match.into(),
@@ -130,6 +150,8 @@ impl AlbumRulesDto {
             kind: filter.kind,
             taken_from: self.taken_from,
             taken_to: self.taken_to,
+            search,
+            search_match: None,
         };
         if rules.is_empty() {
             return Err(ApiError::Validation(
@@ -158,6 +180,7 @@ impl From<&AlbumRules> for AlbumRulesDto {
             }),
             taken_from: rules.taken_from,
             taken_to: rules.taken_to,
+            search: rules.search.clone(),
         }
     }
 }
@@ -199,6 +222,22 @@ mod tests {
         assert!(parse(&format!(r#"{{"tags": [{}]}}"#, many.join(","))).is_err());
         let region = parse(r#"{"country": "CH", "region": ""}"#).unwrap();
         assert_eq!(region.region.as_deref(), Some(""));
+    }
+
+    #[test]
+    fn search_is_trimmed_and_bounded() {
+        let rules = parse(r#"{"search": "  shirtless  "}"#).unwrap();
+        assert_eq!(rules.search.as_deref(), Some("shirtless"));
+        assert!(rules.search_match.is_none(), "the route computes it");
+        assert!(
+            parse(r#"{"search": "   "}"#).is_err(),
+            "blank is no condition"
+        );
+        let blank_with_tag = parse(r#"{"search": "", "tags": ["sea"]}"#).unwrap();
+        assert_eq!(blank_with_tag.search, None);
+        let long = "é".repeat(201);
+        assert!(parse(&format!(r#"{{"search": "{long}"}}"#)).is_err());
+        assert!(parse(&format!(r#"{{"search": "{}"}}"#, "é".repeat(200))).is_ok());
     }
 
     #[test]

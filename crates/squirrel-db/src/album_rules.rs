@@ -6,7 +6,13 @@
 //! [`RULE_MATCHES`] is the single SQL definition of "matches": it reads the
 //! rule from a row aliased `r` (an `album_rules` row, or the bound values of a
 //! preview) and the photo from `a` and `m` ([`crate::timeline::FROM`]).
+//!
+//! A rule's search text matches as photo search does ([`crate::photo_search`])
+//! without its relative cutoff (it depends on the whole library, not on one
+//! photo): close enough to the text, and closer to it than to every rival
+//! label. The API computes all that when the rule is saved ([`SearchMatch`]).
 
+use pgvector::HalfVector;
 use sqlx::{FromRow, PgConnection, PgPool, Postgres, QueryBuilder};
 use time::Date;
 use uuid::Uuid;
@@ -37,7 +43,14 @@ pub(crate) const RULE_MATCHES: &str = "a.owner_id = r.owner_id \
      AND (r.camera_model IS NULL OR m.camera_model = r.camera_model) \
      AND (r.kind IS NULL OR a.kind = r.kind) \
      AND (r.taken_from IS NULL OR a.taken_at >= r.taken_from) \
-     AND (r.taken_to IS NULL OR a.taken_at < r.taken_to + 1)";
+     AND (r.taken_to IS NULL OR a.taken_at < r.taken_to + 1) \
+     AND (r.search_embedding IS NULL OR EXISTS ( \
+          SELECT 1 FROM clip_embeddings e \
+           WHERE e.sha256 = a.sha256 AND e.model = r.search_model \
+             AND (e.embedding <=> r.search_embedding) <= r.search_max_distance \
+             AND NOT EXISTS (SELECT 1 FROM unnest(r.search_rivals) AS rival \
+                              WHERE (e.embedding <=> rival) - (e.embedding <=> r.search_embedding) \
+                                    < r.search_rival_margin)))";
 
 /// How a group of people or tags matches.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
@@ -65,7 +78,7 @@ impl Match {
 /// A dynamic album's rule. Empty groups and `None` fields do not constrain.
 /// Checked by the API: at least one condition, place parts need their
 /// parents, a camera model its make, `taken_from <= taken_to`.
-#[derive(Debug, Clone, Default, PartialEq, Eq)]
+#[derive(Debug, Clone, Default, PartialEq)]
 pub struct AlbumRules {
     /// The owner's people, without duplicates.
     pub people: Vec<Uuid>,
@@ -84,6 +97,11 @@ pub struct AlbumRules {
     /// Capture dates, both inclusive.
     pub taken_from: Option<Date>,
     pub taken_to: Option<Date>,
+    /// What the photos must show, as in photo search (1–200 characters).
+    pub search: Option<String>,
+    /// How `search` matches: required to save or preview a rule with a
+    /// search text, never read back (`None` from [`find_many`]).
+    pub search_match: Option<SearchMatch>,
 }
 
 impl AlbumRules {
@@ -92,8 +110,39 @@ impl AlbumRules {
         Self {
             people_match: Match::Any,
             tags_match: Match::Any,
+            search_match: None,
             ..self.clone()
         } == Self::default()
+    }
+}
+
+/// A rule's search text as photo search would match it, computed by the API
+/// (the text model and search's calibration) when the rule is saved.
+#[derive(Debug, Clone, PartialEq)]
+pub struct SearchMatch {
+    /// The model whose image embeddings are compared.
+    pub model: String,
+    /// The text's unit embedding.
+    pub embedding: Vec<f32>,
+    /// Unit label embeddings the text must beat on a photo.
+    pub rivals: Vec<Vec<f32>>,
+    /// Photos farther than this (cosine distance) do not match.
+    pub max_distance: f64,
+    /// A photo matches only if every rival is farther from it than the text
+    /// by at least this (cosine distance).
+    pub rival_margin: f64,
+}
+
+impl SearchMatch {
+    fn embedding(&self) -> HalfVector {
+        HalfVector::from_f32_slice(&self.embedding)
+    }
+
+    fn rivals(&self) -> Vec<HalfVector> {
+        self.rivals
+            .iter()
+            .map(|rival| HalfVector::from_f32_slice(rival))
+            .collect()
     }
 }
 
@@ -112,6 +161,7 @@ struct RulesRow {
     kind: Option<String>,
     taken_from: Option<Date>,
     taken_to: Option<Date>,
+    search: Option<String>,
 }
 
 impl From<RulesRow> for AlbumRules {
@@ -132,12 +182,14 @@ impl From<RulesRow> for AlbumRules {
             }),
             taken_from: row.taken_from,
             taken_to: row.taken_to,
+            search: row.search,
+            search_match: None,
         }
     }
 }
 
 const RULE_COLUMNS: &str = "album_id, people, people_match, tags, tags_match, country, region, \
-     city, camera_make, camera_model, kind, taken_from, taken_to";
+     city, camera_make, camera_model, kind, taken_from, taken_to, search";
 
 /// The rules of those of `album_ids` that are dynamic, by album.
 pub async fn find_many(
@@ -188,24 +240,32 @@ fn dedup<T: PartialEq + Clone>(values: &[T]) -> Vec<T> {
 }
 
 /// Inserts or replaces the rule of `album_id` (an album of `owner_id`).
+/// A search text without its [`SearchMatch`] breaks a check of the table.
 pub(crate) async fn save(
     conn: &mut PgConnection,
     album_id: Uuid,
     owner_id: Uuid,
     rules: &AlbumRules,
 ) -> Result<(), DbError> {
+    let search = rules.search_match.as_ref();
     sqlx::query(
         "INSERT INTO album_rules (album_id, owner_id, people, people_match, tags, tags_match, \
                                   country, region, city, camera_make, camera_model, kind, \
-                                  taken_from, taken_to) \
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14) \
+                                  taken_from, taken_to, search, search_model, search_embedding, \
+                                  search_rivals, search_max_distance, search_rival_margin) \
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, \
+                 $15, $16, $17, COALESCE($18, '{}'), $19, $20) \
          ON CONFLICT (album_id) DO UPDATE SET \
              people = EXCLUDED.people, people_match = EXCLUDED.people_match, \
              tags = EXCLUDED.tags, tags_match = EXCLUDED.tags_match, \
              country = EXCLUDED.country, region = EXCLUDED.region, city = EXCLUDED.city, \
              camera_make = EXCLUDED.camera_make, camera_model = EXCLUDED.camera_model, \
              kind = EXCLUDED.kind, taken_from = EXCLUDED.taken_from, \
-             taken_to = EXCLUDED.taken_to",
+             taken_to = EXCLUDED.taken_to, search = EXCLUDED.search, \
+             search_model = EXCLUDED.search_model, search_embedding = EXCLUDED.search_embedding, \
+             search_rivals = EXCLUDED.search_rivals, \
+             search_max_distance = EXCLUDED.search_max_distance, \
+             search_rival_margin = EXCLUDED.search_rival_margin",
     )
     .bind(album_id)
     .bind(owner_id)
@@ -221,6 +281,12 @@ pub(crate) async fn save(
     .bind(rules.kind.map(AssetKind::as_str))
     .bind(rules.taken_from)
     .bind(rules.taken_to)
+    .bind(&rules.search)
+    .bind(search.map(|s| s.model.clone()))
+    .bind(search.map(SearchMatch::embedding))
+    .bind(search.map(SearchMatch::rivals))
+    .bind(search.map(|s| s.max_distance))
+    .bind(search.map(|s| s.rival_margin))
     .execute(conn)
     .await?;
     Ok(())
@@ -280,7 +346,19 @@ fn push_rule_row(query: &mut QueryBuilder<'_, Postgres>, owner_id: Uuid, rules: 
         .push_bind(rules.taken_from)
         .push("::date AS taken_from, ")
         .push_bind(rules.taken_to)
-        .push("::date AS taken_to) ");
+        .push("::date AS taken_to, ");
+    let search = rules.search_match.as_ref();
+    query
+        .push_bind(search.map(|s| s.model.clone()))
+        .push("::text AS search_model, ")
+        .push_bind(search.map(SearchMatch::embedding))
+        .push("::halfvec AS search_embedding, ")
+        .push_bind(search.map(SearchMatch::rivals).unwrap_or_default())
+        .push("::halfvec[] AS search_rivals, ")
+        .push_bind(search.map(|s| s.max_distance))
+        .push("::float8 AS search_max_distance, ")
+        .push_bind(search.map(|s| s.rival_margin))
+        .push("::float8 AS search_rival_margin) ");
 }
 
 /// What `rules` would match among `owner_id`'s photos (before saving them).
@@ -336,6 +414,11 @@ mod tests {
             ..AlbumRules::default()
         };
         assert!(!tagged.is_empty());
+        let searched = AlbumRules {
+            search: Some("shirtless".into()),
+            ..AlbumRules::default()
+        };
+        assert!(!searched.is_empty());
     }
 
     #[test]

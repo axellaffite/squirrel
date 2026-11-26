@@ -7,6 +7,7 @@ use axum::Json;
 use axum::extract::{RawQuery, State};
 use axum::http::StatusCode;
 use serde::{Deserialize, Serialize};
+use squirrel_db::album_rules::SearchMatch;
 use squirrel_db::photo_search::{self, PhotoQuery};
 use squirrel_db::timeline::TimelineCursor;
 use squirrel_ml::clip::{self, labels};
@@ -154,25 +155,15 @@ pub async fn search_photos(
     let order = SearchOrder::parse(query.order.as_deref())?;
     let (start, limit) = page_bounds(&query, order)?;
     let filter = filters.filter()?;
-    let encoder = state.text_encoder.as_ref().ok_or(ApiError::MlUnavailable)?;
-    let embedding = encoder
-        .encode(query.q.as_deref().unwrap_or_default())
-        .await
-        .map_err(|err| match err {
-            EncodeError::Length => ApiError::Validation(err.to_string()),
-            EncodeError::Unavailable(why) => {
-                tracing::warn!(error = %why, "photo search could not encode its query");
-                ApiError::Busy
-            }
-        })?;
+    let embedding = encode_query(&state, query.q.as_deref().unwrap_or_default()).await?;
     let rivals = rivals(&state.pool, &embedding).await?;
     let photo_query = PhotoQuery {
         model: squirrel_ml::CLIP_MODEL_ID,
         embedding: &embedding,
-        max_distance: f64::from(1.0 - clip::search_min_cosine()),
+        max_distance: max_distance(),
         relative_cutoff: f64::from(clip::logits_as_cosine(clip::SEARCH_RELATIVE_CUTOFF)),
         rivals: &rivals,
-        rival_margin: f64::from(clip::logits_as_cosine(clip::SEARCH_CONTRAST)),
+        rival_margin: rival_margin(),
         filter: &filter,
     };
     let user = caller.user.id;
@@ -214,22 +205,69 @@ pub async fn search_photos(
     }))
 }
 
-/// The label embeddings the query must beat on each photo (none while the
-/// label bank is not computed yet).
-async fn rivals(pool: &sqlx::PgPool, query: &[f32]) -> Result<Vec<Vec<f32>>, ApiError> {
-    let bank = squirrel_db::clip::label_embeddings(
+/// `text`'s unit embedding: 422 for a bad length, 503 without the text model.
+async fn encode_query(state: &AppState, text: &str) -> Result<Vec<f32>, ApiError> {
+    let encoder = state.text_encoder.as_ref().ok_or(ApiError::MlUnavailable)?;
+    encoder.encode(text).await.map_err(|err| match err {
+        EncodeError::Length => ApiError::Validation(err.to_string()),
+        EncodeError::Unavailable(why) => {
+            tracing::warn!(error = %why, "photo search could not encode its query");
+            ApiError::Busy
+        }
+    })
+}
+
+/// Results farther than this (cosine distance) are dropped.
+fn max_distance() -> f64 {
+    f64::from(1.0 - clip::search_min_cosine())
+}
+
+/// How much farther than the query every rival must be (cosine distance).
+fn rival_margin() -> f64 {
+    f64::from(clip::logits_as_cosine(clip::SEARCH_CONTRAST))
+}
+
+/// How a dynamic album's search text matches photos: as photo search, now.
+pub(crate) async fn search_match(state: &AppState, text: &str) -> Result<SearchMatch, ApiError> {
+    let embedding = encode_query(state, text).await?;
+    // The rivals are kept with the rule: saved before the label bank exists
+    // (a fresh install computes it first), the rule would keep none for good.
+    let bank = label_bank(&state.pool).await?;
+    if bank.is_empty() {
+        return Err(ApiError::Busy);
+    }
+    Ok(SearchMatch {
+        model: squirrel_ml::CLIP_MODEL_ID.to_owned(),
+        rivals: rivals_in(&bank, &embedding),
+        embedding,
+        max_distance: max_distance(),
+        rival_margin: rival_margin(),
+    })
+}
+
+/// The current label bank's embeddings; empty while it is not computed yet.
+async fn label_bank(pool: &sqlx::PgPool) -> Result<Vec<(String, Vec<f32>)>, ApiError> {
+    Ok(squirrel_db::clip::label_embeddings(
         pool,
         squirrel_ml::CLIP_MODEL_ID,
         labels::LABELS_VERSION,
         &labels::bank_digest(),
     )
-    .await?;
-    Ok(
-        labels::search_rivals(query, &bank, &labels::bank(), clip::QUERY_LABEL_MATCH)
-            .into_iter()
-            .map(|(_, embedding)| embedding.to_vec())
-            .collect(),
-    )
+    .await?)
+}
+
+/// The label embeddings of `bank` the query must beat on each photo.
+fn rivals_in(bank: &[(String, Vec<f32>)], query: &[f32]) -> Vec<Vec<f32>> {
+    labels::search_rivals(query, bank, &labels::bank(), clip::QUERY_LABEL_MATCH)
+        .into_iter()
+        .map(|(_, embedding)| embedding.to_vec())
+        .collect()
+}
+
+/// The label embeddings the query must beat on each photo (none while the
+/// label bank is not computed yet).
+async fn rivals(pool: &sqlx::PgPool, query: &[f32]) -> Result<Vec<Vec<f32>>, ApiError> {
+    Ok(rivals_in(&label_bank(pool).await?, query))
 }
 
 #[utoipa::path(post, path = "/api/search/warmup", security(("device_bearer" = []), ("session_cookie" = [], "csrf_token" = [])), tag = "search",

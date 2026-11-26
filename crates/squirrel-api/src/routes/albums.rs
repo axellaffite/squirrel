@@ -26,6 +26,7 @@ use crate::error::{ApiError, ErrorBody};
 use crate::extract::Caller;
 use crate::input::{ApiJson, ApiPath, ApiQuery};
 use crate::photos_dto::{AssetSummary, TimelinePage};
+use crate::routes::photo_search::search_match;
 use crate::routes::photos::{photo_page_size, timeline_page};
 use crate::sharing_dto::MemberDto;
 use crate::state::AppState;
@@ -33,7 +34,8 @@ use crate::state::AppState;
 /// Photos shown by a rule preview.
 const PREVIEW_PHOTOS: u32 = 12;
 
-/// `dto` checked, its people included (they must be the caller's).
+/// `dto` checked, its people included (they must be the caller's), with how
+/// its search text matches (the text model encodes it).
 async fn checked_rules(
     state: &AppState,
     user: Uuid,
@@ -43,7 +45,14 @@ async fn checked_rules(
     if !album_rules::are_people_of(&state.pool, user, &rules.people).await? {
         return Err(ApiError::Validation("people must be your people".into()));
     }
-    Ok(rules)
+    let search_match = match &rules.search {
+        Some(text) => Some(search_match(state, text).await?),
+        None => None,
+    };
+    Ok(AlbumRules {
+        search_match,
+        ..rules
+    })
 }
 
 fn check_count(node_ids: &[Uuid], min: usize) -> Result<(), ApiError> {
@@ -151,7 +160,8 @@ pub async fn list_albums(
 }
 
 #[utoipa::path(post, path = "/api/albums", security(("device_bearer" = []), ("session_cookie" = [], "csrf_token" = [])), tag = "albums", request_body = CreateAlbumRequest,
-    responses((status = 201, body = AlbumDto), (status = 422, body = ErrorBody)))]
+    responses((status = 201, body = AlbumDto), (status = 422, body = ErrorBody),
+              (status = 503, body = ErrorBody, description = "Rules with a search text: `ml_unavailable` (no text model on this server) or `busy` (the text model or the label bank is not ready yet: try again)")))]
 pub async fn create_album(
     State(state): State<AppState>,
     caller: Caller,
@@ -190,7 +200,8 @@ pub async fn get_album(
     params(("id" = Uuid, Path, description = "Album id")),
     request_body = UpdateAlbumRequest,
     responses((status = 200, body = AlbumDto), (status = 403, body = ErrorBody, description = "Shared with you for reading only"), (status = 404, body = ErrorBody),
-              (status = 422, body = ErrorBody)))]
+              (status = 422, body = ErrorBody),
+              (status = 503, body = ErrorBody, description = "Rules with a search text: `ml_unavailable` (no text model on this server) or `busy` (the text model or the label bank is not ready yet: try again)")))]
 pub async fn update_album(
     State(state): State<AppState>,
     caller: Caller,
@@ -232,7 +243,7 @@ pub async fn update_album(
 #[utoipa::path(post, path = "/api/albums/preview", security(("device_bearer" = []), ("session_cookie" = [], "csrf_token" = [])), tag = "albums",
     request_body = AlbumRulesDto,
     responses((status = 200, body = AlbumPreviewDto, description = "What a dynamic album with these rules would hold now"),
-              (status = 422, body = ErrorBody), (status = 503, body = ErrorBody, description = "The library is too large to count in time")))]
+              (status = 422, body = ErrorBody), (status = 503, body = ErrorBody, description = "`busy`: the library is too large to count in time, or the text model or label bank is not ready yet; `ml_unavailable`: a search text without a text model")))]
 pub async fn preview_album(
     State(state): State<AppState>,
     caller: Caller,
