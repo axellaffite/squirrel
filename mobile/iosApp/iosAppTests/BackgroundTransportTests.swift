@@ -28,7 +28,7 @@ final class BackgroundTransportTests: XCTestCase {
     override func setUp() {
         StubProtocol.status = 204
         StubProtocol.seen = []
-        let database = DatabaseKt.createDatabase(driver: DriverKt.createIosDriver(name: "transport-tests.db"))
+        let database = DatabaseKt.createDatabase(driver: DriverKt.createIosDriver(name: "transport-tests.db", directory: nil))
         store = TransportStore(db: database, now: { KotlinLong(value: Int64(Date().timeIntervalSince1970 * 1000)) })
         let configuration = URLSessionConfiguration.ephemeral
         configuration.protocolClasses = [StubProtocol.self]

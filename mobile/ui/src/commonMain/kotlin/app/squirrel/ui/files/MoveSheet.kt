@@ -54,9 +54,10 @@ data class MoveState(
 
 /**
  * The folders a node can move to, browsed from [root] (the share, for people who do not own the
- * folder; the top level otherwise) and never above it. The node itself is never offered.
+ * folder; the top level otherwise) and never above it. The node itself is never offered. Without
+ * a [node], any folder can be chosen (where to send files).
  */
-class MoveModel(private val api: SquirrelApi, private val node: NodeDto, private val root: PathSegmentDto?, private val scope: CoroutineScope) {
+class MoveModel(private val api: SquirrelApi, private val node: NodeDto?, private val root: PathSegmentDto?, private val scope: CoroutineScope) {
     private val start = listOfNotNull(root)
     private val _state = MutableStateFlow(MoveState(trail = start))
     val state: StateFlow<MoveState> = _state.asStateFlow()
@@ -77,7 +78,7 @@ class MoveModel(private val api: SquirrelApi, private val node: NodeDto, private
     val canGoUp: Boolean get() = _state.value.trail.size > start.size
 
     /** Whether "Move here" may run: a folder is chosen and it is not where the node already is. */
-    val canMoveHere: Boolean get() = _state.value.here?.let { it.id != node.parentId } ?: false
+    val canMoveHere: Boolean get() = _state.value.here?.let { node == null || it.id != node.parentId } ?: false
 
     private fun browse(next: List<PathSegmentDto>) {
         job?.cancel()
@@ -99,7 +100,7 @@ class MoveModel(private val api: SquirrelApi, private val node: NodeDto, private
         var cursor: String? = null
         do {
             val page = api.files.listNodes(parentId = parent, cursor = cursor, limit = FOLDER_PAGE).bodyOrThrow()
-            out += page.items.filter { it.kind == NodeKind.folder && it.id != node.id }
+            out += page.items.filter { it.kind == NodeKind.folder && it.id != node?.id }
             cursor = page.nextCursor
         } while (cursor != null)
         return out
@@ -111,11 +112,28 @@ class MoveModel(private val api: SquirrelApi, private val node: NodeDto, private
 fun MoveSheet(api: SquirrelApi, node: NodeDto, root: PathSegmentDto?, onMove: suspend (String) -> String?, onClose: () -> Unit) {
     val scope = rememberCoroutineScope()
     val model = remember(node.id) { MoveModel(api, node, root, scope) }
+    FolderPickerSheet(model, "Move “${node.name}”", "Move here", onPick = { onMove(it.last().id) }, onClose = onClose)
+}
+
+/**
+ * A sheet to browse to a folder of one's own, then [confirm] ("Send here"): [onPick] gets the path
+ * to it, top level first, and answers an error or null (the sheet then closes).
+ */
+@Composable
+fun FolderPickerSheet(api: SquirrelApi, title: String, confirm: String, onPick: suspend (List<PathSegmentDto>) -> String?, onClose: () -> Unit) {
+    val scope = rememberCoroutineScope()
+    val model = remember { MoveModel(api, node = null, root = null, scope = scope) }
+    FolderPickerSheet(model, title, confirm, onPick, onClose)
+}
+
+@Composable
+private fun FolderPickerSheet(model: MoveModel, title: String, confirm: String, onPick: suspend (List<PathSegmentDto>) -> String?, onClose: () -> Unit) {
+    val scope = rememberCoroutineScope()
     LaunchedEffect(model) { model.load() }
     val state by model.state.collectAsStateWithLifecycle()
     var error by remember { mutableStateOf<String?>(null) }
     var busy by remember { mutableStateOf(false) }
-    Sheet("Move “${node.name}”", onDismiss = onClose) {
+    Sheet(title, onDismiss = onClose) {
         if (model.canGoUp) Button("Up", onClick = { model.up() }, variant = ButtonVariant.Quiet, size = ButtonSize.Sm, icon = SquirrelIcon.ChevronLeft)
         val where = state.here?.let { "To: ${state.trail.joinToString(" › ") { it.name }}" } ?: "Choose a folder"
         BasicText(where, style = SquirrelTheme.type.label, modifier = Modifier.semantics { liveRegion = LiveRegionMode.Polite })
@@ -129,11 +147,11 @@ fun MoveSheet(api: SquirrelApi, node: NodeDto, root: PathSegmentDto?, onMove: su
             state.folders.isEmpty() && state.error == null -> BasicText("No subfolders", style = SquirrelTheme.type.caption)
         }
         (error ?: state.error)?.let { Alert(it, tone = AlertTone.Error) }
-        Button("Move here", enabled = !busy && model.canMoveHere, full = true, onClick = {
-            val target = state.here ?: return@Button
+        Button(confirm, enabled = !busy && model.canMoveHere, full = true, onClick = {
+            val trail = state.trail.takeIf { it.isNotEmpty() } ?: return@Button
             busy = true
             scope.launch {
-                val problem = try { onMove(target.id) } finally { busy = false }
+                val problem = try { onPick(trail) } finally { busy = false }
                 if (problem == null) onClose() else error = problem
             }
         })
