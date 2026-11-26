@@ -20,6 +20,7 @@
 	import { filterFromParams, isEmptyFilter, sameFilter, withFilter, type PhotoFilter } from '#lib/explore/filters.ts';
 	import { listFolder, type FileNode } from '#lib/files/api.ts';
 	import { mediaStatus, photoDetails, type AssetSummary } from '#lib/photos/api.ts';
+	import { blurred } from '#lib/photos/blurred.svelte.ts';
 	import { photoInAddress, withPhoto } from '#lib/photos/address.ts';
 	import { Selection } from '#lib/photos/selection.svelte.ts';
 	import { createPoller, preparingText } from '#lib/photos/status.ts';
@@ -77,8 +78,15 @@
 			else if (preparing > 0 && count === 0) announcement = 'Photos and documents are ready.';
 			preparing = count;
 		},
-		onSettled: () => void data.reload(),
-		onProgress: () => void data.reload(),
+		// Analysed photos may now match the blur filter (tags, faces, search).
+		onSettled: () => {
+			void data.reload();
+			void blurred.refresh();
+		},
+		onProgress: () => {
+			void data.reload();
+			void blurred.refresh();
+		},
 		visible: () => document.visibilityState === 'visible'
 	});
 
@@ -189,6 +197,15 @@
 <Page title="Photos">
 	{#snippet description()}{#if total !== null}<span class="tabular">{total} {total === 1 ? 'photo' : 'photos'}{filtering ? ' match' : ''}</span>{/if}{/snippet}
 	{#snippet actions()}
+		{#if blurred.any}
+			<Button
+				variant="secondary"
+				onclick={() => blurred.setRevealAll(!blurred.revealAll)}
+				title="Photos matching your blur filter (Settings › Blur filter)"
+			>
+				<Icon name="eye-off" />{blurred.revealAll ? 'Blur again' : 'Show blurred'}
+			</Button>
+		{/if}
 		<input bind:this={picker} type="file" accept="image/*" multiple class="visually-hidden" tabindex="-1" aria-hidden="true" onchange={chosen} />
 		<Button onclick={() => picker?.click()} disabled={!photosFolder} aria-label="Upload photos to Photos">
 			<Icon name="upload" />Upload

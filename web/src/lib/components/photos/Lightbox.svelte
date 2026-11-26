@@ -7,6 +7,7 @@
 	import { assignFace } from '#lib/explore/people.ts';
 	import { onMount, type Snippet } from 'svelte';
 	import LightboxPhoto from '#lib/components/photos/LightboxPhoto.svelte';
+	import { blurred } from '#lib/photos/blurred.svelte.ts';
 	import PhotoInfo from '#lib/components/photos/PhotoInfo.svelte';
 	import StageButton from '#lib/components/photos/StageButton.svelte';
 	import ConfirmDialog from '#lib/components/ConfirmDialog.svelte';
@@ -118,7 +119,7 @@
 	// Neighbours' previews are fetched ahead, so stepping through feels instant.
 	$effect(() => {
 		for (const neighbour of [previous, next]) {
-			if (neighbour?.thumbnail.state !== 'ready') continue;
+			if (neighbour?.thumbnail.state !== 'ready' || blurred.has(neighbour.id)) continue;
 			const size = neighbour.width && neighbour.height ? { width: neighbour.width, height: neighbour.height } : null;
 			new Image().src = thumbnailUrl(neighbour.id, 'preview', neighbour.thumbnail.version, windowPreviewPx(size));
 		}
@@ -168,7 +169,7 @@
 	<div class="stage" data-testid="lightbox-stage" onpointerdown={pointerdown} onpointerup={pointerup} role="presentation">
 		<LightboxPhoto {asset}>
 			{#snippet overlay()}
-				{#if showFaces && faces.length > 0}
+				{#if showFaces && faces.length > 0 && !blurred.has(asset.id)}
 					<FaceBoxes {faces} onPick={(face) => (menuFace = face)} />
 				{/if}
 			{/snippet}

@@ -5,6 +5,7 @@
 	import { contentUrl } from '#lib/files/format.ts';
 	import { thumbnailUrl, type AssetSummary } from '#lib/photos/api.ts';
 	import { averageColor, isBlurhash } from '#lib/photos/blurhash.ts';
+	import { blurred } from '#lib/photos/blurred.svelte.ts';
 	import { browserCanShow } from '#lib/photos/info.ts';
 	import { placeholders } from '#lib/photos/placeholder.ts';
 	import { PREVIEW_RETRY_MS, windowPreviewPx } from '#lib/photos/previewSize.ts';
@@ -21,6 +22,9 @@
 	/** A preview the server was too busy to render (503/429) is asked for once more. */
 	let retriedId: string | null = $state(null);
 	let attempt = $state(0);
+
+	/** Matched by the blur filter: the photo is not loaded until the user asks to see it. */
+	const hidden = $derived(blurred.has(asset.id));
 
 	const dimensions = $derived(asset.width && asset.height ? { width: asset.width, height: asset.height } : null);
 	const source = $derived.by(() => {
@@ -50,7 +54,22 @@
 <!-- The frame keeps the photo's aspect inside the stage (container units), so the blurred
      preview covers exactly where the photo will be. Switching photos is instant. -->
 <div class="area">
-	{#if source}
+	{#if hidden}
+		<div
+			class="frame veiled"
+			class:sized={ratio !== null}
+			style:--ratio={ratio ?? undefined}
+			style:background-color={hash ? averageColor(hash) : undefined}
+			style:background-image={blur ? `url("${blur}")` : undefined}
+		>
+			<div class="notice" role="group" aria-label="Blurred photo">
+				<span class="well"><Icon name="eye-off" size={24} /></span>
+				<p><strong>Hidden by your blur filter</strong></p>
+				<p class="why">This photo matches the blur filter in your settings, so it stays blurred until you show it.</p>
+				<Button onclick={() => blurred.reveal(asset.id)}>Show</Button>
+			</div>
+		</div>
+	{:else if source}
 		<div
 			class="frame"
 			class:sized={ratio !== null}
@@ -108,6 +127,31 @@
 		-webkit-touch-callout: none;
 	}
 
+	/* A blurred photo keeps the photo's frame, so the page does not jump when it is shown. */
+	.veiled:not(.sized) {
+		width: 100cqw;
+		height: 100cqh;
+	}
+
+	.notice {
+		display: grid;
+		justify-items: center;
+		gap: var(--space-2);
+		max-width: var(--measure);
+		padding: var(--space-4);
+		color: var(--rail-ink);
+		text-align: center;
+	}
+
+	.notice p {
+		margin: 0;
+	}
+
+	.why {
+		font-size: var(--text-sm);
+		line-height: var(--text-sm-lh);
+	}
+
 	.unavailable {
 		display: grid;
 		justify-items: center;
@@ -117,7 +161,8 @@
 	}
 
 	/* On the graphite stage the button takes the rail's active colours (white pill, orchid ink). */
-	.unavailable :global(.btn) {
+	.unavailable :global(.btn),
+	.notice :global(.btn) {
 		background: var(--rail-active);
 		color: var(--rail-active-ink);
 	}

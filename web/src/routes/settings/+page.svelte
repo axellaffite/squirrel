@@ -17,6 +17,7 @@
 		{ href: '/settings/friends', label: 'Friends', line: 'People you share with', icon: 'users' },
 		{ href: '/settings/devices', label: 'Devices', line: 'Phones signed in to your Squirrel', icon: 'smartphone' },
 		{ href: '/settings/faces', label: 'Faces', line: 'Recognising people in your photos', icon: 'scan-face' },
+		{ href: '/settings/blur-filter', label: 'Blur filter', line: 'Photos kept blurred until you show them', icon: 'eye-off' },
 		...(session.me?.can_invite
 			? [{ href: '/settings/invitations', label: 'Invitations', line: 'Invite someone to this Squirrel', icon: 'user-plus' as const }]
 			: [])

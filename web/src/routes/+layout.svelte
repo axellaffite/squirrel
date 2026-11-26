@@ -18,6 +18,7 @@
 	import { redirectFor } from '#lib/guard.ts';
 	import { LOGOUT_ERROR } from '#lib/session-logic.ts';
 	import { setUnread, watchUnread } from '#lib/notifications/inbox.svelte.ts';
+	import { watchBlurred } from '#lib/photos/blurred.svelte.ts';
 	import { loadSession, logout, session } from '#lib/session.svelte.ts';
 	import { applyTheme, readTheme, saveTheme, type ThemeChoice } from '#lib/theme.ts';
 	import { installBeforeUnloadGuard } from '#lib/upload/uploads.svelte.ts';
@@ -64,6 +65,12 @@
 			stop();
 			setUnread(0);
 		};
+	});
+
+	// The blur filter's photos, for every page that shows photos.
+	$effect(() => {
+		if (signedIn === null) return;
+		return watchBlurred();
 	});
 
 	function changeTheme(choice: ThemeChoice) {

@@ -6,9 +6,11 @@
 
 	interface Props {
 		form: RulesForm;
+		/** Shows the newest matching photos too (the blur filter's editor shows only the count). */
+		thumbs?: boolean;
 	}
 
-	let { form }: Props = $props();
+	let { form, thumbs = true }: Props = $props();
 
 	const problem = $derived(rulesProblem(form));
 	/** The body as text: a change that sends the same request asks nothing new. */
@@ -56,7 +58,7 @@
 	<p class="count tabular" class:muted={problem !== null || count === null} class:error={!problem && error !== null} aria-live="polite">
 		{message}
 	</p>
-	{#if !problem && newest.length > 0}
+	{#if thumbs && !problem && newest.length > 0}
 		<ul class="thumbs" class:stale={loading}>
 			{#each newest as asset (asset.id)}
 				<li><AlbumCover cover={asset} icon="image" /></li>

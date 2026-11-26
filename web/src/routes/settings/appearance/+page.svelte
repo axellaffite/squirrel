@@ -5,6 +5,7 @@
 	import Alert from '#lib/components/ui/Alert.svelte';
 	import { listMonth, listMonths, thumbnailUrl, type AssetSummary } from '#lib/photos/api.ts';
 	import { isBlurhash } from '#lib/photos/blurhash.ts';
+	import { blurred } from '#lib/photos/blurred.svelte.ts';
 	import { PRESETS, PRESET_KEYS, DEFAULT_SIDEBAR, type SidebarChoice } from '#lib/sidebar.ts';
 	import { chooseSidebar, sidebar } from '#lib/sidebar.svelte.ts';
 
@@ -110,7 +111,8 @@
 
 		{#if choosingPhoto && photos.length > 0}
 			<div class="photos" role="radiogroup" aria-label="Choose your photo">
-				{#each photos as asset (asset.id)}
+				<!-- Photos the blur filter matches are not offered as the sidebar's wash. -->
+				{#each photos.filter((photo) => !blurred.has(photo.id)) as asset (asset.id)}
 					<label class="photo">
 						<input
 							type="radio"

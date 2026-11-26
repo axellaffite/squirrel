@@ -634,6 +634,22 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/me/blur-filter": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["get_blur_filter"];
+        put: operations["update_blur_filter"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/me/ml-settings": {
         parameters: {
             query?: never;
@@ -834,6 +850,22 @@ export interface paths {
             cookie?: never;
         };
         get: operations["list_photos"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/photos/blurred": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["blurred_photos"];
         put?: never;
         post?: never;
         delete?: never;
@@ -1436,6 +1468,20 @@ export interface components {
             new_person?: null | components["schemas"]["NewPersonDto"];
             /** Format: uuid */
             person_id?: string | null;
+        };
+        /** @description The caller's blur filter; without one, `rules` is null and nothing is blurred. */
+        BlurFilterDto: {
+            /** @description Whether clients blur the photos matching `rules`. Off keeps the rules. */
+            enabled: boolean;
+            rules?: null | components["schemas"]["AlbumRulesDto"];
+        };
+        /** @description The caller's photos their blur filter matches. */
+        BlurredPhotosDto: {
+            /**
+             * @description Node ids of the photos to blur, newest first; empty without an enabled
+             *     filter.
+             */
+            node_ids: string[];
         };
         CameraDto: {
             /** @description As recorded, e.g. `1/250`. */
@@ -4487,6 +4533,81 @@ export interface operations {
             };
         };
     };
+    get_blur_filter: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BlurFilterDto"];
+                };
+            };
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    update_blur_filter: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["BlurFilterDto"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BlurFilterDto"];
+                };
+            };
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Rules with a search text: `ml_unavailable` (no text model on this server) or `busy` (the text model or the label bank is not ready yet: try again) */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
     get_ml_settings: {
         parameters: {
             query?: never;
@@ -5116,6 +5237,42 @@ export interface operations {
             };
             /** @description Invalid month or filter */
             422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    blurred_photos: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BlurredPhotosDto"];
+                };
+            };
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description `busy`: the library is too large to match in time */
+            503: {
                 headers: {
                     [name: string]: unknown;
                 };

@@ -4,6 +4,7 @@
 	import { nodeIcon } from '#lib/files/nodeIcon.ts';
 	import { thumbnailUrl } from '#lib/photos/api.ts';
 	import { averageColor, isBlurhash } from '#lib/photos/blurhash.ts';
+	import { blurred } from '#lib/photos/blurred.svelte.ts';
 
 	interface Props {
 		node: FileNode;
@@ -20,7 +21,10 @@
 </script>
 
 <!-- Fills the row's round well: the thumbnail over its average colour, else the type icon. -->
-{#if thumb}
+{#if thumb && blurred.has(node.id)}
+	<!-- Matched by the blur filter: its colour and the eye-off mark, never the photo. -->
+	<span class="thumb veiled" style:background-color={tone} title="Hidden by your blur filter"><Icon name="eye-off" /></span>
+{:else if thumb}
 	<span class="thumb" style:background-color={tone}>
 		<img
 			src={thumbnailUrl(node.id, 'thumb', thumb.version)}
@@ -41,6 +45,12 @@
 		height: 100%;
 		border-radius: var(--radius-control);
 		overflow: hidden;
+	}
+
+	.veiled {
+		display: grid;
+		place-items: center;
+		color: var(--ink-muted);
 	}
 
 	img {

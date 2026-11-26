@@ -12,6 +12,7 @@
 	import { contentUrl, formatBytes, formatDate, previewKind } from '#lib/files/format.ts';
 	import { fetchTextPreview, TEXT_PREVIEW_BYTES } from '#lib/files/textPreview.ts';
 	import { thumbnailUrl } from '#lib/photos/api.ts';
+	import { blurred } from '#lib/photos/blurred.svelte.ts';
 	import { windowPreviewPx } from '#lib/photos/previewSize.ts';
 
 	interface Props {
@@ -81,7 +82,14 @@
 		<p class="meta tabular">{formatBytes(node.size)} <span aria-hidden="true">·</span> {formatDate(node.modified_at)}</p>
 		<div class="stage">
 			{#if kind === 'image'}
-				<img src={imageUrl} alt={node.name} />
+				{#if blurred.has(node.id)}
+					<EmptyState icon="eye-off" title="Hidden by your blur filter">
+						This photo matches the blur filter in your settings, so it stays hidden until you show it.
+						<Button onclick={() => blurred.reveal(node.id)}>Show</Button>
+					</EmptyState>
+				{:else}
+					<img src={imageUrl} alt={node.name} />
+				{/if}
 			{:else if kind === 'pdf'}
 				<!--
 					The server sends PDFs inline with a strict CSP but without `sandbox` (built-in PDF viewers

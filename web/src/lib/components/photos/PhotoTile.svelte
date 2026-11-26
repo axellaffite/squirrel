@@ -3,6 +3,7 @@
 	import Icon from '#lib/components/icons/Icon.svelte';
 	import { thumbnailUrl, type AssetSummary } from '#lib/photos/api.ts';
 	import { averageColor, isBlurhash } from '#lib/photos/blurhash.ts';
+	import { blurred } from '#lib/photos/blurred.svelte.ts';
 	import { tileDateTime } from '#lib/photos/dates.ts';
 	import { placeholders, whenIdle } from '#lib/photos/placeholder.ts';
 
@@ -41,19 +42,21 @@
 
 	const broken = $derived(brokenVersion === asset.thumbnail.version);
 	const thumbState = $derived(broken ? 'failed' : asset.thumbnail.state);
-	const ready = $derived(thumbState === 'ready');
+	/** Matched by the blur filter: only its blurred placeholder shows, the photo is not loaded. */
+	const hidden = $derived(blurred.has(asset.id));
+	const ready = $derived(thumbState === 'ready' && !hidden);
 	const unavailable = $derived(thumbState === 'failed' || thumbState === 'unsupported');
 	const hash = $derived(isBlurhash(asset.blurhash) ? asset.blurhash : null);
 	const when = $derived(tileDateTime(asset.taken_at));
 	const label = $derived(
 		selecting
 			? `Select ${asset.name}`
-			: `Open photo taken ${when}${thumbState === 'pending' ? ', preview being prepared' : ''}${badgeLabel ? `, ${badgeLabel}` : ''}`
+			: `Open ${hidden ? 'blurred ' : ''}photo taken ${when}${thumbState === 'pending' ? ', preview being prepared' : ''}${badgeLabel ? `, ${badgeLabel}` : ''}`
 	);
 
 	// The average colour shows at once; the blurred image is decoded when the browser is idle.
 	$effect(() => {
-		if (!hash || loaded || unavailable) return;
+		if (!hash || (loaded && !hidden) || unavailable) return;
 		const known = placeholders.cached(hash);
 		if (known !== undefined) {
 			blur = known;
@@ -138,7 +141,7 @@
 		style:background-color={hash && !unavailable ? averageColor(hash) : undefined}
 		style:background-image={blur && !unavailable ? `url("${blur}")` : undefined}
 	>
-		{#if unavailable}<Icon name="image-off" />{:else if !hash && !ready}<Icon name="image" />{/if}
+		{#if hidden}<span class="veil"><Icon name="eye-off" /></span>{:else if unavailable}<Icon name="image-off" />{:else if !hash && !ready}<Icon name="image" />{/if}
 	</span>
 	{#if ready}
 		<img
@@ -189,6 +192,17 @@
 	/* The swap from blur to photo is instant: tiles never animate in. */
 	img {
 		object-fit: cover;
+	}
+
+	/* A blurred photo: its placeholder under a shade, the eye-off mark in the middle. */
+	.veil {
+		display: grid;
+		place-items: center;
+		width: 100%;
+		height: 100%;
+		border-radius: inherit;
+		background: var(--photo-shade);
+		color: var(--photo-ring);
 	}
 
 	.check {

@@ -21,6 +21,7 @@ export default defineConfig({
 		{ name: 'files', testMatch: 'files.spec.ts', dependencies: ['onboarding'], use: desktop },
 		{ name: 'files-phone', testMatch: 'files-phone.spec.ts', dependencies: ['onboarding'], use: phone },
 		{ name: 'photos', testMatch: 'photos.spec.ts', dependencies: ['onboarding'], use: { ...desktop, ...dates } },
+		{ name: 'blur-filter', testMatch: 'blur-filter.spec.ts', dependencies: ['onboarding'], use: { ...desktop, ...dates } },
 		{ name: 'photos-phone', testMatch: 'photos-phone.spec.ts', dependencies: ['onboarding'], use: { ...phone, ...dates } },
 		{ name: 'documents', testMatch: 'documents.spec.ts', dependencies: ['onboarding'], use: { ...desktop, ...dates } },
 		{ name: 'sharing', testMatch: 'sharing.spec.ts', dependencies: ['onboarding'], use: desktop },
