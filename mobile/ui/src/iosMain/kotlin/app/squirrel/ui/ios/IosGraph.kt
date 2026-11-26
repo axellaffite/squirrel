@@ -51,6 +51,7 @@ object IosGraph {
             backup = backup,
             images = IosImages(),
             files = IosFileOpener(),
+            saver = IosPhotoSaver(),
             clock = clock,
         )
     }

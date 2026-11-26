@@ -43,13 +43,14 @@ fun FilteredTimeline(graph: AppGraph, filter: PhotoFilter, title: String, onChan
     var selected by remember { mutableStateOf(emptySet<String>()) }
     var notice by remember { mutableStateOf<String?>(null) }
     val scope = rememberCoroutineScope()
+    val downloads = rememberPhotoDownloads(api, graph.saver)
     val onAdded: (String) -> Unit = { message ->
         notice = message
         selected = emptySet()
         albums.refresh()
     }
     val lsdo = remember(vm) {
-        TimelineLsDo(vm, api, scope, onOpen = { viewing = it }, onClose = { viewing = null }, onAdded = onAdded, title = title, filter = filter, onFilter = onChange)
+        TimelineLsDo(vm, api, scope, onOpen = { viewing = it }, onClose = { viewing = null }, onAdded = onAdded, title = title, filter = filter, onFilter = onChange, downloads = downloads)
     }
     LaunchedEffect(viewing, notice) { lsdo.overlay.shown(PhotosOverlay(viewing, notice)) }
     RegisterLsDo("timeline", lsdo)
@@ -61,7 +62,15 @@ fun FilteredTimeline(graph: AppGraph, filter: PhotoFilter, title: String, onChan
             notice?.let { Alert(it, tone = AlertTone.Success) }
             TimelineList(api, vm, TileActions({ viewing = it.id }, selected) { selected = it })
         }
-        AddToAlbumSelection(api, selected, onClear = { selected = emptySet() }, onAdded = onAdded, modifier = Modifier.align(Alignment.BottomCenter))
+        AddToAlbumSelection(
+            api,
+            selected,
+            onClear = { selected = emptySet() },
+            onAdded = onAdded,
+            modifier = Modifier.align(Alignment.BottomCenter),
+            downloads = downloads,
+            nameOf = { id -> vm.state.value.loaded().firstOrNull { it.id == id }?.name },
+        )
     }
     viewing?.let { id ->
         val state by vm.state.collectAsStateWithLifecycle()

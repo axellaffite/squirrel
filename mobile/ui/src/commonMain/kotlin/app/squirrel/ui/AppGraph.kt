@@ -38,6 +38,7 @@ import app.squirrel.ui.files.FileHandoff
 import app.squirrel.ui.images.ImagesPlatform
 import app.squirrel.ui.images.forgetEverything
 import app.squirrel.ui.images.squirrelImageLoader
+import app.squirrel.ui.photos.PhotoSaver
 import coil3.ImageLoader
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.Flow
@@ -93,6 +94,8 @@ class AppGraph(
     private val images: ImagesPlatform? = null,
     /** Downloads handed to other apps; null where not wired. */
     val files: FileHandoff? = null,
+    /** Downloads saved to the phone (photo library, Downloads); null where not wired. */
+    val saver: PhotoSaver? = null,
     private val clock: () -> Long = { kotlin.time.Clock.System.now().toEpochMilliseconds() },
 ) {
     val database: SquirrelDatabase = createDatabase(driver)

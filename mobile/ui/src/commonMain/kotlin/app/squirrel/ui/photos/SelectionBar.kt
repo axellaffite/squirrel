@@ -2,6 +2,7 @@ package app.squirrel.ui.photos
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -30,42 +31,62 @@ import app.squirrel.theme.tabular
 
 /**
  * MASTER "Selection bar": a `--card` pill with `--shadow-pop`, floating above the phone rail: the
- * count (tabular), then small actions, then a way out of selecting.
+ * count (tabular), then small actions, then a way out of selecting. [status] (a download's
+ * progress or outcome) sits just above it.
  */
 @Composable
-fun SelectionBar(count: Int, onClear: () -> Unit, modifier: Modifier = Modifier, actions: @Composable RowScope.() -> Unit) {
-    Row(
-        modifier = modifier
-            .fillMaxWidth()
-            .padding(bottom = RailClearance)
-            .popShadow(Shapes.pill)
-            .background(SquirrelTheme.scheme.card, Shapes.pill)
-            .padding(horizontal = Tokens.space2, vertical = Tokens.space1),
-        horizontalArrangement = Arrangement.spacedBy(Tokens.space1),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        IconButton(SquirrelIcon.X, label = "Clear the selection", onClick = onClear)
-        BasicText(
-            "$count selected",
-            style = SquirrelTheme.type.label.tabular(),
-            modifier = Modifier.weight(1f).semantics { liveRegion = LiveRegionMode.Polite },
-        )
-        actions()
+fun SelectionBar(
+    count: Int,
+    onClear: () -> Unit,
+    modifier: Modifier = Modifier,
+    status: @Composable () -> Unit = {},
+    actions: @Composable RowScope.() -> Unit,
+) {
+    Column(modifier.fillMaxWidth().padding(bottom = RailClearance), verticalArrangement = Arrangement.spacedBy(Tokens.space2)) {
+        status()
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .popShadow(Shapes.pill)
+                .background(SquirrelTheme.scheme.card, Shapes.pill)
+                .padding(horizontal = Tokens.space2, vertical = Tokens.space1),
+            horizontalArrangement = Arrangement.spacedBy(Tokens.space1),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            IconButton(SquirrelIcon.X, label = "Clear the selection", onClick = onClear)
+            BasicText(
+                "$count selected",
+                style = SquirrelTheme.type.label.tabular(),
+                modifier = Modifier.weight(1f).semantics { liveRegion = LiveRegionMode.Polite },
+            )
+            actions()
+        }
     }
 }
 
 /**
  * The [SelectionBar] of photos that can go into albums, shown while [selected] is not empty: Add
  * to album opens the album picker, and [onAdded] hears what it did ("Added 3 photos to Holidays.").
+ * With [downloads], Download saves them to the phone ([nameOf] names a lone photo).
  */
 @Composable
-fun AddToAlbumSelection(api: SquirrelApi, selected: Set<String>, onClear: () -> Unit, onAdded: (String) -> Unit, modifier: Modifier = Modifier) {
+fun AddToAlbumSelection(
+    api: SquirrelApi,
+    selected: Set<String>,
+    onClear: () -> Unit,
+    onAdded: (String) -> Unit,
+    modifier: Modifier = Modifier,
+    downloads: PhotoDownloads? = null,
+    nameOf: (String) -> String? = { null },
+) {
     var picking by remember { mutableStateOf<List<String>?>(null) }
     if (selected.isNotEmpty()) {
-        SelectionBar(selected.size, onClear = onClear, modifier = modifier) {
+        SelectionBar(selected.size, onClear = onClear, modifier = modifier, status = { DownloadStatus(downloads) }) {
+            downloads?.let { DownloadAction(it, selected, nameOf) }
             Button("Add to album", onClick = { picking = selected.toList() }, size = ButtonSize.Sm, icon = SquirrelIcon.Library)
         }
     }
+    DownloadConfirm(downloads)
     picking?.let { ids -> AlbumPickerSheet(api, ids, onDone = onAdded, onClose = { picking = null }) }
 }
 

@@ -64,13 +64,15 @@ fun AlbumPage(graph: AppGraph, id: String, name: String, rootLabel: String, onBa
     // Each opening of the rule editor gets its own (a cancelled edit leaves nothing behind).
     var editingRules by remember { mutableStateOf(0) }
     val scope = rememberCoroutineScope()
+    val downloads = rememberPhotoDownloads(api, graph.saver)
     val title = state.album?.name ?: name
     val can = state.can
     val dynamic = state.album?.dynamic == true
     val rules = state.album?.rules
     // Others' albums: writers add and remove their own photos; the rest stays with the owner.
-    // A dynamic album's photos come from its rules: its owner selects one only to make it the cover.
-    val selectable = if (dynamic) can.owner else can.edit
+    // Everyone may select, to download. Otherwise a dynamic album's photos come from its rules: its owner
+    // selects one only to make it the cover.
+    val selectable = (if (dynamic) can.owner else can.edit) || downloads != null
     val selection = if (selectable) TileActions({ viewing = it.id }, selected) { selected = it } else TileActions.open { viewing = it.id }
     if (editingRules > 0 && rules != null) {
         val editor = viewModel(key = "album-rules-$id-$editingRules") { AlbumRulesViewModel(api, id, rules) }
@@ -94,7 +96,7 @@ fun AlbumPage(graph: AppGraph, id: String, name: String, rootLabel: String, onBa
         }
     }
     val lsdo = remember(vm) {
-        AlbumLsDo(vm, api, id, name, scope, onOpen = { viewing = it }, onClose = { viewing = null }, onNotice = { text, error ->
+        AlbumLsDo(vm, api, id, name, scope, onOpen = { viewing = it }, onClose = { viewing = null }, downloads = downloads, onNotice = { text, error ->
             selected = emptySet()
             notice = text to error
         }, onEditRules = { editingRules += 1 })
@@ -128,7 +130,13 @@ fun AlbumPage(graph: AppGraph, id: String, name: String, rootLabel: String, onBa
             AlbumPhotos(api, vm, selection, emptyLine = empty)
         }
         if (selected.isNotEmpty() && selectable) {
-            SelectionBar(selected.size, onClear = { selected = emptySet() }, modifier = Modifier.align(Alignment.BottomCenter)) {
+            SelectionBar(
+                selected.size,
+                onClear = { selected = emptySet() },
+                modifier = Modifier.align(Alignment.BottomCenter),
+                status = { DownloadStatus(downloads) },
+            ) {
+                downloads?.let { d -> DownloadAction(d, selected) { photo -> state.items.firstOrNull { it.id == photo }?.name } }
                 if (selected.size == 1 && can.owner) {
                     Button("Set as cover", enabled = !busy, size = ButtonSize.Sm, variant = ButtonVariant.Secondary, onClick = {
                         run {
@@ -139,20 +147,23 @@ fun AlbumPage(graph: AppGraph, id: String, name: String, rootLabel: String, onBa
                         }
                     })
                 }
-                if (!dynamic) Button("Remove", enabled = !busy, size = ButtonSize.Sm, variant = ButtonVariant.Danger, onClick = {
-                    run {
-                        val result = removeFromAlbum(api, id, selected.toList())
-                        selected = emptySet()
-                        vm.refresh()
-                        when (result) {
-                            is Outcome.Ok -> removedMessage(result.value) to (result.value == 0L)
-                            is Outcome.Failed -> result.message to true
+                if (can.edit && !dynamic) {
+                    Button("Remove", enabled = !busy, size = ButtonSize.Sm, variant = ButtonVariant.Danger, onClick = {
+                        run {
+                            val result = removeFromAlbum(api, id, selected.toList())
+                            selected = emptySet()
+                            vm.refresh()
+                            when (result) {
+                                is Outcome.Ok -> removedMessage(result.value) to (result.value == 0L)
+                                is Outcome.Failed -> result.message to true
+                            }
                         }
-                    }
-                })
+                    })
+                }
             }
         }
     }
+    DownloadConfirm(downloads)
     when (sheet) {
         AlbumSheet.Share -> ShareSheet(api, Subject.Album(id), title, onClose = { sheet = null }, readOnly = dynamic)
         AlbumSheet.Comments -> CommentsSheet(api, Subject.Album(id), "“$title”", onClose = { sheet = null })

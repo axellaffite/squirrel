@@ -50,11 +50,46 @@
             }
         },
         {
+            "name": "cancel_download",
+            "description": "Do not download what download.question asks about, as its Cancel button does",
+            "params": {
+                "type": "object",
+                "properties": {}
+            }
+        },
+        {
             "name": "close_photo",
             "description": "Close the viewer. Only while a photo is open (viewing set)",
             "params": {
                 "type": "object",
                 "properties": {}
+            }
+        },
+        {
+            "name": "confirm_download",
+            "description": "Download what download.question asks about, as its Download button does",
+            "params": {
+                "type": "object",
+                "properties": {}
+            }
+        },
+        {
+            "name": "download",
+            "description": "Save loaded photos to this phone, as selecting them and choosing Download does: one photo goes to the photo library, several to one zip (Downloads on Android, the share sheet on iOS). Above 200 MB it asks first (download.question). ls again until download.progress is null",
+            "params": {
+                "type": "object",
+                "properties": {
+                    "ids": {
+                        "type": "array",
+                        "items": {
+                            "type": "string"
+                        },
+                        "description": "Photo ids from photos"
+                    }
+                },
+                "required": [
+                    "ids"
+                ]
             }
         },
         {
@@ -309,6 +344,32 @@
                 "type": "string",
                 "nullable": true,
                 "description": "What the last add to an album did"
+            },
+            "download": {
+                "type": "object",
+                "properties": {
+                    "progress": {
+                        "type": "number",
+                        "nullable": true,
+                        "description": "How far the download is, 0 to 1; null when none runs"
+                    },
+                    "question": {
+                        "type": "string",
+                        "nullable": true,
+                        "description": "A large download waiting for confirm_download or cancel_download, e.g. Download 1.4 GB?"
+                    },
+                    "message": {
+                        "type": "string",
+                        "nullable": true,
+                        "description": "What the last download did, e.g. Saved to Pictures., or why it failed"
+                    },
+                    "failed": {
+                        "type": "boolean",
+                        "description": "The message is an error"
+                    }
+                },
+                "nullable": true,
+                "description": "Download (the selection bar's); null where the search cannot download"
             }
         }
     }

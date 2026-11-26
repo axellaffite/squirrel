@@ -110,6 +110,7 @@ private fun PhotosHome(graph: AppGraph, nav: Navigator<PhotosRoute>, mode: Photo
     val timeline = viewModel(key = "timeline") { PhotosViewModel(api) }
     val albums = viewModel(key = "albums") { AlbumsViewModel(api) }
     val scope = rememberCoroutineScope()
+    val downloads = rememberPhotoDownloads(api, graph.saver)
     // A new sub-tab starts without a selection or a notice, however it was chosen.
     LaunchedEffect(mode) {
         selected = emptySet()
@@ -132,7 +133,7 @@ private fun PhotosHome(graph: AppGraph, nav: Navigator<PhotosRoute>, mode: Photo
             when (mode) {
                 PhotosMode.Timeline -> {
                     val lsdo = remember(timeline) {
-                        TimelineLsDo(timeline, api, scope, onOpen = { viewing = it }, onClose = { viewing = null }, onAdded = onAdded)
+                        TimelineLsDo(timeline, api, scope, onOpen = { viewing = it }, onClose = { viewing = null }, onAdded = onAdded, downloads = downloads)
                     }
                     LaunchedEffect(viewing, notice) { lsdo.overlay.shown(PhotosOverlay(viewing, notice)) }
                     RegisterLsDo("timeline", lsdo)
@@ -151,11 +152,18 @@ private fun PhotosHome(graph: AppGraph, nav: Navigator<PhotosRoute>, mode: Photo
             }
         }
         if (selected.isNotEmpty()) {
-            SelectionBar(selected.size, onClear = { selected = emptySet() }, modifier = Modifier.align(Alignment.BottomCenter)) {
+            SelectionBar(
+                selected.size,
+                onClear = { selected = emptySet() },
+                modifier = Modifier.align(Alignment.BottomCenter),
+                status = { DownloadStatus(downloads) },
+            ) {
+                downloads?.let { d -> DownloadAction(d, selected) { id -> timeline.state.value.loaded().firstOrNull { it.id == id }?.name } }
                 Button("Add to album", onClick = { picking = selected.toList() }, size = ButtonSize.Sm, icon = SquirrelIcon.Library)
             }
         }
     }
+    DownloadConfirm(downloads)
     picking?.let { ids ->
         AlbumPickerSheet(api, ids, onDone = onAdded, onClose = { picking = null })
     }

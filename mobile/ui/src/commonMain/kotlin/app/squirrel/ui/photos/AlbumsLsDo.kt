@@ -117,6 +117,7 @@ data class AlbumView(
     @Doc("The photo open in the viewer") val viewing: String? = null,
     @Doc("What the last change did") val notice: String? = null,
     @Doc("The notice is an error") val noticeIsError: Boolean = false,
+    @Doc("Download (the selection bar's, for every access); null where this page cannot download") val download: DownloadView? = null,
 )
 
 /** What an agent can do on one album's page (LS-DO); back to the list is photos back. */
@@ -149,6 +150,15 @@ sealed interface AlbumIntent {
 
     @Serializable @SerialName("edit_rules") @Doc("Open the rule editor (album_rules), as the sliders button does. Owner of a dynamic album only")
     data object EditRules : AlbumIntent
+
+    @Serializable @SerialName("download") @Doc(DOWNLOAD_DOC)
+    data class Download(@Doc("Photo ids from photos") val ids: List<String>) : AlbumIntent
+
+    @Serializable @SerialName("confirm_download") @Doc(CONFIRM_DOWNLOAD_DOC)
+    data object ConfirmDownload : AlbumIntent
+
+    @Serializable @SerialName("cancel_download") @Doc(CANCEL_DOWNLOAD_DOC)
+    data object CancelDownload : AlbumIntent
 }
 
 /**
@@ -164,13 +174,14 @@ class AlbumLsDo(
     private val onOpen: (String) -> Unit,
     private val onClose: () -> Unit,
     private val onEditRules: () -> Unit = {},
+    private val downloads: PhotoDownloads? = null,
     private val onNotice: (String, Boolean) -> Unit,
 ) : LsDoScreen<AlbumView, AlbumIntent> {
     val overlay = OverlayMirror()
 
     override val lsdo = lsdoSpec<AlbumView, AlbumIntent>()
 
-    override val state: StateFlow<AlbumView> = vm.state.viewWith(overlay.state) { s, o ->
+    override val state: StateFlow<AlbumView> = vm.state.viewWith(overlay.state.withDownloads(downloads)) { s, o ->
         val album = s.album
         AlbumView(
             id = albumId,
@@ -187,6 +198,7 @@ class AlbumLsDo(
             viewing = o.viewing,
             notice = o.notice,
             noticeIsError = o.noticeIsError,
+            download = o.download?.view(),
         )
     }
 
@@ -203,6 +215,9 @@ class AlbumLsDo(
         is AlbumIntent.Remove ->
             if (state.value.dynamic) "A dynamic album's photos come from its rules: none can be removed." else missingPhotos(intent.ids, shown, "this album") ?: remove(intent.ids)
         AlbumIntent.EditRules -> if (state.value.dynamic && state.value.access == AccessLevel.owner) done(onEditRules) else "Only the owner of a dynamic album edits its rules."
+        is AlbumIntent.Download -> downloadShown(downloads, intent.ids, shown, "this album")
+        AlbumIntent.ConfirmDownload -> confirmDownload(downloads)
+        AlbumIntent.CancelDownload -> cancelDownload(downloads)
     }
 
     /** What the rename sheet does: check the name, save it, read the album again. */
@@ -240,6 +255,7 @@ class AlbumLsDo(
         if (can.owner) addAll(listOf("rename", "set_cover"))
         if (can.edit && !state.dynamic) add("remove")
         if (can.owner && state.dynamic) add("edit_rules")
+        addDownloadIntents(state.download, state.viewing)
     }
 
     override fun isBusy(state: AlbumView): Boolean = state.loading || state.refreshing

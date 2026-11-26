@@ -44,7 +44,7 @@ fun takenLabel(photo: AssetSummary): String {
 fun ViewerHost(graph: AppGraph, request: ViewerRequest, onClose: () -> Unit, onAddToAlbum: ((AssetSummary) -> Unit)? = null) {
     val api = graph.api ?: return
     var sheet by remember { mutableStateOf<ViewerSheet?>(null) }
-    PhotoViewer(api, graph.files, request.items, request.startId, request.onNear, onClose, tools = { photo ->
+    PhotoViewer(api, graph.saver, request.items, request.startId, request.onNear, onClose, tools = { photo ->
         val owned = ownedBy(api, photo)
         val subject = takenLabel(photo)
         StageButton(SquirrelIcon.MessageCircle, "Comments on $subject") { sheet = ViewerSheet.Comments(photo) }

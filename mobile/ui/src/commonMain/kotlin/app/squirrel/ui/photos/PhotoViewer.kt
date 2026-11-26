@@ -32,7 +32,6 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.runtime.setValue
@@ -58,14 +57,11 @@ import app.squirrel.theme.Shapes
 import app.squirrel.theme.SquirrelIcon
 import app.squirrel.theme.SquirrelTheme
 import app.squirrel.theme.Tokens
-import app.squirrel.theme.components.Button
-import app.squirrel.theme.components.ButtonVariant
 import app.squirrel.theme.components.Icon
 import app.squirrel.theme.components.MinTouchTarget
 import app.squirrel.theme.components.Progress
 import app.squirrel.theme.components.Sheet
 import app.squirrel.theme.tabular
-import app.squirrel.ui.files.FileHandoff
 import app.squirrel.ui.images.Thumbnail
 import app.squirrel.ui.shell.FullScreen
 import app.squirrel.ui.shell.StageBars
@@ -97,7 +93,7 @@ fun viewerIndex(ids: List<String>, anchor: String, current: Int): Int {
 @Composable
 fun PhotoViewer(
     api: SquirrelApi,
-    files: FileHandoff?,
+    saver: PhotoSaver?,
     items: List<AssetSummary>,
     startId: String,
     onNear: (String) -> Unit,
@@ -128,9 +124,8 @@ fun PhotoViewer(
     }
     var zoomed by remember { mutableStateOf(false) }
     var info by remember { mutableStateOf<AssetSummary?>(null) }
-    val scope = rememberCoroutineScope()
-    val original = remember(files) { files?.let { OpenOriginal(api, it, scope) } }
-    val originalState = original?.state?.collectAsState()?.value ?: OriginalState()
+    val downloads = rememberPhotoDownloads(api, saver)
+    val download = downloads?.state?.collectAsState()?.value ?: DownloadState()
     FullScreen {
         SystemBack(onBack = onClose)
         StageBars()
@@ -154,8 +149,8 @@ fun PhotoViewer(
                 Row(horizontalArrangement = Arrangement.spacedBy(Tokens.space1), verticalAlignment = Alignment.CenterVertically) {
                     StageButton(SquirrelIcon.X, "Close", onClose)
                     Spacer(Modifier.weight(1f))
-                    if (original != null) {
-                        StageButton(SquirrelIcon.ExternalLink, "Open ${current.name} in another app") { original.request(current) }
+                    if (downloads != null) {
+                        StageButton(SquirrelIcon.Download, "Download ${current.name}") { downloads.download(listOf(current.id)) }
                     }
                     tools(current)
                     StageButton(SquirrelIcon.Info, "Details of ${current.name}") { info = current }
@@ -173,18 +168,18 @@ fun PhotoViewer(
                 )
             }
             Box(Modifier.align(Alignment.BottomCenter).fillMaxWidth().windowInsetsPadding(WindowInsets.safeDrawing).padding(Tokens.gutter)) {
-                originalState.progress?.let { Progress(it, label = "Downloading the original") }
-                originalState.message?.let { BasicText(it, style = SquirrelTheme.type.caption.copy(color = scheme.railInk)) }
+                download.progress?.let { Progress(it, label = download.progressLabel.orEmpty()) }
+                download.message?.let {
+                    BasicText(
+                        it,
+                        style = SquirrelTheme.type.caption.copy(color = scheme.railInk),
+                        modifier = Modifier.semantics { liveRegion = LiveRegionMode.Polite },
+                    )
+                }
             }
         }
         info?.let { PhotoInfo(api, it) { info = null } }
-        originalState.confirm?.let { (big, _) ->
-            Sheet(originalState.confirmText.orEmpty(), onDismiss = { original?.dismiss() }) {
-                BasicText("${big.name} is large: it is downloaded to this phone before it opens.", style = SquirrelTheme.type.body)
-                Button("Download", onClick = { original?.confirm() }, full = true)
-                Button("Cancel", onClick = { original?.dismiss() }, variant = ButtonVariant.Quiet, full = true)
-            }
-        }
+        DownloadConfirm(downloads)
     }
 }
 

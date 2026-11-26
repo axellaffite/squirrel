@@ -28,7 +28,13 @@ fun AssetSummary.row(): PhotoRow = PhotoRow(id, name, takenAt, video = mime?.sta
  * What a photo screen keeps in Compose rather than in its view model: the photo open in the
  * viewer and the notice shown above the photos. The screen mirrors them here with [shown].
  */
-data class PhotosOverlay(val viewing: String? = null, val notice: String? = null, val noticeIsError: Boolean = false)
+data class PhotosOverlay(
+    val viewing: String? = null,
+    val notice: String? = null,
+    val noticeIsError: Boolean = false,
+    /** The screen's Download; set by [withDownloads], null where the screen cannot download. */
+    val download: DownloadState? = null,
+)
 
 /** The [PhotosOverlay] of an LS-DO screen, mirrored from Compose. */
 class OverlayMirror {

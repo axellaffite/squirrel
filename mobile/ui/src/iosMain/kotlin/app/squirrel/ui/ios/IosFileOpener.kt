@@ -2,36 +2,22 @@ package app.squirrel.ui.ios
 
 import app.squirrel.shared.api.ApiError
 import app.squirrel.shared.api.SquirrelApi
-import app.squirrel.shared.api.throwUnlessSuccess
 import app.squirrel.ui.files.FileHandoff
 import app.squirrel.ui.files.HandoffResult
 import app.squirrel.ui.files.safeFileName
+import app.squirrel.ui.files.streamDownload
 import app.squirrel.ui.photos.UNREACHABLE
-import io.ktor.client.plugins.HttpTimeoutConfig
-import io.ktor.client.plugins.timeout
-import io.ktor.client.request.prepareGet
-import io.ktor.client.statement.bodyAsChannel
-import io.ktor.http.contentLength
-import io.ktor.utils.io.readAvailable
 import kotlinx.cinterop.BetaInteropApi
 import kotlinx.cinterop.ExperimentalForeignApi
-import kotlinx.cinterop.addressOf
-import kotlinx.cinterop.usePinned
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.IO
 import kotlinx.coroutines.withContext
 import platform.CoreGraphics.CGRectMake
-import platform.Foundation.NSData
-import platform.Foundation.NSFileHandle
 import platform.Foundation.NSFileManager
 import platform.Foundation.NSFileProtectionCompleteUntilFirstUserAuthentication
 import platform.Foundation.NSFileProtectionKey
 import platform.Foundation.NSURL
-import platform.Foundation.closeFile
-import platform.Foundation.create
-import platform.Foundation.fileHandleForWritingAtPath
-import platform.Foundation.writeData
 import platform.UIKit.UIActivityViewController
 import platform.UIKit.UIDocumentInteractionController
 import platform.UIKit.UIViewController
@@ -64,7 +50,7 @@ class IosFileOpener(
         try {
             withContext(Dispatchers.IO) {
                 files.createDirectoryAtPath(folder, withIntermediateDirectories = true, attributes = PROTECTED, error = null)
-                download(api, id, partial, onProgress)
+                downloadToFile(api, api.contentUrl(id), partial, PROTECTED, onProgress)
                 files.removeItemAtPath(target, null) // the same file opened earlier
                 if (!files.moveItemAtPath(partial, toPath = target, error = null)) error("could not keep $target")
             }
@@ -91,42 +77,11 @@ class IosFileOpener(
         return if (shown) HandoffResult.Opened else HandoffResult.NoApp
     }
 
-    private suspend fun download(api: SquirrelApi, id: String, path: String, onProgress: (Float) -> Unit) {
-        if (!files.createFileAtPath(path, contents = null, attributes = PROTECTED)) error("cannot create $path")
-        val out = NSFileHandle.fileHandleForWritingAtPath(path) ?: error("cannot write $path")
-        try {
-            api.httpClient.prepareGet(api.contentUrl(id)) {
-                timeout { requestTimeoutMillis = HttpTimeoutConfig.INFINITE_TIMEOUT_MS } // large originals
-            }.execute { response ->
-                response.throwUnlessSuccess()
-                val total = response.contentLength()
-                val channel = response.bodyAsChannel()
-                val buffer = ByteArray(BUFFER)
-                var done = 0L
-                while (true) {
-                    val n = channel.readAvailable(buffer, 0, buffer.size)
-                    if (n < 0) break
-                    if (n == 0) {
-                        if (channel.isClosedForRead) break
-                        continue
-                    }
-                    out.writeData(buffer.usePinned { NSData.create(bytes = it.addressOf(0), length = n.toULong()) })
-                    done += n
-                    if (total != null && total > 0) onProgress((done.toFloat() / total).coerceAtMost(1f))
-                }
-            }
-        } finally {
-            out.closeFile()
-        }
-    }
-
     override fun clear() {
         files.removeItemAtPath(dir, null)
     }
 
-    private companion object {
-        const val BUFFER = 64 * 1024
-
+    internal companion object {
         /**
          * Readable once the phone was unlocked after a restart. `Complete` would be stricter, but a
          * share sheet or another app still reading the file breaks when the phone locks.

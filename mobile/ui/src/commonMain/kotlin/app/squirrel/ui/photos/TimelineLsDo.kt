@@ -35,6 +35,7 @@ data class TimelineView(
     val error: String? = null,
     @Doc("The photo open in the viewer") val viewing: String? = null,
     @Doc("What the last add to an album did") val notice: String? = null,
+    @Doc("Download (the selection bar's); null where this timeline cannot download") val download: DownloadView? = null,
 )
 
 /** What an agent can do on the timeline (LS-DO); each maps to the call the UI makes. */
@@ -63,6 +64,15 @@ sealed interface TimelineIntent {
     @Doc("Add loaded photos to a new album named name, as Add to album, then New album… does")
     data class AddToNewAlbum(@Doc("Photo ids from photos") val ids: List<String>, val name: String) : TimelineIntent
 
+    @Serializable @SerialName("download") @Doc(DOWNLOAD_DOC)
+    data class Download(@Doc("Photo ids from photos") val ids: List<String>) : TimelineIntent
+
+    @Serializable @SerialName("confirm_download") @Doc(CONFIRM_DOWNLOAD_DOC)
+    data object ConfirmDownload : TimelineIntent
+
+    @Serializable @SerialName("cancel_download") @Doc(CANCEL_DOWNLOAD_DOC)
+    data object CancelDownload : TimelineIntent
+
     @Serializable @SerialName("filter")
     @Doc("Narrow or widen a timeline opened from Explore, as its filter bar does; an empty filter goes back to Explore. Only on a timeline opened from Explore")
     data class Filter(val filter: PhotoFilter) : TimelineIntent
@@ -84,12 +94,13 @@ class TimelineLsDo(
     private val title: String? = null,
     private val filter: PhotoFilter? = null,
     private val onFilter: ((PhotoFilter) -> Unit)? = null,
+    private val downloads: PhotoDownloads? = null,
 ) : LsDoScreen<TimelineView, TimelineIntent> {
     val overlay = OverlayMirror()
 
     override val lsdo = lsdoSpec<TimelineView, TimelineIntent>()
 
-    override val state: StateFlow<TimelineView> = vm.state.viewWith(overlay.state) { s, o ->
+    override val state: StateFlow<TimelineView> = vm.state.viewWith(overlay.state.withDownloads(downloads)) { s, o ->
         TimelineView(
             title = title,
             filter = filter,
@@ -100,6 +111,7 @@ class TimelineLsDo(
             error = s.error,
             viewing = o.viewing,
             notice = o.notice,
+            download = o.download?.view(),
         )
     }
 
@@ -111,6 +123,9 @@ class TimelineLsDo(
         TimelineIntent.ClosePhoto -> done(onClose)
         is TimelineIntent.AddToAlbum -> withAdded { addShownToAlbum(api, intent.ids, vm.state.value.loaded(), LOADED, intent.albumId, it) }
         is TimelineIntent.AddToNewAlbum -> withAdded { addShownToNewAlbum(api, intent.ids, vm.state.value.loaded(), LOADED, intent.name, it) }
+        is TimelineIntent.Download -> downloadShown(downloads, intent.ids, vm.state.value.loaded(), LOADED)
+        TimelineIntent.ConfirmDownload -> confirmDownload(downloads)
+        TimelineIntent.CancelDownload -> cancelDownload(downloads)
         is TimelineIntent.Filter -> {
             val change = onFilter ?: return "Only a timeline opened from Explore has a filter."
             done { change(intent.filter.normalized()) }
@@ -139,6 +154,7 @@ class TimelineLsDo(
         if (state.error != null) add("retry")
         if (state.viewing == null) add("open") else add("close_photo")
         if (onAdded != null && state.viewing == null) addAll(listOf("add_to_album", "add_to_new_album"))
+        addDownloadIntents(state.download, state.viewing)
         if (onFilter != null) add("filter")
     }
 

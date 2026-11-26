@@ -3,6 +3,7 @@ package app.squirrel.ui.photos
 import app.squirrel.shared.api.SquirrelApi
 import app.squirrel.ui.explore.PhotoFilter
 import app.squirrel.ui.shell.Navigator
+import app.squirrel.ui.testing.FakePhotoSaver
 import app.squirrel.ui.testing.await
 import app.squirrel.ui.testing.json
 import app.squirrel.ui.testing.runReal
@@ -69,6 +70,15 @@ class PhotosLsDoTest {
             path == "/api/albums/al" && request.method == HttpMethod.Patch -> { sent += "patch ${request.text()}"; json(album("al", "Holidays")) }
             path == "/api/albums/al" -> json(album("al", "Holidays"))
             path == "/api/albums/ro" -> json(album("ro", "Theirs", access = "read"))
+            path == "/api/files/archive" && post -> {
+                sent += "archive ${request.text()}"
+                json("""{"ticket":"tk1","name":"Squirrel 2 photos.zip","size":1000,"count":2}""", HttpStatusCode.Created)
+            }
+            path.startsWith("/api/photos/") -> {
+                val id = path.substringAfterLast('/')
+                val size = if (id == "p2") 1_400_000_000 else 1000
+                json("""{"asset":${summary(id)},"size":$size,"albums":[],"tags":[],"people":[]}""")
+            }
             else -> respondError(HttpStatusCode.NotFound)
         }
     }
@@ -209,6 +219,77 @@ class PhotosLsDoTest {
         assertFalse(names.any { it in listOf("rename", "set_cover", "remove") }, names.toString())
         assertTrue(registry.perform("album", intent("""{"type":"rename","name":"Mine"}""")).message.orEmpty().contains("not available"))
         assertTrue(sent.isEmpty())
+    }
+
+    @Test
+    fun theTimelineDownloadsOnePhotoOrSeveralAsAZip() = runReal {
+        val fake = FakePhotoSaver()
+        val vm = PhotosViewModel(api())
+        val timeline = TimelineLsDo(vm, api(), scope, {}, {}, onAdded = {}, downloads = PhotoDownloads(api(), fake.saver, scope))
+        val registry = registry()
+        registry.register("timeline", timeline)
+        timeline.state.await { it.months.isNotEmpty() }
+        assertTrue(registry.perform("timeline", intent("""{"type":"more"}""")).ok)
+        assertTrue("download" in registry.ls("timeline")!!.actionNames())
+
+        val one = registry.perform("timeline", intent("""{"type":"download","ids":["p1"]}"""))
+        assertTrue(one.ok, one.message)
+        assertEquals("Saved to Pictures.", timeline.state.await { it.download?.message != null }.download?.message)
+        assertEquals(listOf("p1"), fake.originals.map { it.id })
+
+        val several = registry.perform("timeline", intent("""{"type":"download","ids":["p1","p2"]}"""))
+        assertTrue(several.ok, several.message)
+        timeline.state.await { fake.archives.isNotEmpty() && it.download?.progress == null }
+        assertEquals("""archive {"node_ids":["p1","p2"]}""", sent.single())
+        assertEquals("Saved to Downloads.", timeline.state.value.download?.message)
+
+        assertEquals("No photo \"zz\" in the timeline loaded.", registry.perform("timeline", intent("""{"type":"download","ids":["zz"]}""")).message)
+    }
+
+    @Test
+    fun aLargeDownloadWaitsForConfirmation() = runReal {
+        val fake = FakePhotoSaver()
+        val vm = AlbumViewModel(api(), "al")
+        val registry = registry()
+        val album = AlbumLsDo(vm, api(), "al", "Holidays", scope, {}, {}, downloads = PhotoDownloads(api(), fake.saver, scope)) { _, _ -> }
+        registry.register("album", album)
+        album.state.await { it.access != null && it.photos.isNotEmpty() && !it.loading }
+
+        assertTrue(registry.perform("album", intent("""{"type":"download","ids":["p2"]}""")).ok)
+        val asking = album.state.await { it.download?.question != null }
+        assertEquals("Download 1.4 GB?", asking.download?.question)
+        val names = registry.ls("album")!!.actionNames()
+        assertTrue("confirm_download" in names && "cancel_download" in names && "download" !in names, names.toString())
+
+        assertTrue(registry.perform("album", intent("""{"type":"confirm_download"}""")).ok)
+        album.state.await { it.download?.message != null }
+        assertEquals(listOf("p2"), fake.originals.map { it.id })
+        assertTrue(registry.perform("album", intent("""{"type":"confirm_download"}""")).message.orEmpty().contains("not available"))
+    }
+
+    @Test
+    fun someoneElsesAlbumStillDownloads() = runReal {
+        val fake = FakePhotoSaver()
+        val vm = AlbumViewModel(api(), "ro")
+        val registry = registry()
+        val album = AlbumLsDo(vm, api(), "ro", "Theirs", scope, {}, {}, downloads = PhotoDownloads(api(), fake.saver, scope)) { _, _ -> }
+        registry.register("album", album)
+        album.state.await { it.access != null && it.photos.isNotEmpty() && !it.loading }
+
+        assertTrue("download" in registry.ls("album")!!.actionNames())
+        assertTrue(registry.perform("album", intent("""{"type":"download","ids":["p1"]}""")).ok)
+        album.state.await { it.download?.message != null }
+        assertEquals(listOf("p1"), fake.originals.map { it.id })
+    }
+
+    @Test
+    fun withoutASaverThereIsNoDownload() = runReal {
+        val vm = PhotosViewModel(api())
+        val timeline = TimelineLsDo(vm, api(), scope, {}, {}, onAdded = {})
+        val registry = registry()
+        registry.register("timeline", timeline)
+        timeline.state.await { it.months.isNotEmpty() }
+        assertFalse("download" in registry.ls("timeline")!!.actionNames())
     }
 
     private fun JsonObject.screen() = getValue("screens").jsonArray.single().jsonObject

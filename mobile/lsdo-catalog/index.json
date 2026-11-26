@@ -148,7 +148,10 @@
             "actions": [
                 "add_to_album",
                 "add_to_new_album",
+                "cancel_download",
                 "close_photo",
+                "confirm_download",
+                "download",
                 "filter",
                 "more",
                 "open",
@@ -171,7 +174,10 @@
             "name": "album",
             "description": "One album's page: its photos, rename, cover and removal (owner or write access; never for a dynamic album, whose owner edits its rules instead). Reached by: albums open <id> or albums create <name>.",
             "actions": [
+                "cancel_download",
                 "close_photo",
+                "confirm_download",
+                "download",
                 "edit_rules",
                 "more",
                 "open",
@@ -216,7 +222,10 @@
             "actions": [
                 "add_to_album",
                 "add_to_new_album",
+                "cancel_download",
                 "close_photo",
+                "confirm_download",
+                "download",
                 "filter",
                 "more",
                 "open",

@@ -142,6 +142,9 @@ class SquirrelApi(
     /** `GET /api/files/{id}/content`: the original bytes. */
     fun contentUrl(id: String): String = "$baseUrl/api/files/${id.encodeURLPathPart()}/content"
 
+    /** `GET /api/files/archive/{ticket}`: the zip `POST /api/files/archive` prepared (exact Content-Length). */
+    fun archiveUrl(ticket: String): String = "$baseUrl/api/files/archive/${ticket.encodeURLPathPart()}"
+
     suspend fun health(): Health = system.healthz().bodyOrThrow()
 
     suspend fun setupStatus(): SetupStatus = setup.setupStatus().bodyOrThrow()

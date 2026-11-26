@@ -4,7 +4,18 @@ import app.squirrel.api.models.SearchOrder
 import app.squirrel.shared.api.SquirrelApi
 import app.squirrel.ui.explore.PhotoFilter
 import app.squirrel.ui.explore.personLabel
+import app.squirrel.ui.photos.CANCEL_DOWNLOAD_DOC
+import app.squirrel.ui.photos.CONFIRM_DOWNLOAD_DOC
+import app.squirrel.ui.photos.DOWNLOAD_DOC
+import app.squirrel.ui.photos.DownloadView
 import app.squirrel.ui.photos.OverlayMirror
+import app.squirrel.ui.photos.PhotoDownloads
+import app.squirrel.ui.photos.addDownloadIntents
+import app.squirrel.ui.photos.cancelDownload
+import app.squirrel.ui.photos.confirmDownload
+import app.squirrel.ui.photos.downloadShown
+import app.squirrel.ui.photos.view
+import app.squirrel.ui.photos.withDownloads
 import app.squirrel.ui.photos.PhotoRow
 import app.squirrel.ui.photos.addShownToAlbum
 import app.squirrel.ui.photos.addShownToNewAlbum
@@ -40,6 +51,7 @@ data class PhotoSearchView(
     @Doc("Your people, for filter.person") val people: List<PersonChoice> = emptyList(),
     @Doc("The photo open in the viewer") val viewing: String? = null,
     @Doc("What the last add to an album did") val notice: String? = null,
+    @Doc("Download (the selection bar's); null where the search cannot download") val download: DownloadView? = null,
 )
 
 /** What an agent can do in photo search (LS-DO); closing the search is photos back. */
@@ -73,6 +85,15 @@ sealed interface PhotoSearchIntent {
     @Serializable @SerialName("add_to_new_album")
     @Doc("Add photos found to a new album named name, as Add to album, then New album… does")
     data class AddToNewAlbum(@Doc("Photo ids from photos") val ids: List<String>, val name: String) : PhotoSearchIntent
+
+    @Serializable @SerialName("download") @Doc(DOWNLOAD_DOC)
+    data class Download(@Doc("Photo ids from photos") val ids: List<String>) : PhotoSearchIntent
+
+    @Serializable @SerialName("confirm_download") @Doc(CONFIRM_DOWNLOAD_DOC)
+    data object ConfirmDownload : PhotoSearchIntent
+
+    @Serializable @SerialName("cancel_download") @Doc(CANCEL_DOWNLOAD_DOC)
+    data object CancelDownload : PhotoSearchIntent
 }
 
 /**
@@ -86,12 +107,13 @@ class PhotoSearchLsDo(
     private val onOpen: (String) -> Unit,
     private val onClose: () -> Unit,
     private val onAdded: (String) -> Unit,
+    private val downloads: PhotoDownloads? = null,
 ) : LsDoScreen<PhotoSearchView, PhotoSearchIntent> {
     val overlay = OverlayMirror()
 
     override val lsdo = lsdoSpec<PhotoSearchView, PhotoSearchIntent>()
 
-    override val state: StateFlow<PhotoSearchView> = vm.state.viewWith(overlay.state) { s, o ->
+    override val state: StateFlow<PhotoSearchView> = vm.state.viewWith(overlay.state.withDownloads(downloads)) { s, o ->
         PhotoSearchView(
             typed = s.typed,
             query = s.query,
@@ -105,6 +127,7 @@ class PhotoSearchLsDo(
             people = s.people.map { PersonChoice(it.id, personLabel(it.name)) },
             viewing = o.viewing,
             notice = o.notice,
+            download = o.download?.view(),
         )
     }
 
@@ -122,6 +145,9 @@ class PhotoSearchLsDo(
         PhotoSearchIntent.ClosePhoto -> done(onClose)
         is PhotoSearchIntent.AddToAlbum -> addShownToAlbum(api, intent.ids, vm.state.value.items, RESULTS, intent.albumId, onAdded)
         is PhotoSearchIntent.AddToNewAlbum -> addShownToNewAlbum(api, intent.ids, vm.state.value.items, RESULTS, intent.name, onAdded)
+        is PhotoSearchIntent.Download -> downloadShown(downloads, intent.ids, vm.state.value.items, RESULTS)
+        PhotoSearchIntent.ConfirmDownload -> confirmDownload(downloads)
+        PhotoSearchIntent.CancelDownload -> cancelDownload(downloads)
     }
 
     override fun availableIntents(state: PhotoSearchView): Set<String> = buildSet {
@@ -131,6 +157,7 @@ class PhotoSearchLsDo(
         if (state.error != null && !state.unavailable) add("retry")
         if (state.viewing == null) add("open") else add("close_photo")
         if (state.viewing == null && state.photos.isNotEmpty()) addAll(listOf("add_to_album", "add_to_new_album"))
+        if (state.photos.isNotEmpty() || state.download?.question != null) addDownloadIntents(state.download, state.viewing)
     }
 
     override fun isBusy(state: PhotoSearchView): Boolean = state.loading

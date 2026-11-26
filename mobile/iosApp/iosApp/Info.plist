@@ -44,6 +44,8 @@
 	</array>
 	<key>NSLocalNetworkUsageDescription</key>
 	<string>Squirrel connects to your home server on this network.</string>
+	<key>NSPhotoLibraryAddUsageDescription</key>
+	<string>Squirrel saves the photos you download to your library.</string>
 	<key>NSPhotoLibraryUsageDescription</key>
 	<string>Squirrel backs up your photos and videos to your own server.</string>
 	<key>PHPhotoLibraryPreventAutomaticLimitedAccessAlert</key>

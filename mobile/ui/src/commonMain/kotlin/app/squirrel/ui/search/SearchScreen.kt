@@ -35,6 +35,7 @@ import app.squirrel.theme.components.SegmentedControl
 import app.squirrel.ui.AppGraph
 import app.squirrel.ui.explore.FilterBar
 import app.squirrel.ui.photos.AddToAlbumSelection
+import app.squirrel.ui.photos.rememberPhotoDownloads
 import app.squirrel.ui.photos.AlbumsViewModel
 import app.squirrel.ui.photos.ErrorRetry
 import app.squirrel.ui.photos.JustifiedPhotos
@@ -81,7 +82,8 @@ private fun PhotoSearch(graph: AppGraph, api: SquirrelApi, vm: PhotoSearchViewMo
         selected = emptySet()
         albums.refresh()
     }
-    val lsdo = remember(vm) { PhotoSearchLsDo(vm, api, scope, onOpen = { viewing = it }, onClose = { viewing = null }, onAdded = onAdded) }
+    val downloads = rememberPhotoDownloads(api, graph.saver)
+    val lsdo = remember(vm) { PhotoSearchLsDo(vm, api, scope, onOpen = { viewing = it }, onClose = { viewing = null }, onAdded = onAdded, downloads = downloads) }
     LaunchedEffect(viewing, notice) { lsdo.overlay.shown(PhotosOverlay(viewing, notice)) }
     RegisterLsDo("photo_search", lsdo)
     SystemBack(enabled = selected.isNotEmpty()) { selected = emptySet() }
@@ -89,7 +91,15 @@ private fun PhotoSearch(graph: AppGraph, api: SquirrelApi, vm: PhotoSearchViewMo
         Column(Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(Tokens.space2)) {
             PhotoSearchResults(api, vm, state, TileActions({ viewing = it.id }, selected) { selected = it }, notice)
         }
-        AddToAlbumSelection(api, selected, onClear = { selected = emptySet() }, onAdded = onAdded, modifier = Modifier.align(Alignment.BottomCenter))
+        AddToAlbumSelection(
+            api,
+            selected,
+            onClear = { selected = emptySet() },
+            onAdded = onAdded,
+            modifier = Modifier.align(Alignment.BottomCenter),
+            downloads = downloads,
+            nameOf = { id -> vm.state.value.items.firstOrNull { it.id == id }?.name },
+        )
     }
     viewing?.let { id ->
         ViewerHost(graph, ViewerRequest(state.items, id, onNear = { if (state.items.lastOrNull()?.id == it) vm.more() }), onClose = { viewing = null })
