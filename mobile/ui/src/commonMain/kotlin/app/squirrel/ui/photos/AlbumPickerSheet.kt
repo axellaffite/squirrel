@@ -83,6 +83,7 @@ fun AlbumPickerSheet(api: SquirrelApi, ids: List<String>, onDone: (String) -> Un
                     leading = {
                         val cover = album.cover
                         Thumbnail(
+                            photoId = cover?.id,
                             url = cover?.takeIf { it.thumbnail.state == ThumbnailStatus.ready }?.let { api.thumbnailUrl(it.id, it.thumbnail.version) },
                             blurhash = cover?.blurhash,
                             contentDescription = null,

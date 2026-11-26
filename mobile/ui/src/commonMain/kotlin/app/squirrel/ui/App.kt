@@ -17,7 +17,14 @@ import app.squirrel.theme.blurredUnderModals
 import app.squirrel.theme.components.ground
 import app.squirrel.ui.backup.BackupTab
 import app.squirrel.ui.images.LocalImageLoader
+import app.squirrel.ui.photos.BlurView
+import app.squirrel.ui.photos.BlurredLsDo
+import io.github.axellaffite.lsdo.compose.RegisterLsDo
+import app.squirrel.ui.photos.LocalBlur
+import app.squirrel.ui.photos.PhotosRoute
 import app.squirrel.ui.photos.PhotosTab
+import androidx.lifecycle.viewmodel.compose.viewModel
+import app.squirrel.ui.shell.Navigator
 import app.squirrel.ui.files.FilePicker
 import app.squirrel.ui.files.FilesTab
 import app.squirrel.ui.files.addMenu
@@ -41,7 +48,11 @@ fun App(
     SquirrelTheme {
         val state by graph.state.collectAsStateWithLifecycle()
         val images by graph.imageLoader.collectAsStateWithLifecycle()
-        CompositionLocalProvider(LocalImageLoader provides images, LocalFilePicker provides picker) {
+        val blurState by graph.blurred.state.collectAsStateWithLifecycle()
+        val blur = remember(blurState) {
+            BlurView(blurState, graph.blurred::reveal, graph.blurred::setRevealAll)
+        }
+        CompositionLocalProvider(LocalImageLoader provides images, LocalFilePicker provides picker, LocalBlur provides blur) {
             // Sheets and dialogs open over this content blurred (MASTER.md "Dialog / sheet").
             Box(Modifier.fillMaxSize().ground().blurredUnderModals()) {
                 when (val current = state) {
@@ -54,6 +65,11 @@ fun App(
                             LocalViewModelStoreOwner provides current.scope,
                             LocalOverlay provides overlay,
                         ) {
+                            // Coming back to the app: the blur filter may have changed elsewhere (web).
+                            OnForeground { graph.blurred.refresh() }
+                            RegisterLsDo("blurred", remember(graph) { BlurredLsDo(graph.blurred) })
+                            // The account menu's "Blur filter" opens on the Photos tab's navigator.
+                            val photosNav = viewModel(key = "nav-photos") { Navigator<PhotosRoute>(PhotosRoute.Home) }
                             // Under the full-screen layer, the shell is hidden from assistive tech.
                             val covered = overlay.content != null
                             Box(Modifier.fillMaxSize().then(if (covered) Modifier.clearAndSetSemantics {} else Modifier)) {
@@ -61,6 +77,7 @@ fun App(
                                     current.account,
                                     onSignOut = graph::signOut,
                                     onRefresh = graph::refreshAccount,
+                                    onBlurFilter = { photosNav.push(PhotosRoute.BlurFilter()) },
                                     backup = { BackupTab(graph, actions) },
                                     photos = { PhotosTab(graph) },
                                     files = { FilesTab(graph) },

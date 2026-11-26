@@ -135,9 +135,10 @@
         },
         {
             "name": "photos",
-            "description": "The Photos section's navigation: show timeline / albums / explore, open search, back. Reached by: app go_to photos.",
+            "description": "The Photos section's navigation: show timeline / albums / explore, open search, open the blur filter, back. Reached by: app go_to photos.",
             "actions": [
                 "back",
+                "blur_filter",
                 "search",
                 "show"
             ]
@@ -191,7 +192,7 @@
         },
         {
             "name": "album_rules",
-            "description": "The rule editor of a dynamic album: people and tags (any or all), place, camera, kind, capture days, with a live count of the photos they match; save creates the album or saves its rules. Reached by: albums new_dynamic, or album edit_rules on your own dynamic album.",
+            "description": "The rule editor of a dynamic album: people and tags (any or all), place, camera, kind, capture days, with a live count of the photos they match; save creates the album or saves its rules. Reached by: albums new_dynamic, or album edit_rules on your own dynamic album. The blur filter's page edits its rules through it too (save saves the filter).",
             "actions": [
                 "cancel",
                 "clear_camera",
@@ -206,6 +207,26 @@
                 "set_search",
                 "toggle_person",
                 "toggle_tag"
+            ]
+        },
+        {
+            "name": "blur_filter",
+            "description": "The blur filter's settings: Blur matching photos (on/off), save the rules (edited through album_rules, with the live count), remove the filter. Reached by: app go_to photos, then photos blur_filter (or the account menu's Blur filter).",
+            "actions": [
+                "back",
+                "remove",
+                "save",
+                "set_enabled"
+            ]
+        },
+        {
+            "name": "blurred",
+            "description": "Your photos the blur filter hides (shown blurred everywhere, never loaded): show them all or blur them again (the timeline's Show blurred / Blur again), show one (the viewer's Show), refresh. Always shown after sign-in.",
+            "actions": [
+                "blur_again",
+                "refresh",
+                "show",
+                "show_all"
             ]
         },
         {

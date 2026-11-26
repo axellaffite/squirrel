@@ -27,11 +27,12 @@ enum class PhotosPage {
     @SerialName("section") Section,
     @SerialName("filtered") Filtered,
     @SerialName("album_rules") AlbumRules,
+    @SerialName("blur_filter") BlurFilter,
 }
 
 @Serializable
 data class PhotosView(
-    @Doc("The page shown: home (the sub-tabs), album, search, section (one Explore list) or filtered (a timeline opened from Explore) or album_rules (a new dynamic album's rules)") val page: PhotosPage = PhotosPage.Home,
+    @Doc("The page shown: home (the sub-tabs), album, search, section (one Explore list) or filtered (a timeline opened from Explore) or album_rules (a new dynamic album's rules) or blur_filter (the blur filter's settings)") val page: PhotosPage = PhotosPage.Home,
     @Doc("The sub-tab of home (kept while another page is on top)") val mode: PhotosMode = PhotosMode.Timeline,
     @Doc("The album, section or filtered timeline's title; null at home and in search") val title: String? = null,
     @Doc("The album shown, on an album page") val albumId: String? = null,
@@ -46,6 +47,9 @@ sealed interface PhotosIntent {
 
     @Serializable @SerialName("search") @Doc("Open photo search, as the search button does. Home only")
     data object Search : PhotosIntent
+
+    @Serializable @SerialName("blur_filter") @Doc("Open the blur filter's settings, as the account menu's Blur filter does. Home only")
+    data object BlurFilter : PhotosIntent
 
     @Serializable @SerialName("back") @Doc("Back one page, as the page's back button does. Not at home")
     data object Back : PhotosIntent
@@ -65,11 +69,12 @@ class PhotosLsDo(private val nav: Navigator<PhotosRoute>, mode: PhotosMode, priv
     override suspend fun perform(intent: PhotosIntent): String? = when (intent) {
         is PhotosIntent.Show -> done { select(intent.mode) }
         PhotosIntent.Search -> done { nav.push(PhotosRoute.Search) }
+        PhotosIntent.BlurFilter -> done { nav.push(PhotosRoute.BlurFilter()) }
         PhotosIntent.Back -> if (nav.pop()) null else "Already at the first page of Photos."
     }
 
     override fun availableIntents(state: PhotosView): Set<String> =
-        if (state.page == PhotosPage.Home) setOf("show", "search") else setOf("back")
+        if (state.page == PhotosPage.Home) setOf("show", "search", "blur_filter") else setOf("back")
 
     /** Photos recomposed with [stack] and [mode] shown. */
     fun shown(stack: List<PhotosRoute>, mode: PhotosMode) {
@@ -83,5 +88,6 @@ class PhotosLsDo(private val nav: Navigator<PhotosRoute>, mode: PhotosMode, priv
         is PhotosRoute.Section -> PhotosView(PhotosPage.Section, mode, top.section.title, depth = stack.size)
         is PhotosRoute.Filtered -> PhotosView(PhotosPage.Filtered, mode, top.title, depth = stack.size)
         is PhotosRoute.NewDynamicAlbum -> PhotosView(PhotosPage.AlbumRules, mode, "New dynamic album", depth = stack.size)
+        is PhotosRoute.BlurFilter -> PhotosView(PhotosPage.BlurFilter, mode, "Blur filter", depth = stack.size)
     }
 }

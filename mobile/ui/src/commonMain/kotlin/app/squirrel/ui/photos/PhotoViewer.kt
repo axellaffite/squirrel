@@ -63,6 +63,17 @@ import app.squirrel.theme.components.Progress
 import app.squirrel.theme.components.Sheet
 import app.squirrel.theme.tabular
 import app.squirrel.ui.images.Thumbnail
+import app.squirrel.ui.images.blurhashBitmap
+import androidx.compose.foundation.Image
+import androidx.compose.foundation.layout.aspectRatio
+import androidx.compose.runtime.produceState
+import androidx.compose.ui.graphics.FilterQuality
+import androidx.compose.ui.graphics.ImageBitmap
+import androidx.compose.ui.graphics.painter.BitmapPainter
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.text.style.TextAlign
+import app.squirrel.theme.components.Button
+import app.squirrel.theme.components.ButtonSize
 import app.squirrel.ui.shell.FullScreen
 import app.squirrel.ui.shell.StageBars
 import app.squirrel.ui.shell.SystemBack
@@ -209,6 +220,8 @@ internal fun StageButton(icon: SquirrelIcon, label: String, onClick: () -> Unit)
 /** Pinch or double-tap to zoom; one finger pans while zoomed and swipes the pager otherwise. */
 @Composable
 private fun ZoomablePhoto(api: SquirrelApi, item: AssetSummary, screen: IntSize, onZoom: (Boolean) -> Unit) {
+    val blur = LocalBlur.current
+    if (blur.isBlurred(item.id)) return BlurredPhoto(item, onShow = { blur.reveal(item.id) })
     var scale by remember { mutableFloatStateOf(1f) }
     var offset by remember { mutableStateOf(Offset.Zero) }
     var stage by remember { mutableStateOf(IntSize.Zero) }
@@ -250,6 +263,47 @@ private fun ZoomablePhoto(api: SquirrelApi, item: AssetSummary, screen: IntSize,
                 translationY = offset.y
             },
     )
+}
+
+/**
+ * A photo the blur filter hides: never loaded, its blurhash in the photo's frame (so showing it
+ * does not move anything), and in the middle why, with "Show" (for this photo, until the app
+ * restarts; its tile shows it too).
+ */
+@Composable
+private fun BlurredPhoto(item: AssetSummary, onShow: () -> Unit) {
+    val scheme = SquirrelTheme.scheme
+    val type = SquirrelTheme.type
+    val decoded by produceState<ImageBitmap?>(null, item.blurhash) { value = item.blurhash?.let { blurhashBitmap(it) } }
+    val w = item.width ?: 0
+    val h = item.height ?: 0
+    val ratio = if (w > 0 && h > 0) w.toFloat() / h else 1f
+    Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+        Box(Modifier.aspectRatio(ratio, matchHeightConstraintsFirst = ratio < 1f).background(scheme.tint)) {
+            decoded?.let {
+                Image(
+                    BitmapPainter(it, filterQuality = FilterQuality.Low),
+                    contentDescription = null,
+                    contentScale = ContentScale.FillBounds,
+                    modifier = Modifier.fillMaxSize(),
+                )
+            }
+            Box(Modifier.fillMaxSize().background(scheme.photoShade))
+        }
+        Column(
+            Modifier.padding(Tokens.gutter),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.spacedBy(Tokens.space2),
+        ) {
+            Icon(SquirrelIcon.EyeOff, contentDescription = null, tint = scheme.railInk)
+            BasicText("Hidden by your blur filter", style = type.label.copy(color = scheme.railInk, textAlign = TextAlign.Center))
+            BasicText(
+                "This photo matches the blur filter in your settings.",
+                style = type.caption.copy(color = scheme.railInk, textAlign = TextAlign.Center),
+            )
+            Button("Show", onClick = onShow, size = ButtonSize.Sm, icon = SquirrelIcon.Image)
+        }
+    }
 }
 
 /** Date, place and camera from `GET /api/photos/{id}`. */

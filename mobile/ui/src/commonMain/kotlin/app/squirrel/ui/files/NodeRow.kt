@@ -61,6 +61,7 @@ fun NodeRow(api: SquirrelApi, node: NodeDto, progress: Float?, onClick: () -> Un
         leading = thumb?.let {
             {
                 Thumbnail(
+                    photoId = node.id,
                     url = api.thumbnailUrl(node.id, it.version),
                     blurhash = it.blurhash,
                     contentDescription = null,

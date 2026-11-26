@@ -1,6 +1,6 @@
 {
     "name": "album_rules",
-    "description": "The rule editor of a dynamic album: people and tags (any or all), place, camera, kind, capture days, with a live count of the photos they match; save creates the album or saves its rules. Reached by: albums new_dynamic, or album edit_rules on your own dynamic album.",
+    "description": "The rule editor of a dynamic album: people and tags (any or all), place, camera, kind, capture days, with a live count of the photos they match; save creates the album or saves its rules. Reached by: albums new_dynamic, or album edit_rules on your own dynamic album. The blur filter's page edits its rules through it too (save saves the filter).",
     "actions": [
         {
             "name": "cancel",
@@ -52,7 +52,7 @@
         },
         {
             "name": "save",
-            "description": "Create the album (it opens) or save the rules (back to the album), as the button does",
+            "description": "Create the album (it opens), save the rules (back to the album), or save the blur filter, as the button does",
             "params": {
                 "type": "object",
                 "properties": {}
@@ -199,7 +199,7 @@
         "properties": {
             "creating": {
                 "type": "boolean",
-                "description": "A new dynamic album (its name is set here); else an album's rules being edited"
+                "description": "A new dynamic album (its name is set here); else an album's rules or the blur filter being edited"
             },
             "name": {
                 "type": "string"

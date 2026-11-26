@@ -1,0 +1,77 @@
+{
+    "name": "blurred",
+    "description": "Your photos the blur filter hides (shown blurred everywhere, never loaded): show them all or blur them again (the timeline's Show blurred / Blur again), show one (the viewer's Show), refresh. Always shown after sign-in.",
+    "actions": [
+        {
+            "name": "blur_again",
+            "description": "Blur them all again (forgets the one-by-one Show too), as Blur again does. Only while shown",
+            "params": {
+                "type": "object",
+                "properties": {}
+            }
+        },
+        {
+            "name": "refresh",
+            "description": "Ask the server for the list again, as coming back to the app does (without its throttle)",
+            "params": {
+                "type": "object",
+                "properties": {}
+            }
+        },
+        {
+            "name": "show",
+            "description": "Show one blurred photo, as the viewer's Show does",
+            "params": {
+                "type": "object",
+                "properties": {
+                    "id": {
+                        "type": "string",
+                        "description": "A node id of ids"
+                    }
+                },
+                "required": [
+                    "id"
+                ]
+            }
+        },
+        {
+            "name": "show_all",
+            "description": "Show every blurred photo until the app restarts, as the timeline's Show blurred does. Only when some are blurred",
+            "params": {
+                "type": "object",
+                "properties": {}
+            }
+        }
+    ],
+    "state": {
+        "type": "object",
+        "properties": {
+            "loaded": {
+                "type": "boolean",
+                "description": "The server's list has arrived (before: every photo blurred if the filter was active last time)"
+            },
+            "count": {
+                "type": "integer",
+                "description": "Photos the blur filter blurs"
+            },
+            "ids": {
+                "type": "array",
+                "items": {
+                    "type": "string"
+                },
+                "description": "Node ids the blur filter blurs"
+            },
+            "revealAll": {
+                "type": "boolean",
+                "description": "Show blurred is on: every photo shows, until the app restarts"
+            },
+            "revealed": {
+                "type": "array",
+                "items": {
+                    "type": "string"
+                },
+                "description": "Photos shown one by one (the viewer's Show), until the app restarts"
+            }
+        }
+    }
+}

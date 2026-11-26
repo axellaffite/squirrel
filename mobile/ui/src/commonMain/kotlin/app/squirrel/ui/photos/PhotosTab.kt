@@ -24,6 +24,7 @@ import app.squirrel.theme.components.Alert
 import app.squirrel.theme.components.AlertTone
 import app.squirrel.theme.components.Button
 import app.squirrel.theme.components.ButtonSize
+import app.squirrel.theme.components.ButtonVariant
 import app.squirrel.theme.components.IconButton
 import app.squirrel.theme.components.SegmentedControl
 import app.squirrel.ui.AppGraph
@@ -56,6 +57,9 @@ sealed interface PhotosRoute {
 
     /** The rule editor of a new dynamic album; [token] gives each opening its own editor. */
     data class NewDynamicAlbum(val token: Long = Random.nextLong()) : PhotosRoute
+
+    /** The blur filter's settings (from the account menu); [token] loads it afresh each opening. */
+    data class BlurFilter(val token: Long = Random.nextLong()) : PhotosRoute
 }
 
 /** Photos: "Timeline | Albums | Explore", albums, Explore's pages, search, and the viewer. */
@@ -80,6 +84,12 @@ fun PhotosTab(graph: AppGraph) {
                 albums.refresh()
                 nav.replace(PhotosRoute.Album(album.id, album.name))
             }, onBack = { nav.pop() })
+        }
+        is PhotosRoute.BlurFilter -> {
+            val vm = viewModel(key = "blur-filter-${route.token}") {
+                AlbumRulesViewModel(api, RulesTarget.BlurFilter, onFilterChanged = { graph.blurred.refresh(force = true) })
+            }
+            BlurFilterPage(api, vm, onBack = { nav.pop() })
         }
         PhotosRoute.Search -> SearchScreen(graph, SearchKind.Photos, onBack = { nav.pop() })
         is PhotosRoute.Section -> ExploreSectionPage(api, explore(api), route.section, onBack = { nav.pop() }, onOpen = filtered(nav))
@@ -125,6 +135,7 @@ private fun PhotosHome(graph: AppGraph, nav: Navigator<PhotosRoute>, mode: Photo
     Box(Modifier.fillMaxSize()) {
         Column(Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(Tokens.space2)) {
             PageHeader("Photos", actions = {
+                if (mode == PhotosMode.Timeline) BlurToggle()
                 if (mode == PhotosMode.Albums) IconButton(SquirrelIcon.Plus, label = "New album", onClick = { choosing = true })
                 IconButton(SquirrelIcon.Search, label = "Search photos", onClick = { nav.push(PhotosRoute.Search) })
             })
@@ -190,4 +201,19 @@ private fun PhotosHome(graph: AppGraph, nav: Navigator<PhotosRoute>, mode: Photo
         val items = remember(state.months) { state.loaded() }
         ViewerHost(graph, ViewerRequest(items, id, timeline::near), onClose = { viewing = null }, onAddToAlbum = { picking = listOf(it.id) })
     }
+}
+
+/** "Show blurred" / "Blur again": every photo the blur filter hides, until the app restarts. */
+@Composable
+private fun BlurToggle() {
+    val blur = LocalBlur.current
+    if (!blur.state.any) return
+    val all = blur.state.revealAll
+    Button(
+        if (all) "Blur again" else "Show blurred",
+        onClick = { blur.setRevealAll(!all) },
+        variant = ButtonVariant.Quiet,
+        size = ButtonSize.Sm,
+        icon = SquirrelIcon.EyeOff,
+    )
 }

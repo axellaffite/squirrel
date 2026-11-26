@@ -1,0 +1,91 @@
+{
+    "name": "blur_filter",
+    "description": "The blur filter's settings: Blur matching photos (on/off), save the rules (edited through album_rules, with the live count), remove the filter. Reached by: app go_to photos, then photos blur_filter (or the account menu's Blur filter).",
+    "actions": [
+        {
+            "name": "back",
+            "description": "Leave the page, as its back button does (unsaved rules are dropped)",
+            "params": {
+                "type": "object",
+                "properties": {}
+            }
+        },
+        {
+            "name": "remove",
+            "description": "Forget the filter (nothing is blurred any more), as Remove filter does. Only once saved",
+            "params": {
+                "type": "object",
+                "properties": {}
+            }
+        },
+        {
+            "name": "save",
+            "description": "Save the rules (album_rules' state) as the blur filter, as Save filter does",
+            "params": {
+                "type": "object",
+                "properties": {}
+            }
+        },
+        {
+            "name": "set_enabled",
+            "description": "Turn Blur matching photos on or off, as the switch does: saved at once once a filter exists, else with the first save",
+            "params": {
+                "type": "object",
+                "properties": {
+                    "enabled": {
+                        "type": "boolean"
+                    }
+                },
+                "required": [
+                    "enabled"
+                ]
+            }
+        }
+    ],
+    "state": {
+        "type": "object",
+        "properties": {
+            "loading": {
+                "type": "boolean",
+                "description": "GET /api/me/blur-filter has not answered yet"
+            },
+            "loadError": {
+                "type": "string",
+                "nullable": true
+            },
+            "enabled": {
+                "type": "boolean",
+                "description": "Blur matching photos (the switch); off keeps the rules"
+            },
+            "saved": {
+                "type": "boolean",
+                "description": "A filter is saved on the server (remove is offered)"
+            },
+            "matching": {
+                "type": "integer",
+                "nullable": true,
+                "description": "Photos the rules being edited match now (the live count); the rules themselves are album_rules'"
+            },
+            "problem": {
+                "type": "string",
+                "nullable": true,
+                "description": "What stops a save, or null"
+            },
+            "saving": {
+                "type": "boolean"
+            },
+            "removing": {
+                "type": "boolean"
+            },
+            "notice": {
+                "type": "string",
+                "nullable": true,
+                "description": "What the last save, switch or removal did"
+            },
+            "error": {
+                "type": "string",
+                "nullable": true
+            }
+        }
+    }
+}

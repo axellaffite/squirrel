@@ -38,6 +38,7 @@ import app.squirrel.ui.files.FileHandoff
 import app.squirrel.ui.images.ImagesPlatform
 import app.squirrel.ui.images.forgetEverything
 import app.squirrel.ui.images.squirrelImageLoader
+import app.squirrel.ui.photos.BlurredPhotos
 import app.squirrel.ui.photos.PhotoSaver
 import coil3.ImageLoader
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -75,6 +76,9 @@ private class SettingsPendingClear(private val settings: SettingsStore) : Pendin
 }
 
 private const val NOTIFICATIONS_ASKED_KEY = "notifications.asked"
+
+/** "1" when the blur filter blurred something at the last answer (forgotten at sign-out). */
+private const val BLUR_ACTIVE_KEY = "photos.blur_active"
 
 /** Kept by `forgetDevice` (Setting.sq `removeDeviceState`). */
 const val PENDING_CLEAR_KEY = "session.clear_pending"
@@ -115,6 +119,11 @@ class AppGraph(
 
     /** The backup engine of the signed-in device (null when signed out or not wired). */
     val syncEngine: StateFlow<SyncEngine?> = _syncEngine.asStateFlow()
+
+    /** The signed-in account's photos its blur filter hides (empty when signed out). */
+    val blurred = BlurredPhotos(scope, remember = { active ->
+        withContext(io) { settings.setValue(BLUR_ACTIVE_KEY, if (active) "1" else null) }
+    })
 
     init {
         scope.launch { start() }
@@ -160,9 +169,10 @@ class AppGraph(
         }
     }
 
-    private fun use(api: SquirrelApi) {
+    private fun use(api: SquirrelApi, blurActive: Boolean = false) {
         this.api = api
         images?.let { _imageLoader.value = squirrelImageLoader(it, api.httpClient) }
+        blurred.start(load = { api.photos.blurredPhotos().bodyOrThrow().nodeIds }, wasActive = blurActive)
         val platform = backup ?: return
         _syncEngine.value = SyncEngine(
             source = platform.source,
@@ -220,7 +230,9 @@ class AppGraph(
     }
 
     private suspend fun start() {
+        var blurActive = false
         val restored = withContext(io) {
+            blurActive = settings.value(BLUR_ACTIVE_KEY) != null
             val url = settings.serverUrl()
             val name = settings.value(AccountKeys.DISPLAY_NAME)
             if (session.restore() != SessionState.SignedIn || url == null || name == null) {
@@ -235,7 +247,7 @@ class AppGraph(
                 )
             }
         } ?: return toSignIn()
-        use(newApi(restored.serverUrl))
+        use(newApi(restored.serverUrl), blurActive)
         _state.value = AppState.SignedIn(restored, newScope())
         refreshAccount()
     }
@@ -295,6 +307,7 @@ class AppGraph(
 
     private suspend fun toSignIn() {
         (_state.value as? AppState.SignedIn)?.scope?.close()
+        blurred.reset()
         backup?.cancel()
         // Thumbnails, previews and downloaded files are this account's private data. Screens
         // lose the loader first, so none of them loads into the caches while they are cleared.

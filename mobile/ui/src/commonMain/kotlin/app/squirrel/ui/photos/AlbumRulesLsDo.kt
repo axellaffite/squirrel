@@ -23,7 +23,7 @@ data class RuleChoice(
 
 @Serializable
 data class AlbumRulesView(
-    @Doc("A new dynamic album (its name is set here); else an album's rules being edited") val creating: Boolean,
+    @Doc("A new dynamic album (its name is set here); else an album's rules or the blur filter being edited") val creating: Boolean,
     val name: String = "",
     @Doc("What the photos must show, matched as photo search does; empty: no search") val search: String = "",
     @Doc("Person ids chosen") val people: List<String> = emptyList(),
@@ -86,7 +86,7 @@ sealed interface AlbumRulesIntent {
     @Serializable @SerialName("set_dates") @Doc("The capture days, YYYY-MM-DD, both included; empty: open-ended")
     data class SetDates(val from: String = "", val to: String = "") : AlbumRulesIntent
 
-    @Serializable @SerialName("save") @Doc("Create the album (it opens) or save the rules (back to the album), as the button does")
+    @Serializable @SerialName("save") @Doc("Create the album (it opens), save the rules (back to the album), or save the blur filter, as the button does")
     data object Save : AlbumRulesIntent
 
     @Serializable @SerialName("cancel") @Doc("Leave without saving, as back does")
@@ -125,12 +125,19 @@ internal fun rulesView(s: AlbumRulesState): AlbumRulesView {
     )
 }
 
-/** The rule editor as an LS-DO screen ("album_rules"). [onSaved] does what the button does once saved. */
+/**
+ * The rule editor as an LS-DO screen ("album_rules"): a dynamic album's, or the blur filter's.
+ * [save] does what the page's save button does, true once saved.
+ */
 class AlbumRulesLsDo(
     private val vm: AlbumRulesViewModel,
-    private val onSaved: (AlbumDto) -> Unit,
     private val onCancel: () -> Unit,
+    private val save: suspend () -> Boolean,
 ) : LsDoScreen<AlbumRulesView, AlbumRulesIntent> {
+    /** A dynamic album's editor: [onSaved] gets the album, as after the button. */
+    constructor(vm: AlbumRulesViewModel, onSaved: (AlbumDto) -> Unit, onCancel: () -> Unit) :
+        this(vm, onCancel, save = { vm.save()?.also(onSaved) != null })
+
     override val lsdo = lsdoSpec<AlbumRulesView, AlbumRulesIntent>()
 
     override val state: StateFlow<AlbumRulesView> = vm.state.view(::rulesView)
@@ -151,7 +158,7 @@ class AlbumRulesLsDo(
         AlbumRulesIntent.ClearCamera -> done { vm.edit { it.withoutCamera() } }
         is AlbumRulesIntent.SetKind -> done { vm.edit { it.copy(kind = intent.kind) } }
         is AlbumRulesIntent.SetDates -> done { vm.edit { it.copy(takenFrom = intent.from, takenTo = intent.to) } }
-        AlbumRulesIntent.Save -> vm.save()?.let { album -> done { onSaved(album) } } ?: vm.state.value.error
+        AlbumRulesIntent.Save -> if (save()) null else vm.state.value.error ?: "Not saved."
         AlbumRulesIntent.Cancel -> done(onCancel)
     }
 

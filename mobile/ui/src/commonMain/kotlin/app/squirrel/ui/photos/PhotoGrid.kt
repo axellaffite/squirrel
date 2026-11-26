@@ -86,6 +86,7 @@ fun PhotoTile(api: SquirrelApi, item: AssetSummary, modifier: Modifier, actions:
             ),
     ) {
         Thumbnail(
+            photoId = item.id,
             url = if (ready) api.thumbnailUrl(item.id, item.thumbnail.version) else null,
             blurhash = item.blurhash,
             contentDescription = photoLabel(item),

@@ -67,12 +67,10 @@ private const val PREVIEW_TILES = 6
 @Composable
 fun AlbumRulesPage(api: SquirrelApi, vm: AlbumRulesViewModel, title: String, onSaved: (AlbumDto) -> Unit, onBack: () -> Unit) {
     val state by vm.state.collectAsStateWithLifecycle()
-    var sheet by remember { mutableStateOf<RuleSheet?>(null) }
     val scope = rememberCoroutineScope()
     val save: () -> Unit = { scope.launch { vm.save()?.let(onSaved) } }
     RegisterLsDo("album_rules", remember(vm) { AlbumRulesLsDo(vm, onSaved, onBack) })
     SystemBack(onBack = onBack)
-    val form = state.form
     Column(Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(Tokens.space2)) {
         PageHeader(title, onBack = onBack, backLabel = "Cancel")
         Column(
@@ -82,29 +80,40 @@ fun AlbumRulesPage(api: SquirrelApi, vm: AlbumRulesViewModel, title: String, onS
             if (state.creating) TextField(state.name, vm::setName, label = "Name")
             BasicText("Photos that match every rule below show up in the album by themselves, now and later.", style = SquirrelTheme.type.caption)
             PreviewCard(api, state)
-            if (state.choicesFailed) Alert(UNREACHABLE, tone = AlertTone.Error)
-            SectionTitle("What they show")
-            TextField(form.search, { v -> vm.edit { it.copy(search = v) } }, label = "Search")
-            BasicText("Any words, in any language: “shirtless”, “dog on the beach”. Photos match as search finds them.", style = SquirrelTheme.type.caption)
-            RowGroup {
-                val names = state.people.associate { it.id to it.name }
-                ListRow("People", icon = SquirrelIcon.User, meta = groupMeta(form.people.map { personLabel(names[it]) }, form.peopleMatch, "Anyone"), onClick = { sheet = RuleSheet.People })
-                ListRow("Tags", icon = SquirrelIcon.Tag, meta = groupMeta(form.tags.map(::tagLabel), form.tagsMatch, "Any tag"), onClick = { sheet = RuleSheet.Tags })
-                ListRow("Place", icon = SquirrelIcon.MapPin, meta = placeMeta(state), onClick = { sheet = RuleSheet.Place })
-                ListRow("Camera", icon = SquirrelIcon.Camera, meta = form.cameraMake?.let { make -> form.cameraModel?.let { "$make $it" } ?: make } ?: "Any camera", onClick = { sheet = RuleSheet.Camera })
-            }
-            SectionTitle("Kind")
-            SegmentedControl(KINDS.map { it.second }, KINDS.indexOfFirst { it.first == form.kind }.coerceAtLeast(0), onSelect = { i -> vm.edit { it.copy(kind = KINDS[i].first) } })
-            SectionTitle("Taken")
-            val dateKeys = KeyboardOptions(autoCorrectEnabled = false)
-            TextField(form.takenFrom, { v -> vm.edit { it.copy(takenFrom = v) } }, label = "First day", keyboardOptions = dateKeys)
-            TextField(form.takenTo, { v -> vm.edit { it.copy(takenTo = v) } }, label = "Last day", keyboardOptions = dateKeys)
-            BasicText("YYYY-MM-DD, both days included. Leave empty for no limit.", style = SquirrelTheme.type.caption)
+            RuleFields(api, state, vm)
             state.error?.let { Alert(it, tone = AlertTone.Error) }
             Button(if (state.creating) "Create album" else "Save rules", onClick = save, enabled = state.problem == null && !state.saving, full = true)
             Spacer(Modifier.height(RailClearance))
         }
     }
+}
+
+/**
+ * The rule groups (search text, people, tags, place, camera, kind, dates) and their pickers:
+ * a dynamic album's and the blur filter's editors share them.
+ */
+@Composable
+internal fun RuleFields(api: SquirrelApi, state: AlbumRulesState, vm: AlbumRulesViewModel) {
+    var sheet by remember { mutableStateOf<RuleSheet?>(null) }
+    val form = state.form
+    if (state.choicesFailed) Alert(UNREACHABLE, tone = AlertTone.Error)
+    SectionTitle("What they show")
+    TextField(form.search, { v -> vm.edit { it.copy(search = v) } }, label = "Search")
+    BasicText("Any words, in any language: “shirtless”, “dog on the beach”. Photos match as search finds them.", style = SquirrelTheme.type.caption)
+    RowGroup {
+        val names = state.people.associate { it.id to it.name }
+        ListRow("People", icon = SquirrelIcon.User, meta = groupMeta(form.people.map { personLabel(names[it]) }, form.peopleMatch, "Anyone"), onClick = { sheet = RuleSheet.People })
+        ListRow("Tags", icon = SquirrelIcon.Tag, meta = groupMeta(form.tags.map(::tagLabel), form.tagsMatch, "Any tag"), onClick = { sheet = RuleSheet.Tags })
+        ListRow("Place", icon = SquirrelIcon.MapPin, meta = placeMeta(state), onClick = { sheet = RuleSheet.Place })
+        ListRow("Camera", icon = SquirrelIcon.Camera, meta = form.cameraMake?.let { make -> form.cameraModel?.let { "$make $it" } ?: make } ?: "Any camera", onClick = { sheet = RuleSheet.Camera })
+    }
+    SectionTitle("Kind")
+    SegmentedControl(KINDS.map { it.second }, KINDS.indexOfFirst { it.first == form.kind }.coerceAtLeast(0), onSelect = { i -> vm.edit { it.copy(kind = KINDS[i].first) } })
+    SectionTitle("Taken")
+    val dateKeys = KeyboardOptions(autoCorrectEnabled = false)
+    TextField(form.takenFrom, { v -> vm.edit { it.copy(takenFrom = v) } }, label = "First day", keyboardOptions = dateKeys)
+    TextField(form.takenTo, { v -> vm.edit { it.copy(takenTo = v) } }, label = "Last day", keyboardOptions = dateKeys)
+    BasicText("YYYY-MM-DD, both days included. Leave empty for no limit.", style = SquirrelTheme.type.caption)
     when (sheet) {
         RuleSheet.People -> PeopleRuleSheet(api, state, vm, onClose = { sheet = null })
         RuleSheet.Tags -> TagsRuleSheet(state, vm, onClose = { sheet = null })
@@ -119,9 +128,12 @@ internal fun SectionTitle(text: String) {
     BasicText(text, style = SquirrelTheme.type.cardTitle, modifier = Modifier.semantics { heading() })
 }
 
-/** "12 photos match" (or why there is no count yet) and the newest of them. */
+/**
+ * "12 photos match" (or why there is no count yet) and the newest of them; [blurred]: shown as
+ * their blurred placeholders (the blur filter's editor: they are the photos it hides).
+ */
 @Composable
-private fun PreviewCard(api: SquirrelApi, state: AlbumRulesState) {
+internal fun PreviewCard(api: SquirrelApi, state: AlbumRulesState, blurred: Boolean = false) {
     val preview = state.preview
     val line = when {
         state.form.problem != null -> state.form.problem ?: ""
@@ -135,7 +147,7 @@ private fun PreviewCard(api: SquirrelApi, state: AlbumRulesState) {
             val newest = preview?.newest.orEmpty().take(PREVIEW_TILES)
             if (newest.isNotEmpty() && state.form.problem == null) {
                 Row(horizontalArrangement = Arrangement.spacedBy(Tokens.space1)) {
-                    newest.forEach { PreviewTile(api, it, Modifier.weight(1f)) }
+                    newest.forEach { PreviewTile(api, it, blurred, Modifier.weight(1f)) }
                     repeat(PREVIEW_TILES - newest.size) { Spacer(Modifier.weight(1f)) }
                 }
             }
@@ -144,8 +156,10 @@ private fun PreviewCard(api: SquirrelApi, state: AlbumRulesState) {
 }
 
 @Composable
-private fun PreviewTile(api: SquirrelApi, photo: AssetSummary, modifier: Modifier) {
+private fun PreviewTile(api: SquirrelApi, photo: AssetSummary, blurred: Boolean, modifier: Modifier) {
     Thumbnail(
+        photoId = photo.id,
+        blurred = blurred,
         url = photo.takeIf { it.thumbnail.state == ThumbnailStatus.ready }?.let { api.thumbnailUrl(it.id, it.thumbnail.version) },
         blurhash = photo.blurhash,
         contentDescription = null,

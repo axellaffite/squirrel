@@ -60,6 +60,7 @@ fun CoverCard(
             }
         } else {
             Thumbnail(
+                photoId = cover.id,
                 url = cover.takeIf { it.thumbnail.state == ThumbnailStatus.ready }?.let { api.thumbnailUrl(it.id, it.thumbnail.version) },
                 blurhash = cover.blurhash,
                 contentDescription = null,

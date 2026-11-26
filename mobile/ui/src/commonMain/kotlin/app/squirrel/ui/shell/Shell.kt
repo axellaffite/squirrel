@@ -61,6 +61,8 @@ fun Shell(
     account: AccountInfo,
     onSignOut: () -> Unit,
     onRefresh: () -> Unit,
+    /** Opens the blur filter's settings (on the Photos tab); null hides the entry. */
+    onBlurFilter: (() -> Unit)? = null,
     backup: @Composable () -> Unit = {},
     photos: (@Composable () -> Unit)? = null,
     files: (@Composable () -> Unit)? = null,
@@ -100,10 +102,20 @@ fun Shell(
                             onDismissRequest = { menuOpen = false },
                             properties = PopupProperties(focusable = true),
                         ) {
-                            AccountMenu(account, onSignOut = {
-                                menuOpen = false
-                                onSignOut()
-                            })
+                            AccountMenu(
+                                account,
+                                onSignOut = {
+                                    menuOpen = false
+                                    onSignOut()
+                                },
+                                onBlurFilter = onBlurFilter?.let { open ->
+                                    {
+                                        menuOpen = false
+                                        tab = Tab.Photos.name
+                                        open()
+                                    }
+                                },
+                            )
                         }
                     }
                 }
@@ -137,7 +149,7 @@ fun Shell(
 }
 
 @Composable
-private fun AccountMenu(account: AccountInfo, onSignOut: () -> Unit) {
+private fun AccountMenu(account: AccountInfo, onSignOut: () -> Unit, onBlurFilter: (() -> Unit)?) {
     val type = SquirrelTheme.type
     Column(
         modifier = Modifier
@@ -152,6 +164,9 @@ private fun AccountMenu(account: AccountInfo, onSignOut: () -> Unit) {
         if (account.username.isNotEmpty()) BasicText(account.username, style = type.caption)
         BasicText(account.serverUrl, style = type.caption.tabular(), maxLines = 1, overflow = TextOverflow.Ellipsis)
         BasicText("This phone: ${account.deviceName}", style = type.caption)
+        if (onBlurFilter != null) {
+            Button("Blur filter", onClick = onBlurFilter, variant = ButtonVariant.Secondary, full = true, icon = SquirrelIcon.EyeOff)
+        }
         Button("Sign out", onClick = onSignOut, variant = ButtonVariant.Secondary, full = true, icon = SquirrelIcon.LogOut)
     }
 }

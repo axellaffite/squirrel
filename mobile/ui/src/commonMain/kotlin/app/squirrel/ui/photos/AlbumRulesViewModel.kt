@@ -5,6 +5,7 @@ import androidx.lifecycle.viewModelScope
 import app.squirrel.api.models.AlbumDto
 import app.squirrel.api.models.AlbumPreviewDto
 import app.squirrel.api.models.AlbumRulesDto
+import app.squirrel.api.models.BlurFilterDto
 import app.squirrel.api.models.CameraGroupDto
 import app.squirrel.api.models.CreateAlbumRequest
 import app.squirrel.api.models.PersonDto
@@ -30,9 +31,34 @@ import kotlinx.coroutines.launch
 /** How long the rules rest before their preview is asked for. */
 const val PREVIEW_DEBOUNCE_MILLIS = 400L
 
+/** What the rules editor edits: a new dynamic album, an album's rules, or the blur filter. */
+sealed interface RulesTarget {
+    data object NewAlbum : RulesTarget
+    data class Album(val id: String) : RulesTarget
+
+    /** The caller's blur filter (`/api/me/blur-filter`): the photos it matches show blurred. */
+    data object BlurFilter : RulesTarget
+}
+
+/** The blur filter's own part of the editor (the rules are the form's). */
+data class FilterState(
+    /** `GET /api/me/blur-filter` has not answered yet. */
+    val loading: Boolean = true,
+    val loadError: String? = null,
+    /** "Blur matching photos": off keeps the rules. */
+    val enabled: Boolean = true,
+    /** The rules on the server; null: no filter saved. */
+    val saved: AlbumRulesDto? = null,
+    val removing: Boolean = false,
+    /** What the last save or removal did ("Blur filter saved."). */
+    val notice: String? = null,
+)
+
 data class AlbumRulesState(
-    /** A new album (its name is asked here); else an existing album's rules. */
+    /** A new album (its name is asked here); else an existing album's rules, or the blur filter. */
     val creating: Boolean = true,
+    /** The blur filter's state; null when editing an album. */
+    val filter: FilterState? = null,
     val name: String = "",
     val form: RulesForm = RulesForm(),
     /** The pickers' choices: visible people, tags, countries, cities and cameras. */
@@ -56,16 +82,29 @@ data class AlbumRulesState(
 }
 
 /**
- * The rule editor of a dynamic album, new ([albumId] null) or existing ([initial] its rules):
- * the pickers' choices, a debounced live preview (`POST /api/albums/preview`) and the save.
+ * The rule editor of a dynamic album, new or existing ([initial] its rules), or of the blur filter
+ * (its rules loaded here): the pickers' choices, a debounced live preview
+ * (`POST /api/albums/preview`, the same rules) and the save.
  */
 class AlbumRulesViewModel(
     private val api: SquirrelApi,
-    private val albumId: String?,
+    private val target: RulesTarget,
     initial: AlbumRulesDto? = null,
     private val debounceMillis: Long = PREVIEW_DEBOUNCE_MILLIS,
+    /** The blur filter was saved or removed (the blurred photos are asked for again). */
+    private val onFilterChanged: () -> Unit = {},
 ) : ViewModel() {
-    private val _state = MutableStateFlow(AlbumRulesState(creating = albumId == null, form = initial?.let(RulesForm::from) ?: RulesForm()))
+    /** A dynamic album's editor: new when [albumId] is null. */
+    constructor(api: SquirrelApi, albumId: String?, initial: AlbumRulesDto? = null, debounceMillis: Long = PREVIEW_DEBOUNCE_MILLIS) :
+        this(api, albumId?.let { RulesTarget.Album(it) } ?: RulesTarget.NewAlbum, initial, debounceMillis)
+
+    private val _state = MutableStateFlow(
+        AlbumRulesState(
+            creating = target == RulesTarget.NewAlbum,
+            filter = if (target == RulesTarget.BlurFilter) FilterState() else null,
+            form = initial?.let(RulesForm::from) ?: RulesForm(),
+        ),
+    )
     val state: StateFlow<AlbumRulesState> = _state.asStateFlow()
 
     private var previewJob: Job? = null
@@ -75,8 +114,29 @@ class AlbumRulesViewModel(
 
     init {
         loadChoices()
-        schedulePreview()
+        if (target == RulesTarget.BlurFilter) loadFilter() else schedulePreview()
     }
+
+    private fun loadFilter() {
+        viewModelScope.launch {
+            when (val result = call { api.photos.getBlurFilter().bodyOrThrow() }) {
+                is Outcome.Ok -> {
+                    val dto = result.value
+                    _state.update {
+                        it.copy(
+                            form = dto.rules?.let(RulesForm::from) ?: it.form,
+                            filter = FilterState(loading = false, enabled = dto.rules == null || dto.enabled, saved = dto.rules),
+                        )
+                    }
+                    schedulePreview()
+                }
+                is Outcome.Failed -> updateFilter { it.copy(loading = false, loadError = result.message) }
+            }
+        }
+    }
+
+    private fun updateFilter(change: (FilterState) -> FilterState) =
+        _state.update { s -> s.filter?.let { s.copy(filter = change(it)) } ?: s }
 
     private fun loadChoices() {
         viewModelScope.launch {
@@ -104,7 +164,7 @@ class AlbumRulesViewModel(
 
     /** Changes the rules; the preview follows once they rest. */
     fun edit(change: (RulesForm) -> RulesForm) {
-        _state.update { it.copy(form = change(it.form), error = null) }
+        _state.update { s -> s.copy(form = change(s.form), error = null, filter = s.filter?.copy(notice = null)) }
         schedulePreview()
     }
 
@@ -133,7 +193,7 @@ class AlbumRulesViewModel(
     /** Creates the album or saves its new rules: the album, or null (and [AlbumRulesState.error] says why). */
     suspend fun save(): AlbumDto? {
         val current = _state.value
-        if (current.saving) return null
+        if (current.saving || target == RulesTarget.BlurFilter) return null
         current.problem?.let { problem ->
             _state.update { it.copy(error = problem) }
             return null
@@ -141,10 +201,79 @@ class AlbumRulesViewModel(
         val rules = current.form.toRules() ?: return null
         _state.update { it.copy(saving = true, error = null) }
         val result = call {
-            if (albumId == null) api.albums.createAlbum(CreateAlbumRequest(name = current.name.trim(), rules = rules)).bodyOrThrow()
-            else api.albums.updateAlbum(albumId, UpdateAlbumRequest(rules = rules)).bodyOrThrow()
+            when (target) {
+                is RulesTarget.Album -> api.albums.updateAlbum(target.id, UpdateAlbumRequest(rules = rules)).bodyOrThrow()
+                else -> api.albums.createAlbum(CreateAlbumRequest(name = current.name.trim(), rules = rules)).bodyOrThrow()
+            }
         }
         _state.update { it.copy(saving = false, error = (result as? Outcome.Failed)?.message) }
         return (result as? Outcome.Ok)?.value
+    }
+
+    /**
+     * "Blur matching photos": once a filter is saved, the switch applies at once (with the saved
+     * rules, not the ones being edited); before that, it is saved with the first rules.
+     */
+    suspend fun setFilterEnabled(enabled: Boolean): Boolean {
+        val filter = _state.value.filter ?: return false
+        if (filter.loading || filter.removing || _state.value.saving) return false
+        val saved = filter.saved ?: run {
+            updateFilter { it.copy(enabled = enabled, notice = null) }
+            return true
+        }
+        return putFilter(BlurFilterDto(enabled = enabled, rules = saved), if (enabled) "Matching photos are blurred." else "Blur filter off: photos show normally.")
+    }
+
+    /** Saves the rules as the blur filter: false (and [AlbumRulesState.error] says why) when refused. */
+    suspend fun saveFilter(): Boolean {
+        val current = _state.value
+        val filter = current.filter ?: return false
+        if (current.saving || filter.loading || filter.removing) return false
+        current.form.problem?.let { problem ->
+            _state.update { it.copy(error = problem) }
+            return false
+        }
+        val rules = current.form.toRules() ?: return false
+        return putFilter(BlurFilterDto(enabled = filter.enabled, rules = rules), "Blur filter saved.")
+    }
+
+    /** Forgets the blur filter (`rules: null`): nothing is blurred any more. */
+    suspend fun removeFilter(): Boolean {
+        val current = _state.value
+        val filter = current.filter ?: return false
+        if (current.saving || filter.removing || filter.saved == null) return false
+        updateFilter { it.copy(removing = true, notice = null) }
+        _state.update { it.copy(error = null) }
+        val result = call { api.photos.updateBlurFilter(BlurFilterDto(enabled = false, rules = null)).bodyOrThrow() }
+        when (result) {
+            is Outcome.Ok -> {
+                _state.update {
+                    it.copy(form = RulesForm(), filter = FilterState(loading = false, notice = "Blur filter removed: no photo is blurred."))
+                }
+                schedulePreview()
+                onFilterChanged()
+            }
+            is Outcome.Failed -> {
+                updateFilter { it.copy(removing = false) }
+                _state.update { it.copy(error = result.message) }
+            }
+        }
+        return result is Outcome.Ok
+    }
+
+    private suspend fun putFilter(dto: BlurFilterDto, notice: String): Boolean {
+        _state.update { it.copy(saving = true, error = null) }
+        updateFilter { it.copy(notice = null) }
+        val result = call { api.photos.updateBlurFilter(dto).bodyOrThrow() }
+        when (result) {
+            is Outcome.Ok -> {
+                val kept = result.value
+                updateFilter { it.copy(enabled = kept.enabled, saved = kept.rules, notice = notice) }
+                _state.update { it.copy(saving = false) }
+                onFilterChanged()
+            }
+            is Outcome.Failed -> _state.update { it.copy(saving = false, error = result.message) }
+        }
+        return result is Outcome.Ok
     }
 }

@@ -27,6 +27,7 @@ import coil3.compose.AsyncImage
 import app.squirrel.theme.SquirrelIcon
 import app.squirrel.theme.SquirrelTheme
 import app.squirrel.theme.components.Icon
+import app.squirrel.ui.photos.LocalBlur
 
 /** The signed-in device's image loader (null while signed out). */
 val LocalImageLoader = staticCompositionLocalOf<ImageLoader?> { null }
@@ -53,6 +54,8 @@ suspend fun blurhashBitmap(hash: String): ImageBitmap? {
 /**
  * MASTER.md photo tile: the blurhash (or `--tint`) while loading, then the image, cropped.
  * [url] null: nothing to load ([unsupported] shows `image-off`, otherwise "preparing").
+ * A photo the blur filter hides ([photoId] blurred, see `LocalBlur`, or [blurred]) is never
+ * loaded: its blurhash shows under `--photo-shade` with the `eye-off` mark.
  */
 @Composable
 fun Thumbnail(
@@ -63,7 +66,14 @@ fun Thumbnail(
     unsupported: Boolean = false,
     /** Fit the whole image (the viewer) instead of cropping it to the tile. */
     fit: Boolean = false,
+    /** The photo's node id: the blur filter is asked about it. */
+    photoId: String? = null,
+    /** Shown blurred whatever the filter says (photos a filter being edited matches). */
+    blurred: Boolean = false,
 ) {
+    if (!fit && (blurred || LocalBlur.current.isBlurred(photoId))) {
+        return BlurredThumbnail(blurhash, contentDescription, modifier)
+    }
     val scheme = SquirrelTheme.scheme
     val decoded by produceState<ImageBitmap?>(null, blurhash) { value = blurhash?.let { blurhashBitmap(it) } }
     // A load that failed (offline, deleted, refused) shows `image-off`, not a blurhash forever.
@@ -105,5 +115,28 @@ fun Thumbnail(
             unsupported || failed -> Icon(SquirrelIcon.ImageOff, contentDescription = contentDescription, tint = scheme.inkMuted)
             preview == null -> Icon(SquirrelIcon.Image, contentDescription = contentDescription, tint = scheme.inkMuted)
         }
+    }
+}
+
+/** A photo the blur filter hides: its blurhash under `--photo-shade`, `eye-off` in the middle. */
+@Composable
+private fun BlurredThumbnail(blurhash: String?, contentDescription: String?, modifier: Modifier) {
+    val scheme = SquirrelTheme.scheme
+    val decoded by produceState<ImageBitmap?>(null, blurhash) { value = blurhash?.let { blurhashBitmap(it) } }
+    Box(modifier.background(scheme.tint), contentAlignment = Alignment.Center) {
+        decoded?.let {
+            Image(
+                BitmapPainter(it, filterQuality = FilterQuality.Low),
+                contentDescription = null,
+                contentScale = ContentScale.Crop,
+                modifier = Modifier.fillMaxSize(),
+            )
+        }
+        Box(Modifier.fillMaxSize().background(scheme.photoShade))
+        Icon(
+            SquirrelIcon.EyeOff,
+            contentDescription = contentDescription?.let { "$it, blurred" },
+            tint = scheme.photoRing,
+        )
     }
 }

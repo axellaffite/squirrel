@@ -1,10 +1,18 @@
 {
     "name": "photos",
-    "description": "The Photos section's navigation: show timeline / albums / explore, open search, back. Reached by: app go_to photos.",
+    "description": "The Photos section's navigation: show timeline / albums / explore, open search, open the blur filter, back. Reached by: app go_to photos.",
     "actions": [
         {
             "name": "back",
             "description": "Back one page, as the page's back button does. Not at home",
+            "params": {
+                "type": "object",
+                "properties": {}
+            }
+        },
+        {
+            "name": "blur_filter",
+            "description": "Open the blur filter's settings, as the account menu's Blur filter does. Home only",
             "params": {
                 "type": "object",
                 "properties": {}
@@ -50,9 +58,10 @@
                     "search",
                     "section",
                     "filtered",
-                    "album_rules"
+                    "album_rules",
+                    "blur_filter"
                 ],
-                "description": "The page shown: home (the sub-tabs), album, search, section (one Explore list) or filtered (a timeline opened from Explore) or album_rules (a new dynamic album's rules)"
+                "description": "The page shown: home (the sub-tabs), album, search, section (one Explore list) or filtered (a timeline opened from Explore) or album_rules (a new dynamic album's rules) or blur_filter (the blur filter's settings)"
             },
             "mode": {
                 "type": "string",
