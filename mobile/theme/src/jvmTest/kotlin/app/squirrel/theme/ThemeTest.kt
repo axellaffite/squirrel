@@ -23,9 +23,11 @@ class ThemeTest {
     @Test
     fun phoneValuesAreUsed() {
         assertEquals(112.dp, Tokens.photoRow)
-        // The phone --shadow-card: 0 4px 12px, not the desktop 0 12px 32px.
-        assertEquals(12.dp, Tokens.Light.shadowCard.last().blur)
-        assertTrue(Tokens.Dark.shadowCard.first().inset)
+        // The phone --shadow-pop: 0 2px 6px, 0 10px 24px, not the desktop 0 4px 12px, 0 20px 48px.
+        assertEquals(24.dp, Tokens.Light.shadowPop.last().blur)
+        // The finish pass: a near-flat card shadow (0 1px 2px) with a 1 px hairline, 8 dp controls.
+        assertEquals(2.dp, Tokens.Light.shadowCard.single().blur)
+        assertEquals(8.dp, Tokens.radiusControl)
     }
 
     @Test

@@ -30,6 +30,7 @@ import app.squirrel.theme.components.Button
 import app.squirrel.theme.components.ButtonSize
 import app.squirrel.theme.components.ButtonVariant
 import app.squirrel.theme.components.ListRow
+import app.squirrel.theme.components.RowGroup
 import app.squirrel.theme.tabular
 import app.squirrel.ui.photos.CoverCard
 import app.squirrel.ui.photos.TwoColumns
@@ -105,7 +106,7 @@ fun TagCards(api: SquirrelApi, tags: List<TagGroupDto>, onOpen: OpenFilter) {
 
 @Composable
 fun CameraRows(cameras: List<CameraGroupDto>, onOpen: OpenFilter) {
-    Column(verticalArrangement = Arrangement.spacedBy(Tokens.space2)) {
+    RowGroup {
         cameras.forEach { camera ->
             val name = cameraLabel(camera)
             ListRow(name, icon = SquirrelIcon.Camera, meta = photoCount(camera.count), onClick = { onOpen(PhotoFilter(cameraMake = camera.make, cameraModel = camera.model), name) })

@@ -22,6 +22,8 @@ class SchemeTokens(
     val tint: Color,
     val tintStrong: Color,
     val hair: Color,
+    val hairStrong: Color,
+    val head: Color,
     val ink: Color,
     val inkMuted: Color,
     val edge: Color,
@@ -33,6 +35,7 @@ class SchemeTokens(
     val success: Color,
     val warning: Color,
     val rail: GradientToken,
+    val railScrim: Color,
     val railInk: Color,
     val railMuted: Color,
     val railWell: Color,
@@ -50,8 +53,6 @@ class SchemeTokens(
     val shadowKnob: List<ShadowLayer>,
     val shadowActive: List<ShadowLayer>,
     val panelEdge: List<ShadowLayer>,
-    val glow: List<ShadowLayer>,
-    val glowHover: List<ShadowLayer>,
     val selectRing: List<ShadowLayer>,
     val photoRing: Color,
     val photoShade: Color,
@@ -59,6 +60,7 @@ class SchemeTokens(
 
 /** Every token of tokens.css that has a native meaning, at its phone value. */
 object Tokens {
+    val backdropBlur = 8.dp
     val ringWidth = 2.dp
     val ringOffset = 2.dp
     val textXs = 12.sp
@@ -100,12 +102,13 @@ object Tokens {
     val wellPad = 16.dp
     val contentMax = 1120.dp
     val tap = 44.dp
-    val radiusSm = 12.dp
+    val radiusSm = 8.dp
     val radiusTile = 6.dp
-    val radiusCard = 18.dp
-    val radiusWell = 22.dp
-    val radiusPanel = 26.dp
-    val radiusRail = 28.dp
+    val radiusControl = 8.dp
+    val radiusCard = 12.dp
+    val radiusWell = 12.dp
+    val radiusPanel = 18.dp
+    val radiusRail = 18.dp
     val radiusFull = 999.dp
     val iconSm = 20.dp
     val iconMd = 24.dp
@@ -116,14 +119,23 @@ object Tokens {
     val wellMd = 40.dp
     val wellLg = 56.dp
     val fab = 44.dp
-    val rowMin = 54.dp
+    val rowMin = 52.dp
+    val tableHead = 38.dp
     val rowNameMin = 128.dp
     val quickMin = 56.dp
-    val meterTrack = 38.dp
-    val meterPad = 6.dp
+    val meterTrack = 6.dp
+    val meterPad = 0.dp
     val progressTrack = 6.dp
-    val railW = 210.dp
-    val railBarH = 72.dp
+    val railW = 228.dp
+    val railPadY = 16.dp
+    val railPadX = 12.dp
+    val navItem = 36.dp
+    val railBarH = 64.dp
+    val railBarPad = 6.dp
+    val notchH = 3.dp
+    val notchW = 20.dp
+    val notchWFocus = 32.dp
+    val navGap = 2.dp
     val press = 1.dp
     const val disabledOpacity = 0.45f
     val authMax = 400.dp
@@ -158,14 +170,16 @@ object Tokens {
     const val stagger = 30
 
     val Light = SchemeTokens(
-        ground = GradientToken(top = Color(0xFFE4E4E7), bottom = Color(0xFFCFCFD3)),
-        groundSolid = Color(0xFFDADADD),
-        panel = GradientToken(top = Color(0xFFF6F6F7), bottom = Color(0xFFECECEE)),
-        panelSolid = Color(0xFFF1F1F2),
+        ground = GradientToken(top = Color(0xFFE6E6E9), bottom = Color(0xFFDADADE)),
+        groundSolid = Color(0xFFE0E0E3),
+        panel = GradientToken(top = Color(0xFFF8F8F9), bottom = Color(0xFFF5F5F6)),
+        panelSolid = Color(0xFFF7F7F8),
         card = Color(0xFFFFFFFF),
         tint = Color(red = 20, green = 20, blue = 30, alpha = 11),
         tintStrong = Color(red = 20, green = 20, blue = 30, alpha = 22),
         hair = Color(red = 20, green = 20, blue = 30, alpha = 20),
+        hairStrong = Color(red = 20, green = 20, blue = 30, alpha = 36),
+        head = Color(red = 20, green = 20, blue = 30, alpha = 6),
         ink = Color(0xFF111214),
         inkMuted = Color(0xFF5C5E65),
         edge = Color(0xFF7F8189),
@@ -177,39 +191,40 @@ object Tokens {
         success = Color(0xFF1D6B44),
         warning = Color(0xFF7A4F00),
         rail = GradientToken(top = Color(0xFF4C4D52), bottom = Color(0xFF2A2B2F)),
-        railInk = Color(0xFFF4F4F5),
-        railMuted = Color(0xFFC8C9CD),
-        railWell = Color(red = 255, green = 255, blue = 255, alpha = 20),
-        railWellHover = Color(red = 255, green = 255, blue = 255, alpha = 41),
-        railActive = Color(0xFFFFFFFF),
-        railActiveInk = Color(0xFF8A3AC0),
+        railScrim = Color(0xFF0C0D0F),
+        railInk = Color(0xFFFFFFFF),
+        railMuted = Color(red = 255, green = 255, blue = 255, alpha = 209),
+        railWell = Color(red = 255, green = 255, blue = 255, alpha = 26),
+        railWellHover = Color(red = 255, green = 255, blue = 255, alpha = 15),
+        railActive = Color(red = 255, green = 255, blue = 255, alpha = 43),
+        railActiveInk = Color(0xFFFFFFFF),
         track = Color(red = 20, green = 20, blue = 30, alpha = 18),
-        fill = Color(0xFFFFFFFF),
+        fill = Color(0xFF9A3FD0),
         accentSoft = Color(0xFFF3E8F9),
         dangerSoft = Color(0xFFF8EBEB),
         scrim = Color(red = 17, green = 18, blue = 20, alpha = 107),
-        shadowCard = listOf(ShadowLayer(x = 0.dp, y = 1.dp, blur = 2.dp, spread = 0.dp, color = Color(red = 20, green = 20, blue = 30, alpha = 13), inset = false), ShadowLayer(x = 0.dp, y = 4.dp, blur = 12.dp, spread = 0.dp, color = Color(red = 20, green = 20, blue = 30, alpha = 18), inset = false)),
-        shadowHover = listOf(ShadowLayer(x = 0.dp, y = 1.dp, blur = 2.dp, spread = 0.dp, color = Color(red = 20, green = 20, blue = 30, alpha = 13), inset = false), ShadowLayer(x = 0.dp, y = 4.dp, blur = 12.dp, spread = 0.dp, color = Color(red = 20, green = 20, blue = 30, alpha = 18), inset = false)),
+        shadowCard = listOf(ShadowLayer(x = 0.dp, y = 1.dp, blur = 2.dp, spread = 0.dp, color = Color(red = 20, green = 20, blue = 30, alpha = 13), inset = false)),
+        shadowHover = listOf(ShadowLayer(x = 0.dp, y = 1.dp, blur = 2.dp, spread = 0.dp, color = Color(red = 20, green = 20, blue = 30, alpha = 13), inset = false), ShadowLayer(x = 0.dp, y = 4.dp, blur = 12.dp, spread = 0.dp, color = Color(red = 20, green = 20, blue = 30, alpha = 15), inset = false)),
         shadowPop = listOf(ShadowLayer(x = 0.dp, y = 2.dp, blur = 6.dp, spread = 0.dp, color = Color(red = 20, green = 20, blue = 30, alpha = 20), inset = false), ShadowLayer(x = 0.dp, y = 10.dp, blur = 24.dp, spread = 0.dp, color = Color(red = 20, green = 20, blue = 30, alpha = 41), inset = false)),
-        shadowKnob = listOf(ShadowLayer(x = 0.dp, y = 2.dp, blur = 8.dp, spread = 0.dp, color = Color(red = 0, green = 0, blue = 0, alpha = 20), inset = false)),
-        shadowActive = listOf(ShadowLayer(x = 0.dp, y = 4.dp, blur = 14.dp, spread = 0.dp, color = Color(red = 0, green = 0, blue = 0, alpha = 64), inset = false)),
+        shadowKnob = listOf(ShadowLayer(x = 0.dp, y = 1.dp, blur = 3.dp, spread = 0.dp, color = Color(red = 20, green = 20, blue = 30, alpha = 26), inset = false)),
+        shadowActive = listOf(ShadowLayer(x = 0.dp, y = 1.dp, blur = 2.dp, spread = 0.dp, color = Color(red = 0, green = 0, blue = 0, alpha = 31), inset = false)),
         panelEdge = listOf(ShadowLayer(x = 0.dp, y = 1.dp, blur = 0.dp, spread = 0.dp, color = Color(red = 255, green = 255, blue = 255, alpha = 153), inset = true)),
-        glow = listOf(ShadowLayer(x = 0.dp, y = 8.dp, blur = 22.dp, spread = 0.dp, color = Color(red = 154, green = 63, blue = 208, alpha = 115), inset = false)),
-        glowHover = listOf(ShadowLayer(x = 0.dp, y = 10.dp, blur = 28.dp, spread = 0.dp, color = Color(red = 154, green = 63, blue = 208, alpha = 140), inset = false)),
         selectRing = listOf(ShadowLayer(x = 0.dp, y = 0.dp, blur = 0.dp, spread = 2.dp, color = Color(0xFF9A3FD0), inset = false)),
         photoRing = Color(red = 255, green = 255, blue = 255, alpha = 179),
         photoShade = Color(red = 0, green = 0, blue = 0, alpha = 64),
     )
 
     val Dark = SchemeTokens(
-        ground = GradientToken(top = Color(0xFF17181B), bottom = Color(0xFF0B0B0D)),
-        groundSolid = Color(0xFF111214),
-        panel = GradientToken(top = Color(0xFF1D1E21), bottom = Color(0xFF18191B)),
-        panelSolid = Color(0xFF1B1C1F),
-        card = Color(0xFF26272B),
+        ground = GradientToken(top = Color(0xFF111214), bottom = Color(0xFF08080A)),
+        groundSolid = Color(0xFF0D0D0F),
+        panel = GradientToken(top = Color(0xFF1A1B1E), bottom = Color(0xFF18191C)),
+        panelSolid = Color(0xFF19191C),
+        card = Color(0xFF222327),
         tint = Color(red = 255, green = 255, blue = 255, alpha = 11),
         tintStrong = Color(red = 255, green = 255, blue = 255, alpha = 22),
         hair = Color(red = 255, green = 255, blue = 255, alpha = 18),
+        hairStrong = Color(red = 255, green = 255, blue = 255, alpha = 31),
+        head = Color(red = 255, green = 255, blue = 255, alpha = 6),
         ink = Color(0xFFF1F1F2),
         inkMuted = Color(0xFF9FA1A8),
         edge = Color(0xFF80838B),
@@ -217,29 +232,28 @@ object Tokens {
         accentInk = Color(0xFFD7A2FF),
         onAccent = Color(0xFF1F0B2E),
         danger = Color(0xFFFF9A8F),
-        onDanger = Color(0xFF26272B),
+        onDanger = Color(0xFF222327),
         success = Color(0xFF74D3A3),
         warning = Color(0xFFF0C062),
         rail = GradientToken(top = Color(0xFF303136), bottom = Color(0xFF1D1E21)),
-        railInk = Color(0xFFF1F1F2),
-        railMuted = Color(0xFFA3A5AB),
-        railWell = Color(red = 255, green = 255, blue = 255, alpha = 18),
-        railWellHover = Color(red = 255, green = 255, blue = 255, alpha = 36),
-        railActive = Color(0xFFF1F1F2),
-        railActiveInk = Color(0xFF8A3AC0),
+        railScrim = Color(0xFF0C0D0F),
+        railInk = Color(0xFFFFFFFF),
+        railMuted = Color(red = 255, green = 255, blue = 255, alpha = 209),
+        railWell = Color(red = 255, green = 255, blue = 255, alpha = 26),
+        railWellHover = Color(red = 255, green = 255, blue = 255, alpha = 15),
+        railActive = Color(red = 255, green = 255, blue = 255, alpha = 43),
+        railActiveInk = Color(0xFFFFFFFF),
         track = Color(red = 255, green = 255, blue = 255, alpha = 18),
-        fill = Color(0xFFE9E9EC),
-        accentSoft = Color(0xFF3B3644),
-        dangerSoft = Color(0xFF3A3134),
+        fill = Color(0xFFD7A2FF),
+        accentSoft = Color(0xFF383241),
+        dangerSoft = Color(0xFF362E30),
         scrim = Color(red = 0, green = 0, blue = 0, alpha = 153),
-        shadowCard = listOf(ShadowLayer(x = 0.dp, y = 1.dp, blur = 0.dp, spread = 0.dp, color = Color(red = 255, green = 255, blue = 255, alpha = 10), inset = true), ShadowLayer(x = 0.dp, y = 4.dp, blur = 12.dp, spread = 0.dp, color = Color(red = 0, green = 0, blue = 0, alpha = 102), inset = false)),
-        shadowHover = listOf(ShadowLayer(x = 0.dp, y = 1.dp, blur = 0.dp, spread = 0.dp, color = Color(red = 255, green = 255, blue = 255, alpha = 10), inset = true), ShadowLayer(x = 0.dp, y = 4.dp, blur = 12.dp, spread = 0.dp, color = Color(red = 0, green = 0, blue = 0, alpha = 102), inset = false)),
-        shadowPop = listOf(ShadowLayer(x = 0.dp, y = 1.dp, blur = 0.dp, spread = 0.dp, color = Color(red = 255, green = 255, blue = 255, alpha = 13), inset = true), ShadowLayer(x = 0.dp, y = 10.dp, blur = 24.dp, spread = 0.dp, color = Color(red = 0, green = 0, blue = 0, alpha = 140), inset = false)),
-        shadowKnob = listOf(ShadowLayer(x = 0.dp, y = 2.dp, blur = 8.dp, spread = 0.dp, color = Color(red = 0, green = 0, blue = 0, alpha = 89), inset = false)),
-        shadowActive = listOf(ShadowLayer(x = 0.dp, y = 4.dp, blur = 14.dp, spread = 0.dp, color = Color(red = 0, green = 0, blue = 0, alpha = 115), inset = false)),
+        shadowCard = listOf(ShadowLayer(x = 0.dp, y = 1.dp, blur = 2.dp, spread = 0.dp, color = Color(red = 0, green = 0, blue = 0, alpha = 102), inset = false)),
+        shadowHover = listOf(ShadowLayer(x = 0.dp, y = 1.dp, blur = 2.dp, spread = 0.dp, color = Color(red = 0, green = 0, blue = 0, alpha = 102), inset = false)),
+        shadowPop = listOf(ShadowLayer(x = 0.dp, y = 4.dp, blur = 12.dp, spread = 0.dp, color = Color(red = 0, green = 0, blue = 0, alpha = 115), inset = false), ShadowLayer(x = 0.dp, y = 10.dp, blur = 24.dp, spread = 0.dp, color = Color(red = 0, green = 0, blue = 0, alpha = 140), inset = false)),
+        shadowKnob = listOf(ShadowLayer(x = 0.dp, y = 1.dp, blur = 3.dp, spread = 0.dp, color = Color(red = 0, green = 0, blue = 0, alpha = 128), inset = false)),
+        shadowActive = listOf(ShadowLayer(x = 0.dp, y = 1.dp, blur = 2.dp, spread = 0.dp, color = Color(red = 0, green = 0, blue = 0, alpha = 102), inset = false)),
         panelEdge = listOf(ShadowLayer(x = 0.dp, y = 1.dp, blur = 0.dp, spread = 0.dp, color = Color(red = 255, green = 255, blue = 255, alpha = 10), inset = true)),
-        glow = listOf(ShadowLayer(x = 0.dp, y = 8.dp, blur = 22.dp, spread = 0.dp, color = Color(red = 215, green = 162, blue = 255, alpha = 115), inset = false)),
-        glowHover = listOf(ShadowLayer(x = 0.dp, y = 10.dp, blur = 28.dp, spread = 0.dp, color = Color(red = 215, green = 162, blue = 255, alpha = 140), inset = false)),
         selectRing = listOf(ShadowLayer(x = 0.dp, y = 0.dp, blur = 0.dp, spread = 2.dp, color = Color(0xFFD7A2FF), inset = false)),
         photoRing = Color(red = 255, green = 255, blue = 255, alpha = 179),
         photoShade = Color(red = 0, green = 0, blue = 0, alpha = 64),

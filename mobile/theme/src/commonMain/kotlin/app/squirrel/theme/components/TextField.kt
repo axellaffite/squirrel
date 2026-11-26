@@ -38,7 +38,7 @@ import app.squirrel.theme.Tokens
 private const val MULTILINE_MIN = 3
 
 /**
- * MASTER.md "Text field": a pill on `--card` with a 1 px `--edge`; invalid shows a `--danger`
+ * MASTER.md "Text field": `--radius-control` on `--card` with a 1 px `--edge`; invalid shows a `--danger`
  * edge plus an icon and the [error] message (never colour alone).
  */
 @Composable
@@ -54,7 +54,7 @@ fun TextField(
     keyboardActions: KeyboardActions = KeyboardActions.Default,
     /** What the field holds, for password managers and the system's credential autofill. */
     autofill: ContentType? = null,
-    /** Several lines (a comment): the web's TextArea, a `--radius-card` box instead of a pill. */
+    /** Several lines (a comment): the web's TextArea, a taller `--radius-card` box. */
     multiline: Boolean = false,
     /** Hides the label above the field (still read by assistive tech). */
     hideLabel: Boolean = false,
@@ -67,7 +67,7 @@ fun TextField(
     val edge = if (error != null) scheme.danger else scheme.edge
     Column(modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(Tokens.space1)) {
         if (!hideLabel) BasicText(label, style = type.fieldLabel, modifier = Modifier.padding(start = Tokens.space2))
-        val shape = if (multiline) Shapes.card else Shapes.pill
+        val shape = if (multiline) Shapes.card else Shapes.control
         BasicTextField(
             value = value,
             onValueChange = onValueChange,

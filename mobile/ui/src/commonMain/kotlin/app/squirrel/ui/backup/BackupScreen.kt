@@ -27,9 +27,9 @@ import app.squirrel.theme.components.ButtonVariant
 import app.squirrel.theme.components.EmptyState
 import app.squirrel.theme.components.GraphiteCard
 import app.squirrel.theme.components.ListRow
+import app.squirrel.theme.components.RowGroup
 import app.squirrel.theme.components.Progress
 import app.squirrel.theme.components.Sheet
-import app.squirrel.theme.components.Well
 import app.squirrel.theme.tabular
 import app.squirrel.ui.shell.PageHeader
 import io.github.axellaffite.lsdo.compose.RegisterLsDo
@@ -79,11 +79,11 @@ fun BackupScreen(vm: BackupViewModel, picker: AlbumPickerViewModel, actions: Pho
                 Button("Allow background use", onClick = actions::openBatterySettings, variant = ButtonVariant.Secondary, size = ButtonSize.Sm)
             }
         }
-        Well {
+        RowGroup {
             // What is backed up, where people look for it (it is also in Backup › Settings).
             ListRow(albums.kind.title, icon = albums.kind.icon, meta = albums.label, onClick = picker::open)
         }
-        Well(verticalArrangement = Arrangement.spacedBy(Tokens.space2)) {
+        RowGroup {
             ListRow("Backed up", icon = SquirrelIcon.CheckCircle, meta = state.backedUp)
             ListRow("Waiting", icon = SquirrelIcon.Upload, meta = state.waiting)
             ListRow(
@@ -119,7 +119,7 @@ private fun StatusCard(state: BackupUi) {
 @Composable
 private fun FailureSheet(rows: List<QueuedAsset>, onRetry: () -> Unit, onDismiss: () -> Unit) {
     Sheet("Not backed up", onDismiss = onDismiss) {
-        rows.forEach { ListRow(it.name, icon = SquirrelIcon.Alert, meta = it.lastError ?: "Unknown error") }
+        RowGroup { rows.forEach { ListRow(it.name, icon = SquirrelIcon.Alert, meta = it.lastError ?: "Unknown error") } }
         Button("Try again", onClick = onRetry, full = true)
     }
 }

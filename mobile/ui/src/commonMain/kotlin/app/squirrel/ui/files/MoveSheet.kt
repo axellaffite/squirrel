@@ -27,6 +27,7 @@ import app.squirrel.theme.components.ButtonSize
 import app.squirrel.theme.components.ButtonVariant
 import app.squirrel.theme.components.Icon
 import app.squirrel.theme.components.ListRow
+import app.squirrel.theme.components.RowGroup
 import app.squirrel.theme.components.Loading
 import app.squirrel.theme.components.Sheet
 import app.squirrel.ui.sharing.Outcome
@@ -137,10 +138,12 @@ private fun FolderPickerSheet(model: MoveModel, title: String, confirm: String, 
         if (model.canGoUp) Button("Up", onClick = { model.up() }, variant = ButtonVariant.Quiet, size = ButtonSize.Sm, icon = SquirrelIcon.ChevronLeft)
         val where = state.here?.let { "To: ${state.trail.joinToString(" › ") { it.name }}" } ?: "Choose a folder"
         BasicText(where, style = SquirrelTheme.type.label, modifier = Modifier.semantics { liveRegion = LiveRegionMode.Polite })
-        state.folders.forEach { folder ->
-            ListRow(folder.name, icon = SquirrelIcon.Folder, onClick = { model.open(folder) }, trailing = {
-                Icon(SquirrelIcon.ChevronRight, contentDescription = null, tint = SquirrelTheme.scheme.inkMuted)
-            })
+        if (state.folders.isNotEmpty()) RowGroup {
+            state.folders.forEach { folder ->
+                ListRow(folder.name, icon = SquirrelIcon.Folder, onClick = { model.open(folder) }, trailing = {
+                    Icon(SquirrelIcon.ChevronRight, contentDescription = null, tint = SquirrelTheme.scheme.inkMuted)
+                })
+            }
         }
         when {
             state.loading -> Loading()

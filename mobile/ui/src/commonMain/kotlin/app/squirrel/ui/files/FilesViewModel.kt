@@ -32,6 +32,9 @@ import kotlinx.serialization.Serializable
 /** Files over this size ask before downloading. */
 const val CONFIRM_BYTES = 200L * 1000 * 1000
 
+/** The top-level folder the server makes for every user, where the bar's add menu puts things by default. */
+const val FILES_ROOT = "Files"
+
 @Serializable
 data class FilesState(
     /** Null: the root ("Files"). */
@@ -232,8 +235,34 @@ class FilesViewModel(
     /** "New folder" in the folder shown; an error message, or null once it is listed. */
     suspend fun createFolder(name: String): String? {
         val parent = _state.value.folderId ?: return "Open a folder to add one."
-        return edited { api.files.createFolder(CreateFolderRequest(name = name, parentId = parent)).bodyOrThrow() }
+        return createFolderIn(parent, name)
     }
+
+    /** "New folder" in [parentId] (the bottom bar's add menu); an error message, or null once made. */
+    suspend fun createFolderIn(parentId: String, name: String): String? =
+        edited { api.files.createFolder(CreateFolderRequest(name = name, parentId = parentId)).bodyOrThrow() }
+
+    /**
+     * Where the bottom bar's add menu puts files and folders: the folder shown when the caller may
+     * add to it, otherwise the top-level [FILES_ROOT] folder. Null when that cannot be found.
+     */
+    suspend fun addTarget(): String? {
+        val current = _state.value
+        if (current.canAdd) return current.folderId
+        current.items.firstOrNull(::isFilesRoot)?.let { return it.id }
+        val top = attempt { api.files.listNodes(parentId = null, cursor = null, limit = pageSize).bodyOrThrow() }
+        return top?.items?.firstOrNull(::isFilesRoot)?.id
+    }
+
+    /** Shows [folderId], unless it is already the folder shown. */
+    fun show(folderId: String) {
+        if (_state.value.folderId != folderId) enter(folderId)
+    }
+
+    /** A notice over the rows (an add from the bottom bar that could not start). */
+    fun tell(message: String) = _state.update { it.copy(message = message) }
+
+    private fun isFilesRoot(node: NodeDto): Boolean = node.isRoot && node.kind == NodeKind.folder && node.name == FILES_ROOT
 
     suspend fun rename(node: NodeDto, name: String): String? =
         edited { api.files.updateNode(node.id, UpdateNodeRequest(name = name)).bodyOrThrow() }

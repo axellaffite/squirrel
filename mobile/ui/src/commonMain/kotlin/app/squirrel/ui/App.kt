@@ -13,17 +13,20 @@ import app.squirrel.ui.shell.OverlayHost
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.ui.Modifier
 import app.squirrel.theme.SquirrelTheme
+import app.squirrel.theme.blurredUnderModals
 import app.squirrel.theme.components.ground
 import app.squirrel.ui.backup.BackupTab
 import app.squirrel.ui.images.LocalImageLoader
 import app.squirrel.ui.photos.PhotosTab
 import app.squirrel.ui.files.FilePicker
 import app.squirrel.ui.files.FilesTab
+import app.squirrel.ui.files.addMenu
 import app.squirrel.ui.files.LocalFilePicker
 import app.squirrel.ui.sharing.SharedTab
 import app.squirrel.ui.notifications.NotificationPrompt
 import app.squirrel.ui.notifications.NotificationsBell
 import app.squirrel.ui.backup.PhotoAccessActions
+import app.squirrel.ui.shell.AppTab
 import app.squirrel.ui.shell.Shell
 import app.squirrel.ui.signin.SignInFlow
 
@@ -39,7 +42,8 @@ fun App(
         val state by graph.state.collectAsStateWithLifecycle()
         val images by graph.imageLoader.collectAsStateWithLifecycle()
         CompositionLocalProvider(LocalImageLoader provides images, LocalFilePicker provides picker) {
-            Box(Modifier.fillMaxSize().ground()) {
+            // Sheets and dialogs open over this content blurred (MASTER.md "Dialog / sheet").
+            Box(Modifier.fillMaxSize().ground().blurredUnderModals()) {
                 when (val current = state) {
                     AppState.Loading -> Unit
                     is AppState.NeedsSignIn -> SignInFlow(graph, current.attempt, current.serverUrl)
@@ -62,6 +66,7 @@ fun App(
                                     files = { FilesTab(graph) },
                                     shared = { SharedTab(graph) },
                                     topActions = { select -> NotificationsBell(graph, notifications, select) },
+                                    addMenu = { select -> addMenu(graph) { select(AppTab.Files) } },
                                 )
                             }
                             overlay.Layer()

@@ -6,6 +6,7 @@ import androidx.compose.foundation.text.selection.TextSelectionColors
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.Immutable
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.staticCompositionLocalOf
 
 /** Everything a component reads from the theme. */
@@ -40,6 +41,7 @@ fun SquirrelTheme(
     )
     CompositionLocalProvider(
         LocalTheme provides values,
+        LocalBackdrop provides remember { Backdrop() },
         LocalTextSelectionColors provides TextSelectionColors(
             handleColor = scheme.accent,
             backgroundColor = scheme.accentSoft,

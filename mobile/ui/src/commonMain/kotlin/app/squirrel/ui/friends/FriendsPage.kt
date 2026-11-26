@@ -5,7 +5,6 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.text.BasicText
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
@@ -25,6 +24,7 @@ import app.squirrel.theme.components.Button
 import app.squirrel.theme.components.EmptyState
 import app.squirrel.theme.components.IconButton
 import app.squirrel.theme.components.ListRow
+import app.squirrel.theme.components.RowGroup
 import app.squirrel.theme.components.Loading
 import app.squirrel.theme.components.TextField
 import app.squirrel.ui.explore.SectionHead
@@ -59,11 +59,11 @@ fun FriendsPage(vm: FriendsViewModel, onBack: () -> Unit) {
                 }
             } else {
                 item(key = "friends-head") { SectionHead("Friends", null) }
-                items(friends, key = { "f-${it.username}" }) { friend -> FriendRow(friend, onRemove = { vm.drop(friend.username) }) }
+                item(key = "friends") { RowGroup { friends.forEach { friend -> FriendRow(friend, onRemove = { vm.drop(friend.username) }) } } }
             }
             if (state.suggestions.isNotEmpty()) {
                 item(key = "suggestions-head") { SectionHead("Suggestions", null) }
-                items(state.suggestions, key = { "s-${it.username}" }) { member -> SuggestionRow(member, onAdd = { vm.pick(member.username) }) }
+                item(key = "suggestions") { RowGroup { state.suggestions.forEach { member -> SuggestionRow(member, onAdd = { vm.pick(member.username) }) } } }
             }
         }
     }

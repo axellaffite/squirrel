@@ -22,6 +22,7 @@ import app.squirrel.theme.components.Alert
 import app.squirrel.theme.components.AlertTone
 import app.squirrel.theme.components.Icon
 import app.squirrel.theme.components.ListRow
+import app.squirrel.theme.components.RowGroup
 import app.squirrel.theme.components.Loading
 import app.squirrel.theme.components.Sheet
 import app.squirrel.ui.attempt
@@ -86,7 +87,7 @@ fun FilterPicker(api: SquirrelApi, filter: PhotoFilter, people: List<PersonDto>,
         if (loaded?.failed == true) Alert(UNREACHABLE, tone = AlertTone.Error)
         filterSections(filter, people, loaded ?: FilterChoices(emptyList(), emptyList(), emptyList(), false)).forEach { (title, options) ->
             BasicText(title, style = SquirrelTheme.type.cardTitle, modifier = Modifier.semantics { heading() })
-            options.forEach { option ->
+            RowGroup { options.forEach { option ->
                 ListRow(
                     name = option.label,
                     icon = option.icon,
@@ -98,7 +99,7 @@ fun FilterPicker(api: SquirrelApi, filter: PhotoFilter, people: List<PersonDto>,
                     leading = if (option.person) ({ FaceAvatar(api, option.face) }) else null,
                     trailing = if (option.chosen) ({ Icon(SquirrelIcon.Check, contentDescription = "Chosen", tint = SquirrelTheme.scheme.accent) }) else null,
                 )
-            }
+            } }
         }
         if (loaded == null) Loading()
     }

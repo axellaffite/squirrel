@@ -19,7 +19,7 @@ import app.squirrel.theme.SquirrelIcon
 import app.squirrel.theme.SquirrelTheme
 import app.squirrel.theme.Tokens
 
-/** A 36 dp round button with a 48 dp hit area; [label] names its subject ("Account menu"). */
+/** A 36 dp `--radius-control` button with a 48 dp hit area; [label] names its subject ("Account menu"). */
 @Composable
 fun IconButton(
     icon: SquirrelIcon,
@@ -42,8 +42,8 @@ fun IconButton(
         Box(
             modifier = Modifier
                 .size(Tokens.controlSm)
-                .controlStates(interaction, Shapes.circle, enabled)
-                .background(if (tinted) scheme.tint else Color.Transparent, Shapes.circle),
+                .controlStates(interaction, Shapes.control, enabled)
+                .background(if (tinted) scheme.tint else Color.Transparent, Shapes.control),
             contentAlignment = Alignment.Center,
         ) {
             Icon(icon, contentDescription = null, tint = scheme.inkMuted)

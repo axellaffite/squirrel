@@ -33,7 +33,7 @@ import app.squirrel.theme.SquirrelTheme
 import app.squirrel.theme.Tokens
 
 /**
- * MASTER.md "Search field": the text field pill with a leading 20 dp `search` icon in
+ * MASTER.md "Search field": the text field (`--radius-control`) with a leading 20 dp `search` icon in
  * `--ink-muted` and a visually hidden [label] (read by assistive tech). A clear button appears
  * once something is typed; the keyboard's search key calls [onSearch].
  */
@@ -68,9 +68,9 @@ fun SearchField(
                 modifier = Modifier
                     .fillMaxWidth()
                     .heightIn(min = MinTouchTarget)
-                    .focusRing(focused, Shapes.pill, scheme.accent)
-                    .background(scheme.card, Shapes.pill)
-                    .border(1.dp, scheme.edge, Shapes.pill)
+                    .focusRing(focused, Shapes.control, scheme.accent)
+                    .background(scheme.card, Shapes.control)
+                    .border(1.dp, scheme.edge, Shapes.control)
                     .padding(start = Tokens.space4, end = Tokens.space1),
                 horizontalArrangement = Arrangement.spacedBy(Tokens.space2),
                 verticalAlignment = Alignment.CenterVertically,

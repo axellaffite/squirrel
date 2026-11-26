@@ -1,6 +1,7 @@
 package app.squirrel.theme.components
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
@@ -18,6 +19,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.dp
 import app.squirrel.theme.SquirrelTheme
 import app.squirrel.theme.Shapes
 import app.squirrel.theme.Tokens
@@ -32,7 +34,10 @@ enum class ButtonSize(val height: Dp) {
     Lg(Tokens.controlLg),
 }
 
-/** A pill button (MASTER.md "Button"). The accent glow is on the primary variant only. */
+/**
+ * A button (MASTER.md "Button"), `--radius-control`. Primary: accent fill and the near-flat card
+ * shadow, no glow. Secondary and danger: `--card` fill, 1 dp `--hair-strong` edge, card shadow.
+ */
 @Composable
 fun Button(
     text: String,
@@ -48,12 +53,15 @@ fun Button(
     val interaction = remember { MutableInteractionSource() }
     val (fill, ink) = when (variant) {
         ButtonVariant.Primary -> scheme.accent to scheme.onAccent
-        ButtonVariant.Secondary -> scheme.tint to scheme.ink
+        ButtonVariant.Secondary -> scheme.card to scheme.ink
         ButtonVariant.Quiet -> Color.Transparent to scheme.inkMuted
-        ButtonVariant.Danger -> scheme.tint to scheme.danger
+        ButtonVariant.Danger -> scheme.card to scheme.danger
         ButtonVariant.DangerSolid -> scheme.danger to scheme.onDanger
     }
     val style = if (variant == ButtonVariant.Primary) SquirrelTheme.type.strong else SquirrelTheme.type.label
+    val edged = variant == ButtonVariant.Secondary || variant == ButtonVariant.Danger
+    val shadowed = enabled && variant != ButtonVariant.Quiet && variant != ButtonVariant.DangerSolid
+    val shape = Shapes.control
     Box(
         modifier = modifier
             .sizeIn(minWidth = MinTouchTarget, minHeight = MinTouchTarget)
@@ -63,12 +71,10 @@ fun Button(
         Row(
             modifier = Modifier
                 .then(if (full) Modifier.fillMaxWidth() else Modifier)
-                .controlStates(interaction, Shapes.pill, enabled)
-                .then(
-                    if (variant == ButtonVariant.Primary && enabled) Modifier.boxShadow(scheme.glow, Shapes.pill)
-                    else Modifier,
-                )
-                .background(fill, Shapes.pill)
+                .controlStates(interaction, shape, enabled)
+                .then(if (shadowed) Modifier.boxShadow(scheme.shadowCard, shape) else Modifier)
+                .background(fill, shape)
+                .then(if (edged) Modifier.border(1.dp, scheme.hairStrong, shape) else Modifier)
                 .clickable(interaction, indication = null, enabled = enabled, role = Role.Button, onClick = onClick)
                 .heightIn(min = size.height)
                 .padding(horizontal = Tokens.space4, vertical = Tokens.space2),

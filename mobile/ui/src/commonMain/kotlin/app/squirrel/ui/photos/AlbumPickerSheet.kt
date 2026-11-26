@@ -15,10 +15,11 @@ import app.squirrel.api.models.ThumbnailStatus
 import app.squirrel.shared.api.SquirrelApi
 import app.squirrel.theme.Shapes
 import app.squirrel.theme.SquirrelIcon
-import app.squirrel.theme.Tokens
 import app.squirrel.theme.components.Alert
 import app.squirrel.theme.components.AlertTone
 import app.squirrel.theme.components.ListRow
+import app.squirrel.theme.components.RowGroup
+import app.squirrel.theme.components.RowTile
 import app.squirrel.theme.components.Loading
 import app.squirrel.theme.components.Sheet
 import app.squirrel.ui.explore.photoCount
@@ -57,37 +58,40 @@ fun AlbumPickerSheet(api: SquirrelApi, ids: List<String>, onDone: (String) -> Un
     }
     Sheet("Add to album", onDismiss = onClose) {
         error?.let { Alert(it, tone = AlertTone.Error) }
-        ListRow("New album…", icon = SquirrelIcon.Plus, onClick = { if (!busy) naming = true })
-        albums?.forEach { album ->
-            ListRow(
-                name = album.name,
-                meta = listOfNotNull(photoCount(album.itemCount), album.sharedBy?.let(::memberName)).joinToString(" · "),
-                onClick = {
-                    if (!busy) {
-                        busy = true
-                        error = null
-                        scope.launch {
-                            when (val result = adder.into(album)) {
-                                is Outcome.Ok -> {
-                                    onDone(result.value)
-                                    onClose()
+        RowGroup {
+            ListRow("New album…", icon = SquirrelIcon.Plus, onClick = { if (!busy) naming = true })
+            albums?.forEach { album ->
+                ListRow(
+                    name = album.name,
+                    meta = listOfNotNull(photoCount(album.itemCount), album.sharedBy?.let(::memberName)).joinToString(" · "),
+                    onClick = {
+                        if (!busy) {
+                            busy = true
+                            error = null
+                            scope.launch {
+                                when (val result = adder.into(album)) {
+                                    is Outcome.Ok -> {
+                                        onDone(result.value)
+                                        onClose()
+                                    }
+                                    is Outcome.Failed -> error = result.message
                                 }
-                                is Outcome.Failed -> error = result.message
+                                busy = false
                             }
-                            busy = false
                         }
-                    }
-                },
-                leading = {
-                    val cover = album.cover
-                    Thumbnail(
-                        url = cover?.takeIf { it.thumbnail.state == ThumbnailStatus.ready }?.let { api.thumbnailUrl(it.id, it.thumbnail.version) },
-                        blurhash = cover?.blurhash,
-                        contentDescription = null,
-                        modifier = Modifier.size(Tokens.wellMd).clip(Shapes.circle),
-                    )
-                },
-            )
-        } ?: if (error == null) Loading() else Unit
+                    },
+                    leading = {
+                        val cover = album.cover
+                        Thumbnail(
+                            url = cover?.takeIf { it.thumbnail.state == ThumbnailStatus.ready }?.let { api.thumbnailUrl(it.id, it.thumbnail.version) },
+                            blurhash = cover?.blurhash,
+                            contentDescription = null,
+                            modifier = Modifier.size(RowTile).clip(Shapes.control),
+                        )
+                    },
+                )
+            }
+        }
+        if (albums == null && error == null) Loading()
     }
 }

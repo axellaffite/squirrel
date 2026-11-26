@@ -45,6 +45,7 @@ import app.squirrel.theme.components.Button
 import app.squirrel.theme.components.ButtonSize
 import app.squirrel.theme.components.ButtonVariant
 import app.squirrel.theme.components.ListRow
+import app.squirrel.theme.components.RowGroup
 import app.squirrel.theme.components.Progress
 import app.squirrel.theme.components.TextField
 import app.squirrel.theme.components.ground
@@ -112,13 +113,15 @@ private fun SendPage(api: SquirrelApi, files: List<PickedFile>, onClose: () -> U
         }
         Recipient(state, enabled = !sending, onPick = model::pick, onType = model::type, onSend = model::send)
         BasicText("Into", style = SquirrelTheme.type.caption)
-        ListRow(
-            state.folderLabel,
-            icon = SquirrelIcon.Folder,
-            meta = if (state.folder == null) "Created when missing" else null,
-            onClick = if (sending) null else ({ choosing = true }),
-            trailing = { BasicText("Change", style = SquirrelTheme.type.label) },
-        )
+        RowGroup {
+            ListRow(
+                state.folderLabel,
+                icon = SquirrelIcon.Folder,
+                meta = if (state.folder == null) "Created when missing" else null,
+                onClick = if (sending) null else ({ choosing = true }),
+                trailing = { BasicText("Change", style = SquirrelTheme.type.label) },
+            )
+        }
         if (state.folder != null && !sending) {
             Button("Use ${SENT_ROOT} › ${SENT_FOLDER}", onClick = { model.choose(null) }, variant = ButtonVariant.Quiet, size = ButtonSize.Sm)
         }
@@ -137,7 +140,7 @@ private fun SendPage(api: SquirrelApi, files: List<PickedFile>, onClose: () -> U
 /** The files handed over: the first few by name, then how many more. */
 @Composable
 private fun FileNames(names: List<String>) {
-    names.take(NAMES_SHOWN).forEach { ListRow(it, icon = SquirrelIcon.File) }
+    if (names.isNotEmpty()) RowGroup { names.take(NAMES_SHOWN).forEach { ListRow(it, icon = SquirrelIcon.File) } }
     val more = names.size - NAMES_SHOWN
     if (more > 0) BasicText("and $more more", style = SquirrelTheme.type.caption)
 }

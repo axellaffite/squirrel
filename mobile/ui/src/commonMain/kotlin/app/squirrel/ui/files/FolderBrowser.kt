@@ -1,6 +1,7 @@
 package app.squirrel.ui.files
 
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.fillMaxSize
@@ -36,6 +37,7 @@ import app.squirrel.theme.components.IconButton
 import app.squirrel.theme.components.Loading
 import app.squirrel.theme.components.Progress
 import app.squirrel.theme.components.PullToRefresh
+import app.squirrel.theme.components.RowPlace
 import app.squirrel.theme.components.Sheet
 import app.squirrel.ui.AppGraph
 import app.squirrel.ui.OnForeground
@@ -123,17 +125,17 @@ fun FolderBrowser(
                 EmptyState(SquirrelIcon.Folder, "Nothing here yet", if (state.canAdd) "Upload files from this phone, or add them on the web." else "Files added here show up in this list.")
             }
             else -> PullToRefresh(state.refreshing, vm::refresh) {
+                // One grouped card (MASTER.md phone "Lists"): rows touch, each drawing its part of it.
                 LazyColumn(
                     modifier = Modifier.fillMaxSize(),
-                    verticalArrangement = Arrangement.spacedBy(Tokens.space2),
                     contentPadding = PaddingValues(bottom = RailClearance),
                 ) {
                     itemsIndexed(state.items, key = { _, node -> node.id }) { index, node ->
                         // The last row coming into view asks for the next page (by place, not by value).
                         if (index == state.items.lastIndex) LaunchedEffect(state.items.size) { vm.more() }
-                        NodeRow(api, node, state.downloads[node.id], onClick = { vm.open(node) }, onActions = { sheet = FolderSheet.Actions(node) })
+                        NodeRow(api, node, state.downloads[node.id], onClick = { vm.open(node) }, onActions = { sheet = FolderSheet.Actions(node) }, place = RowPlace.of(index, state.items.size))
                     }
-                    state.error?.let { error -> item(key = "error") { ErrorRetry(error, vm::retry) } }
+                    state.error?.let { error -> item(key = "error") { Box(Modifier.padding(top = Tokens.space2)) { ErrorRetry(error, vm::retry) } } }
                 }
             }
         }

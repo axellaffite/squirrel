@@ -38,6 +38,7 @@ import app.squirrel.theme.components.Button
 import app.squirrel.theme.components.ButtonVariant
 import app.squirrel.theme.components.EmptyState
 import app.squirrel.theme.components.IconButton
+import app.squirrel.theme.components.MenuAction
 import app.squirrel.theme.components.RailItem
 import app.squirrel.theme.popShadow
 import app.squirrel.theme.tabular
@@ -51,7 +52,10 @@ private enum class Tab(val label: String, val icon: SquirrelIcon, val title: Str
     Backup("Backup", SquirrelIcon.Upload, "", ""),
 }
 
-/** MASTER.md phone shell: top row with the wordmark and account menu, the floating bottom rail. */
+/**
+ * MASTER.md phone shell: top row with the wordmark and account menu, the floating bottom bar with
+ * its centre add button, whose menu holds [addMenu]'s actions.
+ */
 @Composable
 fun Shell(
     account: AccountInfo,
@@ -63,6 +67,11 @@ fun Shell(
     shared: (@Composable () -> Unit)? = null,
     /** Global actions before the account menu (the notifications bell); [select] shows a section. */
     topActions: @Composable (select: (AppTab) -> Unit) -> Unit = {},
+    /**
+     * The add menu's actions (and the sheets they open, composed here); [select] shows a section.
+     * Always composed, so a sheet it shows outlives the bar hiding for the keyboard.
+     */
+    addMenu: @Composable (select: (AppTab) -> Unit) -> List<MenuAction> = { emptyList() },
 ) {
     var tab by rememberSaveable { mutableStateOf(Tab.Photos.name) }
     var menuOpen by rememberSaveable { mutableStateOf(false) }
@@ -113,12 +122,16 @@ fun Shell(
                 EmptyState(current.icon, current.title, current.line)
             }
         }
-        // While the keyboard is up, the rail would ride above it and cover the field being typed in.
+        val addActions = addMenu { tab = it.name }
+        // While the keyboard is up, the bar would ride above it and cover the field being typed in.
+        // It floats `--space-3` above the bottom inset, `--frame` from the sides.
         if (WindowInsets.ime.getBottom(LocalDensity.current) == 0) BottomRail(
             items = Tab.entries.map { RailItem(it.name, it.label, it.icon) },
             selected = tab,
             onSelect = { tab = it },
-            modifier = Modifier.align(Alignment.BottomCenter).padding(Tokens.frame),
+            addLabel = "Add to Squirrel",
+            addActions = addActions,
+            modifier = Modifier.align(Alignment.BottomCenter).padding(horizontal = Tokens.frame).padding(bottom = Tokens.space3),
         )
     }
 }

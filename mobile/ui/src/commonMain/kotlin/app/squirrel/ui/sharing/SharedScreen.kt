@@ -34,6 +34,7 @@ import app.squirrel.theme.components.IconButton
 import app.squirrel.theme.components.ListRow
 import app.squirrel.theme.components.Loading
 import app.squirrel.theme.components.PullToRefresh
+import app.squirrel.theme.components.RowGroup
 import app.squirrel.theme.components.Sheet
 import app.squirrel.ui.OnForeground
 import app.squirrel.ui.PullableColumn
@@ -103,7 +104,9 @@ private fun LazyListScope.sharedWithMe(api: SquirrelApi, state: SharedState, onO
     val items = state.items ?: return
     if (items.isEmpty()) item(key = "with-me-empty") { SharedSectionEmpty("When someone shares a folder, a file or an album with you, it shows up here.") }
     if (state.nodes.isNotEmpty()) item(key = "with-me-files") { SharedGroupHead("Folders and files") }
-    items(state.nodes, key = { "with-me-${it.shareId}" }) { item -> SharedNodeRow(item, onOpen = { onOpen(item.target) }, onActions = { onActions(item) }) }
+    if (state.nodes.isNotEmpty()) item(key = "with-me-rows") {
+        RowGroup { state.nodes.forEach { item -> SharedNodeRow(item, onOpen = { onOpen(item.target) }, onActions = { onActions(item) }) } }
+    }
     if (state.albums.isNotEmpty()) {
         item(key = "with-me-albums") {
             Column(verticalArrangement = Arrangement.spacedBy(Tokens.space2)) {
@@ -120,7 +123,9 @@ private fun LazyListScope.sharedByMe(api: SquirrelApi, state: SharedState, onOpe
     val items = state.byMe ?: return
     if (items.isEmpty()) item(key = "by-me-empty") { SharedSectionEmpty("Share a folder, a file or an album and it shows up here, with the people you shared it with.") }
     if (state.byMeNodes.isNotEmpty()) item(key = "by-me-files") { SharedGroupHead("Folders and files") }
-    items(state.byMeNodes, key = { "by-me-${it.node?.id}" }) { item -> SharedByMeNodeRow(item, onOpen = { onOpen(item.target) }, onManage = { onManage(item) }) }
+    if (state.byMeNodes.isNotEmpty()) item(key = "by-me-rows") {
+        RowGroup { state.byMeNodes.forEach { item -> SharedByMeNodeRow(item, onOpen = { onOpen(item.target) }, onManage = { onManage(item) }) } }
+    }
     if (state.byMeAlbums.isNotEmpty()) {
         item(key = "by-me-albums") {
             Column(verticalArrangement = Arrangement.spacedBy(Tokens.space2)) {

@@ -25,6 +25,8 @@ import app.squirrel.theme.components.Icon
 import app.squirrel.theme.components.IconButton
 import app.squirrel.theme.components.ListRow
 import app.squirrel.theme.components.Progress
+import app.squirrel.theme.components.RowPlace
+import app.squirrel.theme.components.RowTile
 import app.squirrel.ui.images.Thumbnail
 
 /** Pills from [rootLabel] ("Files", or "Shared" for someone else's folder) to the current folder. */
@@ -44,9 +46,9 @@ fun Breadcrumbs(rootLabel: String, path: List<Pair<String, String>>, onRoot: () 
     }
 }
 
-/** MASTER "Row card" for a folder or file; phones get one round "Actions for …" button. */
+/** A list row for a folder or file ([place]: its part of the group in a lazy list); phones get one "Actions for …" button. */
 @Composable
-fun NodeRow(api: SquirrelApi, node: NodeDto, progress: Float?, onClick: () -> Unit, onActions: (() -> Unit)?) {
+fun NodeRow(api: SquirrelApi, node: NodeDto, progress: Float?, onClick: () -> Unit, onActions: (() -> Unit)?, place: RowPlace? = null) {
     val folder = node.kind == NodeKind.folder
     val meta = if (folder) "Folder" else "${formatBytes(node.propertySize)} · ${shortDate(node.modifiedAt)}"
     val thumb = node.thumbnail
@@ -55,13 +57,14 @@ fun NodeRow(api: SquirrelApi, node: NodeDto, progress: Float?, onClick: () -> Un
         icon = if (folder) SquirrelIcon.Folder else fileIcon(node.mime),
         meta = meta,
         onClick = onClick,
+        place = place,
         leading = thumb?.let {
             {
                 Thumbnail(
                     url = api.thumbnailUrl(node.id, it.version),
                     blurhash = it.blurhash,
                     contentDescription = null,
-                    modifier = Modifier.size(Tokens.wellSm).clip(Shapes.circle),
+                    modifier = Modifier.size(RowTile).clip(Shapes.control),
                 )
             }
         },

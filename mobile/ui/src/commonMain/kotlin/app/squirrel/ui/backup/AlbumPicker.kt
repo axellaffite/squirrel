@@ -13,6 +13,7 @@ import app.squirrel.theme.SquirrelIcon
 import app.squirrel.theme.SquirrelTheme
 import app.squirrel.theme.components.Icon
 import app.squirrel.theme.components.ListRow
+import app.squirrel.theme.components.RowGroup
 import app.squirrel.theme.components.Sheet
 import io.github.axellaffite.lsdo.mapState
 import kotlinx.coroutines.CoroutineDispatcher
@@ -133,20 +134,19 @@ fun AlbumPickerSheet(vm: AlbumPickerViewModel) {
     val kind = state.kind
     Sheet(kind.title, onDismiss = vm::close) {
         val filter = state.filter
-        ListRow("All photos", icon = SquirrelIcon.Images, onClick = vm::selectAll, trailing = {
-            if (filter == AlbumFilter.All) Selected()
-        })
         val albums = state.albums
-        if (albums == null) {
-            BasicText("Loading ${kind.many}…", style = type.caption)
-        } else {
-            albums.forEach { album ->
+        RowGroup {
+            ListRow("All photos", icon = SquirrelIcon.Images, onClick = vm::selectAll, trailing = {
+                if (filter == AlbumFilter.All) Selected()
+            })
+            albums?.forEach { album ->
                 val selected = filter is AlbumFilter.Selected && album.id in filter.names
                 ListRow(album.name, icon = kind.icon, meta = albumMeta(album), onClick = { vm.toggle(album.id) }, trailing = {
                     if (selected) Selected()
                 })
             }
         }
+        if (albums == null) BasicText("Loading ${kind.many}…", style = type.caption)
         BasicText("Changing ${kind.many} checks your whole library again; nothing is deleted from your Squirrel.", style = type.caption)
     }
 }

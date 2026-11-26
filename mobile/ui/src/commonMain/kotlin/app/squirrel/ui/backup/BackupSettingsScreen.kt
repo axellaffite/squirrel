@@ -22,6 +22,7 @@ import app.squirrel.theme.components.Button
 import app.squirrel.theme.components.ButtonSize
 import app.squirrel.theme.components.ButtonVariant
 import app.squirrel.theme.components.ListRow
+import app.squirrel.theme.components.RowGroup
 import app.squirrel.theme.components.TextField
 import app.squirrel.theme.components.Toggle
 import app.squirrel.theme.components.Well
@@ -49,7 +50,7 @@ fun BackupSettingsScreen(vm: BackupSettingsViewModel, picker: AlbumPickerViewMod
             Toggle("Only while charging", s.chargingOnly, vm::setChargingOnly)
             Toggle("Include videos", s.includeVideos, vm::setIncludeVideos)
         }
-        Well {
+        RowGroup {
             ListRow(albums.kind.title, icon = albums.kind.icon, meta = albums.label, onClick = picker::open)
         }
         Well(verticalArrangement = Arrangement.spacedBy(Tokens.space2)) {
