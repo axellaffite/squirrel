@@ -1,5 +1,9 @@
 package app.squirrel.ui.sharing
 
+import app.squirrel.theme.components.TabItem
+import app.squirrel.theme.components.Tabs
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
@@ -49,16 +53,22 @@ import app.squirrel.ui.shell.ActionsSheet
 import app.squirrel.ui.shell.PageHeader
 import app.squirrel.ui.shell.SheetAction
 
-/** The "Shared" page: what other people shared with the caller, then what the caller shared. */
+/** The "Shared" page, in two tabs as on the web: what other people shared with the caller, and what the caller shared. */
 @Composable
 fun SharedList(api: SquirrelApi, vm: SharedViewModel, onFriends: () -> Unit, onOpen: (SharedTarget) -> Unit) {
     val state by vm.state.collectAsStateWithLifecycle()
     var actions by remember { mutableStateOf<SharedItemDto?>(null) }
+    var tab by rememberSaveable { mutableIntStateOf(0) }
     OnForeground(vm::resumed)
     Column(Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(Tokens.space2)) {
         PageHeader("Shared") { IconButton(SquirrelIcon.Users, label = "Friends", onClick = onFriends) }
         val opener by vm.opener.state.collectAsStateWithLifecycle()
         opener.message?.let { Alert(it) }
+        Tabs(
+            tabs = listOf(TabItem("Shared with me", state.items?.size), TabItem("Shared by me", state.byMe?.size)),
+            selected = tab,
+            onSelect = { tab = it },
+        )
         when {
             state.items == null && state.byMe == null && state.error != null -> PullableColumn(state.loading, vm::load) { ErrorRetry(state.error.orEmpty(), vm::load) }
             state.items == null && state.byMe == null -> Loading()
@@ -69,8 +79,8 @@ fun SharedList(api: SquirrelApi, vm: SharedViewModel, onFriends: () -> Unit, onO
                     contentPadding = PaddingValues(bottom = RailClearance),
                 ) {
                     state.error?.let { error -> item(key = "error") { ErrorRetry(error, vm::load) } }
-                    sharedWithMe(api, state, onOpen, onActions = { actions = it })
-                    sharedByMe(api, state, onOpen, onManage = vm::manage)
+                    if (tab == 0) sharedWithMe(api, state, onOpen, onActions = { actions = it })
+                    else sharedByMe(api, state, onOpen, onManage = vm::manage)
                 }
             }
         }
@@ -100,7 +110,6 @@ fun SharedList(api: SquirrelApi, vm: SharedViewModel, onFriends: () -> Unit, onO
 
 /** "Shared with me": folders and files, then albums; a line while there is nothing. */
 private fun LazyListScope.sharedWithMe(api: SquirrelApi, state: SharedState, onOpen: (SharedTarget) -> Unit, onActions: (SharedItemDto) -> Unit) {
-    item(key = "with-me-head") { SectionHead("Shared with me", null) }
     val items = state.items ?: return
     if (items.isEmpty()) item(key = "with-me-empty") { SharedSectionEmpty("When someone shares a folder, a file or an album with you, it shows up here.") }
     if (state.nodes.isNotEmpty()) item(key = "with-me-files") { SharedGroupHead("Folders and files") }
@@ -119,7 +128,6 @@ private fun LazyListScope.sharedWithMe(api: SquirrelApi, state: SharedState, onO
 
 /** "Shared by me": the caller's folders and files, then albums, each with who has it. */
 private fun LazyListScope.sharedByMe(api: SquirrelApi, state: SharedState, onOpen: (SharedTarget) -> Unit, onManage: (SharedByMeDto) -> Unit) {
-    item(key = "by-me-head") { SectionHead("Shared by me", null) }
     val items = state.byMe ?: return
     if (items.isEmpty()) item(key = "by-me-empty") { SharedSectionEmpty("Share a folder, a file or an album and it shows up here, with the people you shared it with.") }
     if (state.byMeNodes.isNotEmpty()) item(key = "by-me-files") { SharedGroupHead("Folders and files") }

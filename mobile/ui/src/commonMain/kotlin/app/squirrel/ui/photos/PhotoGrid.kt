@@ -1,6 +1,7 @@
 package app.squirrel.ui.photos
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -25,7 +26,6 @@ import app.squirrel.theme.Shapes
 import app.squirrel.theme.SquirrelIcon
 import app.squirrel.theme.SquirrelTheme
 import app.squirrel.theme.Tokens
-import app.squirrel.theme.boxShadow
 import app.squirrel.theme.components.Icon
 import app.squirrel.ui.images.Thumbnail
 
@@ -59,7 +59,8 @@ fun PhotoRow(api: SquirrelApi, height: Int, tiles: List<TileSlot>, actions: Tile
 }
 
 /**
- * MASTER.md photo tile. Selected: `--select-ring` and a filled `--accent` check circle with an
+ * MASTER.md photo tile. Selected: a `--ring-width` `--accent` ring drawn inside the tile (so the screen
+ * edge and the neighbouring rows never clip it) and a filled `--accent` check circle with an
  * `--on-accent` check, top left.
  */
 @Composable
@@ -70,7 +71,6 @@ fun PhotoTile(api: SquirrelApi, item: AssetSummary, modifier: Modifier, actions:
     val scheme = SquirrelTheme.scheme
     Box(
         modifier
-            .then(if (selected) Modifier.boxShadow(scheme.selectRing, Shapes.tile) else Modifier)
             .clip(Shapes.tile)
             .semantics {
                 if (selectable) {
@@ -93,6 +93,7 @@ fun PhotoTile(api: SquirrelApi, item: AssetSummary, modifier: Modifier, actions:
             modifier = Modifier.matchParentSize(),
         )
         if (selected) {
+            Box(Modifier.matchParentSize().border(Tokens.ringWidth, scheme.accent, Shapes.tile))
             Box(
                 Modifier.align(Alignment.TopStart).padding(Tokens.space1).size(Tokens.selectCheck).background(scheme.accent, Shapes.circle),
                 contentAlignment = Alignment.Center,

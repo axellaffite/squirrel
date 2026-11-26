@@ -6,6 +6,9 @@ import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsFocusedAsState
 import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.offset
+import androidx.compose.foundation.shape.CornerBasedShape
+import androidx.compose.foundation.shape.CornerSize
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
@@ -17,6 +20,7 @@ import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.graphics.drawOutline
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.drawscope.translate
+import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import app.squirrel.theme.SquirrelTheme
@@ -29,15 +33,27 @@ val MinTouchTarget: Dp = Tokens.controlLg
 @Composable
 fun Modifier.ground(): Modifier = background(SquirrelTheme.scheme.ground.brush())
 
-/** MASTER.md focus: a 2 px ring, 2 px outside [shape], when [focused] (keyboard focus). */
+/**
+ * MASTER.md focus: a 2 px ring, 2 px outside [shape], when [focused] (keyboard focus). The ring is
+ * concentric with the element: each corner grows by the ring's distance (outer radius = radius + gap),
+ * so an 8 dp field gets a 10 dp ring and a pill stays a pill.
+ */
 fun Modifier.focusRing(focused: Boolean, shape: Shape, color: Color): Modifier = drawWithContent {
     drawContent()
     if (focused) {
         val width = Tokens.ringWidth.toPx()
         val inset = Tokens.ringOffset.toPx() + width / 2
-        val outline = shape.createOutline(Size(size.width + 2 * inset, size.height + 2 * inset), layoutDirection, this)
+        val ringShape = shape.grownBy(inset, size, this)
+        val outline = ringShape.createOutline(Size(size.width + 2 * inset, size.height + 2 * inset), layoutDirection, this)
         translate(-inset, -inset) { drawOutline(outline, color, style = Stroke(width)) }
     }
+}
+
+/** [this] with every corner radius grown by [by] px; shapes without corners are returned as they are. */
+private fun Shape.grownBy(by: Float, size: Size, density: Density): Shape {
+    if (this !is CornerBasedShape) return this
+    fun CornerSize.grown() = CornerSize(toPx(size, density) + by)
+    return RoundedCornerShape(topStart.grown(), topEnd.grown(), bottomEnd.grown(), bottomStart.grown())
 }
 
 /** Focus ring and the 1 px press of every control, read from [interaction]. */
