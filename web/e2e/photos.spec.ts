@@ -1,3 +1,4 @@
+import { stat } from 'node:fs/promises';
 import { expect, test, type Page } from '@playwright/test';
 import { csrfToken, openDialog, row } from './helpers/files.ts';
 import {
@@ -183,6 +184,40 @@ test('photos go into an album that can be trimmed, renamed and deleted', async (
 
 	await page.goto('/photos');
 	await expect(tiles(page)).toHaveCount(3);
+});
+
+test('selected photos download as their original, or together as one zip', async () => {
+	await page.goto('/photos');
+	await tile(page, paris).hover();
+	await tile(page, paris).locator('.check').click();
+	const bar = page.getByRole('toolbar', { name: 'Selected photos' });
+	await expect(bar).toContainText('1 selected');
+
+	// One photo: its original file, no zip.
+	const single = page.waitForEvent('download');
+	await bar.getByRole('button', { name: 'Download paris-2024.jpg' }).click();
+	expect((await single).suggestedFilename()).toBe('paris-2024.jpg');
+
+	// Two photos: the server prepares a zip, the browser saves exactly its bytes.
+	await page.getByRole('button', { name: 'Select lyon-2023.jpg' }).click();
+	await expect(bar).toContainText('2 selected');
+	const ticketResponse = page.waitForResponse(
+		(response) => response.url().endsWith('/api/files/archive') && response.request().method() === 'POST'
+	);
+	const zipped = page.waitForEvent('download');
+	await bar.getByRole('button', { name: 'Download 2 photos' }).click();
+	const response = await ticketResponse;
+	expect(response.status()).toBe(201);
+	const ticket = (await response.json()) as { size: number; count: number };
+	expect(ticket.count).toBe(2);
+	const download = await zipped;
+	expect(download.suggestedFilename()).toMatch(/\.zip$/);
+	expect((await stat((await download.path())!)).size).toBe(ticket.size);
+
+	// The selection stays, for another action.
+	await expect(bar).toContainText('2 selected');
+	await bar.getByRole('button', { name: 'Clear the selection' }).click();
+	await expect(bar).toHaveCount(0);
 });
 
 test('the scrubber jumps between months from the keyboard', async () => {

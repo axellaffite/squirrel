@@ -10,6 +10,7 @@
 	import AlbumPicker from '#lib/components/photos/AlbumPicker.svelte';
 	import AlbumRulesDialog from '#lib/components/photos/AlbumRulesDialog.svelte';
 	import RulesSummary from '#lib/components/photos/RulesSummary.svelte';
+	import DownloadAction from '#lib/components/photos/DownloadAction.svelte';
 	import Lightbox from '#lib/components/photos/Lightbox.svelte';
 	import PhotoGrid from '#lib/components/photos/PhotoGrid.svelte';
 	import SelectionBar from '#lib/components/photos/SelectionBar.svelte';
@@ -62,6 +63,8 @@
 	/** A dynamic album's photos come from its rules: none are added or removed by hand. */
 	const dynamic = $derived(album?.dynamic ?? false);
 	const canRemove = $derived(can.edit && !dynamic);
+	/** A single selected photo, for its name in the Download label. */
+	const selectedPhoto = $derived(selection.size === 1 ? items.filter((item) => selection.has(item.id)) : []);
 
 	async function reload() {
 		await data.reload();
@@ -253,8 +256,10 @@
 	{/if}
 </Page>
 
-{#if selection.active && (canRemove || can.owner)}
+<!-- Everyone who sees the album can download from it; removing photos takes write access and a non-dynamic album. -->
+{#if selection.active}
 	<SelectionBar count={selection.size} onClear={() => selection.clear()}>
+		<DownloadAction ids={[...selection.ids]} known={selectedPhoto} onResult={(message) => (error = message)} />
 		{#if selection.size === 1 && can.owner}
 			<Button variant="secondary" size="sm" disabled={busy} onclick={makeCover}>
 				<Icon name="images" /><span class="label">Set as cover</span>

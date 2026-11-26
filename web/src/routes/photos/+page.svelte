@@ -5,6 +5,7 @@
 	import ConfirmDialog from '#lib/components/ConfirmDialog.svelte';
 	import Icon from '#lib/components/icons/Icon.svelte';
 	import AlbumPicker from '#lib/components/photos/AlbumPicker.svelte';
+	import DownloadAction from '#lib/components/photos/DownloadAction.svelte';
 	import Lightbox from '#lib/components/photos/Lightbox.svelte';
 	import PhotosTabs from '#lib/components/photos/PhotosTabs.svelte';
 	import Scrubber from '#lib/components/photos/Scrubber.svelte';
@@ -41,10 +42,14 @@
 	/** Photos the album picker is open for. */
 	let picking: readonly string[] | null = $state(null);
 	let notice: string | null = $state(null);
+	/** Errors from actions on the selection (download). */
+	let actionError: string | null = $state(null);
 	let people: Person[] = $state([]);
 
 	const total = $derived(data.total);
 	const filtering = $derived(!isEmptyFilter(data.filter));
+	/** A single selected photo, for its name in the Download label. */
+	const selectedPhoto = $derived(selection.size === 1 ? data.ordered.filter((item) => selection.has(item.id)) : []);
 
 	// The address is the filter's source of truth: a link to the same page with another filter
 	// (the rail's Photos item, a tag in the lightbox) changes what is shown.
@@ -203,6 +208,7 @@
 	<p class="visually-hidden" aria-live="polite">{announcement}</p>
 	{#if preparing > 0}<Alert tone="info" role="note">{preparingText(preparing)}</Alert>{/if}
 	{#if data.error}<Alert>{data.error}</Alert>{/if}
+	{#if actionError}<Alert>{actionError}</Alert>{/if}
 
 	{#if data.months === null}
 		{#if !data.error}<p class="muted" aria-live="polite">Loading…</p>{/if}

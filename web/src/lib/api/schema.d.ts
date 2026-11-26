@@ -420,6 +420,38 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/files/archive": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["create_archive"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/files/archive/{ticket}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["download_archive"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/files/{id}/collab": {
         parameters: {
             query?: never;
@@ -1315,6 +1347,23 @@ export interface components {
              */
             taken_to?: string | null;
         };
+        /** @description A zip ready to download with `GET /api/files/archive/{ticket}`. */
+        ArchiveTicket: {
+            /**
+             * Format: int64
+             * @description Files in the zip.
+             */
+            count: number;
+            /** @description Suggested file name, e.g. `Squirrel 12 photos 2026-11-26.zip`. */
+            name: string;
+            /**
+             * Format: int64
+             * @description Exact byte length of the zip (its `Content-Length`).
+             */
+            size: number;
+            /** @description Opaque; usable only by the caller, as many times as needed, for 10 minutes. */
+            ticket: string;
+        };
         /** @description Everything the photo viewer shows about one photo. */
         AssetDetails: {
             /**
@@ -1445,6 +1494,14 @@ export interface components {
              */
             node_ids?: string[];
             rules?: null | components["schemas"]["AlbumRulesDto"];
+        };
+        CreateArchiveRequest: {
+            /**
+             * @description 1–500 file ids, each one the caller may download (their own files, or
+             *     files in something shared with them). Duplicates are collapsed; the
+             *     zip keeps the order given.
+             */
+            node_ids: string[];
         };
         CreateCommentRequest: components["schemas"]["SubjectRef"] & {
             /** @description 1–4000 characters. */
@@ -3741,6 +3798,106 @@ export interface operations {
             };
             /** @description not_editable: the name's extension is not a text type */
             422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    create_archive: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateArchiveRequest"];
+            };
+        };
+        responses: {
+            /** @description Download it with `GET /api/files/archive/{ticket}` within 10 minutes */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ArchiveTicket"];
+                };
+            };
+            /** @description No ids, more than 500, or a folder among them */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description An id the caller cannot download */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description archive_too_large: the zip would reach 4 GiB */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    download_archive: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description `ticket` from `POST /api/files/archive` */
+                ticket: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The zip, streamed; `Content-Length` is the ticket's `size` */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/zip": number[];
+                };
+            };
+            /** @description Unknown or expired ticket, another user's, or a file deleted since */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Too many downloads in progress */
+            503: {
                 headers: {
                     [name: string]: unknown;
                 };
