@@ -1,8 +1,7 @@
 package app.squirrel.ui.photos
 
-import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
-import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -15,6 +14,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.onLongClick
 import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
@@ -29,14 +29,21 @@ import app.squirrel.theme.boxShadow
 import app.squirrel.theme.components.Icon
 import app.squirrel.ui.images.Thumbnail
 
-/** How tiles answer touches: open, or (while selecting) toggle; a long press starts selecting. */
+/**
+ * How tiles answer touches: a tap opens, or toggles while selecting; a long press starts
+ * selecting, and sliding on from it selects a range (see [rememberDragToSelect]).
+ */
 class TileActions(
     val onOpen: (AssetSummary) -> Unit,
     val selected: Set<String> = emptySet(),
-    /** Null: this grid has no selection. */
-    val onToggle: ((AssetSummary) -> Unit)? = null,
+    /** The new selection; null: this grid has no selection. */
+    val onSelect: ((Set<String>) -> Unit)? = null,
 ) {
     val selecting: Boolean get() = selected.isNotEmpty()
+
+    fun toggle(item: AssetSummary) {
+        onSelect?.invoke(selected.toggled(item.id))
+    }
 
     companion object {
         fun open(onOpen: (AssetSummary) -> Unit) = TileActions(onOpen)
@@ -55,24 +62,27 @@ fun PhotoRow(api: SquirrelApi, height: Int, tiles: List<TileSlot>, actions: Tile
  * MASTER.md photo tile. Selected: `--select-ring` and a filled `--accent` check circle with an
  * `--on-accent` check, top left.
  */
-@OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun PhotoTile(api: SquirrelApi, item: AssetSummary, modifier: Modifier, actions: TileActions) {
     val ready = item.thumbnail.state == ThumbnailStatus.ready
     val selected = item.id in actions.selected
-    val toggle = actions.onToggle
+    val selectable = actions.onSelect != null
     val scheme = SquirrelTheme.scheme
     Box(
         modifier
             .then(if (selected) Modifier.boxShadow(scheme.selectRing, Shapes.tile) else Modifier)
             .clip(Shapes.tile)
-            .semantics { if (toggle != null) this.selected = selected }
-            .combinedClickable(
+            .semantics {
+                if (selectable) {
+                    this.selected = selected
+                    // The list's long press (and slide) is a pointer gesture: assistive tech gets it here.
+                    onLongClick("Select") { actions.toggle(item); true }
+                }
+            }
+            .clickable(
                 role = Role.Button,
-                onClickLabel = if (actions.selecting && toggle != null) "Select" else "Open",
-                onLongClickLabel = if (toggle != null) "Select" else null,
-                onLongClick = toggle?.let { { it(item) } },
-                onClick = { if (actions.selecting && toggle != null) toggle(item) else actions.onOpen(item) },
+                onClickLabel = if (actions.selecting && selectable) "Select" else "Open",
+                onClick = { if (actions.selecting && selectable) actions.toggle(item) else actions.onOpen(item) },
             ),
     ) {
         Thumbnail(

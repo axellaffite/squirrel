@@ -123,7 +123,7 @@ private fun PhotosHome(graph: AppGraph, nav: Navigator<PhotosRoute>, mode: Photo
                     }
                     LaunchedEffect(viewing, notice) { lsdo.overlay.shown(PhotosOverlay(viewing, notice)) }
                     RegisterLsDo("timeline", lsdo)
-                    TimelineList(api, timeline, TileActions({ viewing = it.id }, selected) { selected = selected.toggled(it.id) })
+                    TimelineList(api, timeline, TileActions({ viewing = it.id }, selected) { selected = it })
                 }
                 PhotosMode.Albums -> {
                     val open: (AlbumDto) -> Unit = { nav.push(PhotosRoute.Album(it.id, it.name)) }

@@ -1,6 +1,7 @@
 package app.squirrel.ui.search
 
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.text.BasicText
@@ -12,6 +13,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.semantics.LiveRegionMode
 import androidx.compose.ui.semantics.contentDescription
@@ -25,12 +27,15 @@ import app.squirrel.theme.SquirrelIcon
 import app.squirrel.theme.SquirrelTheme
 import app.squirrel.theme.Tokens
 import app.squirrel.theme.components.Alert
+import app.squirrel.theme.components.AlertTone
 import app.squirrel.theme.components.EmptyState
 import app.squirrel.theme.components.Loading
 import app.squirrel.theme.components.SearchField
 import app.squirrel.theme.components.SegmentedControl
 import app.squirrel.ui.AppGraph
 import app.squirrel.ui.explore.FilterBar
+import app.squirrel.ui.photos.AddToAlbumSelection
+import app.squirrel.ui.photos.AlbumsViewModel
 import app.squirrel.ui.photos.ErrorRetry
 import app.squirrel.ui.photos.JustifiedPhotos
 import app.squirrel.ui.photos.PhotosOverlay
@@ -39,7 +44,6 @@ import app.squirrel.ui.shell.PageHeader
 import app.squirrel.ui.shell.SystemBack
 import app.squirrel.ui.viewer.ViewerHost
 import app.squirrel.ui.viewer.ViewerRequest
-import io.github.axellaffite.lsdo.compose.RegisterLsDo
 import io.github.axellaffite.lsdo.compose.RegisterLsDo
 
 /** What the search screen looks for. */
@@ -66,11 +70,35 @@ private val ORDERS = listOf(SearchOrder.date to "Timeline", SearchOrder.relevanc
 @Composable
 private fun PhotoSearch(graph: AppGraph, api: SquirrelApi, vm: PhotoSearchViewModel) {
     val state by vm.state.collectAsStateWithLifecycle()
+    val albums = viewModel(key = "albums") { AlbumsViewModel(api) }
     var viewing by remember { mutableStateOf<String?>(null) }
+    // Kept across searches: photos found by several searches can go into one album together.
+    var selected by remember { mutableStateOf(emptySet<String>()) }
+    var notice by remember { mutableStateOf<String?>(null) }
     val scope = rememberCoroutineScope()
-    val lsdo = remember(vm) { PhotoSearchLsDo(vm, scope, onOpen = { viewing = it }, onClose = { viewing = null }) }
-    LaunchedEffect(viewing) { lsdo.overlay.shown(PhotosOverlay(viewing)) }
+    val onAdded: (String) -> Unit = { message ->
+        notice = message
+        selected = emptySet()
+        albums.refresh()
+    }
+    val lsdo = remember(vm) { PhotoSearchLsDo(vm, api, scope, onOpen = { viewing = it }, onClose = { viewing = null }, onAdded = onAdded) }
+    LaunchedEffect(viewing, notice) { lsdo.overlay.shown(PhotosOverlay(viewing, notice)) }
     RegisterLsDo("photo_search", lsdo)
+    SystemBack(enabled = selected.isNotEmpty()) { selected = emptySet() }
+    Box(Modifier.fillMaxSize()) {
+        Column(Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(Tokens.space2)) {
+            PhotoSearchResults(api, vm, state, TileActions({ viewing = it.id }, selected) { selected = it }, notice)
+        }
+        AddToAlbumSelection(api, selected, onClear = { selected = emptySet() }, onAdded = onAdded, modifier = Modifier.align(Alignment.BottomCenter))
+    }
+    viewing?.let { id ->
+        ViewerHost(graph, ViewerRequest(state.items, id, onNear = { if (state.items.lastOrNull()?.id == it) vm.more() }), onClose = { viewing = null })
+    }
+}
+
+/** The search field, filters and order, then what they found. */
+@Composable
+private fun PhotoSearchResults(api: SquirrelApi, vm: PhotoSearchViewModel, state: PhotoSearchState, actions: TileActions, notice: String?) {
     SearchField(
         value = state.typed,
         onValueChange = vm::type,
@@ -89,11 +117,12 @@ private fun PhotoSearch(graph: AppGraph, api: SquirrelApi, vm: PhotoSearchViewMo
         state.unavailable -> Alert(SEARCH_UNAVAILABLE)
         state.error != null && state.items.isEmpty() -> ErrorRetry(state.error.orEmpty(), vm::retry)
     }
+    notice?.let { Alert(it, tone = AlertTone.Success) }
     when {
         state.items.isNotEmpty() -> JustifiedPhotos(
             api,
             state.items,
-            TileActions.open { viewing = it.id },
+            actions,
             onNearEnd = vm::more,
             footer = { state.error?.let { error -> item(key = "error") { ErrorRetry(error, vm::retry) } } },
         )
@@ -102,9 +131,6 @@ private fun PhotoSearch(graph: AppGraph, api: SquirrelApi, vm: PhotoSearchViewMo
         state.loading -> Loading(text = "Searching…")
         normalizeQuery(state.typed).isEmpty() && !state.unavailable ->
             EmptyState(SquirrelIcon.Sparkles, "Search by what is in your photos", "Type a few words, in any language: “dog on the beach”, “snowy mountains”.")
-    }
-    viewing?.let { id ->
-        ViewerHost(graph, ViewerRequest(state.items, id, onNear = { if (state.items.lastOrNull()?.id == it) vm.more() }), onClose = { viewing = null })
     }
 }
 
