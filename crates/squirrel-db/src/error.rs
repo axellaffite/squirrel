@@ -21,6 +21,9 @@ pub enum DbError {
     /// The owner already has the maximum number of open upload sessions.
     #[error("too many uploads in progress; finish or cancel some first")]
     TooManyUploads,
+    /// Adding, removing or contributing photos to a dynamic album.
+    #[error("a dynamic album's photos come from its rules: edit them instead")]
+    DynamicAlbum,
     /// A deadlock or serialization failure that persisted after retries.
     #[error("the database is busy, try again in a moment")]
     Busy(#[source] sqlx::Error),

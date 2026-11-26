@@ -6,12 +6,17 @@
 //! the others expect the caller to have checked access ([`crate::access`]).
 //! Trashed photos are hidden from albums (joins on live nodes) and come back
 //! on restore.
+//!
+//! A dynamic album ([`crate::album_rules`]) has no items: its photos are its
+//! owner's photos matching its rule, so adding, removing and contributing do
+//! not apply to it.
 
 use sqlx::{FromRow, PgConnection, PgPool, Postgres, QueryBuilder};
 use squirrel_core::AlbumName;
 use time::OffsetDateTime;
 use uuid::Uuid;
 
+use crate::album_rules::{self, AlbumRules, RULE_MATCHES};
 use crate::timeline::{AssetSummaryRecord, FROM, SUMMARY_COLUMNS, TimelineCursor};
 use crate::{DbError, Page};
 
@@ -32,7 +37,9 @@ pub struct AlbumRecord {
     pub cover_node_id: Option<Uuid>,
     pub created_at: OffsetDateTime,
     pub updated_at: OffsetDateTime,
-    /// Live items.
+    /// Whether its photos come from a rule ([`crate::album_rules`]).
+    pub dynamic: bool,
+    /// Live items (matching photos for a dynamic album).
     pub item_count: i64,
     /// The cover to show: the chosen one while it is a live item, else the
     /// newest live item; `None` for an empty album.
@@ -40,14 +47,21 @@ pub struct AlbumRecord {
 }
 
 fn album_select() -> String {
+    let matches = format!("{FROM} WHERE {RULE_MATCHES}");
     format!(
         "SELECT al.id, al.name, al.cover_node_id, al.created_at, al.updated_at, \
-                (SELECT count(*) FROM {LIVE_ITEMS}) AS item_count, \
-                COALESCE( \
+                (r.album_id IS NOT NULL) AS dynamic, \
+                CASE WHEN r.album_id IS NULL THEN (SELECT count(*) FROM {LIVE_ITEMS}) \
+                     ELSE (SELECT count(*) {matches}) END AS item_count, \
+                CASE WHEN r.album_id IS NULL THEN COALESCE( \
                   (SELECT a.node_id FROM {LIVE_ITEMS} AND a.node_id = al.cover_node_id), \
                   (SELECT a.node_id FROM {LIVE_ITEMS} \
-                    ORDER BY a.taken_at DESC, a.node_id DESC LIMIT 1)) AS cover_id \
-           FROM albums al"
+                    ORDER BY a.taken_at DESC, a.node_id DESC LIMIT 1)) \
+                ELSE COALESCE( \
+                  (SELECT a.node_id {matches} AND a.node_id = al.cover_node_id), \
+                  (SELECT a.node_id {matches} \
+                    ORDER BY a.taken_at DESC, a.node_id DESC LIMIT 1)) END AS cover_id \
+           FROM albums al LEFT JOIN album_rules r ON r.album_id = al.id"
     )
 }
 
@@ -123,6 +137,26 @@ pub async fn create(
     Ok(id)
 }
 
+/// Creates a dynamic album holding the owner's photos matching `rules`.
+pub async fn create_dynamic(
+    pool: &PgPool,
+    owner_id: Uuid,
+    name: &AlbumName,
+    rules: &AlbumRules,
+) -> Result<Uuid, DbError> {
+    let id = Uuid::now_v7();
+    let mut tx = pool.begin().await?;
+    sqlx::query("INSERT INTO albums (id, owner_id, name) VALUES ($1, $2, $3)")
+        .bind(id)
+        .bind(owner_id)
+        .bind(name.as_str())
+        .execute(&mut *tx)
+        .await?;
+    album_rules::save(&mut tx, id, owner_id, rules).await?;
+    tx.commit().await?;
+    Ok(id)
+}
+
 /// Locks the album row for the transaction; `NotFound` unless it is the owner's.
 async fn lock(conn: &mut PgConnection, id: Uuid, owner_id: Uuid) -> Result<(), DbError> {
     sqlx::query_scalar::<_, Uuid>(
@@ -189,6 +223,9 @@ pub async fn add_items(
 ) -> Result<u64, DbError> {
     let mut tx = pool.begin().await?;
     lock_any(&mut tx, album_id).await?;
+    if album_rules::is_dynamic(&mut tx, album_id).await? {
+        return Err(DbError::DynamicAlbum);
+    }
     let added = insert_items(&mut tx, album_id, adder_id, node_ids).await?;
     if added > 0 {
         touch(&mut tx, album_id).await?;
@@ -217,6 +254,9 @@ pub async fn remove_items(
 ) -> Result<u64, DbError> {
     let mut tx = pool.begin().await?;
     lock_any(&mut tx, album_id).await?;
+    if album_rules::is_dynamic(&mut tx, album_id).await? {
+        return Err(DbError::DynamicAlbum);
+    }
     let only_owner = match remover {
         Remover::AlbumOwner => None,
         Remover::Contributor(id) => Some(id),
@@ -263,6 +303,8 @@ pub enum CoverChange {
 pub struct AlbumUpdate {
     pub name: Option<AlbumName>,
     pub cover: CoverChange,
+    /// A dynamic album's new rule.
+    pub rules: Option<AlbumRules>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -271,6 +313,8 @@ pub enum UpdateOutcome {
     NotFound,
     /// The requested cover is not a live item of the album.
     CoverNotInAlbum,
+    /// New rules for an album that is not dynamic.
+    NotDynamic,
 }
 
 pub async fn update(
@@ -284,17 +328,32 @@ pub async fn update(
         Err(DbError::NotFound) => return Ok(UpdateOutcome::NotFound),
         other => other?,
     }
+    let dynamic = album_rules::is_dynamic(&mut tx, album_id).await?;
+    if let Some(rules) = &changes.rules {
+        if !dynamic {
+            return Ok(UpdateOutcome::NotDynamic);
+        }
+        album_rules::save(&mut tx, album_id, owner_id, rules).await?;
+    }
     if let CoverChange::Set(cover) = changes.cover {
-        let is_item: bool = sqlx::query_scalar(
+        // Checked after the rule changed: the cover must match the new one.
+        let sql = if dynamic {
+            format!(
+                "SELECT EXISTS (SELECT 1 {FROM} JOIN album_rules r ON r.album_id = $1 \
+                                 WHERE a.owner_id = $2 AND a.node_id = $3 AND {RULE_MATCHES})"
+            )
+        } else {
             "SELECT EXISTS (SELECT 1 FROM album_items i \
                               JOIN nodes n ON n.id = i.node_id AND n.deleted_at IS NULL \
-                             WHERE i.album_id = $1 AND i.owner_id = $2 AND i.node_id = $3)",
-        )
-        .bind(album_id)
-        .bind(owner_id)
-        .bind(cover)
-        .fetch_one(&mut *tx)
-        .await?;
+                             WHERE i.album_id = $1 AND i.owner_id = $2 AND i.node_id = $3)"
+                .to_owned()
+        };
+        let is_item: bool = sqlx::query_scalar(&sql)
+            .bind(album_id)
+            .bind(owner_id)
+            .bind(cover)
+            .fetch_one(&mut *tx)
+            .await?;
         if !is_item {
             return Ok(UpdateOutcome::CoverNotInAlbum);
         }
@@ -338,12 +397,29 @@ pub async fn items(
     after: Option<&TimelineCursor>,
     limit: u32,
 ) -> Result<Page<AssetSummaryRecord>, DbError> {
-    let mut query = QueryBuilder::<Postgres>::new(format!(
-        "SELECT {SUMMARY_COLUMNS} {FROM} \
-           JOIN album_items i ON i.node_id = a.node_id AND i.owner_id = a.owner_id \
-          WHERE i.album_id = "
-    ));
-    query.push_bind(album_id);
+    let mut query = match album_rules::owner_of(pool, album_id).await? {
+        // The owner is bound too, so the keyset stays on the timeline index.
+        Some(owner_id) => {
+            let mut query = QueryBuilder::<Postgres>::new(format!(
+                "SELECT {SUMMARY_COLUMNS} {FROM} JOIN album_rules r ON r.album_id = "
+            ));
+            query
+                .push_bind(album_id)
+                .push(" WHERE a.owner_id = ")
+                .push_bind(owner_id)
+                .push(format!(" AND {RULE_MATCHES}"));
+            query
+        }
+        None => {
+            let mut query = QueryBuilder::<Postgres>::new(format!(
+                "SELECT {SUMMARY_COLUMNS} {FROM} \
+                   JOIN album_items i ON i.node_id = a.node_id AND i.owner_id = a.owner_id \
+                  WHERE i.album_id = "
+            ));
+            query.push_bind(album_id);
+            query
+        }
+    };
     if let Some(cursor) = after {
         query
             .push(" AND (a.taken_at, a.node_id) < (")
@@ -368,20 +444,27 @@ pub struct AlbumRefRecord {
     pub name: String,
 }
 
-/// The owner's albums holding `node_id`, by name.
+/// The owner's albums holding `node_id` (dynamic ones it matches included),
+/// by name.
 pub async fn albums_for_node(
     pool: &PgPool,
     owner_id: Uuid,
     node_id: Uuid,
 ) -> Result<Vec<AlbumRefRecord>, DbError> {
-    Ok(sqlx::query_as::<_, AlbumRefRecord>(
+    let sql = format!(
         "SELECT al.id, al.name FROM album_items i \
            JOIN albums al ON al.id = i.album_id AND al.owner_id = i.owner_id \
           WHERE i.owner_id = $1 AND i.node_id = $2 \
-          ORDER BY al.name, al.id",
-    )
-    .bind(owner_id)
-    .bind(node_id)
-    .fetch_all(pool)
-    .await?)
+         UNION \
+         SELECT al.id, al.name {FROM} \
+           JOIN album_rules r ON r.owner_id = a.owner_id \
+           JOIN albums al ON al.id = r.album_id \
+          WHERE a.owner_id = $1 AND a.node_id = $2 AND {RULE_MATCHES} \
+          ORDER BY name, id"
+    );
+    Ok(sqlx::query_as::<_, AlbumRefRecord>(&sql)
+        .bind(owner_id)
+        .bind(node_id)
+        .fetch_all(pool)
+        .await?)
 }

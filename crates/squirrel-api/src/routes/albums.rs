@@ -1,7 +1,8 @@
 //! Albums of the caller's photos, and albums shared with them. An album that
 //! is neither is exactly `not_found`; renaming, choosing the cover and deleting
 //! stay with the owner; people it is shared with for writing add and remove
-//! their own photos.
+//! their own photos. A dynamic album's photos come from its rules: nobody
+//! adds or removes them.
 
 use std::collections::HashMap;
 
@@ -10,14 +11,15 @@ use axum::extract::State;
 use axum::http::StatusCode;
 use squirrel_core::AlbumName;
 use squirrel_db::access::Access;
+use squirrel_db::album_rules::{self, AlbumRules};
 use squirrel_db::albums::{self, AlbumRecord, AlbumUpdate, CoverChange, Remover, UpdateOutcome};
 use squirrel_db::{timeline, users};
 use uuid::Uuid;
 
 use crate::access;
 use crate::albums_dto::{
-    AlbumDto, AlbumItemsQuery, AlbumItemsRequest, CreateAlbumRequest, ItemsChanged, MAX_NODE_IDS,
-    UpdateAlbumRequest,
+    AlbumDto, AlbumItemsQuery, AlbumItemsRequest, AlbumPreviewDto, AlbumRulesDto,
+    CreateAlbumRequest, ItemsChanged, MAX_NODE_IDS, UpdateAlbumRequest,
 };
 use crate::cursor;
 use crate::error::{ApiError, ErrorBody};
@@ -27,6 +29,22 @@ use crate::photos_dto::{AssetSummary, TimelinePage};
 use crate::routes::photos::{photo_page_size, timeline_page};
 use crate::sharing_dto::MemberDto;
 use crate::state::AppState;
+
+/// Photos shown by a rule preview.
+const PREVIEW_PHOTOS: u32 = 12;
+
+/// `dto` checked, its people included (they must be the caller's).
+async fn checked_rules(
+    state: &AppState,
+    user: Uuid,
+    dto: &AlbumRulesDto,
+) -> Result<AlbumRules, ApiError> {
+    let rules = dto.rules()?;
+    if !album_rules::are_people_of(&state.pool, user, &rules.people).await? {
+        return Err(ApiError::Validation("people must be your people".into()));
+    }
+    Ok(rules)
+}
 
 fn check_count(node_ids: &[Uuid], min: usize) -> Result<(), ApiError> {
     if node_ids.len() < min || node_ids.len() > MAX_NODE_IDS {
@@ -62,6 +80,18 @@ pub(crate) async fn dtos(
         .iter()
         .map(|record| (record.node_id, AssetSummary::from(record)))
         .collect();
+    // Rules name the owner's people: only the owner reads them.
+    let owned_dynamic: Vec<Uuid> = records
+        .iter()
+        .filter(|(album, viewpoint)| album.dynamic && viewpoint.access.is_owner())
+        .map(|(album, _)| album.id)
+        .collect();
+    let mut rules: HashMap<Uuid, AlbumRulesDto> =
+        album_rules::find_many(&state.pool, &owned_dynamic)
+            .await?
+            .iter()
+            .map(|(id, rules)| (*id, AlbumRulesDto::from(rules)))
+            .collect();
     Ok(records
         .iter()
         .map(|(album, viewpoint)| AlbumDto {
@@ -72,6 +102,8 @@ pub(crate) async fn dtos(
             updated_at: album.updated_at,
             access: viewpoint.access.into(),
             shared_by: viewpoint.shared_by.clone(),
+            dynamic: album.dynamic,
+            rules: rules.remove(&album.id),
         })
         .collect())
 }
@@ -128,7 +160,18 @@ pub async fn create_album(
     let name = AlbumName::parse(&request.name)?;
     check_count(&request.node_ids, 0)?;
     let owner = caller.user.id;
-    let id = albums::create(&state.pool, owner, &name, &request.node_ids).await?;
+    let id = match &request.rules {
+        Some(_) if !request.node_ids.is_empty() => {
+            return Err(ApiError::Validation(
+                "a dynamic album takes rules, not node_ids".into(),
+            ));
+        }
+        Some(dto) => {
+            let rules = checked_rules(&state, owner, dto).await?;
+            albums::create_dynamic(&state.pool, owner, &name, &rules).await?
+        }
+        None => albums::create(&state.pool, owner, &name, &request.node_ids).await?,
+    };
     Ok((StatusCode::CREATED, Json(album(&state, owner, id).await?)))
 }
 
@@ -154,11 +197,16 @@ pub async fn update_album(
     ApiPath(id): ApiPath<Uuid>,
     ApiJson(request): ApiJson<UpdateAlbumRequest>,
 ) -> Result<Json<AlbumDto>, ApiError> {
-    if request.name.is_none() && request.cover_node_id.is_none() {
+    if request.name.is_none() && request.cover_node_id.is_none() && request.rules.is_none() {
         return Err(ApiError::Validation(
-            "give a new name, a cover_node_id, or both".into(),
+            "give a new name, a cover_node_id or rules".into(),
         ));
     }
+    let owner = caller.user.id;
+    let rules = match &request.rules {
+        Some(dto) => Some(checked_rules(&state, owner, dto).await?),
+        None => None,
+    };
     let changes = AlbumUpdate {
         name: request.name.as_deref().map(AlbumName::parse).transpose()?,
         cover: match request.cover_node_id {
@@ -166,8 +214,8 @@ pub async fn update_album(
             Some(None) => CoverChange::Clear,
             Some(Some(id)) => CoverChange::Set(id),
         },
+        rules,
     };
-    let owner = caller.user.id;
     owned(&state, owner, id).await?;
     match albums::update(&state.pool, id, owner, &changes).await? {
         UpdateOutcome::Updated => Ok(Json(album(&state, owner, id).await?)),
@@ -175,7 +223,27 @@ pub async fn update_album(
         UpdateOutcome::CoverNotInAlbum => Err(ApiError::Validation(
             "the cover must be a photo of the album".into(),
         )),
+        UpdateOutcome::NotDynamic => Err(ApiError::Validation(
+            "only a dynamic album has rules".into(),
+        )),
     }
+}
+
+#[utoipa::path(post, path = "/api/albums/preview", security(("device_bearer" = []), ("session_cookie" = [], "csrf_token" = [])), tag = "albums",
+    request_body = AlbumRulesDto,
+    responses((status = 200, body = AlbumPreviewDto, description = "What a dynamic album with these rules would hold now"),
+              (status = 422, body = ErrorBody), (status = 503, body = ErrorBody, description = "The library is too large to count in time")))]
+pub async fn preview_album(
+    State(state): State<AppState>,
+    caller: Caller,
+    ApiJson(request): ApiJson<AlbumRulesDto>,
+) -> Result<Json<AlbumPreviewDto>, ApiError> {
+    let rules = checked_rules(&state, caller.user.id, &request).await?;
+    let preview = album_rules::preview(&state.pool, caller.user.id, &rules, PREVIEW_PHOTOS).await?;
+    Ok(Json(AlbumPreviewDto {
+        count: preview.count,
+        newest: preview.newest.iter().map(AssetSummary::from).collect(),
+    }))
 }
 
 #[utoipa::path(delete, path = "/api/albums/{id}", security(("device_bearer" = []), ("session_cookie" = [], "csrf_token" = [])), tag = "albums",
@@ -224,7 +292,7 @@ pub async fn list_album_items(
     params(("id" = Uuid, Path, description = "Album id")),
     request_body = AlbumItemsRequest,
     responses((status = 200, body = ItemsChanged), (status = 403, body = ErrorBody, description = "Shared with you for reading only"), (status = 404, body = ErrorBody),
-              (status = 422, body = ErrorBody)))]
+              (status = 409, body = ErrorBody, description = "A dynamic album"), (status = 422, body = ErrorBody)))]
 pub async fn add_album_items(
     State(state): State<AppState>,
     caller: Caller,
@@ -242,7 +310,7 @@ pub async fn add_album_items(
     params(("id" = Uuid, Path, description = "Album id")),
     request_body = AlbumItemsRequest,
     responses((status = 200, body = ItemsChanged), (status = 403, body = ErrorBody, description = "Shared with you for reading only"), (status = 404, body = ErrorBody),
-              (status = 422, body = ErrorBody)))]
+              (status = 409, body = ErrorBody, description = "A dynamic album"), (status = 422, body = ErrorBody)))]
 pub async fn remove_album_items(
     State(state): State<AppState>,
     caller: Caller,

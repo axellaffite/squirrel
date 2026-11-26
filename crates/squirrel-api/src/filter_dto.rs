@@ -1,7 +1,7 @@
 //! The photo filters of the timeline, its months and photo search, as query
 //! parameters, checked into a [`PhotoFilter`].
 
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use squirrel_db::assets::AssetKind;
 use squirrel_db::photo_filter::PhotoFilter;
 use utoipa::{IntoParams, ToSchema};
@@ -30,7 +30,7 @@ pub fn with_filters(extra: &[&'static str]) -> Vec<&'static str> {
 const MAX_VALUE_CHARS: usize = 200;
 
 /// What a photo is, for filtering.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, ToSchema)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum PhotoKindFilter {
     Photo,

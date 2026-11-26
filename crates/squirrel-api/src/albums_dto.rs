@@ -8,6 +8,8 @@ use uuid::Uuid;
 use crate::photos_dto::AssetSummary;
 use crate::sharing_dto::{AccessLevel, MemberDto};
 
+pub use crate::album_rules_dto::AlbumRulesDto;
+
 /// Photos per add/remove request (and at creation), at most.
 pub const MAX_NODE_IDS: usize = 500;
 
@@ -26,6 +28,11 @@ pub struct AlbumDto {
     pub access: AccessLevel,
     /// Who shared it with the caller; `null` for the caller's own album.
     pub shared_by: Option<MemberDto>,
+    /// Its photos come from `rules`: they cannot be added or removed.
+    pub dynamic: bool,
+    /// A dynamic album's rules, for its owner only (`null` otherwise: they
+    /// name the owner's people).
+    pub rules: Option<AlbumRulesDto>,
 }
 
 #[derive(Debug, Deserialize, ToSchema)]
@@ -33,16 +40,24 @@ pub struct CreateAlbumRequest {
     /// 1–100 characters.
     pub name: String,
     /// Photos to put in it right away (at most 500); ids that are not the
-    /// caller's photos are skipped.
+    /// caller's photos are skipped. Not with `rules`.
     #[serde(default)]
     pub node_ids: Vec<Uuid>,
+    /// Makes a dynamic album: its photos are the caller's photos matching
+    /// these rules, now and later.
+    #[serde(default)]
+    pub rules: Option<AlbumRulesDto>,
 }
 
-/// Rename and/or choose the cover. At least one field is required.
+/// Rename, choose the cover and/or change a dynamic album's rules. At least
+/// one field is required.
 #[derive(Debug, Deserialize, ToSchema)]
 pub struct UpdateAlbumRequest {
     #[serde(default)]
     pub name: Option<String>,
+    /// New rules of a dynamic album (replace the old ones).
+    #[serde(default)]
+    pub rules: Option<AlbumRulesDto>,
     /// A photo of the album to show as its cover; `null` goes back to the
     /// newest photo; absent keeps the current choice.
     #[serde(default, deserialize_with = "present")]
@@ -81,6 +96,15 @@ pub struct AlbumItemsQuery {
     pub cursor: Option<String>,
     /// Default 200, at most 500.
     pub limit: Option<u32>,
+}
+
+/// What a rule would hold now.
+#[derive(Debug, Serialize, ToSchema)]
+pub struct AlbumPreviewDto {
+    /// Matching photos.
+    pub count: i64,
+    /// The newest of them (at most 12), newest first.
+    pub newest: Vec<AssetSummary>,
 }
 
 #[cfg(test)]

@@ -1,6 +1,7 @@
 //! HTTP API for Squirrel.
 
 mod access;
+mod album_rules_dto;
 mod albums_dto;
 mod blocking;
 mod client_ip;
@@ -256,6 +257,7 @@ fn json_routes() -> OpenApiRouter<AppState> {
             routes::albums::list_albums,
             routes::albums::create_album
         ))
+        .routes(routes!(routes::albums::preview_album))
         .routes(routes!(
             routes::albums::get_album,
             routes::albums::update_album,

@@ -249,6 +249,65 @@
         ]
       }
     },
+    "/api/albums/preview": {
+      "post": {
+        "tags": [
+          "albums"
+        ],
+        "operationId": "preview_album",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AlbumRulesDto"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "What a dynamic album with these rules would hold now",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AlbumPreviewDto"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "The library is too large to count in time",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "device_bearer": []
+          },
+          {
+            "csrf_token": [],
+            "session_cookie": []
+          }
+        ]
+      }
+    },
     "/api/albums/{id}": {
       "get": {
         "tags": [
@@ -567,6 +626,16 @@
               }
             }
           },
+          "409": {
+            "description": "A dynamic album",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
           "422": {
             "description": "",
             "content": {
@@ -640,6 +709,16 @@
           },
           "404": {
             "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "A dynamic album",
             "content": {
               "application/json": {
                 "schema": {
@@ -5607,7 +5686,8 @@
           "name",
           "item_count",
           "updated_at",
-          "access"
+          "access",
+          "dynamic"
         ],
         "properties": {
           "access": {
@@ -5625,6 +5705,10 @@
               }
             ]
           },
+          "dynamic": {
+            "type": "boolean",
+            "description": "Its photos come from `rules`: they cannot be added or removed."
+          },
           "id": {
             "type": "string",
             "format": "uuid"
@@ -5636,6 +5720,17 @@
           },
           "name": {
             "type": "string"
+          },
+          "rules": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/AlbumRulesDto",
+                "description": "A dynamic album's rules, for its owner only (`null` otherwise: they\nname the owner's people)."
+              }
+            ]
           },
           "shared_by": {
             "oneOf": [
@@ -5670,6 +5765,28 @@
           }
         }
       },
+      "AlbumPreviewDto": {
+        "type": "object",
+        "description": "What a rule would hold now.",
+        "required": [
+          "count",
+          "newest"
+        ],
+        "properties": {
+          "count": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Matching photos."
+          },
+          "newest": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/AssetSummary"
+            },
+            "description": "The newest of them (at most 12), newest first."
+          }
+        }
+      },
       "AlbumRef": {
         "type": "object",
         "description": "An album a photo belongs to.",
@@ -5686,6 +5803,97 @@
             "type": "string"
           }
         }
+      },
+      "AlbumRulesDto": {
+        "type": "object",
+        "description": "Which photos a dynamic album holds. Every condition given must hold (AND);\nan empty list or an absent field does not constrain. At least one\ncondition is required.",
+        "properties": {
+          "camera_make": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "A camera make (`GET /api/cameras`)."
+          },
+          "camera_model": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "A camera model; needs `camera_make`."
+          },
+          "city": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "A place of `country`; needs `country`."
+          },
+          "country": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "A country code (`GET /api/places`), e.g. `FR`."
+          },
+          "kind": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/PhotoKindFilter"
+              }
+            ]
+          },
+          "people": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "description": "The caller's people (`GET /api/people`), at most 20."
+          },
+          "people_match": {
+            "$ref": "#/components/schemas/MatchMode",
+            "description": "Whether a photo needs any or all of `people`."
+          },
+          "region": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "A region of `country`; needs `country`. Empty: places without a region."
+          },
+          "tags": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Tags (`GET /api/tags`), at most 20."
+          },
+          "tags_match": {
+            "$ref": "#/components/schemas/MatchMode",
+            "description": "Whether a photo needs any or all of `tags`."
+          },
+          "taken_from": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date",
+            "description": "First capture day (wall clock), inclusive: `YYYY-MM-DD`."
+          },
+          "taken_to": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date",
+            "description": "Last capture day, inclusive: `YYYY-MM-DD`."
+          }
+        },
+        "additionalProperties": false
       },
       "AssetDetails": {
         "type": "object",
@@ -6055,7 +6263,18 @@
               "type": "string",
               "format": "uuid"
             },
-            "description": "Photos to put in it right away (at most 500); ids that are not the\ncaller's photos are skipped."
+            "description": "Photos to put in it right away (at most 500); ids that are not the\ncaller's photos are skipped. Not with `rules`."
+          },
+          "rules": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/AlbumRulesDto",
+                "description": "Makes a dynamic album: its photos are the caller's photos matching\nthese rules, now and later."
+              }
+            ]
           }
         }
       },
@@ -7040,6 +7259,14 @@
             "description": "The notifications to mark read; omitted or `null`: all of them."
           }
         }
+      },
+      "MatchMode": {
+        "type": "string",
+        "description": "How a group of people or tags matches a photo.",
+        "enum": [
+          "any",
+          "all"
+        ]
       },
       "MeResponse": {
         "type": "object",
@@ -8283,7 +8510,7 @@
       },
       "UpdateAlbumRequest": {
         "type": "object",
-        "description": "Rename and/or choose the cover. At least one field is required.",
+        "description": "Rename, choose the cover and/or change a dynamic album's rules. At least\none field is required.",
         "properties": {
           "cover_node_id": {
             "type": [
@@ -8297,6 +8524,17 @@
             "type": [
               "string",
               "null"
+            ]
+          },
+          "rules": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/AlbumRulesDto",
+                "description": "New rules of a dynamic album (replace the old ones)."
+              }
             ]
           }
         }

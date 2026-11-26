@@ -88,6 +88,7 @@ const DATA: &[&str] = &[
     "/api/people/{id}/faces",
     "/api/photos/{id}/faces",
     "/api/albums",
+    "/api/albums/preview",
     "/api/albums/{id}",
     "/api/albums/{id}/items",
     "/api/albums/{id}/items/remove",

@@ -145,7 +145,9 @@ impl From<DbError> for ApiError {
             other @ (DbError::ProtectedRoot | DbError::MoveIntoSelf) => {
                 ApiError::Validation(other.to_string())
             }
-            other @ DbError::UploadBusy => ApiError::Conflict(other.to_string()),
+            other @ (DbError::UploadBusy | DbError::DynamicAlbum) => {
+                ApiError::Conflict(other.to_string())
+            }
             DbError::TooManyUploads => ApiError::TooManyUploads,
             DbError::Busy(source) => {
                 tracing::warn!(error = %source, "database conflict persisted after retries");

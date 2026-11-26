@@ -99,6 +99,13 @@ pub async fn upsert(
         return Err(DbError::InvalidInput("you cannot share with yourself"));
     }
     let mut tx = pool.begin().await?;
+    if let Subject::Album(album_id) = subject
+        && permission == Permission::Write
+        && crate::album_rules::is_dynamic(&mut tx, album_id).await?
+    {
+        // Nobody contributes to a dynamic album: it is shared for reading.
+        return Err(DbError::DynamicAlbum);
+    }
     let existing: Option<(Uuid, String)> = sqlx::query_as(
         "SELECT id, permission FROM shares \
           WHERE recipient_id = $1 AND (node_id = $2 OR album_id = $3) FOR UPDATE",

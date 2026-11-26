@@ -4,14 +4,17 @@
 //!
 //! - A node is reached through a share on itself or on one of its ancestors
 //!   (the strongest permission wins), or read-only as a live item of an album
-//!   the caller owns or that is shared with them.
+//!   the caller owns or that is shared with them (for a dynamic album: a
+//!   photo matching its rule).
 //! - Trashed nodes are never reachable through a share.
 
 use sqlx::{FromRow, PgPool};
 use uuid::Uuid;
 
 use crate::DbError;
+use crate::album_rules::RULE_MATCHES;
 use crate::nodes::{NODE_COLUMNS, NodeRecord};
+use crate::timeline::FROM;
 
 /// Ancestor walks stop here, so a corrupted cycle cannot loop forever.
 const MAX_DEPTH: i32 = 1000;
@@ -120,7 +123,7 @@ pub async fn node(pool: &PgPool, user_id: Uuid, id: Uuid) -> Result<Option<NodeA
 /// Whether `node_id` is a live, visible photo of an album `user_id` owns or
 /// that is shared with them.
 async fn in_visible_album(pool: &PgPool, user_id: Uuid, node_id: Uuid) -> Result<bool, DbError> {
-    Ok(sqlx::query_scalar(
+    let sql = format!(
         "SELECT EXISTS ( \
            SELECT 1 FROM album_items i \
              JOIN assets a ON a.node_id = i.node_id AND a.owner_id = i.owner_id \
@@ -129,12 +132,21 @@ async fn in_visible_album(pool: &PgPool, user_id: Uuid, node_id: Uuid) -> Result
             WHERE i.node_id = $1 \
               AND (al.owner_id = $2 \
                    OR EXISTS (SELECT 1 FROM shares s \
-                               WHERE s.album_id = al.id AND s.recipient_id = $2)))",
-    )
-    .bind(node_id)
-    .bind(user_id)
-    .fetch_one(pool)
-    .await?)
+                               WHERE s.album_id = al.id AND s.recipient_id = $2))) \
+         OR EXISTS ( \
+           SELECT 1 {FROM} \
+             JOIN album_rules r ON r.owner_id = a.owner_id \
+             JOIN albums al ON al.id = r.album_id \
+            WHERE a.node_id = $1 AND {RULE_MATCHES} \
+              AND (al.owner_id = $2 \
+                   OR EXISTS (SELECT 1 FROM shares s \
+                               WHERE s.album_id = al.id AND s.recipient_id = $2)))"
+    );
+    Ok(sqlx::query_scalar(&sql)
+        .bind(node_id)
+        .bind(user_id)
+        .fetch_one(pool)
+        .await?)
 }
 
 /// An album and what the caller may do with it.
