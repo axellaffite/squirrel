@@ -170,6 +170,83 @@ async fn a_folder_shared_for_reading_is_seen_but_not_changed(pool: PgPool) {
         .assert_status(StatusCode::NOT_FOUND);
 }
 
+fn usernames(item: &Value) -> Vec<&str> {
+    item["people"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|share| share["person"]["username"].as_str().unwrap())
+        .collect()
+}
+
+#[sqlx::test(migrator = "squirrel_db::MIGRATOR")]
+async fn shared_by_me_lists_each_subject_once_with_its_people(pool: PgPool) {
+    let instance = Instance::new(pool);
+    let ((alice, alice_me), (bob, _)) = two_users(&instance).await;
+    let (carol_browser, _) = carol(&instance, &alice, &alice_me).await;
+    let files = root_id(&instance, &alice_me, "Files").await;
+    let trip = folder(&alice, &alice_me, files, "Trip").await;
+    let old = folder(&alice, &alice_me, files, "Old").await;
+    let album: Value = post(&alice, &alice_me, "/api/albums", json!({ "name": "Party" }))
+        .await
+        .json();
+    let album_id = album["id"].as_str().unwrap().to_owned();
+
+    let empty: Value = alice.get("/api/shared-by-me").await.json();
+    assert_eq!(empty, json!([]));
+
+    share(&alice, &alice_me, json!({ "node_id": trip }), "bob", "read").await;
+    share(&alice, &alice_me, json!({ "node_id": old }), "bob", "read").await;
+    share(
+        &alice,
+        &alice_me,
+        json!({ "album_id": album_id }),
+        "bob",
+        "write",
+    )
+    .await;
+    share(
+        &alice,
+        &alice_me,
+        json!({ "node_id": trip }),
+        "carol",
+        "write",
+    )
+    .await;
+    // A trashed folder is left out.
+    delete(&alice, &alice_me, &format!("/api/nodes/{old}"))
+        .await
+        .assert_status(StatusCode::NO_CONTENT);
+
+    let shared: Value = alice.get("/api/shared-by-me").await.json();
+    let items = shared.as_array().unwrap();
+    assert_eq!(items.len(), 2);
+    // Most recently shared first; people in sharing order.
+    assert_eq!(items[0]["node"]["name"], "Trip");
+    assert_eq!(items[0]["node"]["parent_id"], json!(files));
+    assert!(items[0]["album"].is_null());
+    assert_eq!(usernames(&items[0]), ["bob", "carol"]);
+    assert_eq!(items[0]["people"][0]["permission"], "read");
+    assert_eq!(items[0]["people"][1]["permission"], "write");
+    assert_eq!(items[1]["album"]["name"], "Party");
+    assert_eq!(items[1]["album"]["access"], "owner");
+    assert_eq!(usernames(&items[1]), ["bob"]);
+
+    // Recipients see nothing of their own there.
+    let bobs: Value = bob.get("/api/shared-by-me").await.json();
+    assert_eq!(bobs, json!([]));
+    let carols: Value = carol_browser.get("/api/shared-by-me").await.json();
+    assert_eq!(carols, json!([]));
+
+    // Stopping the last share takes the subject off the list.
+    let share_id = items[1]["people"][0]["id"].as_str().unwrap();
+    delete(&alice, &alice_me, &format!("/api/shares/{share_id}"))
+        .await
+        .assert_status(StatusCode::NO_CONTENT);
+    let after: Value = alice.get("/api/shared-by-me").await.json();
+    assert_eq!(after.as_array().unwrap().len(), 1);
+}
+
 #[sqlx::test(migrator = "squirrel_db::MIGRATOR")]
 async fn writers_work_inside_the_shared_folder_on_the_owners_account(pool: PgPool) {
     let instance = Instance::new(pool.clone());

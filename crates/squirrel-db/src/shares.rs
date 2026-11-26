@@ -231,6 +231,24 @@ pub async fn shared_with(pool: &PgPool, recipient_id: Uuid) -> Result<Vec<ShareR
         .await?)
 }
 
+/// Shares made by `owner_id` whose subject is live (trashed folders and files
+/// are left out), newest first, with the recipient's names.
+pub async fn shared_by(pool: &PgPool, owner_id: Uuid) -> Result<Vec<ShareRecord>, DbError> {
+    let sql = format!(
+        "SELECT {COLUMNS}, u.username AS person_username, u.display_name AS person_display_name \
+           FROM shares s JOIN users u ON u.id = s.recipient_id \
+           LEFT JOIN nodes n ON n.id = s.node_id \
+          WHERE s.owner_id = $1 AND (s.album_id IS NOT NULL OR n.deleted_at IS NULL) \
+            AND u.disabled_at IS NULL \
+          ORDER BY s.created_at DESC, s.id DESC LIMIT $2"
+    );
+    Ok(sqlx::query_as::<_, ShareRecord>(&sql)
+        .bind(owner_id)
+        .bind(MAX_SHARES)
+        .fetch_all(pool)
+        .await?)
+}
+
 /// Of `node_ids`, those `owner_id` shares with someone (to badge them).
 pub async fn shared_nodes(
     pool: &PgPool,

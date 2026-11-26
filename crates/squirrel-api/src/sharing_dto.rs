@@ -149,6 +149,22 @@ pub struct SharedItemDto {
     pub album: Option<AlbumDto>,
 }
 
+/// One of the caller's folders, files or albums, and the people it is shared with.
+#[derive(Debug, Serialize, ToSchema)]
+pub struct SharedByMeDto {
+    /// Set for a folder or file.
+    pub node: Option<NodeDto>,
+    /// Set for an album.
+    pub album: Option<AlbumDto>,
+    /// The people it is shared with, in sharing order (pass a share's `id` to
+    /// `DELETE /api/shares/{id}` to stop sharing with that person).
+    pub people: Vec<ShareDto>,
+    /// When it was last shared with someone.
+    #[serde(with = "time::serde::rfc3339")]
+    #[schema(value_type = String, format = DateTime)]
+    pub shared_at: OffsetDateTime,
+}
+
 #[derive(Debug, Deserialize, ToSchema)]
 pub struct CreateCommentRequest {
     #[serde(flatten)]

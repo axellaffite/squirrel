@@ -19,7 +19,9 @@ use crate::files_dto::NodeDto;
 use crate::input::{ApiJson, ApiPath, ApiQuery};
 use crate::routes::albums::{Viewpoint, dtos};
 use crate::routes::notifications::announce_share;
-use crate::sharing_dto::{CreateShareRequest, MemberDto, ShareDto, SharedItemDto, SubjectRef};
+use crate::sharing_dto::{
+    CreateShareRequest, MemberDto, ShareDto, SharedByMeDto, SharedItemDto, SubjectRef,
+};
 use crate::state::AppState;
 
 /// The subject's owner and the caller's access to it (`not_found` without any).
@@ -133,8 +135,8 @@ pub async fn shared_with_me(
     caller: Caller,
 ) -> Result<Json<Vec<SharedItemDto>>, ApiError> {
     let list = shares::shared_with(&state.pool, caller.user.id).await?;
-    let mut nodes = node_dtos(&state, &list).await?;
-    let mut albums = album_dtos(&state, &list).await?;
+    let mut nodes = node_dtos(&state, &list, Side::Recipient).await?;
+    let mut albums = album_dtos(&state, &list, Side::Recipient).await?;
     let items = list
         .iter()
         .filter_map(|share| {
@@ -154,6 +156,60 @@ pub async fn shared_with_me(
     Ok(Json(items))
 }
 
+#[utoipa::path(get, path = "/api/shared-by-me", security(("device_bearer" = []), ("session_cookie" = [])), tag = "sharing",
+    responses((status = 200, body = Vec<SharedByMeDto>, description = "The caller's shared folders, files and albums, most recently shared first (from the newest 1000 shares)")))]
+pub async fn shared_by_me(
+    State(state): State<AppState>,
+    caller: Caller,
+) -> Result<Json<Vec<SharedByMeDto>>, ApiError> {
+    let list = shares::shared_by(&state.pool, caller.user.id).await?;
+    let mut nodes = node_dtos(&state, &list, Side::Owner).await?;
+    let mut albums = album_dtos(&state, &list, Side::Owner).await?;
+    let items = by_subject(&list)
+        .into_iter()
+        .filter_map(|(newest, people)| {
+            let node = newest.node_id.and_then(|id| nodes.remove(&id));
+            let album = newest.album_id.and_then(|id| albums.remove(&id));
+            // A subject deleted meanwhile is left out.
+            (node.is_some() || album.is_some()).then(|| SharedByMeDto {
+                node,
+                album,
+                people: people.into_iter().map(ShareDto::from).collect(),
+                shared_at: newest.created_at,
+            })
+        })
+        .collect();
+    Ok(Json(items))
+}
+
+/// `list` (newest first) grouped by subject: each subject's newest share, in
+/// that order, with all its shares oldest first.
+fn by_subject(list: &[ShareRecord]) -> Vec<(&ShareRecord, Vec<&ShareRecord>)> {
+    let mut groups: Vec<(&ShareRecord, Vec<&ShareRecord>)> = Vec::new();
+    let mut index: HashMap<(Option<Uuid>, Option<Uuid>), usize> = HashMap::new();
+    for share in list {
+        let key = (share.node_id, share.album_id);
+        match index.get(&key) {
+            Some(&at) => groups[at].1.push(share),
+            None => {
+                index.insert(key, groups.len());
+                groups.push((share, vec![share]));
+            }
+        }
+    }
+    groups
+        .into_iter()
+        .map(|(newest, people)| (newest, people.into_iter().rev().collect()))
+        .collect()
+}
+
+/// Which side of the shares the caller is on.
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum Side {
+    Owner,
+    Recipient,
+}
+
 fn owner_of(share: &ShareRecord) -> MemberDto {
     MemberDto {
         username: share.person_username.clone(),
@@ -164,6 +220,7 @@ fn owner_of(share: &ShareRecord) -> MemberDto {
 async fn node_dtos(
     state: &AppState,
     list: &[ShareRecord],
+    side: Side,
 ) -> Result<HashMap<Uuid, NodeDto>, ApiError> {
     let ids: Vec<Uuid> = list.iter().filter_map(|share| share.node_id).collect();
     let records = nodes::find_live_many(&state.pool, &ids).await?;
@@ -175,10 +232,14 @@ async fn node_dtos(
     Ok(records
         .iter()
         .map(|node| {
+            let dto = NodeDto::with_thumbnails(node, &thumbnails);
             // The owner's folder holding a shared item stays private.
-            let dto = NodeDto {
-                parent_id: None,
-                ..NodeDto::with_thumbnails(node, &thumbnails)
+            let dto = match side {
+                Side::Owner => dto,
+                Side::Recipient => NodeDto {
+                    parent_id: None,
+                    ..dto
+                },
             };
             (node.id, dto)
         })
@@ -188,6 +249,7 @@ async fn node_dtos(
 async fn album_dtos(
     state: &AppState,
     list: &[ShareRecord],
+    side: Side,
 ) -> Result<HashMap<Uuid, crate::albums_dto::AlbumDto>, ApiError> {
     let shares_by_album: HashMap<Uuid, &ShareRecord> = list
         .iter()
@@ -199,9 +261,12 @@ async fn album_dtos(
         .into_iter()
         .filter_map(|record| {
             let share = shares_by_album.get(&record.id)?;
-            let viewpoint = Viewpoint {
-                access: share.permission().access(),
-                shared_by: Some(owner_of(share)),
+            let viewpoint = match side {
+                Side::Owner => Viewpoint::OWNER,
+                Side::Recipient => Viewpoint {
+                    access: share.permission().access(),
+                    shared_by: Some(owner_of(share)),
+                },
             };
             Some((record, viewpoint))
         })
