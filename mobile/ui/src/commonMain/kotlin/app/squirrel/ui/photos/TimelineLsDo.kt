@@ -2,8 +2,6 @@ package app.squirrel.ui.photos
 
 import app.squirrel.shared.api.SquirrelApi
 import app.squirrel.ui.explore.PhotoFilter
-import app.squirrel.ui.files.albumNameProblem
-import app.squirrel.ui.sharing.Outcome
 import io.github.axellaffite.lsdo.Doc
 import io.github.axellaffite.lsdo.LsDoScreen
 import io.github.axellaffite.lsdo.lsdoSpec
@@ -11,6 +9,8 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
+
+private const val LOADED = "the timeline loaded"
 
 /** One month of the timeline as LS-DO lists it. */
 @Serializable
@@ -56,11 +56,11 @@ sealed interface TimelineIntent {
     data object ClosePhoto : TimelineIntent
 
     @Serializable @SerialName("add_to_album")
-    @Doc("Add loaded photos to an album (one of yours, or shared with you for editing), as selecting them and choosing Add to album does. The whole timeline only, not one opened from Explore")
+    @Doc("Add loaded photos to an album (one of yours, or shared with you for editing), as selecting them and choosing Add to album does")
     data class AddToAlbum(@Doc("Photo ids from photos") val ids: List<String>, @Doc("An album id, as albums lists them") val albumId: String) : TimelineIntent
 
     @Serializable @SerialName("add_to_new_album")
-    @Doc("Add loaded photos to a new album named name, as Add to album, then New album… does. The whole timeline only")
+    @Doc("Add loaded photos to a new album named name, as Add to album, then New album… does")
     data class AddToNewAlbum(@Doc("Photo ids from photos") val ids: List<String>, val name: String) : TimelineIntent
 
     @Serializable @SerialName("filter")
@@ -107,10 +107,10 @@ class TimelineLsDo(
         is TimelineIntent.More -> more(intent.month)
         TimelineIntent.Refresh -> done { vm.refresh() }
         TimelineIntent.Retry -> done { vm.retry() }
-        is TimelineIntent.Open -> missingPhotos(listOf(intent.id), vm.state.value.loaded(), "the timeline loaded") ?: done { onOpen(intent.id) }
+        is TimelineIntent.Open -> missingPhotos(listOf(intent.id), vm.state.value.loaded(), LOADED) ?: done { onOpen(intent.id) }
         TimelineIntent.ClosePhoto -> done(onClose)
-        is TimelineIntent.AddToAlbum -> addToAlbum(intent.ids, intent.albumId)
-        is TimelineIntent.AddToNewAlbum -> addToNewAlbum(intent.ids, intent.name)
+        is TimelineIntent.AddToAlbum -> withAdded { addShownToAlbum(api, intent.ids, vm.state.value.loaded(), LOADED, intent.albumId, it) }
+        is TimelineIntent.AddToNewAlbum -> withAdded { addShownToNewAlbum(api, intent.ids, vm.state.value.loaded(), LOADED, intent.name, it) }
         is TimelineIntent.Filter -> {
             val change = onFilter ?: return "Only a timeline opened from Explore has a filter."
             done { change(intent.filter.normalized()) }
@@ -128,23 +128,9 @@ class TimelineLsDo(
         }
     }
 
-    private suspend fun addToAlbum(ids: List<String>, albumId: String): String? {
-        missingPhotos(ids, vm.state.value.loaded(), "the timeline loaded")?.let { return it }
-        val picked = pickerAlbums(api)
-        val album = picked.albums.firstOrNull { it.id == albumId }
-            ?: return if (picked.ok) "No album \"$albumId\" you can add to." else UNREACHABLE
-        return added(AlbumAdder(api, ids).into(album))
-    }
-
-    private suspend fun addToNewAlbum(ids: List<String>, name: String): String? {
-        missingPhotos(ids, vm.state.value.loaded(), "the timeline loaded")?.let { return it }
-        albumNameProblem(name)?.let { return it }
-        return added(AlbumAdder(api, ids).intoNew(name.trim()))
-    }
-
-    private fun added(outcome: Outcome<String>): String? = when (outcome) {
-        is Outcome.Ok -> done { onAdded?.invoke(outcome.value) }
-        is Outcome.Failed -> outcome.message
+    private suspend fun withAdded(add: suspend ((String) -> Unit) -> String?): String? {
+        val notify = onAdded ?: return "Photos cannot be added to an album from here."
+        return add(notify)
     }
 
     override fun availableIntents(state: TimelineView): Set<String> = buildSet {

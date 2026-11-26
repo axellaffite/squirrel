@@ -8,6 +8,10 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.text.BasicText
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.semantics.LiveRegionMode
@@ -17,6 +21,9 @@ import app.squirrel.theme.Shapes
 import app.squirrel.theme.SquirrelIcon
 import app.squirrel.theme.SquirrelTheme
 import app.squirrel.theme.Tokens
+import app.squirrel.shared.api.SquirrelApi
+import app.squirrel.theme.components.Button
+import app.squirrel.theme.components.ButtonSize
 import app.squirrel.theme.components.IconButton
 import app.squirrel.theme.popShadow
 import app.squirrel.theme.tabular
@@ -47,5 +54,20 @@ fun SelectionBar(count: Int, onClear: () -> Unit, modifier: Modifier = Modifier,
     }
 }
 
-/** A selection of photos by id: a long press starts it, a tap toggles while it lasts. */
+/**
+ * The [SelectionBar] of photos that can go into albums, shown while [selected] is not empty: Add
+ * to album opens the album picker, and [onAdded] hears what it did ("Added 3 photos to Holidays.").
+ */
+@Composable
+fun AddToAlbumSelection(api: SquirrelApi, selected: Set<String>, onClear: () -> Unit, onAdded: (String) -> Unit, modifier: Modifier = Modifier) {
+    var picking by remember { mutableStateOf<List<String>?>(null) }
+    if (selected.isNotEmpty()) {
+        SelectionBar(selected.size, onClear = onClear, modifier = modifier) {
+            Button("Add to album", onClick = { picking = selected.toList() }, size = ButtonSize.Sm, icon = SquirrelIcon.Library)
+        }
+    }
+    picking?.let { ids -> AlbumPickerSheet(api, ids, onDone = onAdded, onClose = { picking = null }) }
+}
+
+/** A selection of photos by id: a long press starts it (sliding on adds a range), a tap toggles while it lasts. */
 fun Set<String>.toggled(id: String): Set<String> = if (id in this) this - id else this + id

@@ -169,6 +169,8 @@
             "name": "photo_search",
             "description": "Photo search: text, filter, order, open a result. Reached by: app go_to photos, then photos search.",
             "actions": [
+                "add_to_album",
+                "add_to_new_album",
                 "close_photo",
                 "filter",
                 "more",
