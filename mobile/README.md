@@ -25,6 +25,19 @@ Design and decisions: `docs/plans/2026-11-16-phase-6-kmp-app.md`.
 
 Run every Gradle command from `mobile/`.
 
+## Send with Squirrel (system share sheet)
+
+Any file shared to "Squirrel" from another app goes into a folder of one's own (Files › Sent,
+created when missing, or a folder picked on the screen), then is shared read-only with one person:
+a friend in one tap, or a username. Android: `ShareActivity` (`ACTION_SEND` / `ACTION_SEND_MULTIPLE`,
+any type). iOS: the `SquirrelShare` Share extension, which shows the same Compose screen
+(`ui/.../send/`).
+
+The extension signs in as the app does through the App Group `group.app.squirrel.ios`: the refresh
+token lives in it (Keychain access group) and so does the database (an older install's database and
+token move into it on the first launch). A device build needs a team that has this App Group (Xcode's
+automatic signing registers it); the simulator needs nothing.
+
 ## Build and test
 
     ./gradlew build                          # every JVM/Android build and test

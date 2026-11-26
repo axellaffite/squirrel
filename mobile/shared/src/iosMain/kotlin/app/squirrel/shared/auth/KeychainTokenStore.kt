@@ -33,6 +33,7 @@ import platform.Security.SecItemDelete
 import platform.Security.SecItemUpdate
 import platform.Security.errSecItemNotFound
 import platform.Security.errSecSuccess
+import platform.Security.kSecAttrAccessGroup
 import platform.Security.kSecAttrAccessible
 import platform.Security.kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly
 import platform.Security.kSecAttrAccount
@@ -40,6 +41,7 @@ import platform.Security.kSecAttrService
 import platform.Security.kSecAttrSynchronizable
 import platform.Security.kSecClass
 import platform.Security.kSecClassGenericPassword
+import platform.Security.kSecMatchLimitAll
 import platform.Security.kSecMatchLimit
 import platform.Security.kSecMatchLimitOne
 import platform.Security.kSecReturnAttributes
@@ -58,11 +60,39 @@ class KeychainError(val status: Int) : Exception("Keychain status $status")
 class KeychainTokenStore(
     private val service: String = SERVICE,
     private val account: String = ACCOUNT,
+    /**
+     * The access group the item lives in (the App Group, so the Share extension signs in as the
+     * app does); null: the app's own. A token saved before the group existed moves into it once.
+     */
+    private val accessGroup: String? = null,
 ) : TokenStore {
     override suspend fun load(): String? {
-        val result = copyMatching(kSecReturnData) ?: return null
+        copyMatching(kSecReturnData)?.let { return token(it) }
+        if (accessGroup == null) return null
+        // Saved by an older version, in the app's own group: into the shared one, once.
+        val legacy = copyMatching(kSecReturnData, scoped = false)?.let(::token) ?: return null
+        save(legacy)
+        deleteOutsideGroup()
+        return legacy
+    }
+
+    private fun token(result: CFTypeRef): String? {
         val data = CFBridgingRelease(result) as? NSData ?: return null
         return NSString.create(data, NSUTF8StringEncoding)?.toString()
+    }
+
+    /** Deletes the copies in other groups, keeping the one in [accessGroup]. */
+    private fun deleteOutsideGroup() {
+        val groups = mutableListOf<String>()
+        val found = copyMatching(kSecReturnAttributes, scoped = false, all = true) ?: return
+        try {
+            @Suppress("UNCHECKED_CAST")
+            val items = CFBridgingRelease(CFRetain(found)) as? List<Map<Any?, Any?>> ?: return
+            items.mapNotNullTo(groups) { it[CFBridgingRelease(CFRetain(kSecAttrAccessGroup))] as? String }
+        } finally {
+            CFRelease(found)
+        }
+        groups.filter { it != accessGroup }.forEach { group -> withQuery(group = group) { SecItemDelete(it) } }
     }
 
     /** Updates the item in place (never delete-then-add: a failed add would lose the token). */
@@ -91,8 +121,9 @@ class KeychainTokenStore(
         }
     }
 
+    /** Every copy, whatever its group: signing out leaves no token behind. */
     override suspend fun clear() {
-        val status = withQuery { SecItemDelete(it) }
+        val status = withQuery(group = null) { SecItemDelete(it) }
         if (status != errSecSuccess && status != errSecItemNotFound) throw TokenStoreUnavailable(KeychainError(status))
     }
 
@@ -114,12 +145,15 @@ class KeychainTokenStore(
     /** A borrowed CFString as Kotlin text. */
     private fun text(ref: CFTypeRef?): String? = CFBridgingRelease(CFRetain(ref)) as? String
 
-    /** The matching item's data or attributes (retained: the caller releases it); null when missing. */
-    private fun copyMatching(returning: CFTypeRef?): CFTypeRef? = memScoped {
+    /**
+     * The matching item's data or attributes (retained: the caller releases it); null when missing.
+     * [scoped] false: in any group the app may read; [all]: every match (an array).
+     */
+    private fun copyMatching(returning: CFTypeRef?, scoped: Boolean = true, all: Boolean = false): CFTypeRef? = memScoped {
         val result = alloc<CFTypeRefVar>()
-        val status = withQuery { query ->
+        val status = withQuery(group = if (scoped) accessGroup else null) { query ->
             CFDictionaryAddValue(query, returning, kCFBooleanTrue)
-            CFDictionaryAddValue(query, kSecMatchLimit, kSecMatchLimitOne)
+            CFDictionaryAddValue(query, kSecMatchLimit, if (all) kSecMatchLimitAll else kSecMatchLimitOne)
             SecItemCopyMatching(query, result.ptr)
         }
         when (status) {
@@ -129,21 +163,27 @@ class KeychainTokenStore(
         }
     }
 
-    /** Runs [block] with a fresh query for this item (class, service, account), then frees it. */
-    private fun <T> withQuery(block: (CFMutableDictionaryRef?) -> T): T {
+    /**
+     * Runs [block] with a fresh query for this item (class, service, account, and [group] when
+     * set: by default [accessGroup]), then frees it.
+     */
+    private fun <T> withQuery(group: String? = accessGroup, block: (CFMutableDictionaryRef?) -> T): T {
         val query = mutable()
         val serviceRef = CFBridgingRetain(service)
         val accountRef = CFBridgingRetain(account)
+        val groupRef = group?.let { CFBridgingRetain(it) }
         try {
             CFDictionaryAddValue(query, kSecClass, kSecClassGenericPassword)
             CFDictionaryAddValue(query, kSecAttrService, serviceRef)
             CFDictionaryAddValue(query, kSecAttrAccount, accountRef)
+            if (groupRef != null) CFDictionaryAddValue(query, kSecAttrAccessGroup, groupRef)
             // Never in iCloud Keychain: the refresh token belongs to this device alone.
             CFDictionaryAddValue(query, kSecAttrSynchronizable, kCFBooleanFalse)
             return block(query)
         } finally {
             CFRelease(serviceRef)
             CFRelease(accountRef)
+            groupRef?.let(::CFRelease)
             CFRelease(query)
         }
     }

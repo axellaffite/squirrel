@@ -4,7 +4,10 @@ import app.squirrel.api.models.DevicePlatform
 import app.squirrel.shared.api.DeviceDetails
 import app.squirrel.shared.auth.KeychainTokenStore
 import app.squirrel.shared.db.createIosDriver
+import app.squirrel.shared.ios.APP_GROUP
+import app.squirrel.shared.ios.adoptDatabase
 import app.squirrel.shared.ios.darwinEngine
+import app.squirrel.shared.ios.groupDatabaseDirectory
 import app.squirrel.ui.AppGraph
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.IO
@@ -12,7 +15,12 @@ import kotlinx.coroutines.MainScope
 import platform.Foundation.NSBundle
 import platform.UIKit.UIDevice
 
-/** Builds the iOS [AppGraph] once per process: SQLite, the Keychain, NSURLSession, PhotoKit. */
+private const val DATABASE = "squirrel.db"
+
+/**
+ * Builds the iOS [AppGraph] once per process (the app's, or the Share extension's): SQLite, the
+ * Keychain, NSURLSession, PhotoKit.
+ */
 object IosGraph {
     private val scope = MainScope()
     private val clock = { kotlin.time.Clock.System.now().toEpochMilliseconds() }
@@ -26,9 +34,11 @@ object IosGraph {
     private fun create(): AppGraph {
         val engine = darwinEngine()
         val device = UIDevice.currentDevice
+        // In the App Group when the build has it, so the Share extension shares the session.
+        val shared = groupDatabaseDirectory()?.also { adoptDatabase(DATABASE, it) }
         return AppGraph(
-            driver = createIosDriver(),
-            tokenStore = { KeychainTokenStore() },
+            driver = createIosDriver(DATABASE, directory = shared),
+            tokenStore = { KeychainTokenStore(accessGroup = if (shared != null) APP_GROUP else null) },
             httpEngine = { engine },
             device = DeviceDetails(
                 name = device.name,

@@ -39,6 +39,24 @@
             </intent-filter>
         </activity>
 
+        <!-- "Squirrel" in the system share sheet: any file, one or several (send to someone). -->
+        <activity
+            android:name=".ShareActivity"
+            android:exported="true"
+            android:label="@string/app_name"
+            android:windowSoftInputMode="adjustResize">
+            <intent-filter>
+                <action android:name="android.intent.action.SEND" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:mimeType="*/*" />
+            </intent-filter>
+            <intent-filter>
+                <action android:name="android.intent.action.SEND_MULTIPLE" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:mimeType="*/*" />
+            </intent-filter>
+        </activity>
+
         <!-- Downloaded originals handed to other apps (read grant per intent). -->
         <provider
             android:name="androidx.core.content.FileProvider"

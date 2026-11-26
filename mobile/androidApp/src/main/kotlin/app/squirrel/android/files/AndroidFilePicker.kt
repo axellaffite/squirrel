@@ -33,18 +33,21 @@ class AndroidFilePicker(private val activity: ComponentActivity) : FilePicker {
         val result = CompletableDeferred<List<Uri>>()
         pending = result
         launcher.launch(arrayOf("*/*"))
-        return result.await().map { uri -> PickedFile(nameOf(resolver, uri), open = { open(uri) }) }
+        return result.await().map { uri -> pickedFile(resolver, uri) }
     }
+}
 
-    private suspend fun open(uri: Uri): AssetReader? = withContext(Dispatchers.IO) {
-        try {
-            val descriptor = resolver.openFileDescriptor(uri, "r") ?: return@withContext null
-            MediaStoreReader(descriptor, descriptor.statSize, modifiedAt = null)
-        } catch (_: FileNotFoundException) {
-            null
-        } catch (_: SecurityException) {
-            null
-        }
+/** A file another app gave a content URI for, read through it (never copied). */
+fun pickedFile(resolver: ContentResolver, uri: Uri): PickedFile = PickedFile(nameOf(resolver, uri), open = { open(resolver, uri) })
+
+private suspend fun open(resolver: ContentResolver, uri: Uri): AssetReader? = withContext(Dispatchers.IO) {
+    try {
+        val descriptor = resolver.openFileDescriptor(uri, "r") ?: return@withContext null
+        MediaStoreReader(descriptor, descriptor.statSize, modifiedAt = null)
+    } catch (_: FileNotFoundException) {
+        null
+    } catch (_: SecurityException) {
+        null
     }
 }
 
