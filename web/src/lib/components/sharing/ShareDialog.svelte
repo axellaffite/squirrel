@@ -16,11 +16,13 @@
 		subject: Subject;
 		/** The folder, file or album name, for the title. */
 		name: string;
+		/** Only "Read" can be given (a dynamic album: its photos come from rules). */
+		readOnly?: boolean;
 		/** Runs once the dialog closed, however it closed. */
 		onClose: () => void;
 	}
 
-	let { subject, name, onClose }: Props = $props();
+	let { subject, name, readOnly = false, onClose }: Props = $props();
 
 	const PERMISSIONS = [
 		{ value: 'read', label: 'Read' },
@@ -50,7 +52,7 @@
 	async function share(who: string): Promise<boolean> {
 		busy = true;
 		error = null;
-		const result = await shareWith(target, who, permission);
+		const result = await shareWith(target, who, readOnly ? 'read' : permission);
 		busy = false;
 		if (!result.ok) {
 			error = result.error;
@@ -97,7 +99,11 @@
 				hint="Someone with an account on this Squirrel."
 			/>
 			<div class="row">
-				<SegmentedControl label="Permission" name={`permission-${uid}`} options={PERMISSIONS} value={permission} onchange={(value) => (permission = value)} />
+				{#if readOnly}
+					<p class="muted">People you share it with can view it. Its photos come from its rules, so nobody can add any.</p>
+				{:else}
+					<SegmentedControl label="Permission" name={`permission-${uid}`} options={PERMISSIONS} value={permission} onchange={(value) => (permission = value)} />
+				{/if}
 				<Button type="submit" disabled={busy}><Icon name="share" />Share</Button>
 			</div>
 		</form>
@@ -110,7 +116,7 @@
 		{:else}
 			<ul class="shares" aria-label="People with access">
 				{#each shares as share (share.id)}
-					<ShareRow {share} onChange={(next) => change(share, next)} onStop={() => stop(share)} />
+					<ShareRow {share} {readOnly} onChange={(next) => change(share, next)} onStop={() => stop(share)} />
 				{/each}
 			</ul>
 		{/if}

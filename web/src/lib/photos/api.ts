@@ -14,6 +14,9 @@ export type LocationInfo = components['schemas']['LocationDto'];
 export type ThumbnailSize = 'thumb' | 'preview';
 export type Album = components['schemas']['AlbumDto'];
 export type TimelinePage = components['schemas']['TimelinePage'];
+export type AlbumRules = components['schemas']['AlbumRulesDto'];
+export type AlbumPreview = components['schemas']['AlbumPreviewDto'];
+export type MatchMode = components['schemas']['MatchMode'];
 
 /** A month rarely holds more than a few hundred photos: fetch it whole, 500 at a time. */
 const MONTH_PAGE = 500;
@@ -65,6 +68,18 @@ export const getAlbum = (id: string): Promise<Outcome<Album>> =>
 /** A new album, holding `nodeIds` right away when given. */
 export const createAlbum = (name: string, nodeIds: readonly string[] = []): Promise<Outcome<Album>> =>
 	call(api.POST('/api/albums', { body: { name, node_ids: [...nodeIds] } }));
+
+/** A dynamic album: its photos are whichever of the caller's match `rules`. */
+export const createDynamicAlbum = (name: string, rules: AlbumRules): Promise<Outcome<Album>> =>
+	call(api.POST('/api/albums', { body: { name, rules } }));
+
+/** Replaces a dynamic album's rules. */
+export const updateAlbumRules = (id: string, rules: AlbumRules): Promise<Outcome<Album>> =>
+	call(api.PATCH('/api/albums/{id}', { params: { path: { id } }, body: { rules } }));
+
+/** How many photos `rules` would hold now, and the newest of them. */
+export const previewAlbum = (rules: AlbumRules, signal?: AbortSignal): Promise<Outcome<AlbumPreview>> =>
+	call(api.POST('/api/albums/preview', { body: rules, signal }));
 
 export const renameAlbum = (id: string, name: string): Promise<Outcome<Album>> =>
 	call(api.PATCH('/api/albums/{id}', { params: { path: { id } }, body: { name } }));

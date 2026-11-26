@@ -68,6 +68,22 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/albums/preview": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["preview_album"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/albums/{id}": {
         parameters: {
             query?: never;
@@ -1224,6 +1240,8 @@ export interface components {
             /** @description What the caller may do with it. */
             access: components["schemas"]["AccessLevel"];
             cover?: null | components["schemas"]["AssetSummary"];
+            /** @description Its photos come from `rules`: they cannot be added or removed. */
+            dynamic: boolean;
             /** Format: uuid */
             id: string;
             /**
@@ -1232,6 +1250,7 @@ export interface components {
              */
             item_count: number;
             name: string;
+            rules?: null | components["schemas"]["AlbumRulesDto"];
             shared_by?: null | components["schemas"]["MemberDto"];
             /** Format: date-time */
             updated_at: string;
@@ -1244,11 +1263,57 @@ export interface components {
              */
             node_ids: string[];
         };
+        /** @description What a rule would hold now. */
+        AlbumPreviewDto: {
+            /**
+             * Format: int64
+             * @description Matching photos.
+             */
+            count: number;
+            /** @description The newest of them (at most 12), newest first. */
+            newest: components["schemas"]["AssetSummary"][];
+        };
         /** @description An album a photo belongs to. */
         AlbumRef: {
             /** Format: uuid */
             id: string;
             name: string;
+        };
+        /**
+         * @description Which photos a dynamic album holds. Every condition given must hold (AND);
+         *     an empty list or an absent field does not constrain. At least one
+         *     condition is required.
+         */
+        AlbumRulesDto: {
+            /** @description A camera make (`GET /api/cameras`). */
+            camera_make?: string | null;
+            /** @description A camera model; needs `camera_make`. */
+            camera_model?: string | null;
+            /** @description A place of `country`; needs `country`. */
+            city?: string | null;
+            /** @description A country code (`GET /api/places`), e.g. `FR`. */
+            country?: string | null;
+            kind?: null | components["schemas"]["PhotoKindFilter"];
+            /** @description The caller's people (`GET /api/people`), at most 20. */
+            people?: string[];
+            /** @description Whether a photo needs any or all of `people`. */
+            people_match?: components["schemas"]["MatchMode"];
+            /** @description A region of `country`; needs `country`. Empty: places without a region. */
+            region?: string | null;
+            /** @description Tags (`GET /api/tags`), at most 20. */
+            tags?: string[];
+            /** @description Whether a photo needs any or all of `tags`. */
+            tags_match?: components["schemas"]["MatchMode"];
+            /**
+             * Format: date
+             * @description First capture day (wall clock), inclusive: `YYYY-MM-DD`.
+             */
+            taken_from?: string | null;
+            /**
+             * Format: date
+             * @description Last capture day, inclusive: `YYYY-MM-DD`.
+             */
+            taken_to?: string | null;
         };
         /** @description Everything the photo viewer shows about one photo. */
         AssetDetails: {
@@ -1376,9 +1441,10 @@ export interface components {
             name: string;
             /**
              * @description Photos to put in it right away (at most 500); ids that are not the
-             *     caller's photos are skipped.
+             *     caller's photos are skipped. Not with `rules`.
              */
             node_ids?: string[];
+            rules?: null | components["schemas"]["AlbumRulesDto"];
         };
         CreateCommentRequest: components["schemas"]["SubjectRef"] & {
             /** @description 1–4000 characters. */
@@ -1766,6 +1832,11 @@ export interface components {
             /** @description The notifications to mark read; omitted or `null`: all of them. */
             ids?: string[] | null;
         };
+        /**
+         * @description How a group of people or tags matches a photo.
+         * @enum {string}
+         */
+        MatchMode: "any" | "all";
         MeResponse: {
             /** @description Whether this user may create invitations (instance setting and role). */
             can_invite: boolean;
@@ -2241,7 +2312,10 @@ export interface components {
             /** Format: int64 */
             unread: number;
         };
-        /** @description Rename and/or choose the cover. At least one field is required. */
+        /**
+         * @description Rename, choose the cover and/or change a dynamic album's rules. At least
+         *     one field is required.
+         */
         UpdateAlbumRequest: {
             /**
              * Format: uuid
@@ -2250,6 +2324,7 @@ export interface components {
              */
             cover_node_id?: string | null;
             name?: string | null;
+            rules?: null | components["schemas"]["AlbumRulesDto"];
         };
         UpdateMlSettings: {
             /** @description `false` deletes every face and person of the caller at once. */
@@ -2482,6 +2557,47 @@ export interface operations {
             };
         };
     };
+    preview_album: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AlbumRulesDto"];
+            };
+        };
+        responses: {
+            /** @description What a dynamic album with these rules would hold now */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AlbumPreviewDto"];
+                };
+            };
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description The library is too large to count in time */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
     get_album: {
         parameters: {
             query?: never;
@@ -2685,6 +2801,15 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorBody"];
                 };
             };
+            /** @description A dynamic album */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
             422: {
                 headers: {
                     [name: string]: unknown;
@@ -2729,6 +2854,15 @@ export interface operations {
                 };
             };
             404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description A dynamic album */
+            409: {
                 headers: {
                     [name: string]: unknown;
                 };

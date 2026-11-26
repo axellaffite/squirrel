@@ -8,6 +8,8 @@
 	import Icon from '#lib/components/icons/Icon.svelte';
 	import AlbumActions from '#lib/components/photos/AlbumActions.svelte';
 	import AlbumPicker from '#lib/components/photos/AlbumPicker.svelte';
+	import AlbumRulesDialog from '#lib/components/photos/AlbumRulesDialog.svelte';
+	import RulesSummary from '#lib/components/photos/RulesSummary.svelte';
 	import Lightbox from '#lib/components/photos/Lightbox.svelte';
 	import PhotoGrid from '#lib/components/photos/PhotoGrid.svelte';
 	import SelectionBar from '#lib/components/photos/SelectionBar.svelte';
@@ -16,6 +18,7 @@
 	import ShareDialog from '#lib/components/sharing/ShareDialog.svelte';
 	import IconButton from '#lib/components/ui/IconButton.svelte';
 	import Alert from '#lib/components/ui/Alert.svelte';
+	import Badge from '#lib/components/ui/Badge.svelte';
 	import Button from '#lib/components/ui/Button.svelte';
 	import EmptyState from '#lib/components/ui/EmptyState.svelte';
 	import { AlbumData } from '#lib/photos/album.svelte.ts';
@@ -25,6 +28,8 @@
 		renameAlbum,
 		photoDetails,
 		setAlbumCover,
+		updateAlbumRules,
+		type AlbumRules,
 		type AssetSummary
 	} from '#lib/photos/api.ts';
 	import { photoInAddress, withPhoto } from '#lib/photos/address.ts';
@@ -41,6 +46,7 @@
 	let notice: string | null = $state(null);
 	let busy = $state(false);
 	let renaming = $state(false);
+	let editingRules = $state(false);
 	let confirmingDelete = $state(false);
 	let viewing: AssetSummary | null = $state(null);
 	let picking: readonly string[] | null = $state(null);
@@ -53,6 +59,9 @@
 	const items = $derived(data.items);
 	/** Others' albums: writers add and remove their own photos; the rest stays with the owner. */
 	const can = $derived(abilities(album?.access ?? 'read'));
+	/** A dynamic album's photos come from its rules: none are added or removed by hand. */
+	const dynamic = $derived(album?.dynamic ?? false);
+	const canRemove = $derived(can.edit && !dynamic);
 
 	async function reload() {
 		await data.reload();
@@ -98,6 +107,15 @@
 		return null;
 	}
 
+	async function saveRules(_name: string, rules: AlbumRules): Promise<string | null> {
+		const result = await updateAlbumRules(albumId, rules);
+		if (!result.ok) return result.error;
+		selection.clear();
+		await reload();
+		notice = 'Rules saved.';
+		return null;
+	}
+
 	let deleted = false;
 
 	async function remove(): Promise<string | null> {
@@ -134,7 +152,7 @@
 	/** Escape clears the selection, unless something else (a dialog, a menu) handles it. */
 	function keydown(event: KeyboardEvent) {
 		if (event.key !== 'Escape' || event.defaultPrevented || !selection.active) return;
-		if (viewing || picking || confirmingDelete || renaming || sharing || commenting) return;
+		if (viewing || picking || confirmingDelete || renaming || editingRules || sharing || commenting) return;
 		const target = event.target as Element;
 		if (target === document.body || target.closest('.album-grid, [role=toolbar]')) selection.clear();
 	}
@@ -185,6 +203,8 @@
 	{#snippet description()}
 		{#if album}<span class="tabular">{photoCount(album.item_count)}</span>{/if}
 		{#if album?.shared_by}<span aria-hidden="true"> · </span>Shared by {memberName(album.shared_by)}{/if}
+		{#if dynamic}{' '}<Badge tone="accent">Dynamic</Badge>{/if}
+		{#if album?.rules}<RulesSummary rules={album.rules} />{/if}
 	{/snippet}
 	{#snippet actions()}
 		{#if album}
@@ -195,7 +215,12 @@
 				<IconButton icon="message-circle" label={`Comments on ${album.name}`} tooltip="Comments" fill="tint" onclick={() => (commenting = true)} />
 			</span>
 			{#if can.owner}
-				<AlbumActions name={album.name} onRename={() => (renaming = true)} onDelete={() => (confirmingDelete = true)} />
+				<AlbumActions
+					name={album.name}
+					onRename={() => (renaming = true)}
+					onEditRules={dynamic ? () => (editingRules = true) : null}
+					onDelete={() => (confirmingDelete = true)}
+				/>
 			{/if}
 		{/if}
 	{/snippet}
@@ -207,8 +232,9 @@
 	{#if error ?? data.pageError}<Alert>{error ?? data.pageError}</Alert>{/if}
 
 	{#if album && album.item_count === 0 && items.length === 0}
-		<EmptyState icon="library" title="This album is empty">
-			{#if can.edit}Select photos in the timeline, then choose Add to album.{:else}Photos added to it will show up here.{/if}
+		<EmptyState icon={dynamic ? 'sparkles' : 'library'} title={dynamic ? 'No photos match yet' : 'This album is empty'}>
+			{#if dynamic}Photos that match its rules will show up here on their own.
+			{:else if can.edit}Select photos in the timeline, then choose Add to album.{:else}Photos added to it will show up here.{/if}
 		</EmptyState>
 	{:else if items.length > 0}
 		<section class="album-grid" aria-label="Photos in the album">
@@ -227,21 +253,27 @@
 	{/if}
 </Page>
 
-{#if selection.active && can.edit}
+{#if selection.active && (canRemove || can.owner)}
 	<SelectionBar count={selection.size} onClear={() => selection.clear()}>
 		{#if selection.size === 1 && can.owner}
 			<Button variant="secondary" size="sm" disabled={busy} onclick={makeCover}>
 				<Icon name="images" /><span class="label">Set as cover</span>
 			</Button>
 		{/if}
-		<Button variant="danger" size="sm" disabled={busy} onclick={removeSelected}>
-			<Icon name="x" /><span class="label">Remove from album</span>
-		</Button>
+		{#if canRemove}
+			<Button variant="danger" size="sm" disabled={busy} onclick={removeSelected}>
+				<Icon name="x" /><span class="label">Remove from album</span>
+			</Button>
+		{/if}
 	</SelectionBar>
 {/if}
 
 {#if renaming && album}
 	<NameDialog title="Rename album" initial={album.name} submitLabel="Save" validate={albumNameProblem} onSubmit={rename} onClose={() => (renaming = false)} />
+{/if}
+
+{#if editingRules && album}
+	<AlbumRulesDialog title="Edit rules" submitLabel="Save rules" initial={album.rules ?? null} onSubmit={saveRules} onClose={() => (editingRules = false)} />
 {/if}
 
 {#if confirmingDelete}
@@ -262,7 +294,7 @@
 {/if}
 
 {#if sharing && album}
-	<ShareDialog subject={{ album_id: album.id }} name={album.name} onClose={() => (sharing = false)} />
+	<ShareDialog subject={{ album_id: album.id }} name={album.name} readOnly={dynamic} onClose={() => (sharing = false)} />
 {/if}
 
 {#if commenting && album}

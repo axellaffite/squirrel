@@ -7,10 +7,12 @@
 	interface Props {
 		name: string;
 		onRename: () => void;
+		/** A dynamic album's "Edit rules" (none for a plain album). */
+		onEditRules?: (() => void) | null;
 		onDelete: () => void;
 	}
 
-	let { name, onRename, onDelete }: Props = $props();
+	let { name, onRename, onEditRules = null, onDelete }: Props = $props();
 
 	let sheet = $state(false);
 	let dialog: Dialog | undefined = $state();
@@ -31,6 +33,7 @@
 
 <!-- Inline from 768 px; one "Actions" button opening a sheet on phones, like file rows. -->
 <span class="inline">
+	{#if onEditRules}<Button variant="secondary" onclick={onEditRules}><Icon name="sliders-horizontal" />Edit rules</Button>{/if}
 	<Button variant="secondary" onclick={onRename}><Icon name="pencil" />Rename</Button>
 	<Button variant="danger" onclick={onDelete}><Icon name="trash" />Delete album</Button>
 </span>
@@ -41,6 +44,13 @@
 {#if sheet}
 	<Dialog bind:this={dialog} bind:open={sheet} title={name} onclose={closed}>
 		<ul class="actions">
+			{#if onEditRules}
+				<li>
+					<button type="button" class="action" onclick={() => choose(onEditRules)}>
+						<span class="well"><Icon name="sliders-horizontal" /></span>Edit rules
+					</button>
+				</li>
+			{/if}
 			<li>
 				<button type="button" class="action" onclick={() => choose(onRename)}>
 					<span class="well"><Icon name="pencil" /></span>Rename

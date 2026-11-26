@@ -10,15 +10,22 @@
 	import { countryName, placeFilter, sameFilter, tagLabel, type PhotoFilter } from '#lib/explore/filters.ts';
 	import { photoCount } from '#lib/photos/albums.ts';
 
+	type Section = 'people' | 'tags' | 'places' | 'cameras' | 'kind';
+
 	interface Props {
 		filter: PhotoFilter;
 		people: readonly Person[];
+		title?: string;
+		/** The sections offered (all by default); lists outside them are not fetched. */
+		only?: readonly Section[];
 		/** Called with the filter once one more part is chosen. */
 		onPick: (filter: PhotoFilter) => void;
 		onClose: () => void;
 	}
 
-	let { filter, people, onPick, onClose }: Props = $props();
+	let { filter, people, title = 'Filter photos', only, onPick, onClose }: Props = $props();
+
+	const offers = (section: Section): boolean => !only || only.includes(section);
 
 	let dialog: Dialog | undefined = $state();
 	let open = $state(true);
@@ -41,6 +48,7 @@
 
 	const sections = $derived.by((): { title: string; options: Option[] }[] => [
 		{
+			key: 'people' as const,
 			title: 'People',
 			options: named.map((person) => ({
 				key: person.id,
@@ -52,6 +60,7 @@
 			}))
 		},
 		{
+			key: 'tags' as const,
 			title: 'Tags',
 			options: (tags ?? []).map((tag) => ({
 				key: tag.tag,
@@ -63,6 +72,7 @@
 			}))
 		},
 		{
+			key: 'places' as const,
 			title: 'Places',
 			options: (places ?? []).map((place) => ({
 				key: `${place.country_code}/${place.region ?? ''}/${place.city ?? ''}`,
@@ -74,6 +84,7 @@
 			}))
 		},
 		{
+			key: 'cameras' as const,
 			title: 'Cameras',
 			options: (cameras ?? []).map((camera) => ({
 				key: `${camera.make}/${camera.model ?? ''}`,
@@ -85,18 +96,24 @@
 			}))
 		},
 		{
+			key: 'kind' as const,
 			title: 'Kind',
 			options: [
 				{ key: 'photo', label: 'Photos only', count: null, icon: 'image' as const, next: { ...filter, kind: 'photo' as const }, chosen: filter.kind === 'photo' },
 				{ key: 'screenshot', label: 'Screenshots', count: null, icon: 'image' as const, next: { ...filter, kind: 'screenshot' as const }, chosen: filter.kind === 'screenshot' }
 			]
 		}
-	]);
+	].filter((section) => offers(section.key)));
 
 	const loading = $derived(tags === null || places === null || cameras === null);
 
 	onMount(async () => {
-		const [t, p, c] = await Promise.all([listTags(), listPlaces('city'), listCameras()]);
+		const none = Promise.resolve({ ok: true as const, data: [] });
+		const [t, p, c] = await Promise.all([
+			offers('tags') ? listTags() : none,
+			offers('places') ? listPlaces('city') : none,
+			offers('cameras') ? listCameras() : none
+		]);
 		tags = t.ok ? t.data : [];
 		places = p.ok ? p.data : [];
 		cameras = c.ok ? c.data : [];
@@ -110,7 +127,7 @@
 	}
 </script>
 
-<Dialog bind:this={dialog} bind:open title="Filter photos" onclose={onClose}>
+<Dialog bind:this={dialog} bind:open {title} onclose={onClose}>
 	<div class="body">
 		{#if error}<Alert>{error}</Alert>{/if}
 		{#each sections as section (section.title)}

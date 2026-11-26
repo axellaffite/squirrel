@@ -15,4 +15,13 @@
 	let { album, extra, footer }: Props = $props();
 </script>
 
-<CoverCard href={`/photos/albums/${album.id}`} name={album.name} count={photoCount(album.item_count)} cover={album.cover ?? null} {extra} {footer} />
+<CoverCard
+	href={`/photos/albums/${album.id}`}
+	name={album.name}
+	count={photoCount(album.item_count)}
+	cover={album.cover ?? null}
+	icon={album.dynamic ? 'sparkles' : 'library'}
+	badge={album.dynamic ? 'Dynamic' : null}
+	{extra}
+	{footer}
+/>

@@ -103,11 +103,14 @@ export function sharedWithSummary(people: readonly Member[]): string {
 	return `With ${names.slice(0, NAMED_PEOPLE).join(', ')} and ${names.length - NAMED_PEOPLE} others`;
 }
 
-/** The albums photos can be added to: one's own and those shared for writing, by name. */
+/**
+ * The albums photos can be added to: one's own and those shared for writing, by name. Dynamic
+ * albums are left out: their photos come from rules.
+ */
 export function writableAlbums(own: readonly Album[], shared: readonly SharedItem[]): Album[] {
 	const ids = new Set(own.map((album) => album.id));
 	const extra = shared
 		.filter((item) => item.permission === 'write' && item.album && !ids.has(item.album.id))
 		.map((item) => item.album as Album);
-	return sortByName([...own, ...extra]);
+	return sortByName([...own, ...extra].filter((album) => !album.dynamic));
 }

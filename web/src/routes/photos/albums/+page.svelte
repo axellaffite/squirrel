@@ -5,17 +5,19 @@
 	import NameDialog from '#lib/components/files/NameDialog.svelte';
 	import Icon from '#lib/components/icons/Icon.svelte';
 	import AlbumCard from '#lib/components/photos/AlbumCard.svelte';
+	import AlbumRulesDialog from '#lib/components/photos/AlbumRulesDialog.svelte';
 	import PhotosTabs from '#lib/components/photos/PhotosTabs.svelte';
 	import Page from '#lib/components/shell/Page.svelte';
 	import Alert from '#lib/components/ui/Alert.svelte';
 	import Button from '#lib/components/ui/Button.svelte';
 	import EmptyState from '#lib/components/ui/EmptyState.svelte';
 	import { albumNameProblem } from '#lib/photos/albums.ts';
-	import { createAlbum, listAlbums, type Album } from '#lib/photos/api.ts';
+	import { createAlbum, createDynamicAlbum, listAlbums, type Album, type AlbumRules } from '#lib/photos/api.ts';
 
 	let albums = $state<Album[] | null>(null);
 	let error: string | null = $state(null);
 	let naming = $state(false);
+	let ruling = $state(false);
 
 	async function load() {
 		const result = await listAlbums();
@@ -32,6 +34,13 @@
 		return null;
 	}
 
+	async function createDynamic(name: string, rules: AlbumRules): Promise<string | null> {
+		const result = await createDynamicAlbum(name, rules);
+		if (!result.ok) return result.error;
+		void goto(`/photos/albums/${result.data.id}`);
+		return null;
+	}
+
 	onMount(load);
 </script>
 
@@ -40,6 +49,7 @@
 <Page title="Photos">
 	{#snippet description()}{#if albums}<span class="tabular">{albums.length} {albums.length === 1 ? 'album' : 'albums'}</span>{/if}{/snippet}
 	{#snippet actions()}
+		<Button variant="secondary" onclick={() => (ruling = true)}><Icon name="sparkles" />New dynamic album</Button>
 		<Button onclick={() => (naming = true)}><Icon name="plus" />New album</Button>
 	{/snippet}
 
@@ -49,7 +59,9 @@
 	{#if albums === null}
 		{#if !error}<p class="muted" aria-live="polite">Loading…</p>{/if}
 	{:else if albums.length === 0}
-		<EmptyState icon="library" title="No albums yet">Select photos in the timeline, then choose Add to album.</EmptyState>
+		<EmptyState icon="library" title="No albums yet">
+			Select photos in the timeline, then choose Add to album. Or make a dynamic album that fills itself from rules.
+		</EmptyState>
 	{:else}
 		<ul class="albums" aria-label="Albums">
 			{#each albums as album (album.id)}
@@ -58,6 +70,10 @@
 		</ul>
 	{/if}
 </Page>
+
+{#if ruling}
+	<AlbumRulesDialog title="New dynamic album" submitLabel="Create album" named onSubmit={createDynamic} onClose={() => (ruling = false)} />
+{/if}
 
 {#if naming}
 	<NameDialog title="New album" submitLabel="Create album" validate={albumNameProblem} onSubmit={create} onClose={() => (naming = false)} />

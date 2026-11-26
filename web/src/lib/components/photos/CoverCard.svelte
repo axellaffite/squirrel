@@ -2,6 +2,7 @@
 	import type { Snippet } from 'svelte';
 	import type { IconName } from '#lib/components/icons/paths.ts';
 	import AlbumCover from '#lib/components/photos/AlbumCover.svelte';
+	import Badge from '#lib/components/ui/Badge.svelte';
 	import type { AssetSummary } from '#lib/photos/api.ts';
 
 	interface Props {
@@ -10,12 +11,14 @@
 		count: string;
 		cover: AssetSummary | null;
 		icon?: IconName;
+		/** A short label after the name (e.g. "Dynamic"). */
+		badge?: string | null;
 		extra?: Snippet;
 		/** A row under a hairline, inside the card but outside the link (e.g. who shared it, Leave). */
 		footer?: Snippet;
 	}
 
-	let { href, name, count, cover, icon = 'library', extra, footer }: Props = $props();
+	let { href, name, count, cover, icon = 'library', badge = null, extra, footer }: Props = $props();
 </script>
 
 <!--
@@ -26,7 +29,10 @@
 	<a class="link" {href}>
 		<span class="cover"><AlbumCover {cover} {icon} /></span>
 		<span class="text">
-			<span class="name">{name}</span>
+			<span class="title">
+				<span class="name">{name}</span>
+				{#if badge}<Badge tone="accent">{badge}</Badge>{/if}
+			</span>
 			<span class="count tabular">{count}</span>
 			{#if extra}<span class="extra">{@render extra()}</span>{/if}
 		</span>
@@ -72,7 +78,15 @@
 		padding-inline: var(--space-1);
 	}
 
+	.title {
+		display: flex;
+		align-items: center;
+		gap: var(--space-2);
+		min-width: 0;
+	}
+
 	.name {
+		min-width: 0;
 		overflow: hidden;
 		text-overflow: ellipsis;
 		white-space: nowrap;

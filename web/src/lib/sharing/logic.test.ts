@@ -28,8 +28,8 @@ function comment(id: string, body = 'Hi'): Comment {
 	return { id, body, author: bob, created_at: '2026-11-23T10:00:00Z', mine: true, can_delete: true };
 }
 
-function album(id: string, name = id): Album {
-	return { id, name, item_count: 0, updated_at: '2026-11-23T10:00:00Z', access: 'owner' };
+function album(id: string, name = id, dynamic = false): Album {
+	return { id, name, item_count: 0, updated_at: '2026-11-23T10:00:00Z', access: 'owner', dynamic };
 }
 
 function item(over: Partial<SharedItem>): SharedItem {
@@ -156,6 +156,12 @@ describe('writableAlbums', () => {
 			item({ permission: 'write', album: album('a', 'Alps') })
 		];
 		expect(writableAlbums(own, shared).map((a) => a.id)).toEqual(['a', 'b', 'c']);
+	});
+
+	it('leaves out dynamic albums: their photos come from rules', () => {
+		const own = [album('a', 'Alps'), album('d', 'Dogs', true)];
+		const shared = [item({ permission: 'write', album: album('e', 'Eve', true) })];
+		expect(writableAlbums(own, shared).map((a) => a.id)).toEqual(['a']);
 	});
 });
 
