@@ -10,6 +10,7 @@
 	import { tagLabel, type PhotoFilter } from '#lib/explore/filters.ts';
 	import {
 		MAX_RULE_ITEMS,
+		MAX_SEARCH_CHARS,
 		cameraLabel,
 		placeLabel,
 		withItem,
@@ -66,6 +67,19 @@
 </script>
 
 <div class="groups">
+	<section class="group" aria-labelledby={`search-${uid}`}>
+		<h3 id={`search-${uid}`}>What they show</h3>
+		<TextField
+			label="Search"
+			type="search"
+			value={form.search}
+			maxlength={MAX_SEARCH_CHARS}
+			placeholder="shirtless, dog on the beach…"
+			hint="Any words, in any language: photos are matched as search finds them."
+			oninput={(event) => update({ search: event.currentTarget.value })}
+		/>
+	</section>
+
 	<section class="group" aria-labelledby={`people-${uid}`}>
 		<h3 id={`people-${uid}`}>People</h3>
 		{#if personChips.length > 0}

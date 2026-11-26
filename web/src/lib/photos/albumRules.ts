@@ -1,8 +1,9 @@
 /**
  * A dynamic album's rules as the editor holds them, the request body they become, and their
  * wording. Mirrors the server: every group given must hold (AND), an empty one does not
- * constrain, at least one condition, at most 20 people and 20 tags, a region or city needs a
- * country, a camera model needs its make, dates are inclusive `YYYY-MM-DD` days.
+ * constrain, at least one condition, at most 20 people and 20 tags, a search text of at most
+ * 200 characters, a region or city needs a country, a camera model needs its make, dates are
+ * inclusive `YYYY-MM-DD` days.
  */
 import { countryName, tagLabel, type PhotoKind } from '#lib/explore/filters.ts';
 import type { AlbumRules, MatchMode } from '#lib/photos/api.ts';
@@ -15,6 +16,9 @@ export const PREVIEW_DELAY_MS = 300;
 
 /** How many of the newest matching photos the editor shows. */
 export const PREVIEW_THUMBS = 6;
+
+/** The server's limit on a rule's search text, in characters. */
+export const MAX_SEARCH_CHARS = 200;
 
 export interface RulePlace {
 	country: string;
@@ -31,6 +35,8 @@ export interface RuleCamera {
 export type RuleKind = 'any' | PhotoKind;
 
 export interface RulesForm {
+	/** What the photos show, matched as photo search matches it; empty for none. */
+	search: string;
 	people: readonly string[];
 	peopleMatch: MatchMode;
 	tags: readonly string[];
@@ -44,6 +50,7 @@ export interface RulesForm {
 }
 
 export const emptyRulesForm = (): RulesForm => ({
+	search: '',
 	people: [],
 	peopleMatch: 'any',
 	tags: [],
@@ -74,6 +81,7 @@ function cameraOf(rules: AlbumRules): RuleCamera | null {
 export function formFromRules(rules: AlbumRules | null | undefined): RulesForm {
 	if (!rules) return emptyRulesForm();
 	return {
+		search: rules.search ?? '',
 		people: [...(rules.people ?? [])],
 		peopleMatch: rules.people_match ?? 'any',
 		tags: [...(rules.tags ?? [])],
@@ -103,6 +111,8 @@ export function rulesBody(form: RulesForm): AlbumRules {
 		body.camera_make = form.camera.make;
 		if (form.camera.model) body.camera_model = form.camera.model;
 	}
+	const search = form.search.trim();
+	if (search) body.search = search;
 	if (form.kind !== 'any') body.kind = form.kind;
 	if (form.takenFrom) body.taken_from = form.takenFrom;
 	if (form.takenTo) body.taken_to = form.takenTo;
@@ -110,6 +120,7 @@ export function rulesBody(form: RulesForm): AlbumRules {
 }
 
 export const hasCondition = (form: RulesForm): boolean =>
+	form.search.trim() !== '' ||
 	form.people.length > 0 ||
 	form.tags.length > 0 ||
 	form.place !== null ||
@@ -130,6 +141,7 @@ export function rulesProblem(form: RulesForm): string | null {
 	if (!hasCondition(form)) return 'Choose at least one condition.';
 	if (form.people.length > MAX_RULE_ITEMS) return `Choose at most ${MAX_RULE_ITEMS} people.`;
 	if (form.tags.length > MAX_RULE_ITEMS) return `Choose at most ${MAX_RULE_ITEMS} tags.`;
+	if ([...form.search.trim()].length > MAX_SEARCH_CHARS) return `Keep the search to ${MAX_SEARCH_CHARS} characters.`;
 	if (form.takenFrom && !isDay(form.takenFrom)) return 'Enter the start date as a real day.';
 	if (form.takenTo && !isDay(form.takenTo)) return 'Enter the end date as a real day.';
 	if (form.takenFrom && form.takenTo && form.takenTo < form.takenFrom) return 'The end date is before the start date.';
@@ -171,9 +183,11 @@ function rangeLabel(from: string, to: string, locale?: string): string | null {
 	return null;
 }
 
-/** One short line per condition, in editor order ("Alice and Bob", "Beach", "Paris", …). */
+/** One short line per condition, in editor order ("“shirtless”", "Alice and Bob", "Beach", …). */
 export function ruleParts(form: RulesForm, personName: (id: string) => string | null, locale?: string): string[] {
+	const search = form.search.trim();
 	const parts: (string | null)[] = [
+		search ? `“${search}”` : null,
 		form.people.length > 0 ? joined(form.people.map((id) => personName(id) ?? 'Unnamed'), form.peopleMatch) : null,
 		form.tags.length > 0 ? joined(form.tags.map(tagLabel), form.tagsMatch) : null,
 		form.place ? placeLabel(form.place, locale) : null,

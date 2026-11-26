@@ -17,6 +17,7 @@ const form = (over: Partial<RulesForm> = {}): RulesForm => ({ ...emptyRulesForm(
 describe('emptyRulesForm', () => {
 	it('constrains nothing and matches any', () => {
 		expect(emptyRulesForm()).toEqual({
+			search: '',
 			people: [],
 			peopleMatch: 'any',
 			tags: [],
@@ -45,9 +46,11 @@ describe('formFromRules', () => {
 			camera_model: 'EOS R5',
 			kind: 'photo',
 			taken_from: '2024-01-01',
-			taken_to: '2024-12-31'
+			taken_to: '2024-12-31',
+			search: 'shirtless'
 		});
 		expect(result).toEqual({
+			search: 'shirtless',
 			people: ['p1'],
 			peopleMatch: 'all',
 			tags: ['beach', 'sunset'],
@@ -76,6 +79,27 @@ describe('formFromRules', () => {
 	it('gives an empty form for no rules', () => {
 		expect(formFromRules(null)).toEqual(emptyRulesForm());
 		expect(formFromRules(undefined)).toEqual(emptyRulesForm());
+	});
+});
+
+describe('a search text', () => {
+	it('is a condition once it holds more than spaces', () => {
+		expect(hasCondition(form({ search: '   ' }))).toBe(false);
+		expect(hasCondition(form({ search: ' shirtless ' }))).toBe(true);
+	});
+
+	it('is sent trimmed, and not at all when blank', () => {
+		expect(rulesBody(form({ search: ' shirtless ' })).search).toBe('shirtless');
+		expect(rulesBody(form({ search: '  ', tags: ['beach'] }))).not.toHaveProperty('search');
+	});
+
+	it('is at most 200 characters, counted as the server counts them', () => {
+		expect(rulesProblem(form({ search: 'é'.repeat(200) }))).toBeNull();
+		expect(rulesProblem(form({ search: 'é'.repeat(201) }))).toBe('Keep the search to 200 characters.');
+	});
+
+	it('comes first in the summary, quoted', () => {
+		expect(ruleParts(form({ search: 'shirtless', tags: ['beach'] }), () => null)[0]).toBe('“shirtless”');
 	});
 });
 

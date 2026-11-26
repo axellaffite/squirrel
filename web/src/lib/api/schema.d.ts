@@ -1332,6 +1332,12 @@ export interface components {
             people_match?: components["schemas"]["MatchMode"];
             /** @description A region of `country`; needs `country`. Empty: places without a region. */
             region?: string | null;
+            /**
+             * @description What the photos must show, in any language (1–200 characters), matched
+             *     as photo search matches it (`GET /api/search/photos`), e.g. `shirtless`.
+             *     Needs the text model (503 `ml_unavailable` without it).
+             */
+            search?: string | null;
             /** @description Tags (`GET /api/tags`), at most 20. */
             tags?: string[];
             /** @description Whether a photo needs any or all of `tags`. */
@@ -2612,6 +2618,15 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorBody"];
                 };
             };
+            /** @description Rules with a search text: `ml_unavailable` (no text model on this server) or `busy` (the text model or the label bank is not ready yet: try again) */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
         };
     };
     preview_album: {
@@ -2644,7 +2659,7 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorBody"];
                 };
             };
-            /** @description The library is too large to count in time */
+            /** @description `busy`: the library is too large to count in time, or the text model or label bank is not ready yet; `ml_unavailable`: a search text without a text model */
             503: {
                 headers: {
                     [name: string]: unknown;
@@ -2765,6 +2780,15 @@ export interface operations {
                 };
             };
             422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Rules with a search text: `ml_unavailable` (no text model on this server) or `busy` (the text model or the label bank is not ready yet: try again) */
+            503: {
                 headers: {
                     [name: string]: unknown;
                 };

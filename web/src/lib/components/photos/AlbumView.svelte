@@ -13,6 +13,9 @@
 	import DownloadAction from '#lib/components/photos/DownloadAction.svelte';
 	import Lightbox from '#lib/components/photos/Lightbox.svelte';
 	import PhotoGrid from '#lib/components/photos/PhotoGrid.svelte';
+	import Scrubber from '#lib/components/photos/Scrubber.svelte';
+	import SearchTimeline from '#lib/components/photos/SearchTimeline.svelte';
+	import type { Geometry } from '#lib/components/photos/Timeline.svelte';
 	import SelectionBar from '#lib/components/photos/SelectionBar.svelte';
 	import Page from '#lib/components/shell/Page.svelte';
 	import CommentsDialog from '#lib/components/sharing/CommentsDialog.svelte';
@@ -53,7 +56,8 @@
 	let picking: readonly string[] | null = $state(null);
 	let sharing = $state(false);
 	let commenting = $state(false);
-	let grid: PhotoGrid | undefined = $state();
+	let grid: PhotoGrid | SearchTimeline | undefined = $state();
+	let geometry: Geometry | undefined = $state();
 	const selection = new Selection();
 
 	const album = $derived(data.album);
@@ -239,6 +243,23 @@
 			{#if dynamic}Photos that match its rules will show up here on their own.
 			{:else if can.edit}Select photos in the timeline, then choose Add to album.{:else}Photos added to it will show up here.{/if}
 		</EmptyState>
+	{:else if items.length > 0 && dynamic}
+		<!-- A dynamic album reads as a timeline: its photos come by capture date, newest first. -->
+		<section class="album-grid timeline" aria-label="Photos in the album">
+			<SearchTimeline
+				bind:this={grid}
+				bind:geometry
+				{items}
+				selected={selection.ids}
+				selecting={selection.active}
+				onOpen={open}
+				onToggle={toggle}
+				onNearEnd={() => void data.nextPage()}
+			/>
+			{#if geometry}
+				<Scrubber boxes={geometry.boxes} total={geometry.total} current={geometry.current} onJump={(index) => (grid as SearchTimeline | undefined)?.jumpTo(index)} />
+			{/if}
+		</section>
 	{:else if items.length > 0}
 		<section class="album-grid" aria-label="Photos in the album">
 			<PhotoGrid
@@ -311,6 +332,19 @@
 {/if}
 
 <style>
+	.timeline {
+		display: grid;
+		min-width: 0;
+	}
+
+	@media (min-width: 48rem) {
+		.timeline {
+			grid-template-columns: minmax(0, 1fr) var(--scrubber-w);
+			gap: var(--space-4);
+			align-items: start;
+		}
+	}
+
 	.subject-tools {
 		display: flex;
 		align-items: center;
