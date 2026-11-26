@@ -1,6 +1,6 @@
 {
     "name": "shared_list",
-    "description": "What others shared with you: open a folder (shows the shared browser), an album or a photo; leave a share. Reached by: app go_to shared.",
+    "description": "What others shared with you (open a folder, which shows the shared browser, an album or a photo; leave a share), and what you shared with others (open_mine; manage opens its Share sheet). Reached by: app go_to shared.",
     "actions": [
         {
             "name": "ask_leave",
@@ -34,8 +34,38 @@
             }
         },
         {
+            "name": "manage",
+            "description": "Open the Share sheet (screen share) of one of yours by its id in sharedByMe: change who has it. The list reloads once it closes",
+            "params": {
+                "type": "object",
+                "properties": {
+                    "id": {
+                        "type": "string"
+                    }
+                },
+                "required": [
+                    "id"
+                ]
+            }
+        },
+        {
             "name": "open",
             "description": "Open a row by its id in items: a folder opens in the shared browser (screen shared), an album in its page, a photo in the viewer. Not a file: it opens in another app",
+            "params": {
+                "type": "object",
+                "properties": {
+                    "id": {
+                        "type": "string"
+                    }
+                },
+                "required": [
+                    "id"
+                ]
+            }
+        },
+        {
+            "name": "open_mine",
+            "description": "Open one of yours by its id in sharedByMe, as open does for items. Not a file: it opens in another app",
             "params": {
                 "type": "object",
                 "properties": {
@@ -111,6 +141,50 @@
                 "nullable": true,
                 "description": "What other people shared with you, newest first; null until the first load"
             },
+            "sharedByMe": {
+                "type": "array",
+                "items": {
+                    "type": "object",
+                    "properties": {
+                        "id": {
+                            "type": "string",
+                            "description": "The folder, file or album's own id: what open_mine and manage take"
+                        },
+                        "kind": {
+                            "type": "string",
+                            "enum": [
+                                "folder",
+                                "file",
+                                "photo",
+                                "album"
+                            ]
+                        },
+                        "name": {
+                            "type": "string"
+                        },
+                        "people": {
+                            "type": "array",
+                            "items": {
+                                "type": "string"
+                            },
+                            "description": "The people it is shared with, in sharing order"
+                        },
+                        "photoCount": {
+                            "type": "integer",
+                            "nullable": true,
+                            "description": "Photos in an album; null for folders and files"
+                        }
+                    },
+                    "required": [
+                        "id",
+                        "kind",
+                        "name",
+                        "people"
+                    ]
+                },
+                "nullable": true,
+                "description": "What you shared with other people, most recently shared first; null until the first load"
+            },
             "loading": {
                 "type": "boolean"
             },
@@ -122,6 +196,11 @@
                 "type": "string",
                 "nullable": true,
                 "description": "The share id waiting for \"Leave …?\": confirm_leave or cancel_leave"
+            },
+            "managing": {
+                "type": "string",
+                "nullable": true,
+                "description": "The id of your own folder, file or album whose Share sheet is open (screen share)"
             },
             "message": {
                 "type": "string",

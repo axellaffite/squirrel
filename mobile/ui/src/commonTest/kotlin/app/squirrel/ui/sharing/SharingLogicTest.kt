@@ -33,6 +33,16 @@ class SharingLogicTest {
     }
 
     @Test
+    fun whoSomethingIsSharedWith() {
+        fun person(name: String) = MemberDto(displayName = name, username = name.lowercase())
+        assertEquals("With nobody", sharedWithSummary(emptyList()))
+        assertEquals("With Bob", sharedWithSummary(listOf(person("Bob"))))
+        assertEquals("With Bob and Carol", sharedWithSummary(listOf("Bob", "Carol").map(::person)))
+        assertEquals("With Bob, Carol and Dan", sharedWithSummary(listOf("Bob", "Carol", "Dan").map(::person)))
+        assertEquals("With Bob, Carol and 2 others", sharedWithSummary(listOf("Bob", "Carol", "Dan", "Eve").map(::person)))
+    }
+
+    @Test
     fun namesAndPermissions() {
         assertEquals("Anna", memberName(anna))
         assertEquals("Deleted user", memberName(null))

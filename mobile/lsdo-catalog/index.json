@@ -100,12 +100,14 @@
         },
         {
             "name": "shared_list",
-            "description": "What others shared with you: open a folder (shows the shared browser), an album or a photo; leave a share. Reached by: app go_to shared.",
+            "description": "What others shared with you (open a folder, which shows the shared browser, an album or a photo; leave a share), and what you shared with others (open_mine; manage opens its Share sheet). Reached by: app go_to shared.",
             "actions": [
                 "ask_leave",
                 "cancel_leave",
                 "confirm_leave",
+                "manage",
                 "open",
+                "open_mine",
                 "refresh"
             ]
         },

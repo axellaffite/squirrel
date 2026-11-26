@@ -53,6 +53,35 @@ class SharedViewModelTest {
         assertEquals(listOf("s1"), left.items.orEmpty().map { it.shareId })
     }
 
+    private val bob = """{"username":"bob","display_name":"Bob"}"""
+    private val mine = """{"id":"mine","name":"Party","item_count":0,"updated_at":"2026-11-20T17:05:00Z","access":"owner"}"""
+
+    @Test
+    fun whatTheCallerSharedIsListedAndManagingReloadsIt() = runReal {
+        var byMeLoads = 0
+        val vm = SharedViewModel(testApi { request ->
+            when (request.url.encodedPath) {
+                "/api/shared-with-me" -> json("[]")
+                "/api/shared-by-me" -> {
+                    byMeLoads++
+                    json(
+                        """[{"people":[{"id":"s1","person":$bob,"permission":"read","created_at":"2026-11-20T17:05:00Z"}],"shared_at":"2026-11-20T17:05:00Z","node":${node("trip", "folder")}},""" +
+                            """{"people":[{"id":"s2","person":$bob,"permission":"write","created_at":"2026-11-20T17:05:00Z"}],"shared_at":"2026-11-20T17:05:00Z","album":$mine}]""",
+                    )
+                }
+                else -> respondError(HttpStatusCode.NotFound)
+            }
+        })
+        val state = vm.state.await { it.byMe != null && !it.loading }
+        assertEquals(listOf("trip"), state.byMeNodes.map { it.node?.name })
+        assertEquals(listOf("Party"), state.byMeAlbums.map { it.album?.name })
+        vm.manage(state.byMeAlbums.single())
+        assertEquals("Party", vm.state.value.managing?.album?.name)
+        vm.doneManaging()
+        val reloaded = vm.state.await { it.managing == null && !it.loading && byMeLoads == 2 }
+        assertEquals(2, reloaded.byMe?.size)
+    }
+
     @Test
     fun aFailureKeepsTheListAndSaysWhy() = runReal {
         val vm = SharedViewModel(testApi { respondError(HttpStatusCode.BadGateway) })
