@@ -6,6 +6,7 @@ import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListScope
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.remember
@@ -19,6 +20,8 @@ fun justifiedRows(items: List<AssetSummary>, width: Int, rowHeight: Int, gap: In
     val layout = justify(items.map { a -> (a.width ?: 1).toDouble() / (a.height ?: 1).coerceAtLeast(1) }, width, rowHeight, gap)
     return layout.rows.map { row -> row.height to row.tiles.map { TileSlot(items[it.index], it.left, it.width) } }
 }
+
+private fun rowKey(n: Int): String = "row:$n"
 
 /**
  * A scrolling list of justified rows; the last row coming into view calls [onNearEnd] (the
@@ -38,13 +41,17 @@ fun JustifiedPhotos(
         val rowHeight = Tokens.photoRow.value.toInt()
         val gap = Tokens.space1.value.toInt()
         val rows = remember(items, width) { justifiedRows(items, width, rowHeight, gap) }
+        val tiles = remember(rows) { rows.withIndex().associate { (n, row) -> rowKey(n) to row.second } }
+        val list = rememberLazyListState()
+        val select = rememberDragToSelect(list, actions, order = { items.map { it.id } }, tilesOf = { tiles[it] })
         LazyColumn(
-            modifier = Modifier.fillMaxSize(),
+            state = list,
+            modifier = Modifier.fillMaxSize().then(select),
             verticalArrangement = Arrangement.spacedBy(Tokens.space1),
             contentPadding = PaddingValues(bottom = RailClearance),
         ) {
             header()
-            items(rows.size, key = { "row:$it" }) { n ->
+            items(rows.size, key = ::rowKey) { n ->
                 val (height, tiles) = rows[n]
                 if (n == rows.lastIndex) LaunchedEffect(items.size) { onNearEnd() }
                 PhotoRow(api, height, tiles, actions)

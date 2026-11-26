@@ -1,6 +1,9 @@
 package app.squirrel.ui.photos
 
 import app.squirrel.api.models.AssetSummary
+import app.squirrel.shared.api.SquirrelApi
+import app.squirrel.ui.files.albumNameProblem
+import app.squirrel.ui.sharing.Outcome
 import io.github.axellaffite.lsdo.Doc
 import io.github.axellaffite.lsdo.combineState
 import io.github.axellaffite.lsdo.mapState
@@ -59,4 +62,43 @@ internal fun missingPhotos(ids: List<String>, shown: List<AssetSummary>, where: 
     val known = shown.map { it.id }.toSet()
     val missing = ids.filterNot { it in known }
     return if (missing.isEmpty()) null else "No photo ${missing.joinToString { "\"$it\"" }} in $where."
+}
+
+/**
+ * Adds [ids], each among the photos [shown] (described as [where]), to the album [albumId], one of
+ * one's own or shared for writing, as the album picker does; [onAdded] hears the notice. Null once
+ * they are in, else why not.
+ */
+internal suspend fun addShownToAlbum(
+    api: SquirrelApi,
+    ids: List<String>,
+    shown: List<AssetSummary>,
+    where: String,
+    albumId: String,
+    onAdded: (String) -> Unit,
+): String? {
+    missingPhotos(ids, shown, where)?.let { return it }
+    val picked = pickerAlbums(api)
+    val album = picked.albums.firstOrNull { it.id == albumId }
+        ?: return if (picked.ok) "No album \"$albumId\" you can add to." else UNREACHABLE
+    return added(AlbumAdder(api, ids).into(album), onAdded)
+}
+
+/** [addShownToAlbum], into a new album named [name], as the picker's "New album…" does. */
+internal suspend fun addShownToNewAlbum(
+    api: SquirrelApi,
+    ids: List<String>,
+    shown: List<AssetSummary>,
+    where: String,
+    name: String,
+    onAdded: (String) -> Unit,
+): String? {
+    missingPhotos(ids, shown, where)?.let { return it }
+    albumNameProblem(name)?.let { return it }
+    return added(AlbumAdder(api, ids).intoNew(name.trim()), onAdded)
+}
+
+private fun added(outcome: Outcome<String>, onAdded: (String) -> Unit): String? = when (outcome) {
+    is Outcome.Ok -> done { onAdded(outcome.value) }
+    is Outcome.Failed -> outcome.message
 }

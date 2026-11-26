@@ -3,6 +3,53 @@
     "description": "Photo search: text, filter, order, open a result. Reached by: app go_to photos, then photos search.",
     "actions": [
         {
+            "name": "add_to_album",
+            "description": "Add photos found to an album (one of yours, or shared with you for editing), as selecting them and choosing Add to album does",
+            "params": {
+                "type": "object",
+                "properties": {
+                    "ids": {
+                        "type": "array",
+                        "items": {
+                            "type": "string"
+                        },
+                        "description": "Photo ids from photos"
+                    },
+                    "albumId": {
+                        "type": "string",
+                        "description": "An album id, as albums lists them"
+                    }
+                },
+                "required": [
+                    "ids",
+                    "albumId"
+                ]
+            }
+        },
+        {
+            "name": "add_to_new_album",
+            "description": "Add photos found to a new album named name, as Add to album, then New album… does",
+            "params": {
+                "type": "object",
+                "properties": {
+                    "ids": {
+                        "type": "array",
+                        "items": {
+                            "type": "string"
+                        },
+                        "description": "Photo ids from photos"
+                    },
+                    "name": {
+                        "type": "string"
+                    }
+                },
+                "required": [
+                    "ids",
+                    "name"
+                ]
+            }
+        },
+        {
             "name": "close_photo",
             "description": "Close the viewer. Only while a photo is open (viewing set)",
             "params": {
@@ -257,6 +304,11 @@
                 "type": "string",
                 "nullable": true,
                 "description": "The photo open in the viewer"
+            },
+            "notice": {
+                "type": "string",
+                "nullable": true,
+                "description": "What the last add to an album did"
             }
         }
     }

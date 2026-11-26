@@ -4,7 +4,7 @@
     "actions": [
         {
             "name": "add_to_album",
-            "description": "Add loaded photos to an album (one of yours, or shared with you for editing), as selecting them and choosing Add to album does. The whole timeline only, not one opened from Explore",
+            "description": "Add loaded photos to an album (one of yours, or shared with you for editing), as selecting them and choosing Add to album does",
             "params": {
                 "type": "object",
                 "properties": {
@@ -28,7 +28,7 @@
         },
         {
             "name": "add_to_new_album",
-            "description": "Add loaded photos to a new album named name, as Add to album, then New album… does. The whole timeline only",
+            "description": "Add loaded photos to a new album named name, as Add to album, then New album… does",
             "params": {
                 "type": "object",
                 "properties": {

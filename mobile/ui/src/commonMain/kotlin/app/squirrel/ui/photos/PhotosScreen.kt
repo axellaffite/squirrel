@@ -11,6 +11,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.wrapContentHeight
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.text.BasicText
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -66,8 +67,12 @@ private fun TimelineBlocks(api: SquirrelApi, vm: PhotosViewModel, state: PhotosS
         val width = maxWidth.value.toInt()
         val layout = remember { TimelineLayout() }
         val blocks = remember(state.months, width) { layout.blocks(state.months, width) }
+        val rows = remember(blocks) { blocks.filterIsInstance<TimelineBlock.Row>().associate { it.key to it.tiles } }
+        val list = rememberLazyListState()
+        val select = rememberDragToSelect(list, actions, order = { state.loaded().map { it.id } }, tilesOf = { rows[it] })
         LazyColumn(
-            modifier = Modifier.fillMaxSize(),
+            state = list,
+            modifier = Modifier.fillMaxSize().then(select),
             verticalArrangement = Arrangement.spacedBy(Tokens.space1),
             contentPadding = PaddingValues(bottom = RailClearance),
         ) {

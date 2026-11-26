@@ -1,10 +1,13 @@
 package app.squirrel.ui.search
 
 import app.squirrel.api.models.SearchOrder
+import app.squirrel.shared.api.SquirrelApi
 import app.squirrel.ui.explore.PhotoFilter
 import app.squirrel.ui.explore.personLabel
 import app.squirrel.ui.photos.OverlayMirror
 import app.squirrel.ui.photos.PhotoRow
+import app.squirrel.ui.photos.addShownToAlbum
+import app.squirrel.ui.photos.addShownToNewAlbum
 import app.squirrel.ui.photos.done
 import app.squirrel.ui.photos.missingPhotos
 import app.squirrel.ui.photos.row
@@ -16,6 +19,8 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
+
+private const val RESULTS = "the results"
 
 /** A person a search can be narrowed to. */
 @Serializable
@@ -34,6 +39,7 @@ data class PhotoSearchView(
     @Doc("This server cannot search photos (no text model): nothing to retry") val unavailable: Boolean = false,
     @Doc("Your people, for filter.person") val people: List<PersonChoice> = emptyList(),
     @Doc("The photo open in the viewer") val viewing: String? = null,
+    @Doc("What the last add to an album did") val notice: String? = null,
 )
 
 /** What an agent can do in photo search (LS-DO); closing the search is photos back. */
@@ -59,14 +65,27 @@ sealed interface PhotoSearchIntent {
 
     @Serializable @SerialName("close_photo") @Doc("Close the viewer. Only while a photo is open (viewing set)")
     data object ClosePhoto : PhotoSearchIntent
+
+    @Serializable @SerialName("add_to_album")
+    @Doc("Add photos found to an album (one of yours, or shared with you for editing), as selecting them and choosing Add to album does")
+    data class AddToAlbum(@Doc("Photo ids from photos") val ids: List<String>, @Doc("An album id, as albums lists them") val albumId: String) : PhotoSearchIntent
+
+    @Serializable @SerialName("add_to_new_album")
+    @Doc("Add photos found to a new album named name, as Add to album, then New album… does")
+    data class AddToNewAlbum(@Doc("Photo ids from photos") val ids: List<String>, val name: String) : PhotoSearchIntent
 }
 
-/** Photo search as an LS-DO screen ("photo_search"). The viewer stays Compose state, mirrored in [overlay]. */
+/**
+ * Photo search as an LS-DO screen ("photo_search"). The viewer and the notice stay Compose state,
+ * mirrored in [overlay]; [onAdded] is the UI's notice once photos went into an album.
+ */
 class PhotoSearchLsDo(
     private val vm: PhotoSearchViewModel,
+    private val api: SquirrelApi,
     scope: CoroutineScope,
     private val onOpen: (String) -> Unit,
     private val onClose: () -> Unit,
+    private val onAdded: (String) -> Unit,
 ) : LsDoScreen<PhotoSearchView, PhotoSearchIntent> {
     val overlay = OverlayMirror()
 
@@ -85,6 +104,7 @@ class PhotoSearchLsDo(
             unavailable = s.unavailable,
             people = s.people.map { PersonChoice(it.id, personLabel(it.name)) },
             viewing = o.viewing,
+            notice = o.notice,
         )
     }
 
@@ -98,8 +118,10 @@ class PhotoSearchLsDo(
             if (intent.order == SearchOrder.unknown_default_open_api) "Order by date or relevance." else done { vm.setOrder(intent.order) }
         PhotoSearchIntent.More -> done { vm.more() }
         PhotoSearchIntent.Retry -> done { vm.retry() }
-        is PhotoSearchIntent.Open -> missingPhotos(listOf(intent.id), vm.state.value.items, "the results") ?: done { onOpen(intent.id) }
+        is PhotoSearchIntent.Open -> missingPhotos(listOf(intent.id), vm.state.value.items, RESULTS) ?: done { onOpen(intent.id) }
         PhotoSearchIntent.ClosePhoto -> done(onClose)
+        is PhotoSearchIntent.AddToAlbum -> addShownToAlbum(api, intent.ids, vm.state.value.items, RESULTS, intent.albumId, onAdded)
+        is PhotoSearchIntent.AddToNewAlbum -> addShownToNewAlbum(api, intent.ids, vm.state.value.items, RESULTS, intent.name, onAdded)
     }
 
     override fun availableIntents(state: PhotoSearchView): Set<String> = buildSet {
@@ -108,6 +130,7 @@ class PhotoSearchLsDo(
         if (state.hasMore && !state.loading) add("more")
         if (state.error != null && !state.unavailable) add("retry")
         if (state.viewing == null) add("open") else add("close_photo")
+        if (state.viewing == null && state.photos.isNotEmpty()) addAll(listOf("add_to_album", "add_to_new_album"))
     }
 
     override fun isBusy(state: PhotoSearchView): Boolean = state.loading

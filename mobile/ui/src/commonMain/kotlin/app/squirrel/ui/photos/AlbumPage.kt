@@ -62,7 +62,7 @@ fun AlbumPage(graph: AppGraph, id: String, name: String, rootLabel: String, onBa
     val title = state.album?.name ?: name
     val can = state.can
     // Others' albums: writers add and remove their own photos; the rest stays with the owner.
-    val selection = if (can.edit) TileActions({ viewing = it.id }, selected) { selected = selected.toggled(it.id) } else TileActions.open { viewing = it.id }
+    val selection = if (can.edit) TileActions({ viewing = it.id }, selected) { selected = it } else TileActions.open { viewing = it.id }
     val run: (suspend () -> Pair<String, Boolean>?) -> Unit = { work ->
         busy = true
         scope.launch {
