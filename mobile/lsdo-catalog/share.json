@@ -159,6 +159,10 @@
             "busy": {
                 "type": "boolean",
                 "description": "A share is in flight"
+            },
+            "readOnly": {
+                "type": "boolean",
+                "description": "Shares are view only (a dynamic album): no set_permission, no change"
             }
         },
         "required": [

@@ -158,9 +158,10 @@
         },
         {
             "name": "albums",
-            "description": "The album list: open, create. Reached by: app go_to photos, then photos show albums.",
+            "description": "The album list: open, create, new_dynamic (a dynamic album, from rules). Reached by: app go_to photos, then photos show albums.",
             "actions": [
                 "create",
+                "new_dynamic",
                 "open",
                 "refresh",
                 "retry"
@@ -168,9 +169,10 @@
         },
         {
             "name": "album",
-            "description": "One album's page: its photos, rename, cover and removal (owner or write access). Reached by: albums open <id> or albums create <name>.",
+            "description": "One album's page: its photos, rename, cover and removal (owner or write access; never for a dynamic album, whose owner edits its rules instead). Reached by: albums open <id> or albums create <name>.",
             "actions": [
                 "close_photo",
+                "edit_rules",
                 "more",
                 "open",
                 "refresh",
@@ -178,6 +180,24 @@
                 "rename",
                 "retry",
                 "set_cover"
+            ]
+        },
+        {
+            "name": "album_rules",
+            "description": "The rule editor of a dynamic album: people and tags (any or all), place, camera, kind, capture days, with a live count of the photos they match; save creates the album or saves its rules. Reached by: albums new_dynamic, or album edit_rules on your own dynamic album.",
+            "actions": [
+                "cancel",
+                "clear_camera",
+                "clear_place",
+                "match",
+                "save",
+                "set_camera",
+                "set_dates",
+                "set_kind",
+                "set_name",
+                "set_place",
+                "toggle_person",
+                "toggle_tag"
             ]
         },
         {

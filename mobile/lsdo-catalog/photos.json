@@ -49,9 +49,10 @@
                     "album",
                     "search",
                     "section",
-                    "filtered"
+                    "filtered",
+                    "album_rules"
                 ],
-                "description": "The page shown: home (the sub-tabs), album, search, section (one Explore list) or filtered (a timeline opened from Explore)"
+                "description": "The page shown: home (the sub-tabs), album, search, section (one Explore list) or filtered (a timeline opened from Explore) or album_rules (a new dynamic album's rules)"
             },
             "mode": {
                 "type": "string",

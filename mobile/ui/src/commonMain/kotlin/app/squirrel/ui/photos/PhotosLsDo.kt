@@ -26,11 +26,12 @@ enum class PhotosPage {
     @SerialName("search") Search,
     @SerialName("section") Section,
     @SerialName("filtered") Filtered,
+    @SerialName("album_rules") AlbumRules,
 }
 
 @Serializable
 data class PhotosView(
-    @Doc("The page shown: home (the sub-tabs), album, search, section (one Explore list) or filtered (a timeline opened from Explore)") val page: PhotosPage = PhotosPage.Home,
+    @Doc("The page shown: home (the sub-tabs), album, search, section (one Explore list) or filtered (a timeline opened from Explore) or album_rules (a new dynamic album's rules)") val page: PhotosPage = PhotosPage.Home,
     @Doc("The sub-tab of home (kept while another page is on top)") val mode: PhotosMode = PhotosMode.Timeline,
     @Doc("The album, section or filtered timeline's title; null at home and in search") val title: String? = null,
     @Doc("The album shown, on an album page") val albumId: String? = null,
@@ -81,5 +82,6 @@ class PhotosLsDo(private val nav: Navigator<PhotosRoute>, mode: PhotosMode, priv
         PhotosRoute.Search -> PhotosView(PhotosPage.Search, mode, depth = stack.size)
         is PhotosRoute.Section -> PhotosView(PhotosPage.Section, mode, top.section.title, depth = stack.size)
         is PhotosRoute.Filtered -> PhotosView(PhotosPage.Filtered, mode, top.title, depth = stack.size)
+        is PhotosRoute.NewDynamicAlbum -> PhotosView(PhotosPage.AlbumRules, mode, "New dynamic album", depth = stack.size)
     }
 }

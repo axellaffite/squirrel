@@ -44,6 +44,7 @@ import app.squirrel.ui.shell.SystemBack
 import app.squirrel.ui.viewer.ViewerHost
 import app.squirrel.ui.viewer.ViewerRequest
 import io.github.axellaffite.lsdo.compose.RegisterLsDo
+import kotlin.random.Random
 
 /** The pages of the Photos tab. */
 sealed interface PhotosRoute {
@@ -52,6 +53,9 @@ sealed interface PhotosRoute {
     data object Search : PhotosRoute
     data class Section(val section: ExploreSection) : PhotosRoute
     data class Filtered(val filter: PhotoFilter, val title: String) : PhotosRoute
+
+    /** The rule editor of a new dynamic album; [token] gives each opening its own editor. */
+    data class NewDynamicAlbum(val token: Long = Random.nextLong()) : PhotosRoute
 }
 
 /** Photos: "Timeline | Albums | Explore", albums, Explore's pages, search, and the viewer. */
@@ -69,6 +73,14 @@ fun PhotosTab(graph: AppGraph) {
     when (val route = stack.last()) {
         PhotosRoute.Home -> PhotosHome(graph, nav, mode) { modeName = it.name }
         is PhotosRoute.Album -> AlbumPage(graph, route.id, route.name, rootLabel = "Albums", onBack = { nav.pop() })
+        is PhotosRoute.NewDynamicAlbum -> {
+            val vm = viewModel(key = "album-rules-new-${route.token}") { AlbumRulesViewModel(api, albumId = null) }
+            val albums = viewModel(key = "albums") { AlbumsViewModel(api) }
+            AlbumRulesPage(api, vm, "New dynamic album", onSaved = { album ->
+                albums.refresh()
+                nav.replace(PhotosRoute.Album(album.id, album.name))
+            }, onBack = { nav.pop() })
+        }
         PhotosRoute.Search -> SearchScreen(graph, SearchKind.Photos, onBack = { nav.pop() })
         is PhotosRoute.Section -> ExploreSectionPage(api, explore(api), route.section, onBack = { nav.pop() }, onOpen = filtered(nav))
         is PhotosRoute.Filtered -> FilteredTimeline(
@@ -93,6 +105,7 @@ private fun PhotosHome(graph: AppGraph, nav: Navigator<PhotosRoute>, mode: Photo
     var selected by remember { mutableStateOf(emptySet<String>()) }
     var picking by remember { mutableStateOf<List<String>?>(null) }
     var naming by remember { mutableStateOf(false) }
+    var choosing by remember { mutableStateOf(false) }
     var notice by remember { mutableStateOf<String?>(null) }
     val timeline = viewModel(key = "timeline") { PhotosViewModel(api) }
     val albums = viewModel(key = "albums") { AlbumsViewModel(api) }
@@ -111,7 +124,7 @@ private fun PhotosHome(graph: AppGraph, nav: Navigator<PhotosRoute>, mode: Photo
     Box(Modifier.fillMaxSize()) {
         Column(Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(Tokens.space2)) {
             PageHeader("Photos", actions = {
-                if (mode == PhotosMode.Albums) IconButton(SquirrelIcon.Plus, label = "New album", onClick = { naming = true })
+                if (mode == PhotosMode.Albums) IconButton(SquirrelIcon.Plus, label = "New album", onClick = { choosing = true })
                 IconButton(SquirrelIcon.Search, label = "Search photos", onClick = { nav.push(PhotosRoute.Search) })
             })
             SegmentedControl(PhotosMode.entries.map { it.label }, mode.ordinal, onSelect = { onMode(PhotosMode.entries[it]) })
@@ -131,7 +144,7 @@ private fun PhotosHome(graph: AppGraph, nav: Navigator<PhotosRoute>, mode: Photo
                 }
                 PhotosMode.Albums -> {
                     val open: (AlbumDto) -> Unit = { nav.push(PhotosRoute.Album(it.id, it.name)) }
-                    RegisterLsDo("albums", remember(albums) { AlbumsLsDo(albums, api, scope, open) })
+                    RegisterLsDo("albums", remember(albums) { AlbumsLsDo(albums, api, scope, onNewDynamic = { nav.push(PhotosRoute.NewDynamicAlbum()) }, onOpen = open) })
                     AlbumsGrid(api, albums, open)
                 }
                 PhotosMode.Explore -> ExploreOverview(api, explore(api), onSeeAll = { nav.push(PhotosRoute.Section(it)) }, onOpen = filtered(nav))
@@ -145,6 +158,13 @@ private fun PhotosHome(graph: AppGraph, nav: Navigator<PhotosRoute>, mode: Photo
     }
     picking?.let { ids ->
         AlbumPickerSheet(api, ids, onDone = onAdded, onClose = { picking = null })
+    }
+    if (choosing) {
+        NewAlbumSheet(
+            onManual = { choosing = false; naming = true },
+            onDynamic = { choosing = false; nav.push(PhotosRoute.NewDynamicAlbum()) },
+            onClose = { choosing = false },
+        )
     }
     if (naming) {
         NameSheet("New album", "Create album", validate = ::albumNameProblem, onSubmit = { name ->

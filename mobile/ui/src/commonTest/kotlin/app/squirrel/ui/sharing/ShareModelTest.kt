@@ -25,7 +25,7 @@ class ShareModelTest {
 
     private val sent = mutableListOf<String>()
 
-    private suspend fun model(scope: CoroutineScope, subject: Subject = Subject.Album("al")) = ShareModel(testApi { request ->
+    private suspend fun model(scope: CoroutineScope, subject: Subject = Subject.Album("al"), readOnly: Boolean = false) = ShareModel(testApi { request ->
         val path = request.url.encodedPath
         when {
             path == "/api/shares" && request.method == HttpMethod.Get -> {
@@ -44,7 +44,7 @@ class ShareModelTest {
             path == "/api/shares/s1" && request.method == HttpMethod.Delete -> respond("", HttpStatusCode.NoContent)
             else -> respondError(HttpStatusCode.NotFound)
         }
-    }, subject, scope)
+    }, subject, scope, readOnly)
 
     private fun scoped(block: suspend (CoroutineScope) -> Unit) = runReal {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
@@ -86,5 +86,18 @@ class ShareModelTest {
         model.share()
         assertEquals("No account is called nobody.", model.state.await { it.error != "Enter a username." && it.error != null }.error)
         assertEquals("nobody", model.state.value.username)
+    }
+
+    @Test
+    fun aReadOnlySubjectIsOnlySharedForViewing() = scoped { scope ->
+        val model = model(scope, readOnly = true)
+        model.load()
+        val anna = model.state.await { it.shares != null }.shares.orEmpty().single()
+        model.setPermission(SharePermission.write)
+        assertEquals(SharePermission.read, model.state.value.permission)
+        assertEquals("Dynamic albums are shared read-only.", model.changeTo(anna, SharePermission.write))
+        model.setUsername("bob")
+        assertEquals(null, model.shareTyped())
+        assertTrue(sent.single().contains("\"permission\":\"read\""), sent.single())
     }
 }

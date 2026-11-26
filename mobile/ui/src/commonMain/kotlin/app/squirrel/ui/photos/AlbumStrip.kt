@@ -43,7 +43,7 @@ fun AlbumStrip(api: SquirrelApi, vm: AlbumsViewModel, onOpen: (AlbumDto) -> Unit
             contentPadding = PaddingValues(vertical = Tokens.space2),
         ) {
             items(albums, key = { it.id }) { album ->
-                CoverCard(api, album.cover, album.name, photoCount(album.itemCount), onClick = { onOpen(album) }, modifier = Modifier.width(Tokens.albumMin))
+                CoverCard(api, album.cover, album.name, albumMeta(album), onClick = { onOpen(album) }, modifier = Modifier.width(Tokens.albumMin), icon = albumIcon(album))
             }
         }
     }

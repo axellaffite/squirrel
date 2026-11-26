@@ -1,6 +1,6 @@
 {
     "name": "albums",
-    "description": "The album list: open, create. Reached by: app go_to photos, then photos show albums.",
+    "description": "The album list: open, create, new_dynamic (a dynamic album, from rules). Reached by: app go_to photos, then photos show albums.",
     "actions": [
         {
             "name": "create",
@@ -15,6 +15,14 @@
                 "required": [
                     "name"
                 ]
+            }
+        },
+        {
+            "name": "new_dynamic",
+            "description": "Open the rule editor of a new dynamic album (album_rules), as + then Dynamic album does",
+            "params": {
+                "type": "object",
+                "properties": {}
             }
         },
         {
@@ -81,6 +89,10 @@
                             "type": "string",
                             "nullable": true,
                             "description": "Who shared it with you; null: your own"
+                        },
+                        "dynamic": {
+                            "type": "boolean",
+                            "description": "Its photos come from rules: none are added or removed by hand"
                         }
                     },
                     "required": [

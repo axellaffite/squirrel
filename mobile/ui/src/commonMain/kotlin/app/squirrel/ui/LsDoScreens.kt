@@ -18,6 +18,8 @@ import app.squirrel.ui.notifications.NotificationsIntent
 import app.squirrel.ui.notifications.NotificationsView
 import app.squirrel.ui.photos.AlbumIntent
 import app.squirrel.ui.photos.AlbumListView
+import app.squirrel.ui.photos.AlbumRulesIntent
+import app.squirrel.ui.photos.AlbumRulesView
 import app.squirrel.ui.photos.AlbumView
 import app.squirrel.ui.photos.AlbumsIntent
 import app.squirrel.ui.photos.PhotosIntent
@@ -77,8 +79,9 @@ val LsDoScreens: List<LsDoEntry> = listOf(
     entry("share", "The Share sheet of a folder, file, album or photo you own: share by username or with a friend's pick (share_with), change or stop a share, close. Reached by: tapping Share on something you own (a folder page's header or a row's actions, an album's header, the photo viewer); no LS-DO action opens it yet (scripts/lsdo ui shows the button).", lsdoSpec<ShareView, ShareIntent>()),
     entry("photos", "The Photos section's navigation: show timeline / albums / explore, open search, back. Reached by: app go_to photos.", lsdoSpec<PhotosView, PhotosIntent>()),
     entry("timeline", "Photos by month: page, open a photo, add photos to an album; also the filtered timeline opened from explore. Reached by: app go_to photos (the default), or explore open <id>.", lsdoSpec<TimelineView, TimelineIntent>()),
-    entry("albums", "The album list: open, create. Reached by: app go_to photos, then photos show albums.", lsdoSpec<AlbumListView, AlbumsIntent>()),
-    entry("album", "One album's page: its photos, rename, cover and removal (owner or write access). Reached by: albums open <id> or albums create <name>.", lsdoSpec<AlbumView, AlbumIntent>()),
+    entry("albums", "The album list: open, create, new_dynamic (a dynamic album, from rules). Reached by: app go_to photos, then photos show albums.", lsdoSpec<AlbumListView, AlbumsIntent>()),
+    entry("album", "One album's page: its photos, rename, cover and removal (owner or write access; never for a dynamic album, whose owner edits its rules instead). Reached by: albums open <id> or albums create <name>.", lsdoSpec<AlbumView, AlbumIntent>()),
+    entry("album_rules", "The rule editor of a dynamic album: people and tags (any or all), place, camera, kind, capture days, with a live count of the photos they match; save creates the album or saves its rules. Reached by: albums new_dynamic, or album edit_rules on your own dynamic album.", lsdoSpec<AlbumRulesView, AlbumRulesIntent>()),
     entry("explore", "People, places, tags and cameras: open a card (a filtered timeline), see all of a section. Reached by: app go_to photos, then photos show explore.", lsdoSpec<ExploreView, ExploreIntent>()),
     entry("photo_search", "Photo search: text, filter, order, open a result. Reached by: app go_to photos, then photos search.", lsdoSpec<PhotoSearchView, PhotoSearchIntent>()),
     entry("backup", "Backup status, progress, counts and failures: back up now, retry failures, open settings. Needs photo access (else only refresh). Reached by: app go_to backup.", lsdoSpec<BackupView, BackupIntent>()),

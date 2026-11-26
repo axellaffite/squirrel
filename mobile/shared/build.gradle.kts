@@ -63,9 +63,12 @@ tasks.named("openApiGenerate") {
     val models = generatedApiDir.map { it.dir("src/commonMain/kotlin/app/squirrel/api/models") }
     doLast {
         val requiredAccess = "@Required val access: AccessLevel,"
+        // Servers before dynamic albums leave `dynamic` out: their albums are all manual.
+        val requiredDynamic = "@Required val `dynamic`: kotlin.Boolean,"
         models.get().asFile.listFiles().orEmpty().filter { it.extension == "kt" }.forEach { file ->
             val text = file.readText()
             val patched = text.replace(requiredAccess, "val access: AccessLevel = AccessLevel.owner,")
+                .replace(requiredDynamic, "val `dynamic`: kotlin.Boolean = false,")
             if (patched != text) file.writeText(patched)
         }
     }

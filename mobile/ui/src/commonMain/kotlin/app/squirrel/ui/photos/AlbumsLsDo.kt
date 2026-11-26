@@ -23,9 +23,10 @@ data class AlbumRow(
     @Doc("Photos in it") val count: Long,
     @Doc("What you may do with it: owner, write (add and remove your own photos) or read") val access: AccessLevel,
     @Doc("Who shared it with you; null: your own") val sharedBy: String? = null,
+    @Doc("Its photos come from rules: none are added or removed by hand") val dynamic: Boolean = false,
 )
 
-private fun AlbumDto.row() = AlbumRow(id, name, itemCount, access, sharedBy?.let(::memberName))
+private fun AlbumDto.row() = AlbumRow(id, name, itemCount, access, sharedBy?.let(::memberName), dynamic)
 
 @Serializable
 data class AlbumListView(
@@ -44,6 +45,9 @@ sealed interface AlbumsIntent {
     @Serializable @SerialName("create") @Doc("New album, as the + button does; its page opens once created")
     data class Create(val name: String) : AlbumsIntent
 
+    @Serializable @SerialName("new_dynamic") @Doc("Open the rule editor of a new dynamic album (album_rules), as + then Dynamic album does")
+    data object NewDynamic : AlbumsIntent
+
     @Serializable @SerialName("refresh") @Doc("Reload the list, as pulling down does")
     data object Refresh : AlbumsIntent
 
@@ -56,6 +60,7 @@ class AlbumsLsDo(
     private val vm: AlbumsViewModel,
     private val api: SquirrelApi,
     scope: CoroutineScope,
+    private val onNewDynamic: () -> Unit = {},
     private val onOpen: (AlbumDto) -> Unit,
 ) : LsDoScreen<AlbumListView, AlbumsIntent> {
     override val lsdo = lsdoSpec<AlbumListView, AlbumsIntent>()
@@ -70,6 +75,7 @@ class AlbumsLsDo(
             done { onOpen(album) }
         }
         is AlbumsIntent.Create -> create(intent.name)
+        AlbumsIntent.NewDynamic -> done(onNewDynamic)
         AlbumsIntent.Refresh -> done { vm.refresh() }
         AlbumsIntent.Retry -> done { vm.load() }
     }
@@ -87,7 +93,7 @@ class AlbumsLsDo(
     }
 
     override fun availableIntents(state: AlbumListView): Set<String> = buildSet {
-        addAll(listOf("create", "refresh"))
+        addAll(listOf("create", "new_dynamic", "refresh"))
         if (!state.albums.isNullOrEmpty()) add("open")
         if (state.error != null) add("retry")
     }
@@ -102,6 +108,7 @@ data class AlbumView(
     @Doc("Photos in it; null until its details arrive") val count: Long? = null,
     @Doc("What you may do: owner (rename, set the cover, remove), write (remove your own photos) or read; null until its details arrive") val access: AccessLevel? = null,
     @Doc("Who shared it with you; null: your own") val sharedBy: String? = null,
+    @Doc("Its photos come from rules (no remove; the owner edits them with edit_rules)") val dynamic: Boolean = false,
     @Doc("Its photos loaded so far, page by page (more)") val photos: List<PhotoRow> = emptyList(),
     @Doc("Every photo of it is loaded") val complete: Boolean = false,
     val loading: Boolean = false,
@@ -139,6 +146,9 @@ sealed interface AlbumIntent {
     @Serializable @SerialName("remove")
     @Doc("Take loaded photos out of the album (they stay in the timeline), as selecting them and Remove does. Owner or write access; with write, only the photos you added go")
     data class Remove(@Doc("Photo ids from photos") val ids: List<String>) : AlbumIntent
+
+    @Serializable @SerialName("edit_rules") @Doc("Open the rule editor (album_rules), as the sliders button does. Owner of a dynamic album only")
+    data object EditRules : AlbumIntent
 }
 
 /**
@@ -153,6 +163,7 @@ class AlbumLsDo(
     scope: CoroutineScope,
     private val onOpen: (String) -> Unit,
     private val onClose: () -> Unit,
+    private val onEditRules: () -> Unit = {},
     private val onNotice: (String, Boolean) -> Unit,
 ) : LsDoScreen<AlbumView, AlbumIntent> {
     val overlay = OverlayMirror()
@@ -167,6 +178,7 @@ class AlbumLsDo(
             count = album?.itemCount,
             access = album?.access,
             sharedBy = album?.sharedBy?.let(::memberName),
+            dynamic = album?.dynamic == true,
             photos = s.items.map { it.row() },
             complete = s.complete,
             loading = s.loading,
@@ -188,7 +200,9 @@ class AlbumLsDo(
         AlbumIntent.ClosePhoto -> done(onClose)
         is AlbumIntent.Rename -> rename(intent.name)
         is AlbumIntent.SetCover -> missingPhotos(listOf(intent.id), shown, "this album") ?: setCover(intent.id)
-        is AlbumIntent.Remove -> missingPhotos(intent.ids, shown, "this album") ?: remove(intent.ids)
+        is AlbumIntent.Remove ->
+            if (state.value.dynamic) "A dynamic album's photos come from its rules: none can be removed." else missingPhotos(intent.ids, shown, "this album") ?: remove(intent.ids)
+        AlbumIntent.EditRules -> if (state.value.dynamic && state.value.access == AccessLevel.owner) done(onEditRules) else "Only the owner of a dynamic album edits its rules."
     }
 
     /** What the rename sheet does: check the name, save it, read the album again. */
@@ -224,7 +238,8 @@ class AlbumLsDo(
         if (state.viewing == null) add("open") else add("close_photo")
         val can = Abilities.of(state.access ?: AccessLevel.read)
         if (can.owner) addAll(listOf("rename", "set_cover"))
-        if (can.edit) add("remove")
+        if (can.edit && !state.dynamic) add("remove")
+        if (can.owner && state.dynamic) add("edit_rules")
     }
 
     override fun isBusy(state: AlbumView): Boolean = state.loading || state.refreshing

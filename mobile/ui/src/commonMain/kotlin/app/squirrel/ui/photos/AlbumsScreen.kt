@@ -38,6 +38,10 @@ import app.squirrel.ui.OnForeground
 import app.squirrel.ui.PullableColumn
 import app.squirrel.theme.tabular
 import app.squirrel.ui.images.Thumbnail
+import app.squirrel.ui.explore.photoCount
+import app.squirrel.theme.components.ListRow
+import app.squirrel.theme.components.RowGroup
+import app.squirrel.theme.components.Sheet
 
 /** MASTER.md album cards: two columns of white cards, a 4:3 cover, the name and the count. */
 @Composable
@@ -70,8 +74,27 @@ fun AlbumsGrid(api: SquirrelApi, vm: AlbumsViewModel, onOpen: (AlbumDto) -> Unit
 
 @Composable
 private fun AlbumCard(api: SquirrelApi, album: AlbumDto, onClick: () -> Unit) {
-    val count = "${formatCount(album.itemCount)} ${if (album.itemCount == 1L) "photo" else "photos"}"
-    CoverCard(api, album.cover, album.name, count, onClick = onClick)
+    CoverCard(api, album.cover, album.name, albumMeta(album), onClick = onClick, icon = albumIcon(album))
+}
+
+/** "12 photos", and "· Dynamic" for an album whose photos come from rules. */
+fun albumMeta(album: AlbumDto): String = if (album.dynamic) "${photoCount(album.itemCount)} · Dynamic" else photoCount(album.itemCount)
+
+/** An empty album's cover icon: sparkles mark a dynamic one. */
+fun albumIcon(album: AlbumDto): SquirrelIcon = if (album.dynamic) SquirrelIcon.Sparkles else SquirrelIcon.Library
+
+/**
+ * The + button's choice: an album one fills by hand, or a dynamic one whose photos come from
+ * rules (people, tags, place…).
+ */
+@Composable
+fun NewAlbumSheet(onManual: () -> Unit, onDynamic: () -> Unit, onClose: () -> Unit) {
+    Sheet("New album", onDismiss = onClose) {
+        RowGroup {
+            ListRow("Album", icon = SquirrelIcon.Library, meta = "Choose its photos yourself", onClick = onManual)
+            ListRow("Dynamic album", icon = SquirrelIcon.Sparkles, meta = "Filled by rules: people, tags, places…", onClick = onDynamic)
+        }
+    }
 }
 
 /** One album's photos in justified rows. */

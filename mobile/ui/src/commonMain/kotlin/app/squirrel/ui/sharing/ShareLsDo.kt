@@ -27,6 +27,7 @@ data class ShareView(
     @Doc("The permission chosen for the next share (Write); else Read") val canEdit: Boolean = false,
     val error: String? = null,
     @Doc("A share is in flight") val busy: Boolean = false,
+    @Doc("Shares are view only (a dynamic album): no set_permission, no change") val readOnly: Boolean = false,
 )
 
 /** What an agent can do in the Share sheet (LS-DO); each maps to the call the sheet makes. */
@@ -53,7 +54,7 @@ sealed interface ShareIntent {
 
 private fun permissionOf(canEdit: Boolean) = if (canEdit) SharePermission.write else SharePermission.read
 
-internal fun shareView(name: String, state: ShareState) = ShareView(
+internal fun shareView(name: String, state: ShareState, readOnly: Boolean = false) = ShareView(
     name = name,
     shares = state.shares?.map { ShareRow(it.person.username, it.person.displayName, it.permission == SharePermission.write) },
     picks = state.picks.map { FriendRow(it.username, it.displayName) },
@@ -61,6 +62,7 @@ internal fun shareView(name: String, state: ShareState) = ShareView(
     canEdit = state.permission == SharePermission.write,
     error = state.error,
     busy = state.busy,
+    readOnly = readOnly,
 )
 
 /** The Share sheet as an LS-DO screen ("share"), while it is open. */
@@ -70,10 +72,11 @@ class ShareLsDo(
     private val onClose: () -> Unit,
 ) : LsDoScreen<ShareView, ShareIntent> {
     override val lsdo = lsdoSpec<ShareView, ShareIntent>()
-    override val state: StateFlow<ShareView> = model.state.mapState { shareView(name, it) }
+    override val state: StateFlow<ShareView> = model.state.mapState { shareView(name, it, model.readOnly) }
 
     override suspend fun perform(intent: ShareIntent): String? = when (intent) {
-        is ShareIntent.SetPermission -> null.also { model.setPermission(permissionOf(intent.canEdit)) }
+        is ShareIntent.SetPermission ->
+            if (model.readOnly && intent.canEdit) READ_ONLY_SHARES else null.also { model.setPermission(permissionOf(intent.canEdit)) }
         is ShareIntent.Share -> {
             model.setUsername(intent.username)
             model.shareTyped()
@@ -89,9 +92,13 @@ class ShareLsDo(
     }
 
     override fun availableIntents(state: ShareView): Set<String> = buildSet {
-        addAll(listOf("set_permission", "share", "close"))
+        addAll(listOf("share", "close"))
+        if (!state.readOnly) add("set_permission")
         if (state.picks.isNotEmpty()) add("share_with")
-        if (!state.shares.isNullOrEmpty()) addAll(listOf("change", "stop"))
+        if (!state.shares.isNullOrEmpty()) {
+            add("stop")
+            if (!state.readOnly) add("change")
+        }
     }
 
     override fun isBusy(state: ShareView): Boolean = state.busy || (state.shares == null && state.error == null)

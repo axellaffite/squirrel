@@ -104,7 +104,9 @@ fun SharedList(api: SquirrelApi, vm: SharedViewModel, onFriends: () -> Unit, onO
         }
     }
     state.managing?.let { item ->
-        subjectOf(item)?.let { subject -> ShareSheet(api, subject, subjectName(item), onClose = vm::doneManaging) }
+        subjectOf(item)?.let { subject ->
+            ShareSheet(api, subject, subjectName(item), onClose = vm::doneManaging, readOnly = item.album?.dynamic == true)
+        }
     }
 }
 

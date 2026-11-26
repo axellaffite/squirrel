@@ -1,10 +1,18 @@
 {
     "name": "album",
-    "description": "One album's page: its photos, rename, cover and removal (owner or write access). Reached by: albums open <id> or albums create <name>.",
+    "description": "One album's page: its photos, rename, cover and removal (owner or write access; never for a dynamic album, whose owner edits its rules instead). Reached by: albums open <id> or albums create <name>.",
     "actions": [
         {
             "name": "close_photo",
             "description": "Close the viewer. Only while a photo is open (viewing set)",
+            "params": {
+                "type": "object",
+                "properties": {}
+            }
+        },
+        {
+            "name": "edit_rules",
+            "description": "Open the rule editor (album_rules), as the sliders button does. Owner of a dynamic album only",
             "params": {
                 "type": "object",
                 "properties": {}
@@ -130,6 +138,10 @@
                 "type": "string",
                 "nullable": true,
                 "description": "Who shared it with you; null: your own"
+            },
+            "dynamic": {
+                "type": "boolean",
+                "description": "Its photos come from rules (no remove; the owner edits them with edit_rules)"
             },
             "photos": {
                 "type": "array",

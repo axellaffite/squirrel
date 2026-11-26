@@ -1,0 +1,411 @@
+{
+    "name": "album_rules",
+    "description": "The rule editor of a dynamic album: people and tags (any or all), place, camera, kind, capture days, with a live count of the photos they match; save creates the album or saves its rules. Reached by: albums new_dynamic, or album edit_rules on your own dynamic album.",
+    "actions": [
+        {
+            "name": "cancel",
+            "description": "Leave without saving, as back does",
+            "params": {
+                "type": "object",
+                "properties": {}
+            }
+        },
+        {
+            "name": "clear_camera",
+            "description": "Any camera",
+            "params": {
+                "type": "object",
+                "properties": {}
+            }
+        },
+        {
+            "name": "clear_place",
+            "description": "Any place",
+            "params": {
+                "type": "object",
+                "properties": {}
+            }
+        },
+        {
+            "name": "match",
+            "description": "Whether photos need any or all of the people (group people) or tags (group tags)",
+            "params": {
+                "type": "object",
+                "properties": {
+                    "group": {
+                        "type": "string"
+                    },
+                    "mode": {
+                        "type": "string",
+                        "enum": [
+                            "any",
+                            "all",
+                            "unknown_default_open_api"
+                        ]
+                    }
+                },
+                "required": [
+                    "group",
+                    "mode"
+                ]
+            }
+        },
+        {
+            "name": "save",
+            "description": "Create the album (it opens) or save the rules (back to the album), as the button does",
+            "params": {
+                "type": "object",
+                "properties": {}
+            }
+        },
+        {
+            "name": "set_camera",
+            "description": "Only photos from this camera make (and model)",
+            "params": {
+                "type": "object",
+                "properties": {
+                    "make": {
+                        "type": "string"
+                    },
+                    "model": {
+                        "type": "string",
+                        "nullable": true
+                    }
+                },
+                "required": [
+                    "make"
+                ]
+            }
+        },
+        {
+            "name": "set_dates",
+            "description": "The capture days, YYYY-MM-DD, both included; empty: open-ended",
+            "params": {
+                "type": "object",
+                "properties": {
+                    "from": {
+                        "type": "string"
+                    },
+                    "to": {
+                        "type": "string"
+                    }
+                }
+            }
+        },
+        {
+            "name": "set_kind",
+            "description": "photo, screenshot, or null for both",
+            "params": {
+                "type": "object",
+                "properties": {
+                    "kind": {
+                        "type": "string",
+                        "enum": [
+                            "photo",
+                            "screenshot",
+                            "unknown_default_open_api"
+                        ],
+                        "nullable": true
+                    }
+                }
+            }
+        },
+        {
+            "name": "set_name",
+            "description": "Type the new album's name. Creating only",
+            "params": {
+                "type": "object",
+                "properties": {
+                    "name": {
+                        "type": "string"
+                    }
+                },
+                "required": [
+                    "name"
+                ]
+            }
+        },
+        {
+            "name": "set_place",
+            "description": "Only photos taken there; region empty: places without a region",
+            "params": {
+                "type": "object",
+                "properties": {
+                    "country": {
+                        "type": "string"
+                    },
+                    "region": {
+                        "type": "string",
+                        "nullable": true
+                    },
+                    "city": {
+                        "type": "string",
+                        "nullable": true
+                    }
+                },
+                "required": [
+                    "country"
+                ]
+            }
+        },
+        {
+            "name": "toggle_person",
+            "description": "Add or remove a person (an id of personChoices); at most 20",
+            "params": {
+                "type": "object",
+                "properties": {
+                    "id": {
+                        "type": "string"
+                    }
+                },
+                "required": [
+                    "id"
+                ]
+            }
+        },
+        {
+            "name": "toggle_tag",
+            "description": "Add or remove a tag (of tagChoices); at most 20",
+            "params": {
+                "type": "object",
+                "properties": {
+                    "tag": {
+                        "type": "string"
+                    }
+                },
+                "required": [
+                    "tag"
+                ]
+            }
+        }
+    ],
+    "state": {
+        "type": "object",
+        "properties": {
+            "creating": {
+                "type": "boolean",
+                "description": "A new dynamic album (its name is set here); else an album's rules being edited"
+            },
+            "name": {
+                "type": "string"
+            },
+            "people": {
+                "type": "array",
+                "items": {
+                    "type": "string"
+                },
+                "description": "Person ids chosen"
+            },
+            "peopleMatch": {
+                "type": "string",
+                "enum": [
+                    "any",
+                    "all",
+                    "unknown_default_open_api"
+                ],
+                "description": "Whether photos need any or all of the people"
+            },
+            "tags": {
+                "type": "array",
+                "items": {
+                    "type": "string"
+                }
+            },
+            "tagsMatch": {
+                "type": "string",
+                "enum": [
+                    "any",
+                    "all",
+                    "unknown_default_open_api"
+                ]
+            },
+            "country": {
+                "type": "string",
+                "nullable": true,
+                "description": "Country code; null: anywhere"
+            },
+            "region": {
+                "type": "string",
+                "nullable": true,
+                "description": "Region of the country; empty: places without a region"
+            },
+            "city": {
+                "type": "string",
+                "nullable": true
+            },
+            "cameraMake": {
+                "type": "string",
+                "nullable": true
+            },
+            "cameraModel": {
+                "type": "string",
+                "nullable": true
+            },
+            "kind": {
+                "type": "string",
+                "enum": [
+                    "photo",
+                    "screenshot",
+                    "unknown_default_open_api"
+                ],
+                "nullable": true,
+                "description": "photo or screenshot; null: both"
+            },
+            "takenFrom": {
+                "type": "string",
+                "description": "First capture day as typed (YYYY-MM-DD, inclusive)"
+            },
+            "takenTo": {
+                "type": "string",
+                "description": "Last capture day as typed (YYYY-MM-DD, inclusive)"
+            },
+            "problem": {
+                "type": "string",
+                "nullable": true,
+                "description": "What stops a save, or null"
+            },
+            "matching": {
+                "type": "integer",
+                "nullable": true,
+                "description": "Photos matching the rules now (the live preview); null while incomplete or loading"
+            },
+            "previewing": {
+                "type": "boolean"
+            },
+            "previewError": {
+                "type": "string",
+                "nullable": true
+            },
+            "saving": {
+                "type": "boolean"
+            },
+            "error": {
+                "type": "string",
+                "nullable": true
+            },
+            "personChoices": {
+                "type": "array",
+                "items": {
+                    "type": "object",
+                    "properties": {
+                        "id": {
+                            "type": "string",
+                            "description": "What the action takes: a person id, a tag, a country code or a camera make"
+                        },
+                        "label": {
+                            "type": "string"
+                        },
+                        "sub": {
+                            "type": "string",
+                            "nullable": true,
+                            "description": "A place's region (empty: none) or a camera's model"
+                        },
+                        "city": {
+                            "type": "string",
+                            "nullable": true,
+                            "description": "A place's city"
+                        }
+                    },
+                    "required": [
+                        "id",
+                        "label"
+                    ]
+                },
+                "description": "People that can be chosen (toggle_person)"
+            },
+            "tagChoices": {
+                "type": "array",
+                "items": {
+                    "type": "object",
+                    "properties": {
+                        "id": {
+                            "type": "string",
+                            "description": "What the action takes: a person id, a tag, a country code or a camera make"
+                        },
+                        "label": {
+                            "type": "string"
+                        },
+                        "sub": {
+                            "type": "string",
+                            "nullable": true,
+                            "description": "A place's region (empty: none) or a camera's model"
+                        },
+                        "city": {
+                            "type": "string",
+                            "nullable": true,
+                            "description": "A place's city"
+                        }
+                    },
+                    "required": [
+                        "id",
+                        "label"
+                    ]
+                },
+                "description": "Tags that can be chosen (toggle_tag)"
+            },
+            "placeChoices": {
+                "type": "array",
+                "items": {
+                    "type": "object",
+                    "properties": {
+                        "id": {
+                            "type": "string",
+                            "description": "What the action takes: a person id, a tag, a country code or a camera make"
+                        },
+                        "label": {
+                            "type": "string"
+                        },
+                        "sub": {
+                            "type": "string",
+                            "nullable": true,
+                            "description": "A place's region (empty: none) or a camera's model"
+                        },
+                        "city": {
+                            "type": "string",
+                            "nullable": true,
+                            "description": "A place's city"
+                        }
+                    },
+                    "required": [
+                        "id",
+                        "label"
+                    ]
+                },
+                "description": "Countries and cities (set_place: id is the country, sub the region, city the city)"
+            },
+            "cameraChoices": {
+                "type": "array",
+                "items": {
+                    "type": "object",
+                    "properties": {
+                        "id": {
+                            "type": "string",
+                            "description": "What the action takes: a person id, a tag, a country code or a camera make"
+                        },
+                        "label": {
+                            "type": "string"
+                        },
+                        "sub": {
+                            "type": "string",
+                            "nullable": true,
+                            "description": "A place's region (empty: none) or a camera's model"
+                        },
+                        "city": {
+                            "type": "string",
+                            "nullable": true,
+                            "description": "A place's city"
+                        }
+                    },
+                    "required": [
+                        "id",
+                        "label"
+                    ]
+                },
+                "description": "Cameras (set_camera: id is the make, sub the model)"
+            }
+        },
+        "required": [
+            "creating"
+        ]
+    }
+}

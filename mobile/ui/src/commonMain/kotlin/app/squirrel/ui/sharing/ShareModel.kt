@@ -21,6 +21,7 @@ import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 
 private const val ENTER_USERNAME = "Enter a username."
+const val READ_ONLY_SHARES = "Dynamic albums are shared read-only."
 
 data class ShareState(
     /** Null until loaded. */
@@ -38,9 +39,15 @@ data class ShareState(
 
 /**
  * The owner's Share sheet for one folder, file, album or photo: who it is shared with, sharing
- * with one more username or a friend in one tap, changing a permission, stopping.
+ * with one more username or a friend in one tap, changing a permission, stopping. [readOnly]
+ * (a dynamic album): shares are for viewing only.
  */
-class ShareModel(private val api: SquirrelApi, private val subject: Subject, private val scope: CoroutineScope) {
+class ShareModel(
+    private val api: SquirrelApi,
+    private val subject: Subject,
+    private val scope: CoroutineScope,
+    val readOnly: Boolean = false,
+) {
     private val _state = MutableStateFlow(ShareState())
     val state: StateFlow<ShareState> = _state.asStateFlow()
 
@@ -60,7 +67,10 @@ class ShareModel(private val api: SquirrelApi, private val subject: Subject, pri
 
     fun setUsername(value: String) = _state.update { it.copy(username = value) }
 
-    fun setPermission(value: SharePermission) = _state.update { it.copy(permission = value) }
+    fun setPermission(value: SharePermission) {
+        if (readOnly && value != SharePermission.read) return
+        _state.update { it.copy(permission = value) }
+    }
 
     /** Shares with the username typed; the field empties once it worked. */
     fun share() {
@@ -99,6 +109,7 @@ class ShareModel(private val api: SquirrelApi, private val subject: Subject, pri
     /** [change], awaited: the refusal, or null. */
     suspend fun changeTo(share: ShareDto, permission: SharePermission): String? {
         if (share.permission == permission) return null
+        if (readOnly && permission != SharePermission.read) return READ_ONLY_SHARES.also { message -> _state.update { it.copy(error = message) } }
         _state.update { it.copy(error = null) }
         return when (val result = call { create(share.person.username, permission) }) {
             is Outcome.Ok -> null.also { _state.update { it.copy(shares = upsertShare(it.shares.orEmpty(), result.value)) } }
@@ -117,7 +128,7 @@ class ShareModel(private val api: SquirrelApi, private val subject: Subject, pri
 
     private suspend fun add(username: String, clearField: Boolean): String? {
         _state.update { it.copy(busy = true, error = null) }
-        val result = call { create(username, _state.value.permission) }
+        val result = call { create(username, if (readOnly) SharePermission.read else _state.value.permission) }
         _state.update { s ->
             when (result) {
                 is Outcome.Ok -> s.copy(busy = false, shares = upsertShare(s.shares.orEmpty(), result.value), username = if (clearField) "" else s.username)

@@ -64,6 +64,10 @@ class AlbumEditsTest {
             SharedItemDto(owner = owner, permission = SharePermission.read, shareId = "s2", sharedAt = at, album = dto("r", "Read only")),
         )
         assertEquals(listOf("beach", "Zoo"), writableAlbums(listOf(dto("z", "Zoo")), shared).map { it.name })
+        // A dynamic album takes no photos by hand: never offered.
+        val dynamic = dto("d", "Rules").copy(dynamic = true)
+        val sharedDynamic = SharedItemDto(owner = owner, permission = SharePermission.write, shareId = "s3", sharedAt = at, album = dto("sd", "Theirs").copy(dynamic = true))
+        assertEquals(listOf("Zoo"), writableAlbums(listOf(dto("z", "Zoo"), dynamic), listOf(sharedDynamic)).map { it.name })
         assertEquals("This photo is already in Zoo.", addedMessage(0, 1, "Zoo"))
         assertEquals("These photos are already in Zoo.", addedMessage(0, 3, "Zoo"))
         assertEquals("Added 1 photo to Zoo.", addedMessage(1, 3, "Zoo"))

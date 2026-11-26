@@ -43,11 +43,14 @@ import androidx.compose.ui.text.style.TextOverflow
 
 private val PERMISSIONS = listOf(SharePermission.read to "Read", SharePermission.write to "Write")
 
-/** The Share sheet ("Share “Holidays”"): add someone by username or a friend in one tap, change or stop each share. */
+/**
+ * The Share sheet ("Share “Holidays”"): add someone by username or a friend in one tap, change or
+ * stop each share. [readOnly] (a dynamic album): no Read/Write choice, every share is Read.
+ */
 @Composable
-fun ShareSheet(api: SquirrelApi, subject: Subject, name: String, onClose: () -> Unit) {
+fun ShareSheet(api: SquirrelApi, subject: Subject, name: String, onClose: () -> Unit, readOnly: Boolean = false) {
     val scope = rememberCoroutineScope()
-    val model = remember(subject) { ShareModel(api, subject, scope) }
+    val model = remember(subject, readOnly) { ShareModel(api, subject, scope, readOnly) }
     LaunchedEffect(model) { model.load() }
     val state by model.state.collectAsStateWithLifecycle()
     RegisterLsDo("share", remember(model) { ShareLsDo(model, name, onClose) })
@@ -60,7 +63,8 @@ fun ShareSheet(api: SquirrelApi, subject: Subject, name: String, onClose: () -> 
             keyboardActions = KeyboardActions(onDone = { model.share() }),
         )
         BasicText("Someone with an account on this Squirrel.", style = SquirrelTheme.type.caption)
-        SegmentedControl(PERMISSIONS.map { it.second }, PERMISSIONS.indexOfFirst { it.first == state.permission }, onSelect = { model.setPermission(PERMISSIONS[it].first) })
+        if (readOnly) BasicText(READ_ONLY_SHARES, style = SquirrelTheme.type.caption)
+        else SegmentedControl(PERMISSIONS.map { it.second }, PERMISSIONS.indexOfFirst { it.first == state.permission }, onSelect = { model.setPermission(PERMISSIONS[it].first) })
         Button("Share", onClick = model::share, enabled = !state.busy, full = true, icon = SquirrelIcon.Share)
         if (state.picks.isNotEmpty()) FriendPicks(state.picks, enabled = !state.busy, onPick = model::pick)
         state.error?.let { Alert(it, tone = AlertTone.Error) }
@@ -68,7 +72,7 @@ fun ShareSheet(api: SquirrelApi, subject: Subject, name: String, onClose: () -> 
         when {
             shares == null -> if (state.error == null) Loading()
             shares.isEmpty() -> BasicText("Not shared with anyone yet.", style = SquirrelTheme.type.caption)
-            else -> shares.forEach { share -> ShareRow(share, onChange = { model.change(share, it) }, onStop = { model.stop(share) }) }
+            else -> shares.forEach { share -> ShareRow(share, readOnly, onChange = { model.change(share, it) }, onStop = { model.stop(share) }) }
         }
     }
 }
@@ -93,9 +97,9 @@ private fun FriendPicks(picks: List<FriendDto>, enabled: Boolean, onPick: (Frien
     }
 }
 
-/** One person with access: name, @username, Read/Write, and "Stop sharing with …". */
+/** One person with access: name, @username, Read/Write (unless [readOnly]), and "Stop sharing with …". */
 @Composable
-private fun ShareRow(share: ShareDto, onChange: (SharePermission) -> Unit, onStop: () -> Unit) {
+private fun ShareRow(share: ShareDto, readOnly: Boolean, onChange: (SharePermission) -> Unit, onStop: () -> Unit) {
     val type = SquirrelTheme.type
     val name = share.person.displayName
     Card {
@@ -107,11 +111,13 @@ private fun ShareRow(share: ShareDto, onChange: (SharePermission) -> Unit, onSto
                 }
                 IconButton(SquirrelIcon.X, label = "Stop sharing with $name", onClick = onStop)
             }
-            SegmentedControl(
-                PERMISSIONS.map { it.second },
-                PERMISSIONS.indexOfFirst { it.first == share.permission },
-                onSelect = { onChange(PERMISSIONS[it].first) },
-            )
+            if (!readOnly) {
+                SegmentedControl(
+                    PERMISSIONS.map { it.second },
+                    PERMISSIONS.indexOfFirst { it.first == share.permission },
+                    onSelect = { onChange(PERMISSIONS[it].first) },
+                )
+            }
         }
     }
 }

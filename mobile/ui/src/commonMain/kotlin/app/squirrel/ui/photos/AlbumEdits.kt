@@ -27,11 +27,14 @@ fun addedMessage(changed: Long, requested: Int, album: String): String = when {
 fun removedMessage(removed: Long): String =
     if (removed == 0L) "Nothing was removed: you can only remove the photos you added." else "Removed ${photoCount(removed)} from the album."
 
-/** The albums photos can be added to: one's own and those shared for writing, by name. */
+/**
+ * The albums photos can be added to: one's own and those shared for writing, by name. Dynamic
+ * albums take their photos from their rules, never by hand: they are left out.
+ */
 fun writableAlbums(own: List<AlbumDto>, shared: List<SharedItemDto>): List<AlbumDto> {
     val ids = own.map { it.id }.toSet()
     val extra = shared.filter { it.permission == SharePermission.write }.mapNotNull { it.album }.filter { it.id !in ids }
-    return (own + extra).sortedWith(compareBy(String.CASE_INSENSITIVE_ORDER) { it.name })
+    return (own + extra).filterNot { it.dynamic }.sortedWith(compareBy(String.CASE_INSENSITIVE_ORDER) { it.name })
 }
 
 /** What the album picker offers; [ok] false: one's own albums could not be listed. */
@@ -107,6 +110,9 @@ suspend fun renameAlbum(api: SquirrelApi, id: String, name: String): Outcome<Alb
 
 suspend fun setAlbumCover(api: SquirrelApi, id: String, photoId: String): Outcome<AlbumDto> =
     call { api.albums.updateAlbum(id, UpdateAlbumRequest(coverNodeId = photoId)).bodyOrThrow() }
+
+/** What a dynamic album's page says instead of its photos' add and remove. */
+const val DYNAMIC_EMPTY_LINE = "No photo matches its rules yet. Photos that match show up here by themselves."
 
 suspend fun createAlbum(api: SquirrelApi, name: String): Outcome<AlbumDto> =
     call { api.albums.createAlbum(CreateAlbumRequest(name = name)).bodyOrThrow() }
