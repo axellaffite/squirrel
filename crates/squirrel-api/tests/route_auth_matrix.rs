@@ -94,6 +94,7 @@ const DATA: &[&str] = &[
     "/api/shares",
     "/api/shares/{id}",
     "/api/shared-with-me",
+    "/api/shared-by-me",
     "/api/friends",
     "/api/friends/{username}",
     "/api/comments",

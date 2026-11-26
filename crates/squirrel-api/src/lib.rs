@@ -272,6 +272,7 @@ fn json_routes() -> OpenApiRouter<AppState> {
         ))
         .routes(routes!(routes::shares::delete_share))
         .routes(routes!(routes::shares::shared_with_me))
+        .routes(routes!(routes::shares::shared_by_me))
         .routes(routes!(
             routes::friends::list_friends,
             routes::friends::add_friend

@@ -4470,6 +4470,37 @@
         ]
       }
     },
+    "/api/shared-by-me": {
+      "get": {
+        "tags": [
+          "sharing"
+        ],
+        "operationId": "shared_by_me",
+        "responses": {
+          "200": {
+            "description": "The caller's shared folders, files and albums, most recently shared first (from the newest 1000 shares)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/SharedByMeDto"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "device_bearer": []
+          },
+          {
+            "session_cookie": []
+          }
+        ]
+      }
+    },
     "/api/shared-with-me": {
       "get": {
         "tags": [
@@ -7814,6 +7845,50 @@
           "read",
           "write"
         ]
+      },
+      "SharedByMeDto": {
+        "type": "object",
+        "description": "One of the caller's folders, files or albums, and the people it is shared with.",
+        "required": [
+          "people",
+          "shared_at"
+        ],
+        "properties": {
+          "album": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/AlbumDto",
+                "description": "Set for an album."
+              }
+            ]
+          },
+          "node": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/NodeDto",
+                "description": "Set for a folder or file."
+              }
+            ]
+          },
+          "people": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ShareDto"
+            },
+            "description": "The people it is shared with, in sharing order (pass a share's `id` to\n`DELETE /api/shares/{id}` to stop sharing with that person)."
+          },
+          "shared_at": {
+            "type": "string",
+            "format": "date-time",
+            "description": "When it was last shared with someone."
+          }
+        }
       },
       "SharedItemDto": {
         "type": "object",
