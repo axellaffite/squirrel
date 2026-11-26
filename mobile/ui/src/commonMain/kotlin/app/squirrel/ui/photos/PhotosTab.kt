@@ -123,7 +123,11 @@ private fun PhotosHome(graph: AppGraph, nav: Navigator<PhotosRoute>, mode: Photo
                     }
                     LaunchedEffect(viewing, notice) { lsdo.overlay.shown(PhotosOverlay(viewing, notice)) }
                     RegisterLsDo("timeline", lsdo)
-                    TimelineList(api, timeline, TileActions({ viewing = it.id }, selected) { selected = it })
+                    TimelineList(api, timeline, TileActions({ viewing = it.id }, selected) { selected = it }) {
+                        item(key = "albums") {
+                            AlbumStrip(api, albums, onOpen = { nav.push(PhotosRoute.Album(it.id, it.name)) }, onSeeAll = { onMode(PhotosMode.Albums) })
+                        }
+                    }
                 }
                 PhotosMode.Albums -> {
                     val open: (AlbumDto) -> Unit = { nav.push(PhotosRoute.Album(it.id, it.name)) }

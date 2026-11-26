@@ -249,6 +249,10 @@ press. Disabled: 45 % opacity, no shadow or glow, `cursor: not-allowed`. Hover o
   `--album-ratio` (4:3) cover with `--radius-tile` (the cover's blurhash colour while loading; an empty album shows
   `--tint` with the `library` icon), the name 500 and the count `--ink-muted` tabular. Two columns on
   phones, `auto-fill` of `--album-min` from 768 px.
+- **Album strip** (phone timeline): above the first month, scrolling away with it, a section heading
+  "Albums" with a quiet "See all" (to the albums), then one row of album cards `--album-min` wide,
+  `--space-3` apart, that scrolls sideways: the 10 most recently updated albums, newest first.
+  Hidden while there is no album.
 - **Album picker**: a dialog / bottom sheet listing albums by name as rows in a `--tint` well (a
   40 px round white well with the cover, name, count), "New album…" first; the list scrolls past
   `--picker-max`.

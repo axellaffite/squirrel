@@ -10,6 +10,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.wrapContentHeight
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyListScope
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.text.BasicText
@@ -40,9 +41,12 @@ import app.squirrel.ui.PullableColumn
 /** Bottom space so the last row clears the floating rail. */
 val RailClearance = Tokens.railBarH + Tokens.frame * 2
 
-/** The timeline: month headings, justified rows, placeholder rows until each month loads. */
+/**
+ * The timeline: month headings, justified rows, placeholder rows until each month loads.
+ * [header] adds items above the first month (the album strip), scrolling away with it.
+ */
 @Composable
-fun TimelineList(api: SquirrelApi, vm: PhotosViewModel, actions: TileActions) {
+fun TimelineList(api: SquirrelApi, vm: PhotosViewModel, actions: TileActions, header: LazyListScope.() -> Unit = {}) {
     val state by vm.state.collectAsStateWithLifecycle()
     OnForeground(vm::resumed)
     when {
@@ -58,11 +62,11 @@ fun TimelineList(api: SquirrelApi, vm: PhotosViewModel, actions: TileActions) {
             return
         }
     }
-    PullToRefresh(state.refreshing, vm::refresh) { TimelineBlocks(api, vm, state, actions) }
+    PullToRefresh(state.refreshing, vm::refresh) { TimelineBlocks(api, vm, state, actions, header) }
 }
 
 @Composable
-private fun TimelineBlocks(api: SquirrelApi, vm: PhotosViewModel, state: PhotosState, actions: TileActions) {
+private fun TimelineBlocks(api: SquirrelApi, vm: PhotosViewModel, state: PhotosState, actions: TileActions, header: LazyListScope.() -> Unit) {
     BoxWithConstraints(Modifier.fillMaxSize()) {
         val width = maxWidth.value.toInt()
         val layout = remember { TimelineLayout() }
@@ -76,6 +80,7 @@ private fun TimelineBlocks(api: SquirrelApi, vm: PhotosViewModel, state: PhotosS
             verticalArrangement = Arrangement.spacedBy(Tokens.space1),
             contentPadding = PaddingValues(bottom = RailClearance),
         ) {
+            header()
             state.error?.let { error -> item(key = "error") { ErrorRetry(error, vm::retry) } }
             items(blocks, key = { it.key }, contentType = { it::class }) { block ->
                 when (block) {
