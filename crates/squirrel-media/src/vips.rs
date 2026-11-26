@@ -167,6 +167,9 @@ fn render_with(
     })
 }
 
+/// WebP and PNG go through a suffix with options, which sends only the options it names: the
+/// crate's option structs send every option, and libvips < 8.17 (Debian trixie's 8.16) rejects
+/// `webpsave`'s `exact`.
 fn encode(image: &VipsImage, format: PreviewFormat) -> Result<Vec<u8>, VipsError> {
     let saved = match format {
         PreviewFormat::Jpeg => ops::jpegsave_buffer_with_opts(
@@ -177,22 +180,12 @@ fn encode(image: &VipsImage, format: PreviewFormat) -> Result<Vec<u8>, VipsError
                 ..ops::JpegsaveBufferOptions::default()
             },
         ),
-        PreviewFormat::Webp => ops::webpsave_buffer_with_opts(
-            image,
-            &ops::WebpsaveBufferOptions {
-                q: WEBP_QUALITY,
-                keep: ForeignKeep::None,
-                ..ops::WebpsaveBufferOptions::default()
-            },
-        ),
-        PreviewFormat::Png => ops::pngsave_buffer_with_opts(
-            image,
-            &ops::PngsaveBufferOptions {
-                compression: PNG_COMPRESSION,
-                keep: ForeignKeep::None,
-                ..ops::PngsaveBufferOptions::default()
-            },
-        ),
+        PreviewFormat::Webp => {
+            image.image_write_to_buffer(&format!(".webp[Q={WEBP_QUALITY},keep=none]"))
+        }
+        PreviewFormat::Png => {
+            image.image_write_to_buffer(&format!(".png[compression={PNG_COMPRESSION},keep=none]"))
+        }
     };
     saved.map_err(failed)
 }
