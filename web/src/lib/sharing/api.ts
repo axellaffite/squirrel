@@ -6,6 +6,7 @@ export type { Outcome } from '#lib/files/pages.ts';
 export type Member = components['schemas']['MemberDto'];
 export type Share = components['schemas']['ShareDto'];
 export type SharedItem = components['schemas']['SharedItemDto'];
+export type SharedByMe = components['schemas']['SharedByMeDto'];
 export type Comment = components['schemas']['CommentDto'];
 export type CommentPage = components['schemas']['CommentPage'];
 export type Permission = components['schemas']['SharePermission'];
@@ -41,6 +42,9 @@ export const deleteShare = (id: string): Promise<Outcome<unknown>> =>
 	call(api.DELETE('/api/shares/{id}', { params: { path: { id } } }));
 
 export const sharedWithMe = (): Promise<Outcome<SharedItem[]>> => call(api.GET('/api/shared-with-me'));
+
+/** The caller's folders, files and albums shared with someone, with those people. */
+export const sharedByMe = (): Promise<Outcome<SharedByMe[]>> => call(api.GET('/api/shared-by-me'));
 
 export const listComments = (subject: Subject, cursor: string | null): Promise<Outcome<CommentPage>> =>
 	call(

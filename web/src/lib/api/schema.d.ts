@@ -950,6 +950,22 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/shared-by-me": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["shared_by_me"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/shared-with-me": {
         parameters: {
             query?: never;
@@ -2057,6 +2073,21 @@ export interface components {
         };
         /** @enum {string} */
         SharePermission: "read" | "write";
+        /** @description One of the caller's folders, files or albums, and the people it is shared with. */
+        SharedByMeDto: {
+            album?: null | components["schemas"]["AlbumDto"];
+            node?: null | components["schemas"]["NodeDto"];
+            /**
+             * @description The people it is shared with, in sharing order (pass a share's `id` to
+             *     `DELETE /api/shares/{id}` to stop sharing with that person).
+             */
+            people: components["schemas"]["ShareDto"][];
+            /**
+             * Format: date-time
+             * @description When it was last shared with someone.
+             */
+            shared_at: string;
+        };
         /** @description Something shared with the caller: a folder, a file or an album. */
         SharedItemDto: {
             album?: null | components["schemas"]["AlbumDto"];
@@ -5158,6 +5189,26 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["SetupStatus"];
+                };
+            };
+        };
+    };
+    shared_by_me: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The caller's shared folders, files and albums, most recently shared first (from the newest 1000 shares) */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SharedByMeDto"][];
                 };
             };
         };

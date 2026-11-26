@@ -72,6 +72,17 @@ test('shares a folder read-only and an album for writing, with comments both way
 	await expect(bob.getByRole('heading', { level: 1, name: albumName })).toBeVisible();
 	await expect(bob.getByRole('button', { name: 'Delete album' })).toHaveCount(0);
 
+	// Alice finds both under "Shared by me", with Bob named, and manages the folder's sharing from there.
+	await alice.goto('/shared');
+	const byMe = alice.getByRole('region', { name: 'Shared by me' });
+	const mine = byMe.getByTestId('shared-by-me-item').filter({ hasText: folder.name });
+	await expect(mine).toContainText('With bob');
+	await expect(byMe.getByTestId('shared-by-me-album').filter({ hasText: albumName })).toContainText('With bob');
+	await mine.getByRole('button', { name: `Manage sharing of ${folder.name}` }).click();
+	await expect(openDialog(alice).getByTestId('share-row')).toContainText(`@${bobName}`);
+	await openDialog(alice).getByRole('button', { name: 'Close' }).click();
+	await expect(openDialog(alice)).toHaveCount(0);
+
 	// Bob leaves the folder.
 	await bob.goto('/shared');
 	await bob.getByRole('button', { name: `Leave ${folder.name}` }).click();
