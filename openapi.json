@@ -2970,6 +2970,111 @@
         ]
       }
     },
+    "/api/me/blur-filter": {
+      "get": {
+        "tags": [
+          "photos"
+        ],
+        "operationId": "get_blur_filter",
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BlurFilterDto"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "device_bearer": []
+          },
+          {
+            "session_cookie": []
+          }
+        ]
+      },
+      "put": {
+        "tags": [
+          "photos"
+        ],
+        "operationId": "update_blur_filter",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BlurFilterDto"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BlurFilterDto"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Rules with a search text: `ml_unavailable` (no text model on this server) or `busy` (the text model or the label bank is not ready yet: try again)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "device_bearer": []
+          },
+          {
+            "csrf_token": [],
+            "session_cookie": []
+          }
+        ]
+      }
+    },
     "/api/me/ml-settings": {
       "get": {
         "tags": [
@@ -4017,6 +4122,54 @@
           },
           "422": {
             "description": "Invalid month or filter",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "device_bearer": []
+          },
+          {
+            "session_cookie": []
+          }
+        ]
+      }
+    },
+    "/api/photos/blurred": {
+      "get": {
+        "tags": [
+          "photos"
+        ],
+        "operationId": "blurred_photos",
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BlurredPhotosDto"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "`busy`: the library is too large to match in time",
             "content": {
               "application/json": {
                 "schema": {
@@ -6275,6 +6428,48 @@
               "null"
             ],
             "format": "uuid"
+          }
+        }
+      },
+      "BlurFilterDto": {
+        "type": "object",
+        "description": "The caller's blur filter; without one, `rules` is null and nothing is blurred.",
+        "required": [
+          "enabled"
+        ],
+        "properties": {
+          "enabled": {
+            "type": "boolean",
+            "description": "Whether clients blur the photos matching `rules`. Off keeps the rules."
+          },
+          "rules": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/AlbumRulesDto",
+                "description": "Which photos, as a dynamic album's rules (at least one condition).\n`null` on update forgets the filter."
+              }
+            ]
+          }
+        },
+        "additionalProperties": false
+      },
+      "BlurredPhotosDto": {
+        "type": "object",
+        "description": "The caller's photos their blur filter matches.",
+        "required": [
+          "node_ids"
+        ],
+        "properties": {
+          "node_ids": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "description": "Node ids of the photos to blur, newest first; empty without an enabled\nfilter."
           }
         }
       },

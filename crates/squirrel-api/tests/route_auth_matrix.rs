@@ -80,6 +80,8 @@ const DATA: &[&str] = &[
     "/api/storage",
     "/api/photos",
     "/api/photos/months",
+    "/api/photos/blurred",
+    "/api/me/blur-filter",
     "/api/photos/{id}",
     "/api/media/status",
     "/api/tags",

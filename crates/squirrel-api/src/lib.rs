@@ -232,6 +232,11 @@ fn json_routes() -> OpenApiRouter<AppState> {
         .routes(routes!(routes::trash::delete_forever))
         .routes(routes!(routes::photos::list_photos))
         .routes(routes!(routes::photos::photo_months))
+        .routes(routes!(routes::blur_filter::blurred_photos))
+        .routes(routes!(
+            routes::blur_filter::get_blur_filter,
+            routes::blur_filter::update_blur_filter
+        ))
         .routes(routes!(routes::photos::get_photo))
         .routes(routes!(routes::photos::media_status))
         .routes(routes!(routes::duplicates::list_duplicates))

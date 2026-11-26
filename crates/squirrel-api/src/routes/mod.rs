@@ -2,6 +2,7 @@ pub mod admin;
 pub mod albums;
 pub mod archive;
 pub mod auth;
+pub mod blur_filter;
 pub mod collab;
 pub mod comments;
 pub mod content;

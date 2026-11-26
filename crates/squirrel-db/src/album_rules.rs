@@ -134,11 +134,11 @@ pub struct SearchMatch {
 }
 
 impl SearchMatch {
-    fn embedding(&self) -> HalfVector {
+    pub(crate) fn embedding(&self) -> HalfVector {
         HalfVector::from_f32_slice(&self.embedding)
     }
 
-    fn rivals(&self) -> Vec<HalfVector> {
+    pub(crate) fn rivals(&self) -> Vec<HalfVector> {
         self.rivals
             .iter()
             .map(|rival| HalfVector::from_f32_slice(rival))
@@ -146,9 +146,9 @@ impl SearchMatch {
     }
 }
 
+/// A rule's columns, as `album_rules` and `blur_filters` store them.
 #[derive(FromRow)]
-struct RulesRow {
-    album_id: Uuid,
+pub(crate) struct RuleRow {
     people: Vec<Uuid>,
     people_match: String,
     tags: Vec<String>,
@@ -164,8 +164,15 @@ struct RulesRow {
     search: Option<String>,
 }
 
-impl From<RulesRow> for AlbumRules {
-    fn from(row: RulesRow) -> Self {
+#[derive(FromRow)]
+struct RulesRow {
+    album_id: Uuid,
+    #[sqlx(flatten)]
+    rule: RuleRow,
+}
+
+impl From<RuleRow> for AlbumRules {
+    fn from(row: RuleRow) -> Self {
         Self {
             people: row.people,
             people_match: Match::parse(&row.people_match),
@@ -188,7 +195,8 @@ impl From<RulesRow> for AlbumRules {
     }
 }
 
-const RULE_COLUMNS: &str = "album_id, people, people_match, tags, tags_match, country, region, \
+/// The columns of [`RuleRow`].
+pub(crate) const RULE_FIELDS: &str = "people, people_match, tags, tags_match, country, region, \
      city, camera_make, camera_model, kind, taken_from, taken_to, search";
 
 /// The rules of those of `album_ids` that are dynamic, by album.
@@ -199,14 +207,14 @@ pub async fn find_many(
     if album_ids.is_empty() {
         return Ok(Vec::new());
     }
-    let sql = format!("SELECT {RULE_COLUMNS} FROM album_rules WHERE album_id = ANY($1)");
+    let sql = format!("SELECT album_id, {RULE_FIELDS} FROM album_rules WHERE album_id = ANY($1)");
     let rows = sqlx::query_as::<_, RulesRow>(&sql)
         .bind(album_ids)
         .fetch_all(pool)
         .await?;
     Ok(rows
         .into_iter()
-        .map(|row| (row.album_id, AlbumRules::from(row)))
+        .map(|row| (row.album_id, AlbumRules::from(row.rule)))
         .collect())
 }
 
@@ -230,7 +238,7 @@ pub(crate) async fn is_dynamic(conn: &mut PgConnection, album_id: Uuid) -> Resul
     )
 }
 
-fn dedup<T: PartialEq + Clone>(values: &[T]) -> Vec<T> {
+pub(crate) fn dedup<T: PartialEq + Clone>(values: &[T]) -> Vec<T> {
     values.iter().fold(Vec::new(), |mut kept, value| {
         if !kept.contains(value) {
             kept.push(value.clone());

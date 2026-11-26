@@ -194,18 +194,20 @@ pub async fn merge(
     .bind(from)
     .execute(&mut *tx)
     .await?;
-    // Dynamic albums naming a merged person now name the one kept.
-    sqlx::query(
-        "UPDATE album_rules \
-            SET people = ARRAY(SELECT DISTINCT CASE WHEN p = ANY($3) THEN $2 ELSE p END \
-                                 FROM unnest(people) p) \
-          WHERE owner_id = $1 AND people && $3",
-    )
-    .bind(owner)
-    .bind(into)
-    .bind(from)
-    .execute(&mut *tx)
-    .await?;
+    // Dynamic albums and the blur filter naming a merged person now name the one kept.
+    for table in ["album_rules", "blur_filters"] {
+        sqlx::query(&format!(
+            "UPDATE {table} \
+                SET people = ARRAY(SELECT DISTINCT CASE WHEN p = ANY($3) THEN $2 ELSE p END \
+                                     FROM unnest(people) p) \
+              WHERE owner_id = $1 AND people && $3"
+        ))
+        .bind(owner)
+        .bind(into)
+        .bind(from)
+        .execute(&mut *tx)
+        .await?;
+    }
     sqlx::query("DELETE FROM people WHERE owner_id = $1 AND id = ANY($2)")
         .bind(owner)
         .bind(from)

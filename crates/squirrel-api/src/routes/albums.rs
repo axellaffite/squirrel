@@ -36,7 +36,7 @@ const PREVIEW_PHOTOS: u32 = 12;
 
 /// `dto` checked, its people included (they must be the caller's), with how
 /// its search text matches (the text model encodes it).
-async fn checked_rules(
+pub(crate) async fn checked_rules(
     state: &AppState,
     user: Uuid,
     dto: &AlbumRulesDto,

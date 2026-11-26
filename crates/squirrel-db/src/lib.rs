@@ -5,6 +5,7 @@ pub mod album_rules;
 pub mod albums;
 pub mod assets;
 pub mod blobs;
+pub mod blur_filter;
 mod bounded;
 pub mod clip;
 pub mod clustering;
