@@ -53,6 +53,9 @@ pub enum ApiError {
     TooManyUploads,
     #[error("{0}")]
     Conflict(String),
+    /// A public link with a password, opened without unlocking it first.
+    #[error("this link is protected by a password")]
+    LinkLocked,
     #[error("this invitation is invalid, expired or already used")]
     InvitationInvalid,
     #[error("a file or folder with this name already exists here")]
@@ -107,6 +110,7 @@ impl ApiError {
             ApiError::MlUnavailable => (StatusCode::SERVICE_UNAVAILABLE, "ml_unavailable"),
             ApiError::TooManyUploads => (StatusCode::TOO_MANY_REQUESTS, "too_many_uploads"),
             ApiError::Conflict(_) => (StatusCode::CONFLICT, "conflict"),
+            ApiError::LinkLocked => (StatusCode::UNAUTHORIZED, "link_locked"),
             ApiError::InvitationInvalid => (StatusCode::GONE, "invitation_invalid"),
             ApiError::NameConflict => (StatusCode::CONFLICT, "name_conflict"),
             ApiError::QuotaExceeded => (StatusCode::INSUFFICIENT_STORAGE, "quota_exceeded"),

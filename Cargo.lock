@@ -3126,6 +3126,7 @@ dependencies = [
  "axum-test",
  "base64 0.22.1",
  "crc32fast",
+ "hmac",
  "http-body-util",
  "http-range-header",
  "image",

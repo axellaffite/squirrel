@@ -30,6 +30,7 @@ mod page;
 pub mod people;
 pub mod photo_filter;
 pub mod photo_search;
+pub mod public_links;
 pub mod quota;
 mod retry;
 pub mod sessions;

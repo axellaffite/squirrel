@@ -12,6 +12,7 @@ use axum::http::header::{
 use axum::http::{HeaderMap, StatusCode};
 use axum::response::{IntoResponse, Response};
 use serde::Deserialize;
+use squirrel_db::nodes::NodeRecord;
 use tokio::io::{AsyncReadExt, AsyncSeekExt};
 use tokio_util::io::ReaderStream;
 use utoipa::IntoParams;
@@ -69,22 +70,34 @@ pub async fn file_content(
     headers: HeaderMap,
 ) -> Result<Response, ApiError> {
     // Download slots are counted per caller, whoever owns the file.
-    let owner_id = caller.user.id;
-    let node = access::file(&state, owner_id, id).await?.node;
-    let hash = blob_hash(&node)?;
-    let policy = ContentPolicy::for_mime(node.mime.as_deref(), query.download);
+    let node = access::file(&state, caller.user.id, id).await?.node;
+    serve(&state, &node, caller.user.id, query.download, &headers).await
+}
+
+/// Answers a request for the bytes of file `node`, already checked to be
+/// readable. Download slots are counted per `slot_key` (a user, or a public link).
+pub(crate) async fn serve(
+    state: &AppState,
+    node: &NodeRecord,
+    slot_key: Uuid,
+    download: bool,
+    headers: &HeaderMap,
+) -> Result<Response, ApiError> {
+    let id = node.id;
+    let hash = blob_hash(node)?;
+    let policy = ContentPolicy::for_mime(node.mime.as_deref(), download);
     let disposition = content_disposition(policy.inline, &node.name);
     let etag = entity_tag(&hash, &policy, &disposition);
     // A 304 carries the same policy headers as the 200: browsers merge them
     // into the cached response, and the global layers would add `DENY`.
     let mut response_headers = policy_headers(&policy, disposition, etag.clone())?;
-    if etag_matches(header_str(&headers, IF_NONE_MATCH), &etag) {
+    if etag_matches(header_str(headers, IF_NONE_MATCH), &etag) {
         return Ok((StatusCode::NOT_MODIFIED, response_headers).into_response());
     }
 
     let slot = state
         .downloads
-        .acquire(owner_id)
+        .acquire(slot_key)
         .await
         .ok_or(ApiError::Busy)?;
     let (store, blob) = (state.storage.clone(), hash.clone());
@@ -95,7 +108,7 @@ pub async fn file_content(
                 tracing::error!(node_id = %id, %hash, "blob missing from the data directory");
             }
         })?;
-    let Some(selection) = select(header_str(&headers, RANGE), size) else {
+    let Some(selection) = select(header_str(headers, RANGE), size) else {
         let headers = [(CONTENT_RANGE, format!("bytes */{size}"))];
         return Ok((headers, ApiError::RangeNotSatisfiable).into_response());
     };

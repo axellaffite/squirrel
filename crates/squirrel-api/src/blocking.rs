@@ -1,3 +1,7 @@
+use std::sync::Arc;
+
+use tokio::sync::Semaphore;
+
 use crate::error::ApiError;
 use crate::state::AppState;
 
@@ -9,16 +13,26 @@ where
     F: FnOnce() -> T + Send + 'static,
     T: Send + 'static,
 {
-    let permit = tokio::time::timeout(
-        state.config.hash_wait,
-        state.hash_permits.clone().acquire_owned(),
-    )
-    .await
-    .map_err(|_| {
-        tracing::warn!("no password hashing slot available, answering busy");
-        ApiError::Busy
-    })?
-    .map_err(|err| ApiError::Internal(err.into()))?;
+    run_hashing_in(state, &state.hash_permits, work).await
+}
+
+/// [`run_hashing`] holding a permit of `permits` instead of the global ones.
+pub async fn run_hashing_in<T, F>(
+    state: &AppState,
+    permits: &Arc<Semaphore>,
+    work: F,
+) -> Result<T, ApiError>
+where
+    F: FnOnce() -> T + Send + 'static,
+    T: Send + 'static,
+{
+    let permit = tokio::time::timeout(state.config.hash_wait, permits.clone().acquire_owned())
+        .await
+        .map_err(|_| {
+            tracing::warn!("no password hashing slot available, answering busy");
+            ApiError::Busy
+        })?
+        .map_err(|err| ApiError::Internal(err.into()))?;
     tokio::task::spawn_blocking(move || {
         // Released only when hashing finishes, even if the request was dropped.
         let _permit = permit;

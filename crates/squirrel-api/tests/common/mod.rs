@@ -110,6 +110,21 @@ impl Instance {
 }
 
 impl Instance {
+    /// A visitor of the public listener ([`squirrel_api::public_router`]),
+    /// with its own cookie jar.
+    pub fn public_browser(&self) -> TestServer {
+        let app = squirrel_api::public_router(self.state.clone())
+            .layer(Extension(self.data.clone()))
+            .layer(Extension(ConnectInfo(SocketAddr::from((
+                [127, 0, 0, 1],
+                40_000,
+            )))));
+        TestServer::builder()
+            .save_cookies()
+            .build(app)
+            .expect("test server builds")
+    }
+
     /// [`Instance::browser`] over a real socket (WebSockets need one).
     pub fn http_browser(&self) -> TestServer {
         let app = squirrel_api::router(self.state.clone())

@@ -24,7 +24,8 @@ to a long random value (the server warns below 16 characters).
 Everyone else joins with an invitation link.
 
 Logs are sensitive: the first-start log contains the setup code, and with `RUST_LOG=debug`
-request logs may include invitation tokens (they appear in `/api/join/{token}` paths).
+request logs may include invitation and public link tokens (they appear in `/api/join/{token}`
+and `/api/public/{token}` paths).
 
 ### Configuration
 
@@ -35,6 +36,8 @@ request logs may include invitation tokens (they appear in `/api/join/{token}` p
 | `SQUIRREL_BIND` | `0.0.0.0:8080` | Listen address |
 | `SQUIRREL_COOKIE_SECURE` | `true` | Set to `false` only for local HTTP development |
 | `SQUIRREL_SETUP_TOKEN` | generated and logged | Setup code for the first administrator |
+| `SQUIRREL_PUBLIC_URL` | unset | Base address of public links, e.g. `https://home.tail1234.ts.net:8443`. Unset or empty: links cannot be made (see `deploy/README.md`, "Public links") |
+| `SQUIRREL_PUBLIC_BIND` | unset | Second listen address serving public links only (link pages, `/api/public/…`, web assets), e.g. `127.0.0.1:8081` |
 | `SQUIRREL_TRUSTED_PROXIES` | empty | Comma-separated IPs/CIDRs of reverse proxies whose `X-Forwarded-For` is trusted for rate limiting and logs. Leave empty when clients connect directly |
 | `SQUIRREL_LOG_JSON` | `false` | JSON logs |
 | `SQUIRREL_PREVIEW_CACHE_MB` | `1536` | Disk budget of the photo previews rendered on request (`cache/previews/`), least recently used first out |

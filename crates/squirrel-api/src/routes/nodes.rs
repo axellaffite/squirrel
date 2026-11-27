@@ -135,7 +135,7 @@ fn visible_path(path: Vec<PathSegment>, found: &NodeAccess) -> Vec<PathSegment> 
 }
 
 /// Ready thumbnails of `nodes` (the caller's own), by blob hash: one query per page.
-async fn thumbnails_of(
+pub(crate) async fn thumbnails_of(
     state: &AppState,
     nodes: &[NodeRecord],
 ) -> Result<HashMap<String, ThumbRef>, ApiError> {

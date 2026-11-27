@@ -27,6 +27,8 @@ mod notifications_dto;
 mod people_dto;
 mod photos_dto;
 pub mod previews;
+mod public_links_dto;
+mod public_unlock;
 mod rate_limit;
 mod routes;
 mod search_dto;
@@ -44,7 +46,9 @@ pub use client_ip::{TrustedProxies, TrustedProxiesError};
 pub use downloads::DownloadLimits;
 pub use error::{ApiError, ErrorBody};
 pub use setup_token::SetupToken;
-pub use state::{ApiConfig, AppState, FreeSpace, ModelsInstalled, RateLimit};
+pub use state::{
+    ApiConfig, AppState, FreeSpace, ModelsInstalled, PublicUrl, PublicUrlError, RateLimit,
+};
 pub use upload_runtime::{
     ChunkGuard, CompletionGuard, Slot, Slots, UploadLimits, UploadLocks, UploadRuntime, UserRate,
 };
@@ -81,7 +85,7 @@ const CHUNK_TIMEOUT: Duration = Duration::from_secs(5 * 60);
         (name = "storage"), (name = "jobs"), (name = "photos"), (name = "albums"),
         (name = "search"), (name = "devices"), (name = "sync"), (name = "explore"), (name = "ml"), (name = "people"),
         (name = "duplicates"), (name = "sharing"), (name = "comments"), (name = "notifications"),
-        (name = "friends")
+        (name = "friends"), (name = "public")
     ),
     // Schemas only referenced from query parameters are not collected from
     // the routes: list them here.
@@ -153,6 +157,18 @@ pub fn router(state: AppState) -> Router {
     security_headers::apply(router, hsts)
 }
 
+/// The router of the public listener (exposed to the internet): public link
+/// routes, the `/s/{token}` pages and the web assets they load. Nothing else.
+pub fn public_router(state: AppState) -> Router {
+    let (router, _) = public_link_routes(&state.config).split_for_parts();
+    let hsts = state.config.cookie_secure;
+    let router = router
+        .method_not_allowed_fallback(method_not_allowed)
+        .fallback(spa::serve_public)
+        .with_state(state);
+    security_headers::apply(router, hsts)
+}
+
 async fn method_not_allowed() -> ApiError {
     ApiError::MethodNotAllowed
 }
@@ -185,6 +201,45 @@ fn api_router(config: &ApiConfig) -> OpenApiRouter<AppState> {
     OpenApiRouter::with_openapi(ApiDoc::openapi())
         .merge(timed)
         .merge(transfer_routes(config))
+        .merge(public_link_routes(config))
+}
+
+/// Visitors of public links (`/api/public/{token}/…`), served by both
+/// listeners. The first page call and password attempts are rate limited per
+/// client; files stream without the 30 s timeout, like [`transfer_routes`].
+fn public_link_routes(config: &ApiConfig) -> OpenApiRouter<AppState> {
+    let trusted = &config.trusted_proxies;
+    let info = rate_limit::apply(
+        OpenApiRouter::new().routes(routes!(routes::public::public_link_info)),
+        config.join_check_rate_limit,
+        Method::GET,
+        trusted,
+    );
+    let unlock = rate_limit::apply(
+        OpenApiRouter::new().routes(routes!(routes::public::unlock_public_link)),
+        config.login_rate_limit,
+        Method::POST,
+        trusted,
+    )
+    .layer(DefaultBodyLimit::max(CREDENTIAL_BODY_LIMIT));
+    let browse = OpenApiRouter::new()
+        .routes(routes!(routes::public::browse::public_list_nodes))
+        .routes(routes!(routes::public::browse::public_album_items))
+        .routes(routes!(routes::public::files::public_thumbnail))
+        .routes(routes!(routes::public::files::public_create_archive))
+        .layer(DefaultBodyLimit::max(API_BODY_LIMIT));
+    let timed = info
+        .merge(unlock)
+        .merge(browse)
+        .layer(TimeoutLayer::with_status_code(
+            StatusCode::REQUEST_TIMEOUT,
+            API_TIMEOUT,
+        ));
+    let transfers = OpenApiRouter::new()
+        .routes(routes!(routes::public::files::public_file_content))
+        .routes(routes!(routes::public::files::public_download_archive))
+        .layer(DefaultBodyLimit::max(API_BODY_LIMIT));
+    timed.merge(transfers)
 }
 
 /// Ordinary JSON endpoints: small bodies. The request timeout is applied by [`api_router`].
@@ -282,6 +337,11 @@ fn json_routes() -> OpenApiRouter<AppState> {
             routes::shares::create_share
         ))
         .routes(routes!(routes::shares::delete_share))
+        .routes(routes!(
+            routes::public_links::list_public_links,
+            routes::public_links::create_public_link
+        ))
+        .routes(routes!(routes::public_links::delete_public_link))
         .routes(routes!(routes::shares::shared_with_me))
         .routes(routes!(routes::shares::shared_by_me))
         .routes(routes!(

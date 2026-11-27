@@ -4459,6 +4459,958 @@
         ]
       }
     },
+    "/api/public-links": {
+      "get": {
+        "tags": [
+          "sharing"
+        ],
+        "operationId": "list_public_links",
+        "parameters": [
+          {
+            "name": "node_id",
+            "in": "query",
+            "description": "A folder or file.",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "album_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicLinkList"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Only the owner sees its links",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "device_bearer": []
+          },
+          {
+            "session_cookie": []
+          }
+        ]
+      },
+      "post": {
+        "tags": [
+          "sharing"
+        ],
+        "operationId": "create_public_link",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreatePublicLinkRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "The link and its URL, shown only now",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CreatedPublicLink"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Only the owner makes links",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Public links are not set up on this server",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "An expiry in the past, or a password too short or too long",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "busy: no password hashing slot",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "device_bearer": []
+          },
+          {
+            "csrf_token": [],
+            "session_cookie": []
+          }
+        ]
+      }
+    },
+    "/api/public-links/{id}": {
+      "delete": {
+        "tags": [
+          "sharing"
+        ],
+        "operationId": "delete_public_link",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "Link id",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Revoked: the link no longer opens"
+          },
+          "404": {
+            "description": "No such link of the caller's",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "device_bearer": []
+          },
+          {
+            "csrf_token": [],
+            "session_cookie": []
+          }
+        ]
+      }
+    },
+    "/api/public/{token}": {
+      "get": {
+        "tags": [
+          "public"
+        ],
+        "operationId": "public_link_info",
+        "parameters": [
+          {
+            "name": "token",
+            "in": "path",
+            "description": "The token from the link",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "What the link opens, or `locked` until its password is given",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicLinkInfo"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Unknown, expired or revoked link, or its item is gone",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {}
+        ]
+      }
+    },
+    "/api/public/{token}/album/items": {
+      "get": {
+        "tags": [
+          "public"
+        ],
+        "operationId": "public_album_items",
+        "parameters": [
+          {
+            "name": "token",
+            "in": "path",
+            "description": "The token from the link",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "cursor",
+            "in": "query",
+            "description": "`next_cursor` of the previous page.",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "description": "Default 200, at most 500.",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "format": "int32",
+              "minimum": 0
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The album's photos, newest first",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TimelinePage"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "link_locked: give the password first",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not an album link",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {}
+        ]
+      }
+    },
+    "/api/public/{token}/archive": {
+      "post": {
+        "tags": [
+          "public"
+        ],
+        "operationId": "public_create_archive",
+        "parameters": [
+          {
+            "name": "token",
+            "in": "path",
+            "description": "The token from the link",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateArchiveRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "Download it with `GET /api/public/{token}/archive/{ticket}` within 10 minutes",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ArchiveTicket"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "No ids, more than 500, or a folder among them",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "link_locked: give the password first",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "An id outside the link",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "archive_too_large: the zip would reach 4 GiB",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {}
+        ]
+      }
+    },
+    "/api/public/{token}/archive/{ticket}": {
+      "get": {
+        "tags": [
+          "public"
+        ],
+        "operationId": "public_download_archive",
+        "parameters": [
+          {
+            "name": "token",
+            "in": "path",
+            "description": "The token from the link",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "ticket",
+            "in": "path",
+            "description": "`ticket` from `POST /api/public/{token}/archive`",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The zip, streamed",
+            "content": {
+              "application/zip": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "type": "integer",
+                    "format": "int32",
+                    "minimum": 0
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "link_locked: give the password first",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Unknown or expired ticket, another link's, or a file deleted since",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Too many downloads in progress",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {}
+        ]
+      }
+    },
+    "/api/public/{token}/files/{id}/content": {
+      "get": {
+        "tags": [
+          "public"
+        ],
+        "operationId": "public_file_content",
+        "parameters": [
+          {
+            "name": "token",
+            "in": "path",
+            "description": "The token from the link",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "id",
+            "in": "path",
+            "description": "A file inside the link",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "download",
+            "in": "query",
+            "description": "`true` forces `Content-Disposition: attachment`.",
+            "required": false,
+            "schema": {
+              "type": "boolean"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The file; active content types are served as application/octet-stream",
+            "content": {
+              "application/octet-stream": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "type": "integer",
+                    "format": "int32",
+                    "minimum": 0
+                  }
+                }
+              }
+            }
+          },
+          "206": {
+            "description": "One byte range",
+            "content": {
+              "application/octet-stream": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "type": "integer",
+                    "format": "int32",
+                    "minimum": 0
+                  }
+                }
+              }
+            }
+          },
+          "304": {
+            "description": "Unchanged (If-None-Match)"
+          },
+          "401": {
+            "description": "link_locked: give the password first",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "416": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Too many downloads in progress",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {}
+        ]
+      }
+    },
+    "/api/public/{token}/files/{id}/thumbnail": {
+      "get": {
+        "tags": [
+          "public"
+        ],
+        "operationId": "public_thumbnail",
+        "parameters": [
+          {
+            "name": "token",
+            "in": "path",
+            "description": "The token from the link",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "id",
+            "in": "path",
+            "description": "A file inside the link",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "size",
+            "in": "query",
+            "description": "`thumb` (grid, 360 px tall) or `preview` (lightbox).",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "thumb",
+                "preview"
+              ]
+            }
+          },
+          {
+            "name": "v",
+            "in": "query",
+            "description": "The `thumbnail.version` from the listing. Only a thumbnail URL with\nthe current version is cached as immutable.",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "format": "int32"
+            }
+          },
+          {
+            "name": "px",
+            "in": "query",
+            "description": "`preview` of a photo only: the long side wanted, in device pixels. Rounded\nup to 1440, 2160 or 3200 (capped), never above the original's size.\nWithout it: 1440. PDF previews are always 1440.",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "format": "int32",
+              "minimum": 1
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "WebP, or JPEG for an opaque photo preview",
+            "content": {
+              "image/webp": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "type": "integer",
+                    "format": "int32",
+                    "minimum": 0
+                  }
+                }
+              },
+              "image/jpeg": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "type": "integer",
+                    "format": "int32",
+                    "minimum": 0
+                  }
+                }
+              }
+            }
+          },
+          "304": {
+            "description": "Unchanged (If-None-Match)"
+          },
+          "400": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "link_locked: give the password first",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "not_found, or not_ready while the worker has not produced it",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {}
+        ]
+      }
+    },
+    "/api/public/{token}/nodes": {
+      "get": {
+        "tags": [
+          "public"
+        ],
+        "operationId": "public_list_nodes",
+        "parameters": [
+          {
+            "name": "token",
+            "in": "path",
+            "description": "The token from the link",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "parent_id",
+            "in": "query",
+            "description": "A folder inside the link; omitted: the link's folder.",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "cursor",
+            "in": "query",
+            "description": "`next_cursor` of the previous page.",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "format": "int32",
+              "minimum": 0
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicFolderListing"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "link_locked: give the password first",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not a folder link, or a folder outside it",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {}
+        ]
+      }
+    },
+    "/api/public/{token}/unlock": {
+      "post": {
+        "tags": [
+          "public"
+        ],
+        "operationId": "unlock_public_link",
+        "parameters": [
+          {
+            "name": "token",
+            "in": "path",
+            "description": "The token from the link",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UnlockRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "204": {
+            "description": "Unlocked: a cookie scoped to this link is set (none is needed without a password)"
+          },
+          "401": {
+            "description": "invalid_credentials: wrong password",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "busy: no password hashing slot",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {}
+        ]
+      }
+    },
     "/api/search/documents": {
       "get": {
         "tags": [
@@ -6736,6 +7688,33 @@
           }
         }
       },
+      "CreatePublicLinkRequest": {
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/SubjectRef"
+          },
+          {
+            "type": "object",
+            "properties": {
+              "expires_at": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "format": "date-time",
+                "description": "When it stops opening; must be in the future. Omitted or `null`: never."
+              },
+              "password": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "description": "Asked of visitors before anything is shown (10–256 characters).\nOmitted or `null`: none."
+              }
+            }
+          }
+        ]
+      },
       "CreateShareRequest": {
         "allOf": [
           {
@@ -6833,6 +7812,22 @@
           "token": {
             "type": "string",
             "description": "Shown once. Build the link as `<origin>/join/<token>`."
+          }
+        }
+      },
+      "CreatedPublicLink": {
+        "type": "object",
+        "description": "A new link, with the URL to give out. The URL is never shown again.",
+        "required": [
+          "link",
+          "url"
+        ],
+        "properties": {
+          "link": {
+            "$ref": "#/components/schemas/PublicLinkDto"
+          },
+          "url": {
+            "type": "string"
           }
         }
       },
@@ -8352,6 +9347,193 @@
           "city"
         ]
       },
+      "PublicAlbumDto": {
+        "type": "object",
+        "description": "An album opened by a public link.",
+        "required": [
+          "id",
+          "name",
+          "item_count"
+        ],
+        "properties": {
+          "cover_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid",
+            "description": "A photo of it to show as its cover; `null` when empty."
+          },
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "item_count": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "name": {
+            "type": "string"
+          }
+        }
+      },
+      "PublicFolderListing": {
+        "type": "object",
+        "description": "A folder inside a public link and a page of what it holds.",
+        "required": [
+          "folder",
+          "path",
+          "items"
+        ],
+        "properties": {
+          "folder": {
+            "$ref": "#/components/schemas/NodeDto"
+          },
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/NodeDto"
+            }
+          },
+          "next_cursor": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "path": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/PathSegmentDto"
+            },
+            "description": "From the link's folder down to this folder's parent (empty at the top)."
+          }
+        }
+      },
+      "PublicLinkDto": {
+        "type": "object",
+        "description": "A public link as its owner sees it. Its URL is shown only once, when it is made.",
+        "required": [
+          "id",
+          "has_password",
+          "expired",
+          "created_at"
+        ],
+        "properties": {
+          "created_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "expired": {
+            "type": "boolean",
+            "description": "Past its expiry: it no longer opens."
+          },
+          "expires_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time",
+            "description": "`null`: never expires."
+          },
+          "has_password": {
+            "type": "boolean"
+          },
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          }
+        }
+      },
+      "PublicLinkInfo": {
+        "type": "object",
+        "description": "What the visitor of a link sees first.",
+        "required": [
+          "locked"
+        ],
+        "properties": {
+          "album": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/PublicAlbumDto",
+                "description": "The album (`kind` album)."
+              }
+            ]
+          },
+          "expires_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "kind": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/PublicLinkKind"
+              }
+            ]
+          },
+          "locked": {
+            "type": "boolean",
+            "description": "A password is needed (`POST /api/public/{token}/unlock`); nothing\nelse is set until then."
+          },
+          "node": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/NodeDto",
+                "description": "The folder or file (`kind` folder or file)."
+              }
+            ]
+          },
+          "shared_by": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The display name of who shared it."
+          }
+        }
+      },
+      "PublicLinkKind": {
+        "type": "string",
+        "description": "What a public link opens.",
+        "enum": [
+          "folder",
+          "file",
+          "album"
+        ]
+      },
+      "PublicLinkList": {
+        "type": "object",
+        "description": "The links of one folder, file or album.",
+        "required": [
+          "enabled",
+          "links"
+        ],
+        "properties": {
+          "enabled": {
+            "type": "boolean",
+            "description": "Whether this server can make public links (its public URL is set)."
+          },
+          "links": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/PublicLinkDto"
+            },
+            "description": "Newest first, expired ones included."
+          }
+        }
+      },
       "RefreshRequest": {
         "type": "object",
         "required": [
@@ -8907,6 +10089,17 @@
           }
         }
       },
+      "UnlockRequest": {
+        "type": "object",
+        "required": [
+          "password"
+        ],
+        "properties": {
+          "password": {
+            "type": "string"
+          }
+        }
+      },
       "UnreadCountDto": {
         "type": "object",
         "required": [
@@ -9156,6 +10349,9 @@
     },
     {
       "name": "friends"
+    },
+    {
+      "name": "public"
     }
   ]
 }

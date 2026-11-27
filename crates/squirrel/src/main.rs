@@ -15,7 +15,7 @@ use std::time::Duration;
 use anyhow::Context;
 use clap::{ArgAction, Args, Parser, Subcommand};
 use sqlx::PgPool;
-use squirrel_api::{ApiConfig, AppState, SetupToken, TrustedProxies};
+use squirrel_api::{ApiConfig, AppState, PublicUrl, SetupToken, TrustedProxies};
 use squirrel_storage::BlobStore;
 use tokio::net::TcpListener;
 use tokio::sync::watch;
@@ -143,8 +143,36 @@ struct ServeArgs {
     #[arg(long, env = "SQUIRREL_PREVIEW_CONCURRENCY", default_value_t = 2,
           value_parser = clap::value_parser!(u16).range(1..=16))]
     preview_concurrency: u16,
+    /// Where visitors open public links, e.g. https://home.tail1234.ts.net:8443
+    /// (the address Tailscale Funnel gives the public listener). Unset or
+    /// empty: public links cannot be made.
+    #[arg(long, env = "SQUIRREL_PUBLIC_URL", value_parser = parse_public_url)]
+    public_url: Option<PublicUrlArg>,
+    /// Also listen here for public links only (link pages, their API and the
+    /// web assets), e.g. 127.0.0.1:8081, to expose through Tailscale Funnel.
+    #[arg(long, env = "SQUIRREL_PUBLIC_BIND")]
+    public_bind: Option<SocketAddr>,
     #[command(flatten)]
     worker_options: worker::WorkerOptions,
+}
+
+/// `SQUIRREL_PUBLIC_URL` as given: empty (an unset variable passed through by
+/// compose) turns public links off.
+#[derive(Debug, Clone)]
+struct PublicUrlArg(Option<PublicUrl>);
+
+fn parse_public_url(raw: &str) -> Result<PublicUrlArg, squirrel_api::PublicUrlError> {
+    if raw.trim().is_empty() {
+        Ok(PublicUrlArg(None))
+    } else {
+        PublicUrl::parse(raw).map(|url| PublicUrlArg(Some(url)))
+    }
+}
+
+impl ServeArgs {
+    fn public_url(&self) -> Option<PublicUrl> {
+        self.public_url.as_ref().and_then(|arg| arg.0.clone())
+    }
 }
 
 fn main() -> anyhow::Result<()> {
@@ -271,6 +299,7 @@ async fn serve(args: ServeArgs) -> anyhow::Result<()> {
         cookie_secure: args.cookie_secure,
         setup_token,
         trusted_proxies: args.trusted_proxies.clone(),
+        public_url: args.public_url(),
         preview_cache_bytes: args.preview_cache_mb * 1024 * 1024,
         preview_limits: squirrel_api::previews::PreviewLimits {
             concurrency: usize::from(args.preview_concurrency),
@@ -291,6 +320,7 @@ async fn serve(args: ServeArgs) -> anyhow::Result<()> {
         previews.renderer.probe().await;
     });
     let app = squirrel_api::router(state.clone()).layer(TraceLayer::new_for_http());
+    let public_app = squirrel_api::public_router(state.clone()).layer(TraceLayer::new_for_http());
     let shutdown_state = state.clone();
 
     // Precompute the timing-equalizer hash so the first unknown-user login isn't slower.
@@ -303,7 +333,39 @@ async fn serve(args: ServeArgs) -> anyhow::Result<()> {
         .await
         .with_context(|| format!("binding {}", args.bind))?;
     tracing::info!(address = %args.bind, "squirrel is listening");
+    let public_listener = match args.public_bind {
+        Some(address) => {
+            let listener = TcpListener::bind(address)
+                .await
+                .with_context(|| format!("binding the public listener {address}"))?;
+            tracing::info!(%address, "listening for public links");
+            if args.public_url().is_none() {
+                tracing::warn!(
+                    "SQUIRREL_PUBLIC_BIND is set without SQUIRREL_PUBLIC_URL: \
+                     no public link can be made"
+                );
+            }
+            Some(listener)
+        }
+        None => None,
+    };
     let (stopping_tx, mut stopping_rx) = watch::channel(false);
+    let public_server = public_listener.map(|listener| {
+        let mut stopping = stopping_rx.clone();
+        tokio::spawn(async move {
+            let served = axum::serve(
+                listener,
+                public_app.into_make_service_with_connect_info::<SocketAddr>(),
+            )
+            .with_graceful_shutdown(async move {
+                let _ = stopping.wait_for(|stopping| *stopping).await;
+            })
+            .await;
+            if let Err(err) = served {
+                tracing::error!(error = %err, "the public listener stopped");
+            }
+        })
+    });
     let embedded_worker = args.embedded_worker.then(|| {
         tracing::info!("running the job worker inside the server");
         worker::spawn_logged(worker::run(
@@ -328,8 +390,23 @@ async fn serve(args: ServeArgs) -> anyhow::Result<()> {
         let _ = stopping_rx.wait_for(|stopping| *stopping).await;
         tokio::time::sleep(SHUTDOWN_DEADLINE).await;
     };
+    let public_abort = public_server
+        .as_ref()
+        .map(tokio::task::JoinHandle::abort_handle);
+    // Both listeners drain within the same deadline.
+    let both = async move {
+        let result = server.await;
+        // After a clean stop the public listener is draining too; after a
+        // failure it would never stop on its own (it is aborted below).
+        if result.is_ok()
+            && let Some(public_server) = public_server
+        {
+            let _ = public_server.await;
+        }
+        result
+    };
     let served = tokio::select! {
-        result = server => result.context("serving HTTP"),
+        result = both => result.context("serving HTTP"),
         () = deadline => {
             tracing::warn!(
                 deadline_secs = SHUTDOWN_DEADLINE.as_secs(),
@@ -338,6 +415,9 @@ async fn serve(args: ServeArgs) -> anyhow::Result<()> {
             Ok(())
         }
     };
+    if let Some(public_abort) = public_abort {
+        public_abort.abort();
+    }
     if let Some(worker) = embedded_worker {
         stop_embedded_worker(worker).await;
     }
@@ -429,6 +509,22 @@ fn init_tracing(json: bool) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn public_links_are_off_unless_a_public_url_is_given() {
+        assert_eq!(serve_args(&[]).public_url(), None);
+        assert_eq!(serve_args(&["--public-url", ""]).public_url(), None);
+        assert_eq!(
+            serve_args(&["--public-url", "https://home.ts.net:8443/"])
+                .public_url()
+                .map(|url| url.link("t")),
+            Some("https://home.ts.net:8443/s/t".to_owned())
+        );
+        assert_eq!(
+            serve_args(&["--public-bind", "127.0.0.1:8081"]).public_bind,
+            Some("127.0.0.1:8081".parse().unwrap())
+        );
+    }
 
     #[test]
     fn pending_migrations_are_listed_in_the_error() {

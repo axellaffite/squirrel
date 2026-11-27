@@ -67,6 +67,10 @@ mkdir -p "${DATA_DIR}"
 export SQUIRREL_DATABASE_URL="${DATABASE_URL}"
 export SQUIRREL_BIND="127.0.0.1:${SQUIRREL_E2E_PORT:-8099}"
 export SQUIRREL_COOKIE_SECURE=false
+# Public links on the next port, as Tailscale Funnel would expose them.
+PUBLIC_PORT=$(( ${SQUIRREL_E2E_PORT:-8099} + 1 ))
+export SQUIRREL_PUBLIC_BIND="127.0.0.1:${PUBLIC_PORT}"
+export SQUIRREL_PUBLIC_URL="http://127.0.0.1:${PUBLIC_PORT}"
 export SQUIRREL_SETUP_TOKEN=e2e-setup-token
 export SQUIRREL_DATA_DIR="${DATA_DIR}"
 # Media processing runs in the server, with the tiny offline geodata sample (Paris, Lyon, …).

@@ -20,6 +20,14 @@ const PUBLIC: &[&str] = &[
     "/api/join/{token}",
     "/api/auth/device/login",
     "/api/auth/device/refresh",
+    "/api/public/{token}",
+    "/api/public/{token}/unlock",
+    "/api/public/{token}/nodes",
+    "/api/public/{token}/album/items",
+    "/api/public/{token}/files/{id}/thumbnail",
+    "/api/public/{token}/files/{id}/content",
+    "/api/public/{token}/archive",
+    "/api/public/{token}/archive/{ticket}",
 ];
 
 /// Browser session only: account, invitations, administration, device
@@ -100,6 +108,8 @@ const DATA: &[&str] = &[
     "/api/shares/{id}",
     "/api/shared-with-me",
     "/api/shared-by-me",
+    "/api/public-links",
+    "/api/public-links/{id}",
     "/api/friends",
     "/api/friends/{username}",
     "/api/comments",

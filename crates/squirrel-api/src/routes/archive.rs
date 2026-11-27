@@ -47,30 +47,44 @@ pub async fn create_archive(
     caller: Caller,
     ApiJson(request): ApiJson<CreateArchiveRequest>,
 ) -> Result<(StatusCode, Json<ArchiveTicket>), ApiError> {
-    let ids = unique(&request.node_ids);
+    let mut found = Vec::new();
+    for id in checked_ids(&request.node_ids)? {
+        found.push(access::node(&state, caller.user.id, id).await?.node);
+    }
+    let ticket = ticket_for(&state, caller.user.id, &found)?;
+    Ok((StatusCode::CREATED, Json(ticket)))
+}
+
+/// The requested ids, without repeats, refused when there are none or too many.
+pub(crate) fn checked_ids(requested: &[Uuid]) -> Result<Vec<Uuid>, ApiError> {
+    let ids = unique(requested);
     if ids.is_empty() || ids.len() > MAX_ARCHIVE_FILES {
         return Err(ApiError::BadRequest(format!(
             "select between 1 and {MAX_ARCHIVE_FILES} files"
         )));
     }
-    let mut found = Vec::with_capacity(ids.len());
-    for id in ids {
-        let node = access::node(&state, caller.user.id, id).await?.node;
-        if node.is_folder() {
-            return Err(ApiError::BadRequest(
-                "folders cannot be put in a zip: select files only".into(),
-            ));
-        }
-        found.push(node);
+    Ok(ids)
+}
+
+/// A ticket for the zip of `nodes` (checked readable), downloadable by
+/// `holder` (a user, or a public link) only. Folders are refused.
+pub(crate) fn ticket_for(
+    state: &AppState,
+    holder: Uuid,
+    nodes: &[NodeRecord],
+) -> Result<ArchiveTicket, ApiError> {
+    if nodes.iter().any(NodeRecord::is_folder) {
+        return Err(ApiError::BadRequest(
+            "folders cannot be put in a zip: select files only".into(),
+        ));
     }
-    let archive = archive_of(caller.user.id, &found, OffsetDateTime::now_utc().date())?;
-    let ticket = ArchiveTicket {
+    let archive = archive_of(holder, nodes, OffsetDateTime::now_utc().date())?;
+    Ok(ArchiveTicket {
         name: archive.name.clone(),
         size: i64::try_from(archive.size).map_err(|err| ApiError::Internal(err.into()))?,
         count: i64::try_from(archive.files.len()).map_err(|err| ApiError::Internal(err.into()))?,
         ticket: state.archives.insert(archive),
-    };
-    Ok((StatusCode::CREATED, Json(ticket)))
+    })
 }
 
 /// `ids` without repeats, first occurrence kept.
@@ -145,10 +159,19 @@ pub async fn download_archive(
     caller: Caller,
     ApiPath(ticket): ApiPath<String>,
 ) -> Result<Response, ApiError> {
-    let owner_id = caller.user.id;
+    stream(&state, caller.user.id, &ticket).await
+}
+
+/// Streams the zip of `ticket`, if `holder` created it and its files are all
+/// still live.
+pub(crate) async fn stream(
+    state: &AppState,
+    holder: Uuid,
+    ticket: &str,
+) -> Result<Response, ApiError> {
     let archive = state
         .archives
-        .get(&ticket, owner_id)
+        .get(ticket, holder)
         .ok_or(ApiError::NotFound)?;
     let ids: Vec<Uuid> = archive.files.iter().map(|file| file.node_id).collect();
     if nodes::find_live_many(&state.pool, &ids).await?.len() != ids.len() {
@@ -156,7 +179,7 @@ pub async fn download_archive(
     }
     let slot = state
         .downloads
-        .acquire(owner_id)
+        .acquire(holder)
         .await
         .ok_or(ApiError::Busy)?;
     let headers = to_header_map(vec![

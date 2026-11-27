@@ -12,6 +12,7 @@ use axum::response::{IntoResponse, Response};
 use serde::Deserialize;
 use squirrel_core::{ContentHash, MediaKind};
 use squirrel_db::media::{self, MediaRecord, MediaState};
+use squirrel_db::nodes::NodeRecord;
 use squirrel_storage::Variant;
 use utoipa::{IntoParams, ToSchema};
 use uuid::Uuid;
@@ -121,13 +122,33 @@ pub async fn thumbnail(
     ApiQuery(query): ApiQuery<ThumbnailQuery>,
     headers: HeaderMap,
 ) -> Result<Response, ApiError> {
+    // Access first: a node the caller may not see is exactly `not_found`, even
+    // when the same bytes (and so the same derived files) exist.
+    check_px(&query)?;
+    let node = access::file(&state, caller.user.id, id).await?.node;
+    serve(&state, &node, caller.user.id, &query, &headers).await
+}
+
+/// `px=0` is refused before anything is looked up.
+pub(crate) fn check_px(query: &ThumbnailQuery) -> Result<(), ApiError> {
     if query.px == Some(0) {
         return Err(ApiError::BadRequest("px must be at least 1".into()));
     }
-    // Access first: a node the caller may not see is exactly `not_found`, even
-    // when the same bytes (and so the same derived files) exist.
-    let node = access::file(&state, caller.user.id, id).await?.node;
-    let hash = blob_hash(&node)?;
+    Ok(())
+}
+
+/// Answers a thumbnail or preview request for file `node`, already checked
+/// to be readable. Preview renders are rate limited per `render_key` (a
+/// user, or a public link).
+pub(crate) async fn serve(
+    state: &AppState,
+    node: &NodeRecord,
+    render_key: Uuid,
+    query: &ThumbnailQuery,
+    headers: &HeaderMap,
+) -> Result<Response, ApiError> {
+    let id = node.id;
+    let hash = blob_hash(node)?;
     let media = media::find(&state.pool, hash.as_str())
         .await?
         .ok_or(ApiError::NotFound)?;
@@ -139,14 +160,14 @@ pub async fn thumbnail(
     if matches!(query.size, ThumbnailSize::Preview) && media.kind() == MediaKind::Image {
         let request = preview_render::PreviewRequest {
             id,
-            user: caller.user.id,
+            user: render_key,
             hash,
             media: &media,
             px: query.px,
         };
-        return preview_render::serve(&state, request, &headers).await;
+        return preview_render::serve(state, request, headers).await;
     }
-    stored(&state, id, hash, &media, &query, &headers).await
+    stored(state, id, hash, &media, query, headers).await
 }
 
 /// A variant the worker stored: thumbnails, and PDF previews (1440, `px` ignored).

@@ -78,6 +78,52 @@ pub struct ApiConfig {
     pub preview_limits: PreviewLimits,
     /// Live co-editing of text files.
     pub collab: crate::collab::CollabConfig,
+    /// Where visitors open public links (`<public_url>/s/<token>`). `None`:
+    /// public links cannot be made (existing ones still open).
+    pub public_url: Option<PublicUrl>,
+    /// How long unlocking a public link's password lasts in one browser.
+    pub public_unlock_ttl: Duration,
+}
+
+/// The base URL of public links: `http(s)://host[:port][/path]`, without a
+/// trailing slash, query or fragment.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct PublicUrl(String);
+
+#[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
+#[error("the public URL must look like https://host[:port][/path], without query or fragment")]
+pub struct PublicUrlError;
+
+impl PublicUrl {
+    pub fn parse(raw: &str) -> Result<Self, PublicUrlError> {
+        let trimmed = raw.trim().trim_end_matches('/');
+        let rest = trimmed
+            .strip_prefix("https://")
+            .or_else(|| trimmed.strip_prefix("http://"))
+            .ok_or(PublicUrlError)?;
+        let host = rest.split('/').next().unwrap_or_default();
+        let valid = !host.is_empty()
+            && !rest.contains(['?', '#', ' ', '@', '\\'])
+            && rest.chars().all(|c| c.is_ascii_graphic());
+        if valid {
+            Ok(Self(trimmed.to_owned()))
+        } else {
+            Err(PublicUrlError)
+        }
+    }
+
+    /// The address visitors open for `token`.
+    pub fn link(&self, token: &str) -> String {
+        format!("{}/s/{token}", self.0)
+    }
+}
+
+impl std::str::FromStr for PublicUrl {
+    type Err = PublicUrlError;
+
+    fn from_str(raw: &str) -> Result<Self, Self::Err> {
+        Self::parse(raw)
+    }
 }
 
 /// Available cores clamped to 2..=4: enough for a few simultaneous logins,
@@ -134,6 +180,8 @@ impl Default for ApiConfig {
             preview_cache_bytes: 1536 * 1024 * 1024,
             preview_limits: PreviewLimits::default(),
             collab: crate::collab::CollabConfig::default(),
+            public_url: None,
+            public_unlock_ttl: Duration::days(7),
         }
     }
 }
@@ -166,6 +214,9 @@ pub struct AppState {
     pub config: Arc<ApiConfig>,
     /// Bounds concurrent password hashing (see [`ApiConfig::hash_concurrency`]).
     pub hash_permits: Arc<Semaphore>,
+    /// One hashing slot for public link passwords, kept apart from
+    /// [`AppState::hash_permits`] so anonymous visitors never hold up logins.
+    pub public_hash_permits: Arc<Semaphore>,
     /// Per-upload locks and upload concurrency limits.
     pub uploads: Arc<UploadRuntime>,
     /// Per-device sync check limit (see [`ApiConfig::sync_check_rate`]).
@@ -207,6 +258,7 @@ impl AppState {
             storage,
             free_space: Arc::new(move || store.available_space()),
             hash_permits: Arc::new(Semaphore::new(config.hash_concurrency)),
+            public_hash_permits: Arc::new(Semaphore::new(1)),
             uploads: Arc::new(UploadRuntime::new(&config.upload_limits)),
             downloads: config.download_limits.slots(),
             archives: Arc::default(),
@@ -255,5 +307,35 @@ impl AppState {
     pub async fn available_space(&self) -> Result<u64, crate::ApiError> {
         let free_space = self.free_space.clone();
         crate::blocking::run_storage(move || free_space()).await
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn public_urls_are_bare_http_bases() {
+        let url = PublicUrl::parse("https://home.tail1.ts.net:8443/").unwrap();
+        assert_eq!(url.link("abc"), "https://home.tail1.ts.net:8443/s/abc");
+        assert_eq!(
+            PublicUrl::parse("http://localhost:8081/drive")
+                .unwrap()
+                .link("t"),
+            "http://localhost:8081/drive/s/t"
+        );
+        for bad in [
+            "",
+            "home.ts.net",
+            "ftp://home",
+            "https://",
+            "https:///path",
+            "https://home?x=1",
+            "https://home#top",
+            "https://user@home",
+            "https://ho me",
+        ] {
+            assert_eq!(PublicUrl::parse(bad), Err(PublicUrlError), "{bad}");
+        }
     }
 }

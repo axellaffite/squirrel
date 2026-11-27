@@ -183,4 +183,4 @@ added in Phase 4, whose backfill also queues the ML jobs for videos.
 
 ## Out of scope for v1
 
-Public links (cross-user sharing and comments landed on 2026-11-23, see `docs/plans/2026-11-23-sharing.md`), live transcoding, OCR, email delivery of invitations, WebDAV.
+Live transcoding (cross-user sharing and comments landed on 2026-11-23, see `docs/plans/2026-11-23-sharing.md`; public links on 2026-11-27, see `docs/plans/2026-11-27-public-links.md`), OCR, email delivery of invitations, WebDAV.

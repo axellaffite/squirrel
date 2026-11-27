@@ -1,16 +1,17 @@
 # Deploying Squirrel on a home server
 
 Target: a small x86-64 Linux box (built for an Intel NUC 12 Pro: i3-1220P, 8 GB RAM, NVMe),
-reached from phones and browsers over [Tailscale](https://tailscale.com). Nothing is exposed to
-the internet: the server listens on `127.0.0.1:8080` and `tailscale serve` adds HTTPS for the
-devices of your tailnet.
+reached from phones and browsers over [Tailscale](https://tailscale.com). The app is never exposed
+to the internet: the server listens on `127.0.0.1:8080` and `tailscale serve` adds HTTPS for the
+devices of your tailnet. Public links, if you turn them on, have a listener of their own
+(`127.0.0.1:8081`) that serves nothing else, exposed with Tailscale Funnel (see "Public links").
 
 What runs (`deploy/docker-compose.yml`):
 
 | Service | What | Notes |
 |---|---|---|
 | `postgres` | Postgres 17 + pgvector 0.8.7 (pinned by digest) | Owner role is a superuser, so migrations create `vector` |
-| `server` | `squirrel serve`: API, web UI, search | Migrates on start; published on `127.0.0.1:8080` |
+| `server` | `squirrel serve`: API, web UI, search | Migrates on start; published on `127.0.0.1:8080` (and `127.0.0.1:8081` for public links) |
 | `worker` | `squirrel worker`: thumbnails, metadata, text, ML | Waits for the server's migrations |
 
 The image (`Dockerfile`) holds the binary with the web UI, libheif, libvips (lightbox previews),
@@ -64,6 +65,37 @@ Back on the server:
 
 The first start computes the tag label bank (a few minutes) and then processes the library in
 the background: thumbnails first, then tags, search embeddings and faces.
+
+## Public links (optional)
+
+A public link lets anyone with the link see one folder, file or album, without an account
+(Share dialog, "Public link"). Links can have an expiry date and a password, and are revoked
+from the same dialog.
+
+The server answers public links on a second listener, `127.0.0.1:8081`, which serves only the
+link pages, their API (`/api/public/…`) and the web assets (the app's script files, which the
+link pages load, hold no data): the login page, the rest of the API and every private page answer
+404 there. [Tailscale Funnel](https://tailscale.com/kb/1223/funnel)
+puts it on the internet, on the same machine name as the tailnet address:
+
+1. In the Tailscale admin console, allow Funnel for the server (Access controls: the `funnel`
+   node attribute; the console offers to add it the first time you run the command below).
+2. `tailscale funnel --bg --https=8443 8081`. Funnel only uses ports 443, 8443 and 10000; 443 is
+   usually taken by `tailscale serve` (step 6 above), so 8443. `tailscale funnel status` shows it.
+3. In `~/squirrel/.env`, set `SQUIRREL_PUBLIC_URL=https://<machine>.<tailnet>.ts.net:8443`
+   (the Funnel address), then `docker compose up -d`. The Share dialog now makes links.
+
+To turn them off: `tailscale funnel --https=8443 off` (links stop opening from outside the
+tailnet) and unset `SQUIRREL_PUBLIC_URL` (no new links). Links already made keep working on the
+tailnet address until they are revoked or expire.
+
+Good to know:
+
+- A link's address is shown once, when it is made; the server keeps only a hash of it.
+- Visitors can download whatever the link opens: what a browser shows can be saved.
+- Wrong passwords are rate limited per visitor address, like logins, and checked one at a time
+  apart from logins, so visitors never slow down your own sign-ins.
+- With `RUST_LOG=debug`, request logs contain link tokens (`/api/public/<token>/…`).
 
 ## Operating
 
