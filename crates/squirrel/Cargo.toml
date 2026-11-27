@@ -40,3 +40,8 @@ squirrel-ml = { workspace = true, features = ["test-util"] }
 squirrel-media = { workspace = true, features = ["test-util"] }
 tempfile.workspace = true
 squirrel-storage = { workspace = true, features = ["test-util"] }
+
+[target.'cfg(target_os = "linux")'.dependencies]
+landlock = "0.4.8"
+libc = "0.2.191"
+seccompiler = "0.5.0"

@@ -18,7 +18,7 @@ administer it, and how media processing and machine learning work. Installing on
 | `SQUIRREL_TRUSTED_PROXIES` | empty | Comma-separated IPs/CIDRs of reverse proxies whose `X-Forwarded-For` is trusted for rate limiting and logs. Leave empty when clients connect directly |
 | `SQUIRREL_LOG_JSON` | `false` | JSON logs |
 | `SQUIRREL_PREVIEW_CACHE_MB` | `1536` | Disk budget of the photo previews rendered on request (`cache/previews/`), least recently used first out |
-| `SQUIRREL_PREVIEW_CONCURRENCY` | `2` | Photo previews rendered at once; a request waiting more than 3 s for a slot gets 503 `busy` (`Retry-After: 1`) |
+| `SQUIRREL_PREVIEW_CONCURRENCY` | `2` | Photo previews rendered at once; a request waiting more than 3 s for a slot gets 503 `busy` (`Retry-After: 1`). Visitors of public links hold one of these slots at most (all of it when there is only one), so the others stay free for the users |
 | `RUST_LOG` | `info,squirrel=debug,tower_http=info` | Log filter ([`tracing` `EnvFilter`](https://docs.rs/tracing-subscriber/latest/tracing_subscriber/filter/struct.EnvFilter.html) syntax) |
 
 Each variable also exists as a `serve` flag (`--data-dir`, `--bind`, …; see `squirrel serve --help`).
@@ -122,9 +122,23 @@ by a backfill job queued at every worker start.
 | `SQUIRREL_ML_THREADS` | half the cores | Threads for one inference |
 | `SQUIRREL_ML_MAX_MEMORY_MB` | `6144` | Address-space limit of each inference child (Linux). It grows with the thread count: raise it for many threads |
 | `SQUIRREL_ML_EXEC` | `subprocess` | `subprocess` runs inference in a long-lived `squirrel ml-exec` child (resource limits, restarted on crash, stopped after 10 idle minutes; the server's search model after 5); `in-process` is for tests only: it loads the models at start and keeps them loaded |
-| `SQUIRREL_MEDIA_EXEC` | `subprocess` | `subprocess` decodes untrusted files in short-lived `squirrel media-exec` children with memory, CPU and file limits; `in-process` is for tests only |
+| `SQUIRREL_MEDIA_EXEC` | `subprocess` | `subprocess` decodes untrusted files in short-lived `squirrel media-exec` children with memory, CPU and file limits, confined as described under "Confinement" below; `in-process` is for tests only |
 | `SQUIRREL_PDFIUM_DIR` | unset | Directory holding the pdfium library. Without it, PDFs get no thumbnail or text |
 | `SQUIRREL_GEODATA_FILE` | `<data_dir>/geo/…` | Another place-name file (tests, custom extracts); used without the SHA-256 pin |
+
+**Confinement.** On Linux the `media-exec` and `ml-exec` children give up, before they load a
+decoder or a model, everything a crafted file could use if it took one over. With Landlock
+(Linux 5.13 or later) they can open only the system libraries, the one file they were asked to
+decode (the models and the rendered frames for `ml-exec`) and their output directory: not the
+other files of the data directory, and not `/proc`, where the worker's environment (the
+database URL) is. TCP is denied (Linux 6.7), and signals to other processes (Linux 6.12). A
+seccomp filter refuses the system calls that open a socket of any kind, start another program
+or look into another process. A child that cannot apply these refuses to run. On a kernel
+without Landlock only the seccomp filter applies, and the server and the worker log a warning
+at start.
+
+**Public links** download on slots of their own (16 at once, 4 per link) and hold at most one
+preview render slot: visitors cannot use up what the users download and render with.
 
 **Models** (photo tags, text search and faces) are fetched once, from revision-pinned URLs,
 and checked against their SHA-256 (about 1.5 GB; sources and licences in

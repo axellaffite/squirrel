@@ -1,4 +1,5 @@
 mod admin;
+mod confine;
 mod data_dir;
 mod geodata;
 mod media_exec;
@@ -200,10 +201,12 @@ async fn run(command: Command) -> anyhow::Result<()> {
         }
         Command::Serve(args) => {
             init_tracing(args.log_json);
+            confine::warn_if_unavailable();
             serve(args).await
         }
         Command::Worker(args) => {
             init_tracing(args.log_json);
+            confine::warn_if_unavailable();
             run_worker(args).await
         }
         Command::Admin(args) => {

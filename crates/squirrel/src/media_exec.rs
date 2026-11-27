@@ -1,6 +1,6 @@
 //! `squirrel media-exec`: decode one untrusted input under resource limits.
-//! Reads one JSON `ExecRequest` on stdin, writes one JSON `ExecResponse` on
-//! stdout. Logs go to stderr (the parent keeps the tail for error messages).
+//! Reads one JSON `ExecRequest` on stdin, confines itself to the files that
+//! request names ([`crate::confine`]), writes one JSON `ExecResponse` on stdout. Logs go to stderr (the parent keeps the tail for error messages).
 //! `--probe` prints what libvips looks like here instead.
 
 use std::io::{Read, Write};
@@ -8,7 +8,11 @@ use std::io::{Read, Write};
 use rustix::process::{Resource, Rlimit, getrlimit, setrlimit};
 use squirrel_media::exec::ExecRequest;
 
+use crate::confine::Confinement;
+
 const MAX_REQUEST_BYTES: u64 = 64 * 1024;
+/// Where a packaged libheif finds its decoder plugins (passed by the parent).
+const HEIF_PLUGINS: &str = "LIBHEIF_PLUGIN_PATH";
 
 #[derive(clap::Args)]
 pub struct MediaExecArgs {
@@ -56,7 +60,6 @@ pub fn run(args: &MediaExecArgs) -> anyhow::Result<()> {
         apply(resource, value)?;
     }
     no_new_privs()?;
-    squirrel_media::register_decoders();
     let request = if args.probe {
         ExecRequest::Probe
     } else {
@@ -66,6 +69,9 @@ pub fn run(args: &MediaExecArgs) -> anyhow::Result<()> {
             .read_to_end(&mut raw)?;
         serde_json::from_slice(&raw)?
     };
+    // Before the first decoder is loaded, and so before any thread but this one.
+    crate::confine::apply(&confinement(&request))?;
+    squirrel_media::register_decoders();
     // Lowering a limit never needs privileges: still before any decoding.
     for (resource, value) in operation_limits(&request) {
         apply(resource, value)?;
@@ -86,6 +92,34 @@ fn limits(args: &MediaExecArgs) -> [(Resource, u64); 5] {
         // A crashing decoder must not leave a core dump of what it parsed.
         (Resource::Core, 0),
     ]
+}
+
+/// The only files `request` needs: its input to read, its output directory
+/// to write in, and the libraries that are not in the system directories.
+fn confinement(request: &ExecRequest) -> Confinement {
+    let plugins = std::env::var_os(HEIF_PLUGINS)
+        .map(|paths| std::env::split_paths(&paths).collect::<Vec<_>>())
+        .unwrap_or_default();
+    let (read, write) = match request {
+        ExecRequest::Image { input, out_dir, .. } | ExecRequest::Preview { input, out_dir, .. } => {
+            (vec![input.clone()], vec![out_dir.clone()])
+        }
+        ExecRequest::Pdf {
+            input,
+            out_dir,
+            pdfium_dir,
+            ..
+        } => (
+            vec![input.clone(), pdfium_dir.clone()],
+            vec![out_dir.clone()],
+        ),
+        ExecRequest::VisualHash { input, .. } => (vec![input.clone()], Vec::new()),
+        ExecRequest::Probe => (Vec::new(), Vec::new()),
+    };
+    Confinement {
+        read: read.into_iter().chain(plugins).collect(),
+        write,
+    }
 }
 
 /// The limits `request` lowers further ([`apply`] never raises one).
@@ -158,6 +192,30 @@ mod tests {
         assert!(limits.contains(&(Resource::Core, 0)));
         assert!(limits.contains(&(Resource::Fsize, MAX_FILE_BYTES)));
         assert!(limits.contains(&(Resource::As, 2048 * 1024 * 1024)));
+    }
+
+    #[test]
+    fn a_request_opens_its_own_files_only() {
+        let pdf = ExecRequest::Pdf {
+            input: "/data/blobs/ab/cd".into(),
+            out_dir: "/data/tmp/scratch".into(),
+            pdfium_dir: "/opt/pdfium/lib".into(),
+            render: true,
+            text: true,
+        };
+        let confinement = confinement(&pdf);
+        assert!(confinement.read.contains(&"/data/blobs/ab/cd".into()));
+        assert!(confinement.read.contains(&"/opt/pdfium/lib".into()));
+        assert_eq!(
+            confinement.write,
+            [std::path::PathBuf::from("/data/tmp/scratch")]
+        );
+        let hash = ExecRequest::VisualHash {
+            input: "/data/derived/t.webp".into(),
+            limits: squirrel_media::thumbs::DecodeLimits::default(),
+        };
+        assert!(super::confinement(&hash).write.is_empty());
+        assert!(super::confinement(&ExecRequest::Probe).write.is_empty());
     }
 
     #[test]

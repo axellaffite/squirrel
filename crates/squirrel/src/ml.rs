@@ -262,6 +262,10 @@ pub(crate) fn child_args(
         threads.max(1).to_string().into(),
         "--max-memory-mb".into(),
         max_memory_mb.to_string().into(),
+        // Where the worker renders the frames it asks about (`ml_frame`); the
+        // child's own environment is cleared, so its idea of it may differ.
+        "--inputs-dir".into(),
+        std::env::temp_dir().into(),
     ]
 }
 

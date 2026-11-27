@@ -1,5 +1,6 @@
 //! `squirrel ml-exec`: a long-lived inference child. Applies its resource
-//! limits and lowers its priority before loading anything, verifies and loads
+//! limits, confines itself to its models and its inputs ([`crate::confine`])
+//! and lowers its priority before loading anything, verifies and loads
 //! the requested model groups, writes a `ready` line, then answers one JSON
 //! line per request (`squirrel_ml::protocol`) until stdin closes. Logs go to
 //! stderr (stdout carries the protocol).
@@ -12,6 +13,7 @@ use squirrel_ml::ModelGroup;
 use squirrel_ml::models::ModelDir;
 use squirrel_ml::serve::{Engine, EngineConfig, serve};
 
+use crate::confine::Confinement;
 use crate::media_exec::{apply, no_new_privs};
 
 /// Address space for every model group plus ONNX Runtime's arenas and thread
@@ -43,6 +45,10 @@ pub struct MlExecArgs {
     pub threads: usize,
     #[arg(long, default_value_t = DEFAULT_MEMORY_MB)]
     pub max_memory_mb: u64,
+    /// Directories the images of its requests are read from; the system's
+    /// temporary directory when none is given.
+    #[arg(long)]
+    pub inputs_dir: Vec<PathBuf>,
 }
 
 pub fn run(args: &MlExecArgs) -> anyhow::Result<()> {
@@ -52,6 +58,8 @@ pub fn run(args: &MlExecArgs) -> anyhow::Result<()> {
     }
     no_new_privs()?;
     rustix::process::setpriority_process(None, NICE).context("lowering the priority")?;
+    // Before ONNX Runtime is loaded, and so before any thread but this one.
+    crate::confine::apply(&confinement(args))?;
     let groups = parse_groups(&args.groups)?;
     let config = EngineConfig {
         groups,
@@ -66,6 +74,27 @@ pub fn run(args: &MlExecArgs) -> anyhow::Result<()> {
         std::io::stdout().lock(),
     )?;
     Ok(())
+}
+
+/// The models, the runtime next to its library, and the request images.
+fn confinement(args: &MlExecArgs) -> Confinement {
+    let runtime = args
+        .ort_dylib
+        .as_deref()
+        .and_then(|dylib| std::fs::canonicalize(dylib).ok())
+        .and_then(|dylib| dylib.parent().map(PathBuf::from));
+    let inputs = if args.inputs_dir.is_empty() {
+        vec![std::env::temp_dir()]
+    } else {
+        args.inputs_dir.clone()
+    };
+    Confinement {
+        read: std::iter::once(args.models_dir.clone())
+            .chain(runtime)
+            .chain(inputs)
+            .collect(),
+        write: Vec::new(),
+    }
 }
 
 fn parse_groups(names: &[String]) -> anyhow::Result<Vec<ModelGroup>> {
@@ -109,6 +138,7 @@ mod tests {
             ort_dylib: None,
             threads: 1,
             max_memory_mb: 4096,
+            inputs_dir: Vec::new(),
         };
         let limits = limits(&args);
         assert!(limits.contains(&(Resource::Fsize, MAX_FILE_BYTES)));
