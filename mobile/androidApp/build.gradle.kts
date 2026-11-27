@@ -20,6 +20,26 @@ android {
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 
+    // The release key stays outside the repository: its path and passwords are Gradle
+    // properties (`~/.gradle/gradle.properties`, or `ORG_GRADLE_PROJECT_<name>` in the
+    // environment). Without them the release build is left unsigned.
+    val keystore = providers.gradleProperty("SQUIRREL_KEYSTORE").orNull
+    if (keystore != null) {
+        signingConfigs {
+            create("release") {
+                storeFile = file(keystore)
+                storePassword = providers.gradleProperty("SQUIRREL_KEYSTORE_PASSWORD").get()
+                keyAlias = providers.gradleProperty("SQUIRREL_KEY_ALIAS").get()
+                keyPassword = providers.gradleProperty("SQUIRREL_KEY_PASSWORD").get()
+            }
+        }
+        buildTypes {
+            release {
+                signingConfig = signingConfigs.getByName("release")
+            }
+        }
+    }
+
     testOptions {
         unitTests.isIncludeAndroidResources = true
     }
