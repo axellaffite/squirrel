@@ -27,6 +27,7 @@ use crate::content::{
 use crate::downloads::HeldReader;
 use crate::error::{ApiError, ErrorBody};
 use crate::extract::Caller;
+use crate::holder::Holder;
 use crate::input::{ApiPath, ApiQuery};
 use crate::state::AppState;
 use crate::upload_runtime::Slot;
@@ -71,15 +72,22 @@ pub async fn file_content(
 ) -> Result<Response, ApiError> {
     // Download slots are counted per caller, whoever owns the file.
     let node = access::file(&state, caller.user.id, id).await?.node;
-    serve(&state, &node, caller.user.id, query.download, &headers).await
+    serve(
+        &state,
+        &node,
+        Holder::User(caller.user.id),
+        query.download,
+        &headers,
+    )
+    .await
 }
 
 /// Answers a request for the bytes of file `node`, already checked to be
-/// readable. Download slots are counted per `slot_key` (a user, or a public link).
+/// readable. The download slot is counted against `holder`.
 pub(crate) async fn serve(
     state: &AppState,
     node: &NodeRecord,
-    slot_key: Uuid,
+    holder: Holder,
     download: bool,
     headers: &HeaderMap,
 ) -> Result<Response, ApiError> {
@@ -95,11 +103,7 @@ pub(crate) async fn serve(
         return Ok((StatusCode::NOT_MODIFIED, response_headers).into_response());
     }
 
-    let slot = state
-        .downloads
-        .acquire(slot_key)
-        .await
-        .ok_or(ApiError::Busy)?;
+    let slot = state.download_slot(holder).await?;
     let (store, blob) = (state.storage.clone(), hash.clone());
     let (file, size) = run_storage(move || store.open_blob(&blob))
         .await

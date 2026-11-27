@@ -2,7 +2,9 @@
 //!
 //! There is no write-idle timeout: a client that stops reading keeps its slot
 //! until the TCP connection fails (kernel keepalive / retransmission limits) or
-//! the server shuts down. The per-user cap bounds what one account can pin.
+//! the server shuts down. The per-user cap bounds what one account can pin, and
+//! visitors of public links have slots of their own ([`DownloadLimits::public`]):
+//! whatever they pin, the users' downloads are not held up.
 
 use std::io;
 use std::pin::Pin;
@@ -35,6 +37,16 @@ impl Default for DownloadLimits {
 }
 
 impl DownloadLimits {
+    /// The slots of public links' visitors, all links together and per link:
+    /// fewer than the users', and separate from them.
+    pub fn public() -> Self {
+        Self {
+            concurrency: 16,
+            per_user: 4,
+            wait: Duration::from_secs(5),
+        }
+    }
+
     pub fn slots(&self) -> Slots {
         Slots::new(self.concurrency, self.per_user, self.wait)
     }

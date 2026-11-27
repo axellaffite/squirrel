@@ -20,6 +20,7 @@ mod extract;
 mod files_dto;
 mod filter_dto;
 mod friends_dto;
+mod holder;
 mod input;
 pub mod maintenance;
 pub mod ml;

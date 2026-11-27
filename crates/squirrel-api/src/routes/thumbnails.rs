@@ -25,6 +25,7 @@ use crate::content::{
 };
 use crate::error::{ApiError, ErrorBody};
 use crate::extract::Caller;
+use crate::holder::Holder;
 use crate::input::{ApiPath, ApiQuery};
 use crate::state::AppState;
 
@@ -126,7 +127,14 @@ pub async fn thumbnail(
     // when the same bytes (and so the same derived files) exist.
     check_px(&query)?;
     let node = access::file(&state, caller.user.id, id).await?.node;
-    serve(&state, &node, caller.user.id, &query, &headers).await
+    serve(
+        &state,
+        &node,
+        Holder::User(caller.user.id),
+        &query,
+        &headers,
+    )
+    .await
 }
 
 /// `px=0` is refused before anything is looked up.
@@ -138,12 +146,11 @@ pub(crate) fn check_px(query: &ThumbnailQuery) -> Result<(), ApiError> {
 }
 
 /// Answers a thumbnail or preview request for file `node`, already checked
-/// to be readable. Preview renders are rate limited per `render_key` (a
-/// user, or a public link).
+/// to be readable. Preview renders are counted against `holder`.
 pub(crate) async fn serve(
     state: &AppState,
     node: &NodeRecord,
-    render_key: Uuid,
+    holder: Holder,
     query: &ThumbnailQuery,
     headers: &HeaderMap,
 ) -> Result<Response, ApiError> {
@@ -160,7 +167,7 @@ pub(crate) async fn serve(
     if matches!(query.size, ThumbnailSize::Preview) && media.kind() == MediaKind::Image {
         let request = preview_render::PreviewRequest {
             id,
-            user: render_key,
+            holder,
             hash,
             media: &media,
             px: query.px,

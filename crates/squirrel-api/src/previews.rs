@@ -1,6 +1,6 @@
 //! Rendering lightbox previews on request: the sandboxed renderer, its slots
 //! (cache hits take none), one render per cache key, and a per-user limit on
-//! renders.
+//! renders. Visitors of public links only ever hold a part of the slots.
 
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex, PoisonError, Weak};
@@ -21,6 +21,10 @@ use crate::upload_runtime::{UserRate, UserRateLimiter};
 pub struct PreviewLimits {
     /// Renders at once, all users together (`SQUIRREL_PREVIEW_CONCURRENCY`).
     pub concurrency: usize,
+    /// How many of those slots visitors of public links may hold together.
+    /// Always at least one, and one fewer than `concurrency` at most (when
+    /// there is more than one slot), so a slot stays free for the users.
+    pub public_concurrency: usize,
     /// How long a render waits for a slot before answering 503 `busy`.
     pub slot_wait: Duration,
     /// Per-user limit on renders (cache misses). `None` disables it.
@@ -31,6 +35,7 @@ impl Default for PreviewLimits {
     fn default() -> Self {
         Self {
             concurrency: 2,
+            public_concurrency: 1,
             slot_wait: Duration::from_secs(3),
             render_rate: Some(UserRate {
                 per_second: 4.0,
@@ -40,6 +45,23 @@ impl Default for PreviewLimits {
     }
 }
 
+impl PreviewLimits {
+    /// The render slots visitors of public links may hold together.
+    fn public_slots(&self) -> usize {
+        let slots = self.concurrency.max(1);
+        self.public_concurrency
+            .clamp(1, slots.saturating_sub(1).max(1))
+    }
+}
+
+/// A held render slot, released on drop.
+#[must_use]
+#[derive(Debug)]
+pub struct RenderSlot {
+    _slot: OwnedSemaphorePermit,
+    _visitor: Option<OwnedSemaphorePermit>,
+}
+
 /// Keys with a render in flight: at most this many before stale ones are pruned.
 const PRUNE_KEYS_ABOVE: usize = 256;
 
@@ -47,6 +69,8 @@ const PRUNE_KEYS_ABOVE: usize = 256;
 pub struct Previews {
     pub renderer: PreviewRenderer,
     slots: Arc<Semaphore>,
+    /// Taken before a slot by renders for public links.
+    public_slots: Arc<Semaphore>,
     slot_wait: Duration,
     rate: Option<UserRateLimiter>,
     in_flight: Mutex<HashMap<CacheKey, Weak<KeyTurn>>>,
@@ -71,6 +95,7 @@ impl Previews {
         Self {
             renderer: PreviewRenderer::new(executor, DecodeLimits::default()),
             slots: Arc::new(Semaphore::new(limits.concurrency.max(1))),
+            public_slots: Arc::new(Semaphore::new(limits.public_slots())),
             slot_wait: limits.slot_wait,
             rate: limits.render_rate.map(UserRateLimiter::new),
             in_flight: Mutex::default(),
@@ -109,12 +134,23 @@ impl Previews {
             .ok()
     }
 
-    /// A render slot, or `None` when none frees up within the configured wait.
-    pub async fn slot(&self) -> Option<OwnedSemaphorePermit> {
-        tokio::time::timeout(self.slot_wait, self.slots.clone().acquire_owned())
-            .await
-            .ok()?
-            .ok()
+    /// A render slot, or `None` when none frees up within the configured
+    /// wait. A render for a public link (`visitor`) first needs one of the
+    /// visitors' share of the slots.
+    pub async fn slot(&self, visitor: bool) -> Option<RenderSlot> {
+        let take = async {
+            let visitor = if visitor {
+                Some(self.public_slots.clone().acquire_owned().await.ok()?)
+            } else {
+                None
+            };
+            let slot = self.slots.clone().acquire_owned().await.ok()?;
+            Some(RenderSlot {
+                _slot: slot,
+                _visitor: visitor,
+            })
+        };
+        tokio::time::timeout(self.slot_wait, take).await.ok()?
     }
 }
 
@@ -148,6 +184,7 @@ mod tests {
             concurrency: 1,
             slot_wait: Duration::from_millis(wait_ms),
             render_rate: None,
+            ..PreviewLimits::default()
         }
     }
 
@@ -181,16 +218,45 @@ mod tests {
 
     #[tokio::test]
     async fn slots_run_out_after_the_wait() {
+        let previews = Previews::new(Executor::InProcess, &limits(20));
+        let held = previews.slot(false).await.unwrap();
+        assert!(previews.slot(false).await.is_none());
+        drop(held);
+        assert!(previews.slot(false).await.is_some());
+        assert!(previews.allow_render(Uuid::now_v7()));
+    }
+
+    #[tokio::test]
+    async fn visitors_leave_a_slot_to_the_users() {
         let limits = PreviewLimits {
-            concurrency: 1,
-            slot_wait: Duration::from_millis(20),
-            render_rate: None,
+            concurrency: 2,
+            ..limits(20)
         };
         let previews = Previews::new(Executor::InProcess, &limits);
-        let held = previews.slot().await.unwrap();
-        assert!(previews.slot().await.is_none());
-        drop(held);
-        assert!(previews.slot().await.is_some());
-        assert!(previews.allow_render(Uuid::now_v7()));
+        let visitor = previews.slot(true).await.unwrap();
+        assert!(previews.slot(true).await.is_none(), "one slot for visitors");
+        let user = previews.slot(false).await.expect("the other is the users'");
+        drop(visitor);
+        // Users may take every slot; a visitor then waits like anyone.
+        let second = previews.slot(false).await.unwrap();
+        assert!(previews.slot(true).await.is_none());
+        drop((user, second));
+        assert!(previews.slot(true).await.is_some());
+    }
+
+    #[test]
+    fn the_visitors_share_is_at_least_one_slot_and_never_all_of_several() {
+        let share = |concurrency, public_concurrency| {
+            PreviewLimits {
+                concurrency,
+                public_concurrency,
+                ..PreviewLimits::default()
+            }
+            .public_slots()
+        };
+        assert_eq!(share(2, 1), 1);
+        assert_eq!(share(4, 8), 3);
+        assert_eq!(share(4, 0), 1);
+        assert_eq!(share(1, 1), 1);
     }
 }

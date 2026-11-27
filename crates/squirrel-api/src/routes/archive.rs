@@ -27,6 +27,7 @@ use crate::content::{blob_hash, content_disposition, to_header_map};
 use crate::downloads::HeldReader;
 use crate::error::{ApiError, ErrorBody};
 use crate::extract::Caller;
+use crate::holder::Holder;
 use crate::input::{ApiJson, ApiPath};
 use crate::state::AppState;
 use crate::zip::{self, ArchiveWriter, DosDateTime, Entry};
@@ -159,29 +160,25 @@ pub async fn download_archive(
     caller: Caller,
     ApiPath(ticket): ApiPath<String>,
 ) -> Result<Response, ApiError> {
-    stream(&state, caller.user.id, &ticket).await
+    stream(&state, Holder::User(caller.user.id), &ticket).await
 }
 
 /// Streams the zip of `ticket`, if `holder` created it and its files are all
 /// still live.
 pub(crate) async fn stream(
     state: &AppState,
-    holder: Uuid,
+    holder: Holder,
     ticket: &str,
 ) -> Result<Response, ApiError> {
     let archive = state
         .archives
-        .get(ticket, holder)
+        .get(ticket, holder.id())
         .ok_or(ApiError::NotFound)?;
     let ids: Vec<Uuid> = archive.files.iter().map(|file| file.node_id).collect();
     if nodes::find_live_many(&state.pool, &ids).await?.len() != ids.len() {
         return Err(ApiError::NotFound);
     }
-    let slot = state
-        .downloads
-        .acquire(holder)
-        .await
-        .ok_or(ApiError::Busy)?;
+    let slot = state.download_slot(holder).await?;
     let headers = to_header_map(vec![
         (CONTENT_TYPE, "application/zip".to_owned()),
         (CONTENT_LENGTH, archive.size.to_string()),

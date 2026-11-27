@@ -22,6 +22,7 @@ use super::thumbnails::{image_response, policy_headers};
 use crate::blocking::run_storage;
 use crate::content::{etag_matches, header_str};
 use crate::error::ApiError;
+use crate::holder::Holder;
 use crate::previews::Outcome;
 use crate::state::AppState;
 
@@ -34,7 +35,7 @@ const RETRY_AFTER_SECS: HeaderValue = HeaderValue::from_static("1");
 
 pub(super) struct PreviewRequest<'a> {
     pub id: Uuid,
-    pub user: Uuid,
+    pub holder: Holder,
     pub hash: ContentHash,
     pub media: &'a MediaRecord,
     pub px: Option<u32>,
@@ -71,7 +72,7 @@ pub(super) async fn serve(
             bytes,
         ));
     }
-    if !state.previews.allow_render(request.user) {
+    if !state.previews.allow_render(request.holder.id()) {
         return Ok(retry_later(ApiError::RateLimited));
     }
     // One render per key: whoever waited answers with its outcome (bounded wait).
@@ -101,7 +102,7 @@ pub(super) async fn serve(
             bytes,
         ));
     }
-    let Some(_slot) = state.previews.slot().await else {
+    let Some(_slot) = state.previews.slot(request.holder.is_visitor()).await else {
         tracing::warn!("no preview render slot available, answering busy");
         *turn = Some(Outcome::Busy);
         return Ok(retry_later(ApiError::Busy));

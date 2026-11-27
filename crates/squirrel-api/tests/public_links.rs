@@ -196,6 +196,53 @@ async fn a_file_link_opens_that_file(pool: PgPool) {
         .assert_status(StatusCode::NOT_FOUND);
 }
 
+/// Whatever visitors keep busy, the owner still downloads (and the reverse).
+#[sqlx::test(migrator = "squirrel_db::MIGRATOR")]
+async fn visitors_download_on_slots_of_their_own(pool: PgPool) {
+    let limits = |concurrency| squirrel_api::DownloadLimits {
+        concurrency,
+        per_user: concurrency,
+        wait: std::time::Duration::from_millis(50),
+    };
+    let config = ApiConfig {
+        download_limits: limits(1),
+        public_download_limits: limits(1),
+        ..config()
+    };
+    let instance = Instance::with_config(pool, config);
+    let ((alice, alice_me), _) = two_users(&instance).await;
+    let files = root_id(&instance, &alice_me, "Files").await;
+    let shared = file(&alice, &alice_me, files, "a.txt").await;
+    let token = make_link(&alice, &alice_me, json!({ "node_id": shared })).await;
+    let visitor = instance.public_browser();
+    let public_url = format!("/api/public/{token}/files/{shared}/content?download=true");
+    let private_url = format!("/api/files/{shared}/content");
+
+    let held = instance
+        .state
+        .public_downloads
+        .acquire(Uuid::now_v7())
+        .await
+        .expect("a free visitor slot");
+    let refused = visitor.get(&public_url).await;
+    refused.assert_status(StatusCode::SERVICE_UNAVAILABLE);
+    alice.get(&private_url).await.assert_status_ok();
+    drop(held);
+
+    let held = instance
+        .state
+        .downloads
+        .acquire(Uuid::now_v7())
+        .await
+        .expect("a free user slot");
+    alice
+        .get(&private_url)
+        .await
+        .assert_status(StatusCode::SERVICE_UNAVAILABLE);
+    visitor.get(&public_url).await.assert_status_ok();
+    drop(held);
+}
+
 #[sqlx::test(migrator = "squirrel_db::MIGRATOR")]
 async fn an_album_link_shows_its_photos(pool: PgPool) {
     let instance = Instance::with_config(pool.clone(), config());

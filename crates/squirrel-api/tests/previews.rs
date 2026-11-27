@@ -138,6 +138,7 @@ async fn a_render_without_a_free_slot_is_busy(pool: PgPool) {
             concurrency: 1,
             slot_wait: Duration::from_millis(50),
             render_rate: None,
+            ..PreviewLimits::default()
         },
         ..common::test_config()
     };
@@ -146,7 +147,7 @@ async fn a_render_without_a_free_slot_is_busy(pool: PgPool) {
     let warm = preview(&photo.browser, &photo.id, None).await;
     warm.assert_status_ok();
 
-    let held = instance.state.previews.slot().await.unwrap();
+    let held = instance.state.previews.slot(false).await.unwrap();
     let busy = preview(&photo.browser, &photo.id, Some(2160)).await;
     busy.assert_status(StatusCode::SERVICE_UNAVAILABLE);
     assert_eq!(files::code(&busy), "busy");

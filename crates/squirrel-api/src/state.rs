@@ -68,6 +68,8 @@ pub struct ApiConfig {
     pub upload_limits: UploadLimits,
     /// Concurrent file content responses (503 `busy` beyond them).
     pub download_limits: DownloadLimits,
+    /// The same for visitors of public links, per link, on slots of their own.
+    pub public_download_limits: DownloadLimits,
     /// Trash entries older than this are deleted for good.
     pub trash_retention: Duration,
     /// Blobs are deleted only after this long without any reference.
@@ -175,6 +177,7 @@ impl Default for ApiConfig {
             min_free_bytes: 1024 * 1024 * 1024,
             upload_limits: UploadLimits::default(),
             download_limits: DownloadLimits::default(),
+            public_download_limits: DownloadLimits::public(),
             trash_retention: Duration::days(30),
             blob_gc_grace: Duration::hours(24),
             preview_cache_bytes: 1536 * 1024 * 1024,
@@ -223,6 +226,8 @@ pub struct AppState {
     pub sync_rate: Option<Arc<UserRateLimiter>>,
     /// Streaming file bodies; a slot lives as long as its body.
     pub downloads: Slots,
+    /// The slots of public links' visitors, apart from [`AppState::downloads`].
+    pub public_downloads: Slots,
     /// Zip download tickets, in memory.
     pub archives: Arc<ArchiveTickets>,
     pub free_space: FreeSpace,
@@ -261,6 +266,7 @@ impl AppState {
             public_hash_permits: Arc::new(Semaphore::new(1)),
             uploads: Arc::new(UploadRuntime::new(&config.upload_limits)),
             downloads: config.download_limits.slots(),
+            public_downloads: config.public_download_limits.slots(),
             archives: Arc::default(),
             sync_rate: config
                 .sync_check_rate
@@ -301,6 +307,23 @@ impl AppState {
             free_space: Arc::new(free_space),
             ..self
         }
+    }
+
+    /// A download slot for `holder`, from the visitors' slots for a public
+    /// link and from the users' otherwise; `busy` when there is none.
+    pub(crate) async fn download_slot(
+        &self,
+        holder: crate::holder::Holder,
+    ) -> Result<crate::upload_runtime::Slot, crate::ApiError> {
+        let slots = if holder.is_visitor() {
+            &self.public_downloads
+        } else {
+            &self.downloads
+        };
+        slots
+            .acquire(holder.id())
+            .await
+            .ok_or(crate::ApiError::Busy)
     }
 
     /// Free bytes on the data disk now.

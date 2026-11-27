@@ -11,6 +11,7 @@ use uuid::Uuid;
 
 use crate::archive_dto::{ArchiveTicket, CreateArchiveRequest};
 use crate::error::{ApiError, ErrorBody};
+use crate::holder::Holder;
 use crate::input::{ApiJson, ApiPath, ApiQuery};
 use crate::routes::content::ContentQuery;
 use crate::routes::thumbnails::ThumbnailQuery;
@@ -47,7 +48,8 @@ pub async fn public_thumbnail(
     thumbnails::check_px(&query)?;
     let link = open(&state, &token, &jar).await?;
     let node = file(&state, &link, id).await?;
-    let mut response = thumbnails::serve(&state, &node, link.id, &query, &headers).await?;
+    let mut response =
+        thumbnails::serve(&state, &node, Holder::Link(link.id), &query, &headers).await?;
     // Revalidated every time (ETags keep it cheap): a revoked link stops showing them.
     response
         .headers_mut()
@@ -79,7 +81,14 @@ pub async fn public_file_content(
 ) -> Result<Response, ApiError> {
     let link = open(&state, &token, &jar).await?;
     let node = file(&state, &link, id).await?;
-    content::serve(&state, &node, link.id, query.download, &headers).await
+    content::serve(
+        &state,
+        &node,
+        Holder::Link(link.id),
+        query.download,
+        &headers,
+    )
+    .await
 }
 
 #[utoipa::path(post, path = "/api/public/{token}/archive", security(()), tag = "public",
@@ -133,5 +142,5 @@ pub async fn public_download_archive(
     for file in &archive.files {
         super::node(&state, &link, file.node_id).await?;
     }
-    archive::stream(&state, link.id, &ticket).await
+    archive::stream(&state, Holder::Link(link.id), &ticket).await
 }
