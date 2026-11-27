@@ -15,7 +15,7 @@
 	import Button from '#lib/components/ui/Button.svelte';
 	import Card from '#lib/components/ui/Card.svelte';
 	import IconButton from '#lib/components/ui/IconButton.svelte';
-	import { redirectFor } from '#lib/guard.ts';
+	import { isLinkPage, redirectFor } from '#lib/guard.ts';
 	import { LOGOUT_ERROR } from '#lib/session-logic.ts';
 	import { setUnread, watchUnread } from '#lib/notifications/inbox.svelte.ts';
 	import { watchBlurred } from '#lib/photos/blurred.svelte.ts';
@@ -42,8 +42,11 @@
 		})
 	);
 
+	// Public link pages live outside the app: no session, no shell.
+	const linkPage = $derived(isLinkPage(page.url.pathname));
+
 	onMount(() => {
-		void loadSession();
+		if (!isLinkPage(page.url.pathname)) void loadSession();
 		// Uploads live app-wide (the panel is mounted here), so the leave warning does too.
 		return installBeforeUnloadGuard();
 	});
@@ -104,7 +107,9 @@
 	<title>Squirrel</title>
 </svelte:head>
 
-{#if !session.loaded}
+{#if linkPage}
+	{@render children()}
+{:else if !session.loaded}
 	<main class="center"><p class="muted">Loading…</p></main>
 {:else if session.unreachable}
 	<main class="center">

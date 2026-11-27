@@ -2,6 +2,7 @@
 	import { onMount, untrack } from 'svelte';
 	import Icon from '#lib/components/icons/Icon.svelte';
 	import FriendPicks from '#lib/components/sharing/FriendPicks.svelte';
+	import PublicLinksSection from '#lib/components/sharing/PublicLinksSection.svelte';
 	import ShareRow from '#lib/components/sharing/ShareRow.svelte';
 	import Alert from '#lib/components/ui/Alert.svelte';
 	import Button from '#lib/components/ui/Button.svelte';
@@ -120,6 +121,7 @@
 				{/each}
 			</ul>
 		{/if}
+		<PublicLinksSection subject={target} />
 	</div>
 </Dialog>
 

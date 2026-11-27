@@ -938,6 +938,166 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/public-links": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["list_public_links"];
+        put?: never;
+        post: operations["create_public_link"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/public-links/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete: operations["delete_public_link"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/public/{token}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["public_link_info"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/public/{token}/album/items": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["public_album_items"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/public/{token}/archive": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["public_create_archive"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/public/{token}/archive/{ticket}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["public_download_archive"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/public/{token}/files/{id}/content": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["public_file_content"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/public/{token}/files/{id}/thumbnail": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["public_thumbnail"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/public/{token}/nodes": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["public_list_nodes"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/public/{token}/unlock": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["unlock_public_link"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/search/documents": {
         parameters: {
             query?: never;
@@ -1568,6 +1728,18 @@ export interface components {
             /** @description Optional reminder of who the invitation is for. Not used to send email. */
             email_hint?: string | null;
         };
+        CreatePublicLinkRequest: components["schemas"]["SubjectRef"] & {
+            /**
+             * Format: date-time
+             * @description When it stops opening; must be in the future. Omitted or `null`: never.
+             */
+            expires_at?: string | null;
+            /**
+             * @description Asked of visitors before anything is shown (10–256 characters).
+             *     Omitted or `null`: none.
+             */
+            password?: string | null;
+        };
         CreateShareRequest: components["schemas"]["SubjectRef"] & {
             permission: components["schemas"]["SharePermission"];
             /** @description The account to share with. */
@@ -1613,6 +1785,11 @@ export interface components {
             invitation: components["schemas"]["InvitationDto"];
             /** @description Shown once. Build the link as `<origin>/join/<token>`. */
             token: string;
+        };
+        /** @description A new link, with the URL to give out. The URL is never shown again. */
+        CreatedPublicLink: {
+            link: components["schemas"]["PublicLinkDto"];
+            url: string;
         };
         /** @description The calling device and its account. */
         CurrentDeviceResponse: {
@@ -2203,6 +2380,69 @@ export interface components {
          * @enum {string}
          */
         PlaceLevel: "country" | "city";
+        /** @description An album opened by a public link. */
+        PublicAlbumDto: {
+            /**
+             * Format: uuid
+             * @description A photo of it to show as its cover; `null` when empty.
+             */
+            cover_id?: string | null;
+            /** Format: uuid */
+            id: string;
+            /** Format: int64 */
+            item_count: number;
+            name: string;
+        };
+        /** @description A folder inside a public link and a page of what it holds. */
+        PublicFolderListing: {
+            folder: components["schemas"]["NodeDto"];
+            items: components["schemas"]["NodeDto"][];
+            next_cursor?: string | null;
+            /** @description From the link's folder down to this folder's parent (empty at the top). */
+            path: components["schemas"]["PathSegmentDto"][];
+        };
+        /** @description A public link as its owner sees it. Its URL is shown only once, when it is made. */
+        PublicLinkDto: {
+            /** Format: date-time */
+            created_at: string;
+            /** @description Past its expiry: it no longer opens. */
+            expired: boolean;
+            /**
+             * Format: date-time
+             * @description `null`: never expires.
+             */
+            expires_at?: string | null;
+            has_password: boolean;
+            /** Format: uuid */
+            id: string;
+        };
+        /** @description What the visitor of a link sees first. */
+        PublicLinkInfo: {
+            album?: null | components["schemas"]["PublicAlbumDto"];
+            /** Format: date-time */
+            expires_at?: string | null;
+            kind?: null | components["schemas"]["PublicLinkKind"];
+            /**
+             * @description A password is needed (`POST /api/public/{token}/unlock`); nothing
+             *     else is set until then.
+             */
+            locked: boolean;
+            node?: null | components["schemas"]["NodeDto"];
+            /** @description The display name of who shared it. */
+            shared_by?: string | null;
+        };
+        /**
+         * @description What a public link opens.
+         * @enum {string}
+         */
+        PublicLinkKind: "folder" | "file" | "album";
+        /** @description The links of one folder, file or album. */
+        PublicLinkList: {
+            /** @description Whether this server can make public links (its public URL is set). */
+            enabled: boolean;
+            /** @description Newest first, expired ones included. */
+            links: components["schemas"]["PublicLinkDto"][];
+        };
         RefreshRequest: {
             /** @description The current (or, after a lost response, the previous) `sqr_…` token. */
             refresh_token: string;
@@ -2416,6 +2656,9 @@ export interface components {
             items: components["schemas"]["TrashEntryDto"][];
             /** @description Pass back as `cursor` for the next page; `null` on the last page. */
             next_cursor?: string | null;
+        };
+        UnlockRequest: {
+            password: string;
         };
         UnreadCountDto: {
             /** Format: int64 */
@@ -5414,6 +5657,649 @@ export interface operations {
             };
             /** @description Unknown level */
             422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    list_public_links: {
+        parameters: {
+            query?: {
+                /** @description A folder or file. */
+                node_id?: string;
+                album_id?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PublicLinkList"];
+                };
+            };
+            /** @description Only the owner sees its links */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    create_public_link: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreatePublicLinkRequest"];
+            };
+        };
+        responses: {
+            /** @description The link and its URL, shown only now */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CreatedPublicLink"];
+                };
+            };
+            /** @description Only the owner makes links */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Public links are not set up on this server */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description An expiry in the past, or a password too short or too long */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description busy: no password hashing slot */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    delete_public_link: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Link id */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Revoked: the link no longer opens */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description No such link of the caller's */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    public_link_info: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The token from the link */
+                token: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description What the link opens, or `locked` until its password is given */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PublicLinkInfo"];
+                };
+            };
+            /** @description Unknown, expired or revoked link, or its item is gone */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    public_album_items: {
+        parameters: {
+            query?: {
+                /** @description `next_cursor` of the previous page. */
+                cursor?: string;
+                /** @description Default 200, at most 500. */
+                limit?: number;
+            };
+            header?: never;
+            path: {
+                /** @description The token from the link */
+                token: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The album's photos, newest first */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TimelinePage"];
+                };
+            };
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description link_locked: give the password first */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not an album link */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    public_create_archive: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The token from the link */
+                token: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateArchiveRequest"];
+            };
+        };
+        responses: {
+            /** @description Download it with `GET /api/public/{token}/archive/{ticket}` within 10 minutes */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ArchiveTicket"];
+                };
+            };
+            /** @description No ids, more than 500, or a folder among them */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description link_locked: give the password first */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description An id outside the link */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description archive_too_large: the zip would reach 4 GiB */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    public_download_archive: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The token from the link */
+                token: string;
+                /** @description `ticket` from `POST /api/public/{token}/archive` */
+                ticket: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The zip, streamed */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/zip": number[];
+                };
+            };
+            /** @description link_locked: give the password first */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unknown or expired ticket, another link's, or a file deleted since */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Too many downloads in progress */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    public_file_content: {
+        parameters: {
+            query?: {
+                /** @description `true` forces `Content-Disposition: attachment`. */
+                download?: boolean;
+            };
+            header?: never;
+            path: {
+                /** @description The token from the link */
+                token: string;
+                /** @description A file inside the link */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The file; active content types are served as application/octet-stream */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/octet-stream": number[];
+                };
+            };
+            /** @description One byte range */
+            206: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/octet-stream": number[];
+                };
+            };
+            /** @description Unchanged (If-None-Match) */
+            304: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description link_locked: give the password first */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            416: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Too many downloads in progress */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    public_thumbnail: {
+        parameters: {
+            query: {
+                /** @description `thumb` (grid, 360 px tall) or `preview` (lightbox). */
+                size: "thumb" | "preview";
+                /**
+                 * @description The `thumbnail.version` from the listing. Only a thumbnail URL with
+                 *     the current version is cached as immutable.
+                 */
+                v?: number;
+                /**
+                 * @description `preview` of a photo only: the long side wanted, in device pixels. Rounded
+                 *     up to 1440, 2160 or 3200 (capped), never above the original's size.
+                 *     Without it: 1440. PDF previews are always 1440.
+                 */
+                px?: number;
+            };
+            header?: never;
+            path: {
+                /** @description The token from the link */
+                token: string;
+                /** @description A file inside the link */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description WebP, or JPEG for an opaque photo preview */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "image/webp": number[];
+                    "image/jpeg": number[];
+                };
+            };
+            /** @description Unchanged (If-None-Match) */
+            304: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description link_locked: give the password first */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description not_found, or not_ready while the worker has not produced it */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    public_list_nodes: {
+        parameters: {
+            query?: {
+                /** @description A folder inside the link; omitted: the link's folder. */
+                parent_id?: string;
+                /** @description `next_cursor` of the previous page. */
+                cursor?: string;
+                limit?: number;
+            };
+            header?: never;
+            path: {
+                /** @description The token from the link */
+                token: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PublicFolderListing"];
+                };
+            };
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description link_locked: give the password first */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not a folder link, or a folder outside it */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    unlock_public_link: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The token from the link */
+                token: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UnlockRequest"];
+            };
+        };
+        responses: {
+            /** @description Unlocked: a cookie scoped to this link is set (none is needed without a password) */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description invalid_credentials: wrong password */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description busy: no password hashing slot */
+            503: {
                 headers: {
                     [name: string]: unknown;
                 };

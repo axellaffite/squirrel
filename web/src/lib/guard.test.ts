@@ -20,6 +20,9 @@ describe('isPublicPath', () => {
 		['/loginx', false],
 		['/setupx', false],
 		['/join', false],
+		['/s/abc', true],
+		['/s', false],
+		['/shared', false],
 		['/joined', false]
 	])('%s → %s', (path, expected) => {
 		expect(isPublicPath(path)).toBe(expected);
@@ -79,5 +82,13 @@ describe('redirectFor', () => {
 		])('%s → %s', (path, expected) => {
 			expect(at(path, { me })).toBe(expected);
 		});
+	});
+});
+
+describe('public link pages', () => {
+	it('are never redirected, whatever the session', () => {
+		expect(at('/s/abc', { me: null })).toBeNull();
+		expect(at('/s/abc', { me })).toBeNull();
+		expect(at('/s/abc', { needsSetup: true })).toBeNull();
 	});
 });

@@ -25,6 +25,7 @@ export default defineConfig({
 		{ name: 'photos-phone', testMatch: 'photos-phone.spec.ts', dependencies: ['onboarding'], use: { ...phone, ...dates } },
 		{ name: 'documents', testMatch: 'documents.spec.ts', dependencies: ['onboarding'], use: { ...desktop, ...dates } },
 		{ name: 'sharing', testMatch: 'sharing.spec.ts', dependencies: ['onboarding'], use: desktop },
+		{ name: 'public-links', testMatch: 'public-links.spec.ts', dependencies: ['onboarding'], use: desktop },
 		{ name: 'notifications', testMatch: 'notifications.spec.ts', dependencies: ['onboarding'], use: desktop },
 		{ name: 'friends', testMatch: 'friends.spec.ts', dependencies: ['onboarding'], use: desktop },
 		{ name: 'text-editor', testMatch: 'text-editor.spec.ts', dependencies: ['onboarding'], use: desktop },
