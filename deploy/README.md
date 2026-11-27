@@ -110,7 +110,7 @@ Good to know:
   an earlier tag (`docker images squirrel`), then `docker compose up -d`.
 - **Restart policy:** every service restarts unless stopped; Docker starts them at boot.
 - **Backups:** the database and `/srv/squirrel/data` must be backed up together (see the
-  main README, "Data directory"). Automated backups are GitHub issue #13.
+  `docs/configuration.md`, "Data directory"). Automated backups are GitHub issue #13.
 - **Memory (8 GB):** Postgres, the worker's ML child (about 0.6 GB while photos are being
   processed), the server's search model (about 1.9 GB while people search, stopped after
   5 idle minutes) and up to two decoding children (2 GiB address space each). The first start
