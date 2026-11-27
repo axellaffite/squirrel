@@ -12,6 +12,10 @@
 	import EmptyState from '#lib/components/ui/EmptyState.svelte';
 	import IconButton from '#lib/components/ui/IconButton.svelte';
 	import ListRow from '#lib/components/ui/ListRow.svelte';
+	import QrCode from '#lib/components/ui/QrCode.svelte';
+
+	/** Where this Squirrel is reached from here: what the phone app asks for as the server. */
+	const address = window.location.origin;
 
 	let devices: Device[] = $state([]);
 	let loaded = $state(false);
@@ -76,6 +80,18 @@
 		stays.{/snippet}
 
 	{#if error}<Alert>{error}</Alert>{/if}
+
+	<section class="add" aria-labelledby="add-phone">
+		<QrCode value={address} label="QR code of this Squirrel's address" />
+		<div class="add-text">
+			<h2 id="add-phone">Add a phone</h2>
+			<p>
+				Install the Squirrel app and give it this address as the server, then sign in. The code holds the same
+				address: scan it with the phone's camera to copy it.
+			</p>
+			<p class="address" data-testid="server-address">{address}</p>
+		</div>
+	</section>
 
 	{#if devices.length > 0}
 		<div class="well">
@@ -152,6 +168,51 @@
 {/if}
 
 <style>
+	.add {
+		display: flex;
+		flex-wrap: wrap;
+		align-items: center;
+		gap: var(--space-5);
+		margin-bottom: var(--space-5);
+		padding: var(--card-pad);
+		border: 1px solid var(--hair);
+		border-radius: var(--radius-card);
+		background: var(--card);
+		box-shadow: var(--shadow-card);
+	}
+
+	.add-text {
+		display: grid;
+		gap: var(--space-2);
+		flex: 1;
+		min-width: min(100%, calc(4 * var(--space-8)));
+		max-width: var(--measure);
+	}
+
+	.add-text h2,
+	.add-text p {
+		margin: 0;
+	}
+
+	.add-text h2 {
+		font-size: var(--text-md);
+		line-height: var(--text-md-lh);
+		font-weight: var(--weight-label);
+	}
+
+	.add-text p {
+		color: var(--ink-muted);
+		font-size: var(--text-md);
+		line-height: var(--text-md-lh);
+	}
+
+	.add-text .address {
+		color: var(--ink);
+		font-family: var(--font-mono);
+		overflow-wrap: anywhere;
+		user-select: all;
+	}
+
 	.well {
 		padding: var(--well-pad);
 		border-radius: var(--radius-well);

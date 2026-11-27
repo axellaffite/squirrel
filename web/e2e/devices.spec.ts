@@ -80,3 +80,15 @@ test('on a phone, revoking goes through the actions sheet', async ({ browser, re
 	await expect(row.getByText('Revoked', { exact: true })).toBeVisible();
 	expect(await bearerStatus(request, phone.token)).toBe(401);
 });
+
+test('the devices page shows the address to give the phone app, as text and as a QR code', async ({ browser }) => {
+	const page = await login(browser, 'alice');
+	await page.goto('/settings/devices');
+	const origin = new URL(page.url()).origin;
+	await expect(page.getByRole('heading', { name: 'Add a phone' })).toBeVisible();
+	await expect(page.getByTestId('server-address')).toHaveText(origin);
+	const code = page.getByRole('img', { name: "QR code of this Squirrel's address" });
+	await expect(code).toBeVisible();
+	// Dark modules on a light ground, whatever the theme.
+	expect(await code.locator('path').getAttribute('d')).toMatch(/^M4 4h7v1h-7z/);
+});
