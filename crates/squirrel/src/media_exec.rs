@@ -70,7 +70,13 @@ pub fn run(args: &MediaExecArgs) -> anyhow::Result<()> {
         serde_json::from_slice(&raw)?
     };
     // Before the first decoder is loaded, and so before any thread but this one.
-    crate::confine::apply(&confinement(&request))?;
+    match crate::confine::apply(&confinement(&request)) {
+        Ok(_) => {}
+        // The probe parses nothing untrusted, and runs where seccomp may not
+        // exist: an image built under CPU emulation (deploy/ship.sh on a Mac).
+        Err(err) if args.probe => eprintln!("the probe runs unconfined: {err:#}"),
+        Err(err) => return Err(err),
+    }
     squirrel_media::register_decoders();
     // Lowering a limit never needs privileges: still before any decoding.
     for (resource, value) in operation_limits(&request) {
