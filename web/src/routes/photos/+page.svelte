@@ -254,6 +254,7 @@
 
 {#if selection.active}
 	<SelectionBar count={selection.size} onClear={() => selection.clear()}>
+		<DownloadAction ids={[...selection.ids]} known={selectedPhoto} onResult={(message) => (actionError = message)} />
 		<Button variant="secondary" size="sm" onclick={() => (picking = [...selection.ids])}>
 			<Icon name="library" /><span class="label">Add to album</span>
 		</Button>
