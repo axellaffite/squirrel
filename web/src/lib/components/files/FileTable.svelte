@@ -1,12 +1,14 @@
 <script lang="ts">
 	import { untrack } from 'svelte';
 	import NodeVisual from '#lib/components/files/NodeVisual.svelte';
+	import Icon from '#lib/components/icons/Icon.svelte';
 	import IconButton from '#lib/components/ui/IconButton.svelte';
 	import Badge from '#lib/components/ui/Badge.svelte';
 	import ListRow from '#lib/components/ui/ListRow.svelte';
 	import type { FileNode } from '#lib/files/api.ts';
 	import { editorUrl, isEditable } from '#lib/files/editable.ts';
 	import { contentUrl, formatBytes, formatDate, kindLabel } from '#lib/files/format.ts';
+	import { DEFAULT_SORT, nextSort, sortLabel, sortNodes, type Sort, type SortKey } from '#lib/files/sort.ts';
 
 	interface Props {
 		items: FileNode[];
@@ -31,15 +33,40 @@
 	// Rows present when the view loads arrive once; rows added later just appear.
 	const arriving = new Set(untrack(() => items.slice(0, 8).map((node) => node.id)));
 	const arrival = (node: FileNode, index: number) => (arriving.has(node.id) ? index : undefined);
+
+	/** Folders first, then files; by name A to Z until a header is clicked. */
+	let sort: Sort = $state(DEFAULT_SORT);
+	const sorted = $derived(sortNodes(items, sort));
+	const COLUMNS: { key: SortKey; label: string }[] = [
+		{ key: 'name', label: 'Name' },
+		{ key: 'kind', label: 'Kind' },
+		{ key: 'size', label: 'Size' },
+		{ key: 'modified', label: 'Modified' }
+	];
 </script>
 
 <!-- MASTER.md › "Table": a header band, then rows on the table's columns (subgrid, ≥ 768 px). -->
 <div class="table">
-<div class="thead" aria-hidden="true">
-	<span></span><span>Name</span><span>Kind</span><span>Size</span><span>Modified</span><span></span>
+<div class="thead">
+	<span></span>
+	{#each COLUMNS as column (column.key)}
+		<button
+			type="button"
+			class="sort"
+			class:active={sort.key === column.key}
+			aria-label={sortLabel(sort, column.key, column.label)}
+			onclick={() => (sort = nextSort(sort, column.key))}
+		>
+			{column.label}
+			{#if sort.key === column.key}
+				<Icon name={sort.dir === 'asc' ? 'chevron-up' : 'chevron-down'} />
+			{/if}
+		</button>
+	{/each}
+	<span></span>
 </div>
 <ul class="files" aria-label="Files and folders">
-	{#each items as node, index (node.id)}
+	{#each sorted as node, index (node.id)}
 		<ListRow
 			nodeId={node.id}
 			selected={node.id === selectedId}
@@ -102,6 +129,32 @@
 
 	.thead {
 		display: none;
+	}
+
+	.sort {
+		display: inline-flex;
+		align-items: center;
+		gap: var(--space-1);
+		min-height: var(--table-head);
+		padding: 0;
+		border: 0;
+		background: none;
+		color: inherit;
+		font: inherit;
+		text-align: start;
+		cursor: pointer;
+		transition: color var(--dur-fast) var(--ease);
+	}
+
+	.sort:hover,
+	.sort.active {
+		color: var(--ink);
+	}
+
+	.sort:focus-visible {
+		outline: var(--ring-width) solid var(--accent);
+		outline-offset: var(--ring-offset);
+		border-radius: var(--radius-sm);
 	}
 
 	.files {

@@ -7,6 +7,7 @@
 	import { formatBytes } from '#lib/files/format.ts';
 	import { nodeIcon } from '#lib/files/nodeIcon.ts';
 	import { listFolder, thumbUrl, zipUrl, type FolderListing, type PublicNode } from '#lib/public/api.ts';
+	import { DEFAULT_SORT, sortNodes } from '#lib/files/sort.ts';
 	import { fileOfNode, MAX_ZIP_FILES, zippable, type ViewedFile } from '#lib/public/view.ts';
 
 	interface Props {
@@ -30,6 +31,8 @@
 	let error: string | null = $state(null);
 	let loading = $state(false);
 	const files = $derived(zippable(items));
+	/** Folders first, then files, by name. */
+	const sorted = $derived(sortNodes(items, DEFAULT_SORT));
 
 	$effect(() => {
 		zipCount = files.length;
@@ -91,7 +94,7 @@
 	<EmptyState icon="folder" title="This folder is empty" />
 {:else}
 	<ul class="rows" aria-label="Files">
-		{#each items as node (node.id)}
+		{#each sorted as node (node.id)}
 			<ListRow testId="public-node" nodeId={node.id}>
 				{#snippet icon()}
 					{#if node.thumbnail}
