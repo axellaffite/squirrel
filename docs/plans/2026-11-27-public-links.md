@@ -32,7 +32,7 @@ Date: 2026-11-27. Status: built. Lifts "public links" from the v1 out-of-scope l
 - **Limits**: downloads and preview renders are counted per link (the global caps still apply).
   `GET /api/public/{token}` (the page's first call) has the invitation check's rate limit.
   The tokens are 256-bit, so guessing them is hopeless.
-- **Configuration**: `SQUIRREL_PUBLIC_URL` (e.g. `https://home.tail1234.ts.net:8443`) turns
+- **Configuration**: `SQUIRREL_PUBLIC_URL` (e.g. `https://home.tail1234.ts.net:10000`) turns
   the feature on and is the base of the links. `SQUIRREL_PUBLIC_BIND` (e.g. `127.0.0.1:8081`)
   starts the public listener, which Funnel exposes. Without `SQUIRREL_PUBLIC_URL`, links can't be
   made (409). The tailnet listener also answers `/api/public/**`, so links work inside the tailnet.
@@ -113,7 +113,7 @@ Visitor comments or uploads, editing a link, view counts, the phone app UI.
 - Web: `PublicLinksSection` in the Share dialog; `/s/[token]` page outside the app shell (the
   root layout loads no session there), with `PublicFolder`, `PublicAlbum`, `PublicViewer`, and
   a client of its own (`lib/public/api.ts`) without the session middleware.
-- Deploy: compose publishes `127.0.0.1:8081`; `deploy/README.md` "Public links" (Funnel on 8443).
+- Deploy: compose publishes `127.0.0.1:8081`; `deploy/README.md` "Public links" (Funnel on 10000).
 - Tests: DB `tests/public_links.rs` (7), API `tests/public_links.rs` (10) + route matrix, unit
   tests (cookie, URL, token shape, public pages, CLI), web `publicLinks.test.ts`,
   `public/view.test.ts`, guard; E2E `public-links.spec.ts` (public listener on E2E port + 1).

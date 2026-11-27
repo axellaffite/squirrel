@@ -36,7 +36,7 @@ and `/api/public/{token}` paths).
 | `SQUIRREL_BIND` | `0.0.0.0:8080` | Listen address |
 | `SQUIRREL_COOKIE_SECURE` | `true` | Set to `false` only for local HTTP development |
 | `SQUIRREL_SETUP_TOKEN` | generated and logged | Setup code for the first administrator |
-| `SQUIRREL_PUBLIC_URL` | unset | Base address of public links, e.g. `https://home.tail1234.ts.net:8443`. Unset or empty: links cannot be made (see `deploy/README.md`, "Public links") |
+| `SQUIRREL_PUBLIC_URL` | unset | Base address of public links, e.g. `https://home.tail1234.ts.net:10000`. Unset or empty: links cannot be made (see `deploy/README.md`, "Public links") |
 | `SQUIRREL_PUBLIC_BIND` | unset | Second listen address serving public links only (link pages, `/api/public/…`, web assets), e.g. `127.0.0.1:8081` |
 | `SQUIRREL_TRUSTED_PROXIES` | empty | Comma-separated IPs/CIDRs of reverse proxies whose `X-Forwarded-For` is trusted for rate limiting and logs. Leave empty when clients connect directly |
 | `SQUIRREL_LOG_JSON` | `false` | JSON logs |

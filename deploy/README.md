@@ -80,12 +80,13 @@ puts it on the internet, on the same machine name as the tailnet address:
 
 1. In the Tailscale admin console, allow Funnel for the server (Access controls: the `funnel`
    node attribute; the console offers to add it the first time you run the command below).
-2. `tailscale funnel --bg --https=8443 8081`. Funnel only uses ports 443, 8443 and 10000; 443 is
-   usually taken by `tailscale serve` (step 6 above), so 8443. `tailscale funnel status` shows it.
-3. In `~/squirrel/.env`, set `SQUIRREL_PUBLIC_URL=https://<machine>.<tailnet>.ts.net:8443`
+2. `tailscale funnel --bg --https=10000 8081`. Funnel only uses ports 443, 8443 and 10000; step 6
+   already serves the app on 443 or 8443, and a Funnel on that port would replace it, so 10000.
+   `tailscale funnel status` shows it.
+3. In `~/squirrel/.env`, set `SQUIRREL_PUBLIC_URL=https://<machine>.<tailnet>.ts.net:10000`
    (the Funnel address), then `docker compose up -d`. The Share dialog now makes links.
 
-To turn them off: `tailscale funnel --https=8443 off` (links stop opening from outside the
+To turn them off: `tailscale funnel --https=10000 off` (links stop opening from outside the
 tailnet) and unset `SQUIRREL_PUBLIC_URL` (no new links). Links already made keep working on the
 tailnet address until they are revoked or expire.
 
