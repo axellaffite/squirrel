@@ -19,7 +19,7 @@ test('a password-protected folder link opens for a visitor, then stops once revo
 	await expect(dialog.getByRole('heading', { name: 'Public link' })).toBeVisible();
 	await dialog.getByLabel('Password (optional)').fill(LINK_PASSWORD);
 	await dialog.getByRole('button', { name: 'Create link' }).click();
-	const url = (await dialog.getByTestId('public-link-url').textContent())?.trim() ?? '';
+	const url = await dialog.getByTestId('public-link-url').inputValue();
 	expect(url.startsWith(`${publicOrigin}/s/`)).toBe(true);
 	await expect(dialog.getByTestId('public-link-row')).toContainText('No expiry · Password');
 

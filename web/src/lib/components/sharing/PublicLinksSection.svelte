@@ -3,7 +3,6 @@
 	import Icon from '#lib/components/icons/Icon.svelte';
 	import Alert from '#lib/components/ui/Alert.svelte';
 	import Button from '#lib/components/ui/Button.svelte';
-	import IconButton from '#lib/components/ui/IconButton.svelte';
 	import ListRow from '#lib/components/ui/ListRow.svelte';
 	import TextField from '#lib/components/ui/TextField.svelte';
 	import type { Subject } from '#lib/sharing/api.ts';
@@ -107,26 +106,46 @@
 	{:else}
 		<p class="muted">Anyone with the link can view and download it, without an account.</p>
 		<form class="form" onsubmit={create}>
-			<TextField label="Expires (optional)" type="date" min={today()} bind:value={day} error={dayError} />
-			<TextField
-				label="Password (optional)"
-				type="password"
-				autocomplete="new-password"
-				bind:value={password}
-				error={passwordError}
-			/>
-			<Button type="submit" disabled={busy}><Icon name="link" />Create link</Button>
+			<div class="fields">
+				<TextField label="Expires (optional)" type="date" min={today()} bind:value={day} error={dayError} />
+				<!-- Shown as typed: the owner passes it on. Not a login, so password managers keep out. -->
+				<TextField
+					label="Password (optional)"
+					type="text"
+					placeholder="None"
+					autocomplete="off"
+					autocapitalize="off"
+					spellcheck={false}
+					data-1p-ignore
+					data-lpignore="true"
+					data-bwignore
+					data-form-type="other"
+					bind:value={password}
+					error={passwordError}
+				/>
+			</div>
+			<p class="hint">The password shows as you type: you'll pass it on with the link. 10 characters or more.</p>
+			<Button type="submit" full disabled={busy}><Icon name="link" />Create link</Button>
 		</form>
 	{/if}
 
 	<div class="live" aria-live="polite">
 		{#if newUrl}
 			<div class="new-link">
-				<p>Copy this link now. It will not be shown again.</p>
-				<p class="url" data-testid="public-link-url"><code>{newUrl}</code></p>
+				<p><strong>Link created.</strong> <span class="muted">Copy it now: it won't be shown again.</span></p>
 				<div class="copy">
-					<Button variant="secondary" size="sm" onclick={copy}><Icon name="copy" />Copy link</Button>
-					{#if copied}<span class="copied"><Icon name="check" />Copied</span>{/if}
+					<input
+						class="url"
+						type="text"
+						readonly
+						aria-label="New link"
+						value={newUrl}
+						data-testid="public-link-url"
+						onfocus={(event) => event.currentTarget.select()}
+					/>
+					<Button variant="secondary" size="sm" class={copied ? 'copied' : ''} onclick={copy}>
+						{#if copied}<Icon name="check" />Copied{:else}<Icon name="copy" />Copy{/if}
+					</Button>
 				</div>
 			</div>
 		{/if}
@@ -135,6 +154,7 @@
 	{#if error}<Alert>{error}</Alert>{/if}
 
 	{#if links.length > 0}
+		<h4 class="label">Active links</h4>
 		<ul class="rows" aria-label="Public links">
 			{#each links as link (link.id)}
 				<ListRow testId="public-link-row">
@@ -142,7 +162,7 @@
 					{#snippet title()}{linkTitle(link)}{/snippet}
 					{#snippet meta()}{linkMeta(link)}{/snippet}
 					{#snippet actions()}
-						<IconButton icon="x" label={`Revoke the link ${linkTitle(link).toLowerCase()}`} tooltip="Revoke" onclick={() => revoke(link)} />
+						<Button variant="danger" size="sm" aria-label={`Revoke the link ${linkTitle(link).toLowerCase()}`} onclick={() => revoke(link)}>Revoke</Button>
 					{/snippet}
 				</ListRow>
 			{/each}
@@ -159,16 +179,26 @@
 
 	h3 {
 		margin: 0;
-		font-size: var(--text-md);
-		line-height: var(--text-md-lh);
+		font-size: var(--text-lg);
+		line-height: var(--text-lg-lh);
 		font-weight: var(--weight-strong);
 	}
 
-	@media (min-width: 48rem) {
-		.form {
-			grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) auto;
-			align-items: end;
-		}
+	/* Two columns at every width: the dialog is narrow even on a wide screen. */
+	.fields {
+		display: grid;
+		grid-template-columns: repeat(2, minmax(0, 1fr));
+		gap: var(--space-3);
+		align-items: start;
+	}
+
+	.hint,
+	.label {
+		margin: 0;
+		color: var(--ink-muted);
+		font-size: var(--text-sm);
+		line-height: var(--text-sm-lh);
+		font-weight: var(--weight-body);
 	}
 
 	.live {
@@ -180,26 +210,46 @@
 		gap: var(--space-3);
 		padding: var(--card-pad);
 		border-radius: var(--radius-card);
-		background: var(--card);
-		box-shadow: var(--shadow-card), var(--select-ring);
+		background: var(--accent-soft);
+		box-shadow: var(--select-ring);
 	}
 
 	.new-link p {
 		margin: 0;
+		font-size: var(--text-sm);
+		line-height: var(--text-sm-lh);
 	}
 
-	.url code {
-		overflow-wrap: anywhere;
+	.new-link strong {
+		font-weight: var(--weight-strong);
 	}
 
-	.copy,
-	.copied {
+	.copy {
 		display: flex;
 		align-items: center;
 		gap: var(--space-2);
 	}
 
-	.copied {
+	.url {
+		flex: 1;
+		min-width: 0;
+		min-height: var(--control-sm);
+		padding: 0 var(--space-3);
+		border: 1px solid var(--hair-strong);
+		border-radius: var(--radius-control);
+		background: var(--card);
+		color: var(--ink);
+		font-family: var(--font-mono);
+		font-size: var(--text-sm);
+		text-overflow: ellipsis;
+	}
+
+	.url:focus-visible {
+		outline: var(--ring-width) solid var(--accent);
+		outline-offset: var(--ring-offset);
+	}
+
+	.copy :global(.copied) {
 		color: var(--success);
 	}
 

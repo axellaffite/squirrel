@@ -1,4 +1,7 @@
 /** What the public link page shows (no I/O). */
+import type { IconName } from '#lib/components/icons/paths.ts';
+import { formatBytes } from '#lib/files/format.ts';
+import { nodeIcon } from '#lib/files/nodeIcon.ts';
 import type { AlbumPhoto, LinkInfo, PublicNode } from '#lib/public/api.ts';
 
 /** A file opened in the viewer. */
@@ -31,11 +34,23 @@ export function linkName(info: LinkInfo): string {
 
 const dayFormat = new Intl.DateTimeFormat(undefined, { dateStyle: 'medium' });
 
-/** "Shared by Alice · Until 4 Dec 2026" */
-export function linkByline(info: LinkInfo): string {
+/** "Shared by Alice · 2.2 MB" for a file, "· 12 photos" for an album, nothing more for a folder. */
+export function linkDetails(info: LinkInfo): string {
 	const parts = [info.shared_by ? `Shared by ${info.shared_by}` : null];
-	if (info.expires_at) parts.push(`Until ${dayFormat.format(new Date(info.expires_at))}`);
+	if (info.node?.kind === 'file') parts.push(formatBytes(info.node.size));
+	if (info.album) parts.push(`${info.album.item_count} ${info.album.item_count === 1 ? 'photo' : 'photos'}`);
 	return parts.filter((part): part is string => part !== null).join(' · ');
+}
+
+/** "This link expires on 4 Dec 2026", or `null` when it never does. */
+export function linkExpiry(info: LinkInfo): string | null {
+	return info.expires_at ? `This link expires on ${dayFormat.format(new Date(info.expires_at))}` : null;
+}
+
+/** The icon beside the link's name. */
+export function linkIcon(info: LinkInfo): IconName {
+	if (info.album) return 'images';
+	return info.node ? nodeIcon(info.node) : 'link';
 }
 
 /** Files of a listing that a zip can hold (folders cannot go in one). */

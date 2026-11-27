@@ -14,9 +14,13 @@
 		onOpen: (file: ViewedFile) => void;
 		/** The link closed meanwhile (revoked, expired) or got locked. */
 		onGone: () => void;
+		/** How many files "Download all" would zip (read by the page header). */
+		zipCount?: number;
+		/** A zip is being prepared. */
+		zipping?: boolean;
 	}
 
-	let { token, onOpen, onGone }: Props = $props();
+	let { token, onOpen, onGone, zipCount = $bindable(0), zipping = $bindable(false) }: Props = $props();
 
 	/** The folder shown: `null` is the link's own folder. */
 	let folderId: string | null = $state(null);
@@ -25,8 +29,11 @@
 	let nextCursor: string | null = $state(null);
 	let error: string | null = $state(null);
 	let loading = $state(false);
-	let zipping = $state(false);
 	const files = $derived(zippable(items));
+
+	$effect(() => {
+		zipCount = files.length;
+	});
 
 	async function load(id: string | null, cursor: string | null) {
 		loading = true;
@@ -52,7 +59,7 @@
 		else onOpen(fileOfNode(node));
 	}
 
-	async function downloadAll() {
+	export async function downloadAll() {
 		zipping = true;
 		error = null;
 		const result = await zipUrl(token, files.slice(0, MAX_ZIP_FILES));
@@ -75,11 +82,6 @@
 				<li aria-current="page">{listing.folder.name}</li>
 			</ol>
 		</nav>
-		{#if files.length > 0}
-			<Button variant="secondary" size="sm" disabled={zipping} onclick={downloadAll}>
-				<Icon name="download" />{zipping ? 'Preparing…' : 'Download all'}
-			</Button>
-		{/if}
 	</div>
 {/if}
 

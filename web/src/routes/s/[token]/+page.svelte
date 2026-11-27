@@ -7,10 +7,11 @@
 	import AuthCard from '#lib/components/shell/AuthCard.svelte';
 	import Alert from '#lib/components/ui/Alert.svelte';
 	import Button from '#lib/components/ui/Button.svelte';
+	import IconButton from '#lib/components/ui/IconButton.svelte';
 	import TextField from '#lib/components/ui/TextField.svelte';
-	import { formatBytes } from '#lib/files/format.ts';
+	import PublicPreview from '#lib/components/public/PublicPreview.svelte';
 	import { contentUrl, linkInfo, unlock, type LinkInfo } from '#lib/public/api.ts';
-	import { fileOfNode, linkByline, linkName, type ViewedFile } from '#lib/public/view.ts';
+	import { fileOfNode, linkDetails, linkExpiry, linkIcon, linkName, type ViewedFile } from '#lib/public/view.ts';
 
 	type Status = 'loading' | 'gone' | 'error' | 'locked' | 'open';
 
@@ -23,6 +24,10 @@
 	let unlockError: string | null = $state(null);
 	let unlocking = $state(false);
 	let viewed: ViewedFile | null = $state(null);
+	/** The folder or album view, whose "Download all" the header button runs. */
+	let collection: { downloadAll: () => Promise<void> } | undefined = $state();
+	let zipCount = $state(0);
+	let zipping = $state(false);
 
 	$effect(() => {
 		const current = token;
@@ -94,27 +99,47 @@
 		</form>
 	</AuthCard>
 {:else if info}
+	{@const expiry = linkExpiry(info)}
 	<main class="shell">
 		<div class="panel">
 			<header class="head">
-				<span class="wordmark">Squirrel</span>
-				<h1>{linkName(info)}</h1>
-				<p class="muted">{linkByline(info)}</p>
-			</header>
-			{#if info.kind === 'folder'}
-				<PublicFolder {token} onOpen={(file) => (viewed = file)} onGone={recheck} />
-			{:else if info.kind === 'album'}
-				<PublicAlbum {token} onOpen={(file) => (viewed = file)} onGone={recheck} />
-			{:else if info.node}
-				{@const node = info.node}
-				<section class="single" aria-label="Shared file">
-					<p class="muted">{formatBytes(node.size)}</p>
-					<div class="actions">
-						<Button variant="secondary" onclick={() => (viewed = fileOfNode(node))}><Icon name="image" />Preview</Button>
-						<Button href={contentUrl(token, node.id, true)} download><Icon name="download" />Download</Button>
+				<div class="title">
+					<span class="well" aria-hidden="true"><Icon name={linkIcon(info)} /></span>
+					<div class="names">
+						<h1>{linkName(info)}</h1>
+						<p class="muted">{linkDetails(info)}</p>
 					</div>
-				</section>
-			{/if}
+				</div>
+				<div class="actions">
+					{#if info.kind === 'file' && info.node}
+						<IconButton
+							icon="external-link"
+							label="Open the original in a new tab"
+							fill="tint"
+							href={contentUrl(token, info.node.id)}
+							newTab
+						/>
+						<Button size="sm" href={contentUrl(token, info.node.id, true)} download><Icon name="download" />Download</Button>
+					{:else if zipCount > 0}
+						<Button size="sm" disabled={zipping} onclick={() => collection?.downloadAll()}>
+							<Icon name="download" />{zipping ? 'Preparing…' : 'Download all'}
+						</Button>
+					{/if}
+				</div>
+			</header>
+			<div class="body" class:stage={info.kind === 'file'}>
+				{#if info.kind === 'folder'}
+					<PublicFolder bind:this={collection} bind:zipCount bind:zipping {token} onOpen={(file) => (viewed = file)} onGone={recheck} />
+				{:else if info.kind === 'album'}
+					<PublicAlbum bind:this={collection} bind:zipCount bind:zipping {token} onOpen={(file) => (viewed = file)} onGone={recheck} />
+				{:else if info.node}
+					<PublicPreview {token} file={fileOfNode(info.node)} />
+				{/if}
+			</div>
+			<footer class="foot">
+				<span class="wordmark">Squirrel</span>
+				{#if expiry}<span>{expiry}</span>{/if}
+			</footer>
 		</div>
 	</main>
 {/if}
@@ -142,13 +167,12 @@
 	}
 
 	.panel {
-		display: grid;
-		gap: var(--space-5);
-		align-content: start;
+		display: flex;
+		flex-direction: column;
 		width: min(100%, var(--content-max));
 		min-height: calc(100svh - 2 * var(--frame));
 		margin: 0 auto;
-		padding: var(--panel-pad);
+		overflow: hidden;
 		border: 1px solid var(--hair);
 		border-radius: var(--radius-panel);
 		background: var(--panel);
@@ -156,40 +180,91 @@
 	}
 
 	.head {
-		display: grid;
-		gap: var(--space-1);
+		display: flex;
+		flex-wrap: wrap;
+		align-items: center;
+		gap: var(--space-3) var(--space-4);
+		padding: var(--space-3) var(--space-4);
+		border-bottom: 1px solid var(--hair);
 	}
 
-	.wordmark {
+	.title {
+		display: flex;
+		flex: 1 1 18rem;
+		align-items: center;
+		gap: var(--space-3);
+		min-width: 0;
+	}
+
+	.well {
+		display: grid;
+		flex: none;
+		place-items: center;
+		width: var(--well-md);
+		height: var(--well-md);
+		border-radius: var(--radius-control);
+		background: var(--tint);
 		color: var(--ink-muted);
-		font-size: var(--text-sm);
-		line-height: var(--text-sm-lh);
-		font-weight: var(--weight-strong);
-		letter-spacing: var(--track-heading);
+	}
+
+	.names {
+		min-width: 0;
 	}
 
 	h1 {
 		margin: 0;
-		overflow-wrap: anywhere;
-		font-size: var(--text-2xl);
-		line-height: var(--text-2xl-lh);
-		font-weight: var(--weight-heading);
+		overflow: hidden;
+		font-size: var(--text-lg);
+		line-height: var(--text-lg-lh);
+		font-weight: var(--weight-label);
+		letter-spacing: var(--track-label);
+		text-overflow: ellipsis;
+		white-space: nowrap;
+	}
+
+	.names .muted {
+		font-size: var(--text-sm);
+		line-height: var(--text-sm-lh);
+	}
+
+	.actions {
+		display: flex;
+		align-items: center;
+		gap: var(--space-2);
+	}
+
+	.body {
+		display: grid;
+		flex: 1;
+		align-content: start;
+		gap: var(--space-3);
+		padding: var(--panel-pad);
+	}
+
+	.body.stage {
+		place-items: center;
+		align-content: center;
+		background: var(--head);
+	}
+
+	.foot {
+		display: flex;
+		flex-wrap: wrap;
+		justify-content: space-between;
+		gap: var(--space-2);
+		padding: var(--space-3) var(--space-4);
+		border-top: 1px solid var(--hair);
+		color: var(--ink-muted);
+		font-size: var(--text-sm);
+		line-height: var(--text-sm-lh);
+	}
+
+	.wordmark {
+		font-weight: var(--weight-strong);
 		letter-spacing: var(--track-heading);
 	}
 
 	.muted {
 		margin: 0;
-	}
-
-	.single,
-	.actions {
-		display: flex;
-		flex-wrap: wrap;
-		align-items: center;
-		gap: var(--space-3);
-	}
-
-	.single {
-		justify-content: space-between;
 	}
 </style>

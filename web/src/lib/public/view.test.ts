@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { contentUrl, previewUrl, thumbUrl, type LinkInfo, type PublicNode } from './api.ts';
-import { fileOfNode, linkByline, linkName, zippable } from './view.ts';
+import { fileOfNode, linkDetails, linkExpiry, linkIcon, linkName, zippable } from './view.ts';
 
 const node = (over: Partial<PublicNode>): PublicNode => ({
 	id: 'n1',
@@ -38,8 +38,26 @@ describe('view helpers', () => {
 	it('names and describes the link', () => {
 		expect(linkName(info({ node: node({ name: 'Trip', kind: 'folder' }) }))).toBe('Trip');
 		expect(linkName(info({ album: { id: 'a', name: 'Party', item_count: 2, cover_id: null } }))).toBe('Party');
-		expect(linkByline(info({ shared_by: 'Alice' }))).toBe('Shared by Alice');
-		expect(linkByline(info({ shared_by: 'Alice', expires_at: '2026-12-04T12:00:00Z' }))).toMatch(/^Shared by Alice · Until /);
+	});
+
+	it('details the link: who shared it, the file size or the photo count', () => {
+		expect(linkDetails(info({ shared_by: 'Alice', node: node({ name: 'Trip', kind: 'folder' }) }))).toBe('Shared by Alice');
+		expect(linkDetails(info({ shared_by: 'Alice', node: node({ size: 2048 }) }))).toBe('Shared by Alice · 2.0 KB');
+		const album = (count: number) => ({ id: 'a', name: 'Party', item_count: count, cover_id: null });
+		expect(linkDetails(info({ shared_by: 'Alice', album: album(1) }))).toBe('Shared by Alice · 1 photo');
+		expect(linkDetails(info({ shared_by: 'Alice', album: album(12) }))).toBe('Shared by Alice · 12 photos');
+		expect(linkDetails(info({}))).toBe('');
+	});
+
+	it('says when the link expires, if it does', () => {
+		expect(linkExpiry(info({}))).toBeNull();
+		expect(linkExpiry(info({ expires_at: '2026-12-04T12:00:00Z' }))).toMatch(/^This link expires on /);
+	});
+
+	it('picks an icon for the link', () => {
+		expect(linkIcon(info({ node: node({ kind: 'folder' }) }))).toBe('folder');
+		expect(linkIcon(info({ node: node({}) }))).toBe('image');
+		expect(linkIcon(info({ album: { id: 'a', name: 'Party', item_count: 0, cover_id: null } }))).toBe('images');
 	});
 
 	it('zips files only', () => {

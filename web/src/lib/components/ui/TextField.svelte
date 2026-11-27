@@ -40,6 +40,7 @@
 	.field {
 		display: grid;
 		gap: var(--space-2);
+		min-width: 0;
 	}
 
 	label {
@@ -52,8 +53,10 @@
 	}
 
 	/* Pill field: card fill with a 1 px edge of at least 3:1. */
+	/* min-width: a date input's intrinsic width would spill out of a narrow column. */
 	input {
 		width: 100%;
+		min-width: 0;
 		min-height: var(--control-md);
 		padding: var(--space-2) var(--space-4);
 		border: 1px solid var(--edge);

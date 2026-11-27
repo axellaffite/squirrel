@@ -11,15 +11,18 @@
 		token: string;
 		onOpen: (file: ViewedFile) => void;
 		onGone: () => void;
+		/** How many photos "Download all" would zip (read by the page header). */
+		zipCount?: number;
+		/** A zip is being prepared. */
+		zipping?: boolean;
 	}
 
-	let { token, onOpen, onGone }: Props = $props();
+	let { token, onOpen, onGone, zipCount = $bindable(0), zipping = $bindable(false) }: Props = $props();
 
 	let photos: AlbumPhoto[] = $state([]);
 	let nextCursor: string | null = $state(null);
 	let loaded = $state(false);
 	let loading = $state(false);
-	let zipping = $state(false);
 	let error: string | null = $state(null);
 
 	async function load(cursor: string | null) {
@@ -37,11 +40,15 @@
 		loaded = true;
 	}
 
+	$effect(() => {
+		zipCount = Math.min(photos.length, MAX_ZIP_FILES);
+	});
+
 	onMount(() => {
 		void load(null);
 	});
 
-	async function downloadAll() {
+	export async function downloadAll() {
 		zipping = true;
 		error = null;
 		const result = await zipUrl(
@@ -53,14 +60,6 @@
 		else error = result.error;
 	}
 </script>
-
-{#if photos.length > 0}
-	<div class="bar">
-		<Button variant="secondary" size="sm" disabled={zipping} onclick={downloadAll}>
-			<Icon name="download" />{zipping ? 'Preparing…' : 'Download all'}
-		</Button>
-	</div>
-{/if}
 
 {#if error}<Alert>{error}</Alert>{/if}
 
@@ -86,11 +85,6 @@
 {/if}
 
 <style>
-	.bar {
-		display: flex;
-		justify-content: flex-end;
-	}
-
 	.grid {
 		display: grid;
 		grid-template-columns: repeat(auto-fill, minmax(var(--photo-row), 1fr));
