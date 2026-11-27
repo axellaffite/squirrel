@@ -34,7 +34,7 @@
 	const arriving = new Set(untrack(() => items.slice(0, 8).map((node) => node.id)));
 	const arrival = (node: FileNode, index: number) => (arriving.has(node.id) ? index : undefined);
 
-	/** Folders first, then files; by name A to Z until a header is clicked. */
+	/** By name A to Z (folders first) until a header is clicked. */
 	let sort: Sort = $state(DEFAULT_SORT);
 	const sorted = $derived(sortNodes(items, sort));
 	const COLUMNS: { key: SortKey; label: string }[] = [

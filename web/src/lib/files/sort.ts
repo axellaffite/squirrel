@@ -1,4 +1,4 @@
-/** Sorting a folder's listing by a column; folders always come first (no I/O). */
+/** Sorting a folder's listing by a column; by name, folders come first (no I/O). */
 import { kindLabel } from '#lib/files/format.ts';
 
 export type SortKey = 'name' | 'kind' | 'size' | 'modified';
@@ -34,10 +34,13 @@ function compareBy(key: SortKey, a: Sortable, b: Sortable): number {
 	}
 }
 
-/** A sorted copy: folders, then files, each by `sort`, ties by name A to Z. */
+/**
+ * A sorted copy by `sort`, ties by name A to Z. By name, folders come first (either way);
+ * by any other column, folders and files mix.
+ */
 export function sortNodes<T extends Sortable>(nodes: readonly T[], sort: Sort): T[] {
 	const sign = sort.dir === 'asc' ? 1 : -1;
-	const folderRank = (node: Sortable) => (node.kind === 'folder' ? 0 : 1);
+	const folderRank = (node: Sortable) => (sort.key === 'name' && node.kind === 'folder' ? 0 : 1);
 	return [...nodes].sort(
 		(a, b) => folderRank(a) - folderRank(b) || sign * compareBy(sort.key, a, b) || collator.compare(a.name, b.name)
 	);

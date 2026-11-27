@@ -24,10 +24,14 @@ describe('sortNodes', () => {
 		expect(names(sortNodes(items, DEFAULT_SORT))).toEqual(['alpha', 'Zeta', 'b.txt', 'IMG_2.jpg', 'IMG_10.jpg']);
 	});
 
-	it('keeps folders first whatever the column and direction', () => {
+	it('keeps folders first when sorted by name, either way', () => {
 		expect(names(sortNodes(items, by('name', 'desc')))).toEqual(['Zeta', 'alpha', 'IMG_10.jpg', 'IMG_2.jpg', 'b.txt']);
-		expect(names(sortNodes(items, by('size', 'desc')))).toEqual(['alpha', 'Zeta', 'b.txt', 'IMG_2.jpg', 'IMG_10.jpg']);
-		expect(names(sortNodes(items, by('modified', 'desc')))).toEqual(['alpha', 'Zeta', 'IMG_10.jpg', 'IMG_2.jpg', 'b.txt']);
+	});
+
+	it('mixes folders and files by any other column', () => {
+		expect(names(sortNodes(items, by('size', 'desc')))).toEqual(['b.txt', 'IMG_2.jpg', 'IMG_10.jpg', 'alpha', 'Zeta']);
+		expect(names(sortNodes(items, by('modified', 'desc')))).toEqual(['alpha', 'IMG_10.jpg', 'IMG_2.jpg', 'b.txt', 'Zeta']);
+		expect(names(sortNodes(items, by('modified', 'asc')))).toEqual(['Zeta', 'b.txt', 'IMG_2.jpg', 'IMG_10.jpg', 'alpha']);
 		expect(names(sortNodes(items, by('kind', 'asc')))).toEqual(['alpha', 'Zeta', 'IMG_2.jpg', 'IMG_10.jpg', 'b.txt']);
 	});
 
