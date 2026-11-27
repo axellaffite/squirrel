@@ -89,3 +89,8 @@ SigLIP2, YuNet and SFace for machine learning; libvips, libheif and pdfium for p
 
 The screenshots show public-domain photos from Wikimedia Commons
 ([sources](docs/screenshots/SOURCES.md)).
+
+## Licence
+
+[MIT](LICENSE). The machine learning models, ONNX Runtime, pdfium and the GeoNames place names
+are fetched or bundled under their own licences, kept next to each of them.
